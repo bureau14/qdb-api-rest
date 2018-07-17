@@ -1,0 +1,192 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "QuasarDB API",
+    "version": "0.1",
+    "description": "Find out more at https://doc.quasardb.net"
+  },
+  "produces": [
+    "application/json"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "basePath": "/api",
+  "paths": {
+    "/cluster": {
+      "get": {
+        "operationId": "get-cluster",
+        "responses": {
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/Cluster"
+            },
+            "description": "Successful operation",
+            "examples": {
+              "application/json": {
+                "memoryTotal": 312204568,
+                "memoryUsed": 55440601,
+                "diskTotal": 24408800000,
+                "diskUsed": 801210000,
+                "nodes": [
+                  "172.14.0.2:2836",
+                  "172.14.0.3:2836"
+                ],
+                "status": "stable"
+              }
+            }
+          }
+        },
+        "tags": [
+          "cluster"
+        ],
+        "summary": "Get a summary of the cluster status"
+      }
+    },
+    "/cluster/nodes/{id}": {
+      "get": {
+        "operationId": "get-node",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "type": "string",
+            "required": true,
+            "description": "The node's id (address and host)"
+          }
+        ],
+        "responses": {
+          "404": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "The requested resource could not be found but may be available again in the future."
+          },
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/Node"
+            },
+            "description": "Successful operation",
+            "examples": {
+              "application/json": {
+                "id": "172.14.0.2:2836",
+                "os": "Linux",
+                "quasardbVersion": "1.0.1",
+                "memoryTotal": 22857027000,
+                "memoryUsed": 2515456400,
+                "diskTotal": 99832160000,
+                "diskUsed": 360678000,
+                "cpuTotal": 2,
+                "cpuUsed": 1.84
+              }
+            }
+          }
+        },
+        "tags": [
+          "cluster"
+        ],
+        "summary": "Get information about a single node in the cluster"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "cluster",
+      "description": "Operational statistics about the QuasarDB cluster"
+    }
+  ],
+  "definitions": {
+    "Cluster": {
+      "type": "object",
+      "properties": {
+        "memoryTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "memoryUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diskTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diskUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "unstable",
+            "unreachable"
+          ]
+        }
+      },
+      "required": [
+        "memoryTotal",
+        "memoryUsed",
+        "diskTotal",
+        "diskUsed",
+        "nodes",
+        "status"
+      ]
+    },
+    "Node": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "quasardbVersion": {
+          "type": "string"
+        },
+        "memoryTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "memoryUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diskTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diskUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpuTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpuUsed": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "os",
+        "quasardbVersion",
+        "memoryTotal",
+        "memoryUsed",
+        "diskTotal",
+        "diskUsed",
+        "cpuTotal",
+        "cpuUsed"
+      ]
+    }
+  }
+}
