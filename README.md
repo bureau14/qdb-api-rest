@@ -34,3 +34,17 @@ go get -u github.com/go-swagger/go-swagger/cmd/swagger
 $GOPATH/swagger generate server -f ./swagger.json -A qdb-rest-api
 cp configure_qdb_rest.go restapi/configure_qdb_rest.go
 ```
+
+## IV. Example
+#### Get cluster information
+```
+curl -i http://127.0.0.1:40000/api/cluster
+```
+#### Get node information
+```
+curl -i http://127.0.0.1:40000/api/cluster/nodes/127.0.0.1:2836
+```
+#### Run a query
+```
+curl -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40000/api/query
+```

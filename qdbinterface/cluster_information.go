@@ -1,16 +1,13 @@
 package qdbinterface
 
 import (
-	"fmt"
 	"os"
 	"time"
 
-	"github.com/bureau14/qdb-rest-api/models"
+	"github.com/bureau14/qdb-api-rest/models"
 
 	"github.com/bureau14/qdb-api-go"
 )
-
-// TODO(vianney) create a library in a separate folder for all of this
 
 // global structures, I know not pretty
 // TODO(vianney) find a way to keep information
@@ -58,7 +55,6 @@ func RetrieveInformation() error {
 	handle, err := qdb.SetupHandle(uri, time.Duration(60*time.Second))
 	if err != nil {
 		resetInformation()
-		fmt.Println("error:", err)
 		*ClusterInformation.Status = "unreachable"
 		lastError = err
 		return err

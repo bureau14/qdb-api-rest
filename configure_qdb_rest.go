@@ -6,13 +6,17 @@ import (
 	"crypto/tls"
 	"net/http"
 
+	"github.com/bureau14/qdb-api-go"
+
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
 
-	"github.com/bureau14/qdb-rest-api/qdbinterface"
-	"github.com/bureau14/qdb-rest-api/restapi/operations"
-	"github.com/bureau14/qdb-rest-api/restapi/operations/cluster"
+	"github.com/bureau14/qdb-api-rest/models"
+	"github.com/bureau14/qdb-api-rest/qdbinterface"
+	"github.com/bureau14/qdb-api-rest/restapi/operations"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
 )
 
 //go:generate swagger generate server --target .. --name qdb-rest-api --spec ../swagger.json
@@ -35,19 +39,37 @@ func configureAPI(api *operations.QdbRestAPI) http.Handler {
 
 	api.JSONProducer = runtime.JSONProducer()
 
+	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams) middleware.Responder {
+		result, err := qdbinterface.QueryData(params.Query)
+		if err != nil {
+			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			}
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return query.NewPostQueryOK().WithPayload(result)
+	})
+
 	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams) middleware.Responder {
-		qdbinterface.RetrieveInformation()
+		err := qdbinterface.RetrieveInformation()
+		if err != nil && err != qdb.ErrUnstableCluster && err != qdb.ErrConnectionRefused {
+			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
 		return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
 	})
 
 	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams) middleware.Responder {
 		err := qdbinterface.RetrieveInformation()
-		if err == nil {
-			if val, ok := qdbinterface.NodesInformation[params.ID]; ok {
-				return cluster.NewGetNodeOK().WithPayload(&val)
+		if err != nil {
+			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 			}
+			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		return nil
+		if val, ok := qdbinterface.NodesInformation[params.ID]; ok {
+			return cluster.NewGetNodeOK().WithPayload(&val)
+		}
+		return cluster.NewGetNodeNotFound()
 	})
 
 	api.ServerShutdown = func() {}
