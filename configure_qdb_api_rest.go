@@ -6,12 +6,11 @@ import (
 	"crypto/tls"
 	"net/http"
 
-	"github.com/bureau14/qdb-api-go"
-
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
 
+	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
 	"github.com/bureau14/qdb-api-rest/qdbinterface"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
@@ -19,13 +18,13 @@ import (
 	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
 )
 
-//go:generate swagger generate server --target .. --name qdb-rest-api --spec ../swagger.json
+//go:generate swagger generate server --target .. --name qdb-api-rest --spec ../swagger.json
 
-func configureFlags(api *operations.QdbRestAPI) {
+func configureFlags(api *operations.QdbAPIRestAPI) {
 	// api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{ ... }
 }
 
-func configureAPI(api *operations.QdbRestAPI) http.Handler {
+func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	// configure the api here
 	api.ServeError = errors.ServeError
 
@@ -70,6 +69,10 @@ func configureAPI(api *operations.QdbRestAPI) http.Handler {
 			return cluster.NewGetNodeOK().WithPayload(&val)
 		}
 		return cluster.NewGetNodeNotFound()
+	})
+
+	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
+		return middleware.NotImplemented("operation .Login has not yet been implemented")
 	})
 
 	api.ServerShutdown = func() {}

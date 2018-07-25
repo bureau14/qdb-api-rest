@@ -13,6 +13,30 @@
   ],
   "basePath": "/api",
   "paths": {
+    "/login": {
+      "post": {
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "privateKey",
+            "in": "body",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "The user's private key"
+          }
+        ],
+        "responses": {
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/Token"
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
     "/query": {
       "post": {
         "operationId": "post-query",
@@ -184,6 +208,9 @@
     }
   ],
   "definitions": {
+    "Token": {
+      "type": "string"
+    },
     "QdbError": {
       "properties": {
         "message": {

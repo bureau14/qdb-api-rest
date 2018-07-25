@@ -1,13 +1,13 @@
 FROM golang:1.9
 
-RUN mkdir -p /go/src/github.com/bureau14/qdb-rest-api
+RUN mkdir -p /go/src/github.com/bureau14/qdb-api-rest
 
-WORKDIR /go/src/github.com/bureau14/qdb-rest-api
+WORKDIR /go/src/github.com/bureau14/qdb-api-rest
 COPY . .
 
 RUN go get -u github.com/go-swagger/go-swagger/cmd/swagger
-RUN swagger generate server -f ./swagger.json -A qdb-rest-api
-RUN cp configure_qdb_rest.go restapi/configure_qdb_rest.go
+RUN swagger generate server -f ./swagger.json -A qdb-api-rest
+RUN cp configure_qdb_api_rest.go restapi/configure_qdb_api_rest.go
 
 RUN go get -d -v ./...
 
@@ -22,6 +22,6 @@ RUN go install -v ./...
 
 EXPOSE 40000
 
-ADD qdb-rest-api-wrapper.sh /usr/bin/
-RUN chmod +x /usr/bin/qdb-rest-api-wrapper.sh
-ENTRYPOINT ["/usr/bin/qdb-rest-api-wrapper.sh"]
+ADD qdb-api-rest-wrapper.sh /usr/bin/
+RUN chmod +x /usr/bin/qdb-api-rest-wrapper.sh
+ENTRYPOINT ["/usr/bin/qdb-api-rest-wrapper.sh"]

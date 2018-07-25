@@ -2,7 +2,7 @@
 
 ## I. Build On Docker
 ```
-docker build -t rest-api-server .
+docker build -t qdb-api-rest-server .
 ```
 
 ## II. Run On Docker
@@ -25,13 +25,13 @@ docker run -d --name qdb-server3 --link qdb-server2:successor bureau14/qdb -v /d
 
 ### Run
 ```
-docker run -it --link qdb-server:qdb -p 40000:40000 rest-api-server qdb://qdb:2836
+docker run -it --link qdb-server:qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
 ```
 
 ## III. Build locally
 ```
 go get -u github.com/go-swagger/go-swagger/cmd/swagger
-$GOPATH/swagger generate server -f ./swagger.json -A qdb-rest-api
+$GOPATH/swagger generate server -f ./swagger.json -A qdb-api-rest
 cp configure_qdb_rest.go restapi/configure_qdb_rest.go
 ```
 
