@@ -5,6 +5,8 @@ package restapi
 import (
 	"crypto/tls"
 	"net/http"
+	"os"
+	"strings"
 
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
@@ -102,8 +104,9 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics
 func setupGlobalMiddleware(handler http.Handler) http.Handler {
+	allowedOrigins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3449", "https://localhost:3449", "http://0.0.0.0:3449", "https://0.0.0.0:3449"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedHeaders:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowCredentials: true,

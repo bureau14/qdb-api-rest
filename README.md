@@ -25,7 +25,7 @@ docker run -d --name qdb-server3 --link qdb-server2:successor bureau14/qdb -v /d
 
 ### Run
 ```
-docker run -it --link qdb-server:qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
+docker run -it --link qdb-server:qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836 http://localhost:3449[,https://localhost:3449,...]
 ```
 
 ## III. Build locally
