@@ -24,8 +24,12 @@ docker run -d --name qdb-server3 --link qdb-server2:successor bureau14/qdb:night
 ```
 
 #### Run
+Make the rest-api config file accessible in docker then run
 ```
-docker run -it --link qdb-server:qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836 http://localhost:3449[,https://localhost:3449,...]
+export QDB_REST_DIR=`pwd`/qdb-var-rest
+mkdir $QDB_REST_DIR
+cp rest-api.cfg $QDB_REST_DIR/.
+docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
 ```
 
 ### Running with security on
@@ -44,12 +48,13 @@ qdb_user_add -u tintin -s tintin.private -p users.cfg
 ```
 qdb_cluster_keygen -p cluster.public -s cluster.private
 ```
-##### Move those keys to the appropriate directories
+##### Move those keys and config to the appropriate directories
 ```
 export QDB_REST_DIR=`pwd`/qdb-var-rest
 mkdir $QDB_REST_DIR
 cp rest-api.private $QDB_REST_DIR/.
 cp cluster.public $QDB_REST_DIR/.
+cp rest-api.cfg $QDB_REST_DIR/.
 ```
 ```
 export QDB_QDDB_DIR=`pwd`/qdb-var-qdbd
@@ -64,7 +69,7 @@ sudo docker run -d -v $QDB_QDDB_DIR:/var/lib/qdb --name qdb-server bureau14/qdb:
 ```
 ##### Run the rest API
 ```
-sudo docker run -it --link qdb-server:qdb -p 40000:40000 -v $QDB_REST_DIR:/var/lib/qdb qdb-api-rest-server qdb://qdb:2836 http://localhost:3449,https://localhost:3449,http://0.0.0.0:3449,https://0.0.0.0:3449
+sudo docker run -it --link qdb-server:qdb -p 40000:40000 -v $QDB_REST_DIR:/var/lib/qdb qdb-api-rest-server qdb://qdb:2836
 ```
 
 
@@ -73,6 +78,7 @@ sudo docker run -it --link qdb-server:qdb -p 40000:40000 -v $QDB_REST_DIR:/var/l
 go get -u github.com/go-swagger/go-swagger/cmd/swagger
 $GOPATH/swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal
 cp configure_qdb_rest.go restapi/configure_qdb_rest.go
+go install ./...
 ```
 
 ## IV. Example
@@ -89,10 +95,8 @@ curl -i http://127.0.0.1:40000/api/cluster/nodes/127.0.0.1:2836
 curl -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40000/api/query
 ```
 
-## V. Environment variables
-```
-CLUSTER_URI=qdb://127.0.0.1:2836
-ALLOWED_ORIGINS=http://localhost:3449,https://localhost:3449,http://0.0.0.0:3449,https://0.0.0.0:3449
-SERVER_PUBLIC_KEY_FILE=cluster.public
-REST_PRIVATE_KEY_FILE=rest-api.private
-```
+## V. Config File
+The config file need to specify the following values:
+1. allowed_origins (http://localhost:3449,https://localhost:3449,http://0.0.0.0:3449,https://0.0.0.0:3449)
+1. cluster_public_key_file (/var/lib/qdb/cluster.public)
+1. rest_private_key_file (/var/lib/qdb/rest-api.private)

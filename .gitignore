@@ -7,6 +7,7 @@ rest-api.private
 rest-api.public
 cluster.private
 cluster.public
+rest-api.cfg
 users.cfg
 qdb-var-qdbd
 qdb-var-rest

@@ -1,14 +1,13 @@
 package qdbinterface
 
 import (
-	"os"
 	"time"
 
 	qdb "github.com/bureau14/qdb-api-go"
 )
 
 // CreateHandle : creates a handle with config values
-func CreateHandle(user, secret string) (*qdb.HandleType, error) {
+func CreateHandle(user, secret, uri, serverPublicKeyFile string) (*qdb.HandleType, error) {
 
 	handle, err := qdb.NewHandle()
 	if err != nil {
@@ -26,7 +25,6 @@ func CreateHandle(user, secret string) (*qdb.HandleType, error) {
 		err = handle.SetEncryption(qdb.EncryptNone)
 
 		// add security if enabled server side
-		serverPublicKeyFile := os.Getenv("SERVER_PUBLIC_KEY_FILE")
 		clusterKey, err := qdb.ClusterKeyFromFile(serverPublicKeyFile)
 		if err != nil {
 			return nil, err
@@ -36,7 +34,6 @@ func CreateHandle(user, secret string) (*qdb.HandleType, error) {
 	}
 
 	// connect
-	uri := os.Getenv("CLUSTER_URI")
 	err = handle.Connect(uri)
 	return &handle, err
 }

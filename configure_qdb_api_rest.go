@@ -4,9 +4,10 @@ package restapi
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/swag"
 	cors "github.com/rs/cors"
 	xid "github.com/rs/xid"
 
@@ -27,27 +29,52 @@ import (
 
 //go:generate swagger generate server --target .. --name qdb-api-rest --spec ../swagger.json
 
-func configureFlags(api *operations.QdbAPIRestAPI) {
-	// api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{ ... }
+// Config : A configuration file for the rest api
+type Config struct {
+	AllowedOrigins      []string `json:"allowed_origins"`
+	ServerPublicKeyFile string   `json:"server_public_key_file"`
+	RestPrivateKeyFile  string   `json:"rest_private_key_file"`
 }
 
-func tokenParser(t *jwt.Token) (interface{}, error) {
-	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-		return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
-	}
+// AdditionalFlags : Additionl flags to setup the rest-api
+type AdditionalFlags struct {
+	ConfigFile string `long:"config-file" required:"true" description:"Config file to setup the rest-api"`
+	ClusterURI string `long:"cluster-uri" required:"true" description:"The Cluster URI the rest-api needs to connect to"`
+}
 
-	restPrivateKeyFile := os.Getenv("REST_PRIVATE_KEY_FILE")
-	_, secret, err := qdbinterface.CredentialsFromFile(restPrivateKeyFile)
-	if err != nil {
-		return nil, err
-	}
+var additionalFlags AdditionalFlags
 
-	return []byte(secret), nil
+func configureFlags(api *operations.QdbAPIRestAPI) {
+	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
+		{ShortDescription: "Additional Flags", LongDescription: "Additional Configuration Flags", Options: &additionalFlags},
+	}
 }
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
+
+	clusterURI := additionalFlags.ClusterURI
+	content, err := ioutil.ReadFile(additionalFlags.ConfigFile)
+	if err != nil {
+		panic(err)
+	}
+
+	var config Config
+	json.Unmarshal(content, &config)
+
+	tokenParser := func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+		}
+
+		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
+		if err != nil {
+			return nil, err
+		}
+
+		return []byte(secret), nil
+	}
 
 	// Will delete unvalid keys every hour to avoid growing the map too much
 	clearHandles := func() {
@@ -131,7 +158,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, config.ServerPublicKeyFile)
 		if err != nil {
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -142,8 +169,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			ExpiresAt: int64(expiresAt),
 		})
 
-		restPrivateKeyFile := os.Getenv("REST_PRIVATE_KEY_FILE")
-		_, secret, err := qdbinterface.CredentialsFromFile(restPrivateKeyFile)
+		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
 		if err != nil {
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -160,7 +186,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.ServerShutdown = func() {}
 
-	return setupGlobalMiddleware(api.Serve(setupMiddlewares))
+	return setupGlobalMiddleware(api.Serve(setupMiddlewares), config.AllowedOrigins)
 }
 
 // The TLS configuration before HTTPS server starts.
@@ -183,8 +209,7 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics
-func setupGlobalMiddleware(handler http.Handler) http.Handler {
-	allowedOrigins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+func setupGlobalMiddleware(handler http.Handler, allowedOrigins []string) http.Handler {
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedHeaders:   []string{"*"},
