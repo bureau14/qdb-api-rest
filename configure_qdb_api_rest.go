@@ -4,14 +4,18 @@ package restapi
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
 	cors "github.com/rs/cors"
+	xid "github.com/rs/xid"
 
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
@@ -27,7 +31,37 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 	// api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{ ... }
 }
 
+func tokenParser(t *jwt.Token) (interface{}, error) {
+	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+	}
+
+	restPrivateKeyFile := os.Getenv("REST_PRIVATE_KEY_FILE")
+	_, secret, err := qdbinterface.CredentialsFromFile(restPrivateKeyFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(secret), nil
+}
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
+
+	tokenToHandle := map[string]*qdb.HandleType{}
+
+	// Will delete unvalid keys every hour to avoid growing the map too much
+	clearHandles := func() {
+		for range time.Tick(time.Hour * 1) {
+			for token := range tokenToHandle {
+				parsedToken, _ := jwt.Parse(token, tokenParser)
+				if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
+					delete(tokenToHandle, token)
+				}
+			}
+		}
+	}
+	go clearHandles()
+
 	// configure the api here
 	api.ServeError = errors.ServeError
 
@@ -41,8 +75,24 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.JSONProducer = runtime.JSONProducer()
 
-	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams) middleware.Responder {
-		result, err := qdbinterface.QueryData(params.Query)
+	api.BearerAuth = func(token string) (*models.Principal, error) {
+		if strings.HasPrefix(token, "Bearer ") {
+			token = strings.Replace(token, "Bearer ", "", 1)
+			parsedToken, err := jwt.Parse(token, tokenParser)
+			if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
+				return nil, err
+			}
+			t := models.Principal(token)
+			return &t, nil
+		}
+		// api.Logger("Access attempt with incorrect api key auth: %s", token)
+		return nil, errors.New(401, "incorrect api key auth")
+	}
+
+	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
+		signedString := string(*principal)
+		handle := tokenToHandle[signedString]
+		result, err := qdbinterface.QueryData(*handle, params.Query)
 		if err != nil {
 			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
 				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -52,16 +102,22 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return query.NewPostQueryOK().WithPayload(result)
 	})
 
-	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams) middleware.Responder {
-		err := qdbinterface.RetrieveInformation()
+	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
+		signedString := string(*principal)
+		handle := tokenToHandle[signedString]
+
+		err := qdbinterface.RetrieveInformation(*handle)
 		if err != nil && err != qdb.ErrUnstableCluster && err != qdb.ErrConnectionRefused {
 			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
 	})
 
-	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams) middleware.Responder {
-		err := qdbinterface.RetrieveInformation()
+	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
+		signedString := string(*principal)
+		handle := tokenToHandle[signedString]
+
+		err := qdbinterface.RetrieveInformation(*handle)
 		if err != nil {
 			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
 				return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -75,7 +131,31 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		return middleware.NotImplemented("operation .Login has not yet been implemented")
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey)
+		if err != nil {
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		expiresAt := time.Now().Add(time.Duration(12) * time.Hour).Unix()
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &jwt.StandardClaims{
+			Id:        xid.New().String(),
+			ExpiresAt: int64(expiresAt),
+		})
+
+		restPrivateKeyFile := os.Getenv("REST_PRIVATE_KEY_FILE")
+		_, secret, err := qdbinterface.CredentialsFromFile(restPrivateKeyFile)
+		if err != nil {
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		signedString, err := token.SignedString([]byte(secret))
+		tokenToHandle[signedString] = handle
+
+		if err != nil {
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		t := models.Token(signedString)
+		return operations.NewLoginOK().WithPayload(t)
 	})
 
 	api.ServerShutdown = func() {}

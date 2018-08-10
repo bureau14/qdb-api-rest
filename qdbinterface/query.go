@@ -2,22 +2,15 @@ package qdbinterface
 
 import (
 	"fmt"
-	"os"
-	"time"
 
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
 )
 
 // QueryData : send a query to the server
-func QueryData(query string) (*models.QueryResult, error) {
+func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
 
-	uri := os.Getenv("CLUSTER_URI")
-	handle, err := qdb.SetupHandle(uri, time.Duration(60*time.Second))
-	if err != nil {
-		return nil, err
-	}
 	fmt.Println("query:", query)
 	results, err := handle.QueryExp(query).Execute()
 	if err != nil {

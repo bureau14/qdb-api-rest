@@ -1,7 +1,6 @@
 package qdbinterface
 
 import (
-	"os"
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/models"
@@ -44,22 +43,11 @@ func resetInformation() {
 }
 
 // RetrieveInformation : retrieve all informations
-func RetrieveInformation() error {
+func RetrieveInformation(handle qdb.HandleType) error {
 	if !shouldUpdate() && lastError == nil {
 		return nil
 	}
 
-	// Not sure if smart to re-do the connection everytime
-	// We should test on every node we retrieved recently
-	uri := os.Getenv("CLUSTER_URI")
-	handle, err := qdb.SetupHandle(uri, time.Duration(60*time.Second))
-	if err != nil {
-		resetInformation()
-		*ClusterInformation.Status = "unreachable"
-		lastError = err
-		return err
-	}
-	defer handle.Close()
 	nodeEndpoints, err := handle.Cluster().Endpoints()
 	if ClusterInformation.Status == nil {
 		ClusterInformation.Status = new(string)

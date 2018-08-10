@@ -1,3 +1,12 @@
 cmd/
 models/
 restapi/
+*.pem
+empty.private
+rest-api.private
+rest-api.public
+cluster.private
+cluster.public
+users.cfg
+qdb-var-qdbd
+qdb-var-rest

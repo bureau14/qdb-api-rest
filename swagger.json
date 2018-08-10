@@ -11,20 +11,36 @@
   "consumes": [
     "application/json"
   ],
+  "schemes": [
+    "https"
+  ],
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
   "basePath": "/api",
   "paths": {
     "/login": {
       "post": {
         "operationId": "login",
+        "security": [],
         "parameters": [
           {
-            "name": "privateKey",
+            "name": "credential",
             "in": "body",
             "schema": {
-              "type": "string"
+              "$ref": "#/definitions/Credential"
             },
             "required": true,
-            "description": "The user's private key"
+            "description": "The user's credential"
           }
         ],
         "responses": {
@@ -33,6 +49,12 @@
               "$ref": "#/definitions/Token"
             },
             "description": "Successful operation"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Bad Request."
           }
         }
       }
@@ -208,6 +230,20 @@
     }
   ],
   "definitions": {
+    "Principal": {
+      "type": "string"
+    },
+    "Credential": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string"
+        },
+        "secret_key": {
+          "type": "string"
+        }
+      }
+    },
     "Token": {
       "type": "string"
     },
