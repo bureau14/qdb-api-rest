@@ -34,6 +34,7 @@ type Config struct {
 	AllowedOrigins      []string `json:"allowed_origins"`
 	ServerPublicKeyFile string   `json:"server_public_key_file"`
 	RestPrivateKeyFile  string   `json:"rest_private_key_file"`
+	Assets              string   `json:"assets"`
 }
 
 // AdditionalFlags : Additionl flags to setup the rest-api
@@ -48,6 +49,17 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
 		{ShortDescription: "Additional Flags", LongDescription: "Additional Configuration Flags", Options: &additionalFlags},
 	}
+}
+
+// FileServerMiddleWare : middleware for fileserver handler
+func FileServerMiddleWare(next http.Handler, assets string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api") {
+			next.ServeHTTP(w, r)
+		} else {
+			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
+		}
+	})
 }
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
@@ -186,7 +198,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.ServerShutdown = func() {}
 
-	return setupGlobalMiddleware(api.Serve(setupMiddlewares), config.AllowedOrigins)
+	return setupGlobalMiddleware(api.Serve(setupMiddlewares), config.AllowedOrigins, config.Assets)
 }
 
 // The TLS configuration before HTTPS server starts.
@@ -209,12 +221,16 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics
-func setupGlobalMiddleware(handler http.Handler, allowedOrigins []string) http.Handler {
+func setupGlobalMiddleware(handler http.Handler, allowedOrigins []string, assets string) http.Handler {
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedHeaders:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowCredentials: true,
 	}).Handler
-	return corsHandler(handler)
+
+	if assets == "" {
+		return corsHandler(handler)
+	}
+	return FileServerMiddleWare(corsHandler(handler), assets)
 }

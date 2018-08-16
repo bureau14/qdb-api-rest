@@ -82,6 +82,10 @@ go install ./...
 ```
 
 ## IV. Example
+#### Login
+```
+curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @empty.private https://127.0.0.1:40000/api/login
+```
 #### Get cluster information
 ```
 curl -i http://127.0.0.1:40000/api/cluster
@@ -100,3 +104,4 @@ The config file need to specify the following values:
 1. allowed_origins (http://localhost:3449,https://localhost:3449,http://0.0.0.0:3449,https://0.0.0.0:3449)
 1. cluster_public_key_file (/var/lib/qdb/cluster.public)
 1. rest_private_key_file (/var/lib/qdb/rest-api.private)
+1. assets (/usr/share/qdb/assets)
