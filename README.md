@@ -35,9 +35,9 @@ docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:4000
 ### Running with security on
 Install qdb-utils on your own machine. For example:
 ```
-wget https://download.quasardb.net/quasardb/nightly/api/c/qdb-3.0.0master-linux-64bit-c-api.tar.gz
-tar xzf qdb-3.0.0master-linux-64bit-c-api.tar.gz --no-same-owner -C /usr
-rm qdb-3.0.0master-linux-64bit-c-api.tar.gz
+wget https://download.quasardb.net/quasardb/nightly/utils/qdb-3.0.0master-linux-64bit-utils.tar.gz
+tar qdb-3.0.0master-linux-64bit-utils.tar.gz --no-same-owner -C /usr
+rm qdb-3.0.0master-linux-64bit-utils.tar.gz
 ```
 
 ##### Generate the different keys
