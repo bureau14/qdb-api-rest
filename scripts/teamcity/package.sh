@@ -10,4 +10,5 @@ OS=$1;shift
 
 VERSION=`cat $SWAGGER_PATH | grep "\"version\":" | awk -F '"' '{print $4}'`
 
-tar cvzf qdb-$VERSION-$OS-api-rest.tar.gz $EXE_PATH
+mv $EXE_PATH qdb-api-rest-server
+tar cvzf qdb-$VERSION-$OS-api-rest.tar.gz qdb-api-rest-server
