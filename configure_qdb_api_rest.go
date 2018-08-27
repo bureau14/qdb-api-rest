@@ -37,6 +37,9 @@ type Config struct {
 	Assets              string   `json:"assets"`
 }
 
+// TODO(vianney): find another way to manage the lifetime of the config
+var config Config
+
 // AdditionalFlags : Additionl flags to setup the rest-api
 type AdditionalFlags struct {
 	ConfigFile string `long:"config-file" required:"true" description:"Config file to setup the rest-api"`
@@ -72,7 +75,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		panic(err)
 	}
 
-	var config Config
 	json.Unmarshal(content, &config)
 
 	tokenParser := func(t *jwt.Token) (interface{}, error) {
@@ -181,8 +183,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			ExpiresAt: int64(expiresAt),
 		})
 
+		fmt.Println("file:", config.RestPrivateKeyFile)
 		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
 		if err != nil {
+			fmt.Println("EEEEEEEEEEERRRRRRRRRRROR:", err)
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
