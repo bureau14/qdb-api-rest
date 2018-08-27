@@ -31,10 +31,10 @@ import (
 
 // Config : A configuration file for the rest api
 type Config struct {
-	AllowedOrigins      []string `json:"allowed_origins"`
-	ServerPublicKeyFile string   `json:"server_public_key_file"`
-	RestPrivateKeyFile  string   `json:"rest_private_key_file"`
-	Assets              string   `json:"assets"`
+	AllowedOrigins       []string `json:"allowed_origins"`
+	ClusterPublicKeyFile string   `json:"cluster_public_key_file"`
+	RestPrivateKeyFile   string   `json:"rest_private_key_file"`
+	Assets               string   `json:"assets"`
 }
 
 // TODO(vianney): find another way to manage the lifetime of the config
@@ -172,7 +172,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, config.ServerPublicKeyFile)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, config.ClusterPublicKeyFile)
 		if err != nil {
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -183,10 +183,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			ExpiresAt: int64(expiresAt),
 		})
 
-		fmt.Println("file:", config.RestPrivateKeyFile)
 		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
 		if err != nil {
-			fmt.Println("EEEEEEEEEEERRRRRRRRRRROR:", err)
+			err = fmt.Errorf("Could not retrieve private key from file:%s", config.RestPrivateKeyFile)
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
