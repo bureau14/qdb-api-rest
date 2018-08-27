@@ -36,7 +36,7 @@ docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:4000
 Install qdb-server on your own machine to make qdb_user_add and qdb_cluster_keygen available.
 ```
 wget https://download.quasardb.net/quasardb/nightly/server/qdb-3.0.0master-linux-64bit-server.tar.gz
-tar qdb-3.0.0master-linux-64bit-server.tar.gz --no-same-owner -C /usr
+tar qdb-3.0.0master-linux-64bit-server.tar.gz --no-same-owner -C /usr/local/
 rm qdb-3.0.0master-linux-64bit-server.tar.gz
 ```
 
