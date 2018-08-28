@@ -38,7 +38,7 @@ type Config struct {
 	TLSKey               string   `json:"tls_key" required:"true"`
 	TLSHost              string   `json:"tls_host" required:"true"`
 	TLSPort              int      `json:"tls_port" required:"true"`
-	Assets               string   `json:"assets" required:"true"`
+	Assets               string   `json:"assets"`
 }
 
 // APIConfig : api config
