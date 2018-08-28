@@ -31,26 +31,30 @@ import (
 
 // Config : A configuration file for the rest api
 type Config struct {
-	AllowedOrigins       []string `json:"allowed_origins"`
-	ClusterPublicKeyFile string   `json:"cluster_public_key_file"`
-	RestPrivateKeyFile   string   `json:"rest_private_key_file"`
-	Assets               string   `json:"assets"`
+	AllowedOrigins       []string `json:"allowed_origins" required:"true"`
+	ClusterURI           string   `json:"cluster_uri" required:"true"`
+	ClusterPublicKeyFile string   `json:"cluster_public_key_file" required:"true"`
+	TLSCertificate       string   `json:"tls_certificate" required:"true"`
+	TLSKey               string   `json:"tls_key" required:"true"`
+	TLSHost              string   `json:"tls_host" required:"true"`
+	TLSPort              int      `json:"tls_port" required:"true"`
+	Assets               string   `json:"assets" required:"true"`
 }
 
+// APIConfig : api config
 // TODO(vianney): find another way to manage the lifetime of the config
-var config Config
+var APIConfig Config
 
-// AdditionalFlags : Additionl flags to setup the rest-api
-type AdditionalFlags struct {
+// ApplicationFlags : Additionl flags to setup the rest-api
+type ApplicationFlags struct {
 	ConfigFile string `long:"config-file" required:"true" description:"Config file to setup the rest-api"`
-	ClusterURI string `long:"cluster-uri" required:"true" description:"The Cluster URI the rest-api needs to connect to"`
 }
 
-var additionalFlags AdditionalFlags
+var applicationFlags ApplicationFlags
 
 func configureFlags(api *operations.QdbAPIRestAPI) {
 	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
-		{ShortDescription: "Additional Flags", LongDescription: "Additional Configuration Flags", Options: &additionalFlags},
+		{ShortDescription: "Application Flags", LongDescription: "Application Configuration Flags", Options: &applicationFlags},
 	}
 }
 
@@ -69,25 +73,25 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
 
-	clusterURI := additionalFlags.ClusterURI
-	content, err := ioutil.ReadFile(additionalFlags.ConfigFile)
+	content, err := ioutil.ReadFile(applicationFlags.ConfigFile)
 	if err != nil {
 		panic(err)
 	}
+	json.Unmarshal(content, &APIConfig)
 
-	json.Unmarshal(content, &config)
+	clusterURI := APIConfig.ClusterURI
 
 	tokenParser := func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
 		}
 
-		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
+		secret, err := qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
 		if err != nil {
 			return nil, err
 		}
 
-		return []byte(secret), nil
+		return secret, nil
 	}
 
 	// Will delete unvalid keys every hour to avoid growing the map too much
@@ -172,7 +176,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, config.ClusterPublicKeyFile)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, APIConfig.ClusterPublicKeyFile)
 		if err != nil {
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -183,30 +187,36 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			ExpiresAt: int64(expiresAt),
 		})
 
-		_, secret, err := qdbinterface.CredentialsFromFile(config.RestPrivateKeyFile)
+		secret, err := qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
 		if err != nil {
-			err = fmt.Errorf("Could not retrieve private key from file:%s", config.RestPrivateKeyFile)
+			err = fmt.Errorf("Could not retrieve tls key from file:%s", APIConfig.TLSKey)
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
-		signedString, err := token.SignedString([]byte(secret))
+		signedString, err := token.SignedString(secret)
+		if err != nil {
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
 		tokenToHandle[signedString] = handle
-
-		if err != nil {
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
 		t := models.Token(signedString)
 		return operations.NewLoginOK().WithPayload(t)
 	})
 
 	api.ServerShutdown = func() {}
 
-	return setupGlobalMiddleware(api.Serve(setupMiddlewares), config.AllowedOrigins, config.Assets)
+	return setupGlobalMiddleware(api.Serve(setupMiddlewares), APIConfig.AllowedOrigins, APIConfig.Assets)
 }
 
 // The TLS configuration before HTTPS server starts.
 func configureTLS(tlsConfig *tls.Config) {
-	// Make all necessary changes to the TLS configuration here.
+	tlsConfig.Certificates = make([]tls.Certificate, 1)
+	var err error
+	tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(APIConfig.TLSCertificate, APIConfig.TLSKey)
+	if err != nil {
+		panic(err)
+	}
+	tlsConfig.ServerName = APIConfig.TLSHost
+	tlsConfig.MinVersion = tls.VersionTLS12
 }
 
 // As soon as server is initialized but not run yet, this function will be called.

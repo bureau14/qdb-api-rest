@@ -1,5 +1,4 @@
 assets/
-cmd/
 models/
 restapi/
 *.pem
@@ -8,7 +7,7 @@ rest-api.private
 rest-api.public
 cluster.private
 cluster.public
-rest-api.cfg
+qdb-api-rest.cfg
 users.cfg
 qdb-var-qdbd
 qdb-var-rest

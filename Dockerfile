@@ -19,9 +19,10 @@ COPY configure_qdb_api_rest.go .
 COPY swagger.json .
 ADD qdbinterface/ qdbinterface
 ADD .git/ .git
+ADD cmd/ cmd 
 
 RUN go get -u github.com/go-swagger/go-swagger/cmd/swagger
-RUN swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal
+RUN swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
 RUN cp configure_qdb_api_rest.go restapi/configure_qdb_api_rest.go
 
 RUN go get -d -v ./...

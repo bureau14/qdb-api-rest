@@ -1,6 +1,8 @@
 package qdbinterface
 
 import (
+	"io/ioutil"
+
 	"github.com/bureau14/qdb-api-go"
 )
 
@@ -13,4 +15,9 @@ type Credentials struct {
 // CredentialsFromFile : get user credentials from a file
 func CredentialsFromFile(filename string) (string, string, error) {
 	return qdb.UserCredentialFromFile(filename)
+}
+
+// CredentialsFromTLS : get user credentials from a file
+func CredentialsFromTLS(cert, key string) ([]byte, error) {
+	return ioutil.ReadFile(key)
 }

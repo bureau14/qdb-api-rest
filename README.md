@@ -1,82 +1,57 @@
 # qdb-api-rest
 
-## I. Build On Docker
-```
-docker build -t qdb-api-rest-server .
-```
-
-## II. Run On Docker
-### Setup quasardb
-```
-docker pull bureau14/qdb:nightly
-```
-
-#### Unique node
-```
-docker run -d --name qdb-server bureau14/qdb:nightly --security=false
-```
-
-#### Multiple nodes
-```
-docker run -d --name qdb-server1 bureau14/qdb:nightly -v /db1:/var/lib/qdb --security=false --log-level=debug
-docker run -d --name qdb-server2 --link qdb-server1:successor bureau14/qdb:nightly -v /db2:/var/lib/qdb --peer successor:2836 --security=false --log-level=debug
-docker run -d --name qdb-server3 --link qdb-server2:successor bureau14/qdb:nightly -v /db3:/var/lib/qdb --peer successor:2836 --security=false --log-level=debug
-```
-
-#### Run
-Make the rest-api config file accessible in docker then run
-```
-export QDB_REST_DIR=`pwd`/qdb-var-rest
-mkdir $QDB_REST_DIR
-cp rest-api.cfg $QDB_REST_DIR/.
-docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
-```
-
-### Running with security on
+## I. Try it with docker
+### Preliminary
+##### Download quasardb tools
 Install qdb-server on your own machine to make qdb_user_add and qdb_cluster_keygen available.
 ```
 wget https://download.quasardb.net/quasardb/nightly/server/qdb-3.0.0master-linux-64bit-server.tar.gz
 tar qdb-3.0.0master-linux-64bit-server.tar.gz --no-same-owner -C /usr/local/
 rm qdb-3.0.0master-linux-64bit-server.tar.gz
 ```
+##### Generate a user key
+```
+/usr/local/bin/qdb_user_add -u tintin -s tintin.private -p users.cfg
+```
+##### Generate a cluster key
+```
+/usr/local/bin/qdb_cluster_keygen -p cluster.public -s cluster.private
+```
 
-##### Generate the different keys
+#### Setup quasardb
 ```
-qdb_user_add -u rest-api -s rest-api.private -p users.cfg
-qdb_user_add -u tintin -s tintin.private -p users.cfg
-```
-```
-qdb_cluster_keygen -p cluster.public -s cluster.private
-```
-##### Move those keys and config to the appropriate directories
-```
-export QDB_REST_DIR=`pwd`/qdb-var-rest
-mkdir $QDB_REST_DIR
-cp rest-api.private $QDB_REST_DIR/.
-cp cluster.public $QDB_REST_DIR/.
-cp rest-api.cfg $QDB_REST_DIR/.
-```
-```
+docker pull bureau14/qdb:nightly
+
 export QDB_QDDB_DIR=`pwd`/qdb-var-qdbd
 mkdir $QDB_QDDB_DIR
 cp users.cfg $QDB_QDDB_DIR/.
 cp cluster.private $QDB_QDDB_DIR/.
 ```
 
-##### Run the server
+### Build
 ```
-sudo docker run -d -v $QDB_QDDB_DIR:/var/lib/qdb --name qdb-server bureau14/qdb:nightly --cluster-private-file /var/lib/qdb/cluster.private --user-list /var/lib/qdb/users.cfg
-```
-##### Run the rest API
-```
-sudo docker run -it --link qdb-server:qdb -p 40000:40000 -v $QDB_REST_DIR:/var/lib/qdb qdb-api-rest-server qdb://qdb:2836
+docker build -t qdb-api-rest-server .
 ```
 
+### Setup
+```
+export QDB_REST_DIR=`pwd`/qdb-var-rest
+mkdir $QDB_REST_DIR
+cp cluster.public $QDB_REST_DIR/.
+cp rest-api.cfg $QDB_REST_DIR/.
+```
 
-## III. Build locally
+### Run
+```
+docker run -d -v $QDB_QDDB_DIR:/var/lib/qdb --name qdb-server bureau14/qdb:nightly --cluster-private-file /var/lib/qdb/cluster.private --user-list /var/lib/qdb/users.cfg
+
+docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
+```
+
+## II. Build locally
 ```
 go get -u github.com/go-swagger/go-swagger/cmd/swagger
-$GOPATH/swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal
+$GOPATH/swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
 cp configure_qdb_rest.go restapi/configure_qdb_rest.go
 go install ./...
 ```
@@ -84,24 +59,28 @@ go install ./...
 ## IV. Example
 #### Login
 ```
-curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @empty.private https://127.0.0.1:40000/api/login
+curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @tintin.private https://127.0.0.1:40000/api/login
 ```
 #### Get cluster information
 ```
-curl -i http://127.0.0.1:40000/api/cluster
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i https://localhost:40000/api/cluster
 ```
 #### Get node information
 ```
-curl -i http://127.0.0.1:40000/api/cluster/nodes/127.0.0.1:2836
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i http://127.0.0.1:40000/api/cluster/nodes/127.0.0.1:2836
 ```
 #### Run a query
 ```
-curl -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40000/api/query
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40000/api/query
 ```
 
 ## V. Config File
 The config file need to specify the following values:
-1. allowed_origins (http://localhost:3449,https://localhost:3449,http://0.0.0.0:3449,https://0.0.0.0:3449)
-1. cluster_public_key_file (/var/lib/qdb/cluster.public)
-1. rest_private_key_file (/var/lib/qdb/rest-api.private)
-1. assets (/usr/share/qdb/assets)
+1. allowed_origins         - description: "allowed origins"
+1. cluster_uri             - description: "the uri of the cluster"
+1. cluster_public_key_file - description: "cluster public key path"
+1. tls_certificate         - description: "certificate path"
+1. tls_key                 - description: "certificate key path"
+1. tls_host                - description: "host of the rest api"
+1. tls_port                - description: "port of the rest api"
+1. assets                  - description: "served assets path"

@@ -8,5 +8,6 @@ if [ "$#" -ne 1 ]; then
 fi
 CLUSTER_URI=$1; shift
 
-echo "cluster uri: ${CLUSTER_URI}"
-${QDB_REST_SERVER} --tls-host 0.0.0.0 --tls-port 40000 --tls-certificate /etc/qdb/rest-api.cert.pem --tls-key /etc/qdb/rest-api.key.pem --config-file /var/lib/qdb/rest-api.cfg --cluster-uri ${CLUSTER_URI}
+sed -i -e 's|"cluster_uri": *"[^"]*",|"cluster_uri": "'"${CLUSTER_URI}"'",|' /var/lib/qdb/qdb-api-rest.cfg
+
+${QDB_REST_SERVER} --config-file /var/lib/qdb/qdb-api-rest.cfg
