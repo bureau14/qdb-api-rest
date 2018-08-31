@@ -6,13 +6,24 @@ fi
 
 EXE_PATH=$1;shift
 SWAGGER_PATH=$1;shift
-OS=$1;shift
+OS_NAME=$1;shift
 
 VERSION=`cat $SWAGGER_PATH | grep "\"version\":" | awk -F '"' '{print $4}'`
 
 mkdir bin
-mv $EXE_PATH bin/qdb-api-rest-server
+mv $EXE_PATH bin/
 mkdir -p share/qdb
 mv default.cfg share/qdb/default.cfg
 
-tar cvzf qdb-$VERSION-$OS-api-rest.tar.gz bin share
+case $(uname) in
+    MINGW* )
+        ZIP="7z a -y"
+        SUFFIX=".zip"
+        ;;
+    * )
+        ZIP="tar cvzf"
+        SUFFIX=".tar.gz"
+        ;;
+esac
+
+$ZIP qdb-$VERSION-$OS_NAME-api-rest$SUFFIX bin share

@@ -4,4 +4,10 @@ if [ "$#" -ne 1 ]; then
     exit
 fi
 cd $1
-go build -x -v -o qdb-api-rest-server
+
+case $(uname) in
+    MINGW* )
+        SUFFIX=.exe
+        ;;
+esac
+go build -x -v -o qdb-api-rest-server$SUFFIX
