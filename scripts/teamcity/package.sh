@@ -34,7 +34,7 @@ case $(uname) in
 
         # Include openssl
         curl -s https://indy.fulgan.com/SSL/openssl-1.0.2o-x64_86-win64.zip > openssl-1.0.2o-x64_86-win64.zip
-        curl -s https://raw.githubusercontent.com/openssl/openssl/OpenSSL_1_0_2-stable/apps/openssl.cnf > share/qdb/openssl.conf
+        mv openssl.cnf > etc/openssl.conf
         7z x openssl-1.0.2o-x64_86-win64.zip
         mv openssl.exe bin/
         mv libeay32.dll bin/
