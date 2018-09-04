@@ -20,14 +20,14 @@ VERSION=`cat $SWAGGER_PATH | grep "\"version\":" | awk -F '"' '{print $4}'`
 
 mkdir bin
 mv $QDB_REST_BINARY bin/
-mkdir -p share/qdb
-mv default.cfg share/qdb/default.cfg
+mkdir etc
+mv qdb_rest.conf.sample etc/qdb_rest.conf.sample
 
 case $(uname) in
     MINGW* )
         ZIP="7z a -y"
         SUFFIX=".zip"
-        
+
         # Include qdb_rest_service
         QDB_REST_SERVICE_BINARY=$QDB_API_REST/apps/qdb_rest_service/qdb_rest_service.exe
         mv $QDB_REST_SERVICE_BINARY bin/
