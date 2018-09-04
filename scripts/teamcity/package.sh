@@ -39,7 +39,7 @@ case $(uname) in
         mv openssl.exe bin/
         mv libeay32.dll bin/
         mv ssleay32.dll bin/
-        mv "OpenSSL License.txt" share/qdb/
+        mv "OpenSSL License.txt" etc/
         rm openssl-1.0.2o-x64_86-win64.zip
         ;;
     * )
@@ -48,4 +48,4 @@ case $(uname) in
         ;;
 esac
 
-$ZIP qdb-$VERSION-$OS_NAME-api-rest$SUFFIX bin share
+$ZIP qdb-$VERSION-$OS_NAME-api-rest$SUFFIX bin etc
