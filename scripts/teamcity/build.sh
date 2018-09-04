@@ -1,13 +1,19 @@
 #!/bin/bash
 if [ "$#" -ne 1 ]; then
-    echo "Usage: build /path/to/cmd/qdb-api-rest-server"
+    echo "Usage: build /path/to/qdb-api-rest"
     exit
 fi
-cd $1
 
 case $(uname) in
     MINGW* )
         SUFFIX=.exe
         ;;
 esac
-go build -x -v -o qdb-api-rest-server$SUFFIX
+
+# Build qdb_rest
+cd $1/apps/qdb_rest
+go build -x -v -o qdb_rest$SUFFIX
+
+# Build qdb_rest_service
+cd ../qdb_rest_service
+go build -x -v -o qdb_rest_service$SUFFIX

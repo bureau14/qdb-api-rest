@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 
-QDB_REST_SERVER=`which qdb-api-rest-server`
+QDB_REST_SERVER=`which qdb_rest`
 
 if [ "$#" -ne 1 ]; then
-    echo "Usage: qdb-api-rest-server cluster_uri"
+    echo "Usage: qdb_rest cluster_uri"
     exit
 fi
 CLUSTER_URI=$1; shift

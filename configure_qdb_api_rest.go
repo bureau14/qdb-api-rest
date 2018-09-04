@@ -77,7 +77,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	json.Unmarshal(content, &APIConfig)
+	err = json.Unmarshal(content, &APIConfig)
+	if err != nil {
+		panic(err)
+	}
 
 	clusterURI := APIConfig.ClusterURI
 

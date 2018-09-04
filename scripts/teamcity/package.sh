@@ -1,17 +1,28 @@
 #!/bin/bash
-if [ "$#" -ne 3 ]; then
-    echo "Usage: package /path/to/qdb-api-rest-server/binary /path/to/swagger.json os_name"
+if [ "$#" -ne 2 ]; then
+    echo "Usage: package /path/to/qdb-api-rest os_name"
     exit
 fi
 
-EXE_PATH=$1;shift
-SWAGGER_PATH=$1;shift
+QDB_API_REST=$1; shift
 OS_NAME=$1;shift
+
+SWAGGER_PATH=$QDB_API_REST/swagger.json
+QDB_REST_BINARY=$QDB_API_REST/apps/qdb_rest/qdb_rest
+QDB_REST_SERVICE_BINARY=$QDB_API_REST/apps/qdb_rest_service/qdb_rest_service
+
+case $(uname) in
+    MINGW* )
+        QDB_REST_BINARY=$QDB_REST_BINARY.exe
+        QDB_REST_SERVICE_BINARY=$QDB_REST_SERVICE_BINARY.exe
+        ;;
+esac
 
 VERSION=`cat $SWAGGER_PATH | grep "\"version\":" | awk -F '"' '{print $4}'`
 
 mkdir bin
-mv $EXE_PATH bin/
+mv $QDB_REST_BINARY bin/
+mv $QDB_REST_SERVICE_BINARY bin/
 mkdir -p share/qdb
 mv default.cfg share/qdb/default.cfg
 

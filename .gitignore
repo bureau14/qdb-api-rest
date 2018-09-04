@@ -10,3 +10,6 @@ cluster.public
 users.cfg
 qdb-var-qdbd
 qdb-var-rest
+rest-api.cfg
+test.sh
+tintin.private
