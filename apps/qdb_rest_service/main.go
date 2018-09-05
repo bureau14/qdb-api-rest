@@ -8,6 +8,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/restapi"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
 	"github.com/kardianos/service"
+	"golang.org/x/sys/windows/registry"
 
 	loads "github.com/go-openapi/loads"
 	flags "github.com/jessevdk/go-flags"
@@ -21,39 +22,17 @@ type program struct {
 
 func (p *program) Start(s service.Service) error {
 	// Start should not block. Do the actual work async.
-	go p.run()
+	go p.run(s.String())
 	return nil
 }
 
-func (p *program) run() {
-	if err := p.server.Serve(); err != nil {
-		log.Fatalln(err)
-	}
-}
-
-func (p *program) Stop(s service.Service) error {
-	go p.shutdown()
-	time.Sleep(1 * time.Second)
-	return nil
-}
-
-func (p *program) shutdown() {
-	p.server.Shutdown()
-}
-
-func main() {
-	svcConfig := &service.Config{
-		Name:        "QdbRestService",
-		DisplayName: "Quasardb rest service",
-		Description: "This is quasardb rest service.",
-	}
+func (prg *program) run(name string) {
 
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	prg := &program{}
 	api := operations.NewQdbAPIRestAPI(swaggerSpec)
 	prg.server = restapi.NewServer(api)
 
@@ -69,7 +48,16 @@ func main() {
 		}
 	}
 
-	if _, err := parser.Parse(); err != nil {
+	registryPath := `SYSTEM\CurrentControlSet\Services` + name
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, registryPath, registry.QUERY_VALUE)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	configFile, _, err := k.GetStringValue("ConfigFile")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if _, err := parser.ParseArgs([]string{"--config-file", configFile}); err != nil {
 		code := 1
 		if fe, ok := err.(*flags.Error); ok {
 			if fe.Type == flags.ErrHelp {
@@ -84,6 +72,29 @@ func main() {
 	prg.server.TLSHost = restapi.APIConfig.TLSHost
 	prg.server.TLSPort = restapi.APIConfig.TLSPort
 
+	if err := prg.server.Serve(); err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func (prg *program) Stop(s service.Service) error {
+	go prg.shutdown()
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+func (prg *program) shutdown() {
+	prg.server.Shutdown()
+}
+
+func main() {
+	svcConfig := &service.Config{
+		Name:        "qdb_rest_service",
+		DisplayName: "Quasardb rest service",
+		Description: "This is quasardb rest service.",
+	}
+
+	prg := &program{}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Fatal(err)
