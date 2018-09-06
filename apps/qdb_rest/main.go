@@ -11,10 +11,9 @@ import (
 )
 
 func main() {
-
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
-		log.Fatalln(err)
+		panic(err)
 	}
 
 	api := operations.NewQdbAPIRestAPI(swaggerSpec)
@@ -29,7 +28,7 @@ func main() {
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
-			log.Fatalln(err)
+			panic(err)
 		}
 	}
 
@@ -45,6 +44,13 @@ func main() {
 
 	server.ConfigureAPI()
 	// this must be done after the api has been configured
+	if restapi.APIConfig.Log != "" {
+		f, err := os.OpenFile(restapi.APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			panic(err)
+		}
+		log.SetOutput(f)
+	}
 	server.TLSHost = restapi.APIConfig.TLSHost
 	server.TLSPort = restapi.APIConfig.TLSPort
 

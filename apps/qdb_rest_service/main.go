@@ -1,17 +1,18 @@
+// +build windows
+
 package main
 
 import (
 	"log"
 	"os"
-	"time"
 
 	"github.com/bureau14/qdb-api-rest/restapi"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
-	"github.com/kardianos/service"
-	"golang.org/x/sys/windows/registry"
-
-	loads "github.com/go-openapi/loads"
+	"github.com/go-openapi/loads"
 	flags "github.com/jessevdk/go-flags"
+	"github.com/kardianos/service"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 var logger service.Logger
@@ -20,17 +21,17 @@ type program struct {
 	server *restapi.Server
 }
 
+const serviceName string = "qdb_rest"
+
 func (p *program) Start(s service.Service) error {
-	// Start should not block. Do the actual work async.
-	go p.run(s.String())
+	go p.run()
 	return nil
 }
 
-func (prg *program) run(name string) {
-
+func (prg *program) run() {
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Failed to load swagger config: %s\n", err)
 	}
 
 	api := operations.NewQdbAPIRestAPI(swaggerSpec)
@@ -44,18 +45,18 @@ func (prg *program) run(name string) {
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalf("Failed to add option group: %s\n", err)
 		}
 	}
 
-	registryPath := `SYSTEM\CurrentControlSet\Services` + name
+	registryPath := `SYSTEM\CurrentControlSet\Services\qdb_rest`
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, registryPath, registry.QUERY_VALUE)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Failed to retrieve registry key: %s\n", err)
 	}
 	configFile, _, err := k.GetStringValue("ConfigFile")
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Failed to retrieve value from registry key (%s): %s\n", registryPath, err)
 	}
 	if _, err := parser.ParseArgs([]string{"--config-file", configFile}); err != nil {
 		code := 1
@@ -69,6 +70,14 @@ func (prg *program) run(name string) {
 
 	prg.server.ConfigureAPI()
 	// this must be done after the api has been configured
+	if restapi.APIConfig.Log != "" {
+		f, err := os.OpenFile(restapi.APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			log.Fatalf("Failed to open log file (%s): %s\n", restapi.APIConfig.Log, err)
+		}
+		defer f.Close()
+		log.SetOutput(f)
+	}
 	prg.server.TLSHost = restapi.APIConfig.TLSHost
 	prg.server.TLSPort = restapi.APIConfig.TLSPort
 
@@ -79,7 +88,6 @@ func (prg *program) run(name string) {
 
 func (prg *program) Stop(s service.Service) error {
 	go prg.shutdown()
-	time.Sleep(1 * time.Second)
 	return nil
 }
 
@@ -89,22 +97,70 @@ func (prg *program) shutdown() {
 
 func main() {
 	svcConfig := &service.Config{
-		Name:        "qdb_rest_service",
-		DisplayName: "Quasardb rest service",
+		Name:        serviceName,
+		DisplayName: "quasardb rest service",
 		Description: "This is quasardb rest service.",
 	}
 
-	prg := &program{}
-	s, err := service.New(prg, svcConfig)
+	s, err := service.New(&program{}, svcConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	logger, err = s.Logger(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+	if len(os.Args) > 1 {
+		var err error
+		verb := os.Args[1]
+		if verb[0] == '/' {
+			verb = os.Args[1][1:]
+		}
+		switch verb {
+		case "install":
+			err = s.Install()
+			if err != nil {
+				log.Fatalf("Failed to install: %s\n", err)
+			}
+			log.Printf("Service \"%s\" installed.\n", serviceName)
+		case "uninstall":
+			err = s.Uninstall()
+			if err != nil {
+				log.Fatalf("Failed to remove: %s\n", err)
+			}
+			log.Printf("Service \"%s\" removed.\n", serviceName)
+		case "remove":
+			err = s.Uninstall()
+			if err != nil {
+				log.Fatalf("Failed to remove: %s\n", err)
+			}
+			log.Printf("Service \"%s\" removed.\n", serviceName)
+		case "start":
+			log.Printf("Service \"%s\" starting...\n", serviceName)
+			err = s.Start()
+			if err != nil {
+				log.Fatalf("Failed to start: %s\n", err)
+			}
+			log.Printf("Service \"%s\" started.\n", serviceName)
+		case "status":
+			status, err := s.Status()
+			if err != nil {
+				log.Fatalf("Failed to report status: %s\n", err)
+			}
+			log.Printf("Service \"%s\" status report: %s\n", serviceName, status)
+		case "stop":
+			err = s.Stop()
+			if err != nil {
+				log.Fatalf("Failed to stop: %s\n", err)
+			}
+			log.Printf("Service \"%s\" stopped.\n", serviceName)
+		}
+		return
+	}
+
 	err = s.Run()
 	if err != nil {
-		logger.Error(err)
+		log.Fatalf("Failed to run: %s\n", err)
 	}
 }

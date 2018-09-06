@@ -1,6 +1,7 @@
 assets/
 models/
 restapi/
+log/
 *.pem
 empty.private
 rest-api.private

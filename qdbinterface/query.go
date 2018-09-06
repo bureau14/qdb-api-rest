@@ -1,8 +1,6 @@
 package qdbinterface
 
 import (
-	"fmt"
-
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
 )
@@ -10,8 +8,6 @@ import (
 // QueryData : send a query to the server
 func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
-
-	fmt.Println("query:", query)
 	results, err := handle.QueryExp(query).Execute()
 	if err != nil {
 		return nil, err
@@ -39,8 +35,6 @@ func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error)
 			}
 			queryResult.Tables[tableIdx] = &queryTable
 		}
-		fmt.Println("Sending back", len(results.Tables()[0].Rows()), "rows")
 	}
-	fmt.Println("-------------------------------")
 	return &queryResult, nil
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ type Config struct {
 	TLSKey               string   `json:"tls_key" required:"true"`
 	TLSHost              string   `json:"tls_host" required:"true"`
 	TLSPort              int      `json:"tls_port" required:"true"`
+	Log                  string   `json:"log"`
 	Assets               string   `json:"assets"`
 }
 
@@ -117,7 +119,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	// Expected interface func(string, ...interface{})
 	//
 	// Example:
-	// api.Logger = log.Printf
+	api.Logger = log.Printf
 
 	api.JSONConsumer = runtime.JSONConsumer()
 
