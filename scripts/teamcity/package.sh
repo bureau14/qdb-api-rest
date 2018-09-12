@@ -1,6 +1,6 @@
 #!/bin/bash
 if [ "$#" -ne 2 ]; then
-    echo "Usage: package /path/to/qdb-api-rest os_name"
+    echo "Usage: package /path/to/qdb-rest os_name"
     exit
 fi
 
@@ -48,4 +48,4 @@ case $(uname) in
         ;;
 esac
 
-$ZIP qdb-$VERSION-$OS_NAME-api-rest$SUFFIX bin etc
+$ZIP qdb-$VERSION-$OS_NAME-rest$SUFFIX bin etc
