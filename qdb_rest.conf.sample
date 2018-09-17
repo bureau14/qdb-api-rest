@@ -6,6 +6,6 @@
     "tls_key": "/etc/qdb/qdb_rest.key.pem",
     "tls_host": "localhost",
     "tls_port": 40000,
-    "log": "/etc/qdb/log/qdb_rest.log",
+    "log": "/var/qdb/log/qdb_rest.log",
     "assets": ""
 }
