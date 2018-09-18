@@ -11,3 +11,4 @@ swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --
 cd $1
 mv configure_qdb_api_rest.go restapi/configure_qdb_api_rest.go
 go get -d ./...
+go get -d -u "github.com/bureau14/qdb-api-go"
