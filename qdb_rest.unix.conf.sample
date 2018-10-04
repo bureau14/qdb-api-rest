@@ -7,5 +7,5 @@
     "tls_host": "localhost",
     "tls_port": 40000,
     "log": "/var/log/qdb/qdb_rest.log",
-    "assets": ""
+    "assets": "/var/lib/qdb/assets"
 }

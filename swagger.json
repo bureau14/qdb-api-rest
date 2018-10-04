@@ -12,6 +12,7 @@
     "application/json"
   ],
   "schemes": [
+    "http",
     "https"
   ],
   "securityDefinitions": {

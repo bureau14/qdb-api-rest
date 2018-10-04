@@ -4,11 +4,10 @@ package restapi
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 	xid "github.com/rs/xid"
 
 	qdb "github.com/bureau14/qdb-api-go"
+	"github.com/bureau14/qdb-api-rest/config"
 	"github.com/bureau14/qdb-api-rest/models"
 	"github.com/bureau14/qdb-api-rest/qdbinterface"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
@@ -30,26 +30,9 @@ import (
 
 //go:generate swagger generate server --target .. --name qdb-api-rest --spec ../swagger.json
 
-// Config : A configuration file for the rest api
-type Config struct {
-	AllowedOrigins       []string `json:"allowed_origins" required:"true"`
-	ClusterURI           string   `json:"cluster_uri" required:"true"`
-	ClusterPublicKeyFile string   `json:"cluster_public_key_file" required:"true"`
-	TLSCertificate       string   `json:"tls_certificate" required:"true"`
-	TLSKey               string   `json:"tls_key" required:"true"`
-	TLSHost              string   `json:"tls_host" required:"true"`
-	TLSPort              int      `json:"tls_port" required:"true"`
-	Log                  string   `json:"log"`
-	Assets               string   `json:"assets"`
-}
-
-// APIConfig : api config
-// TODO(vianney): find another way to manage the lifetime of the config
-var APIConfig Config
-
 // ApplicationFlags : Additionl flags to setup the rest-api
 type ApplicationFlags struct {
-	ConfigFile string `long:"config-file" required:"true" description:"Config file to setup the rest-api"`
+	ConfigFile string `long:"config-file" description:"Config file to setup the rest-api"`
 }
 
 var applicationFlags ApplicationFlags
@@ -71,15 +54,30 @@ func FileServerMiddleWare(next http.Handler, assets string) http.Handler {
 	})
 }
 
+// APIConfig : api config
+// TODO(vianney): find another way to manage the lifetime of the config
+var APIConfig config.Config
+
+var defaultSecret = []byte("default_secret")
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
+	api.Logger = log.Printf
 
-	content, err := ioutil.ReadFile(applicationFlags.ConfigFile)
-	if err != nil {
-		panic(err)
+	APIConfig = config.SetDefaults(applicationFlags.ConfigFile)
+
+	if APIConfig.Log != "" {
+		f, err := os.OpenFile(APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			log.Printf("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
+			APIConfig.Log = ""
+		} else {
+			log.SetOutput(f)
+		}
 	}
-	err = json.Unmarshal(content, &APIConfig)
+
+	err := APIConfig.Check()
 	if err != nil {
 		panic(err)
 	}
@@ -91,9 +89,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
 		}
 
-		secret, err := qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
-		if err != nil {
-			return nil, err
+		secret := defaultSecret
+		if APIConfig.TLSKey != "" {
+			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		return secret, nil
@@ -114,12 +115,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	// configure the api here
 	api.ServeError = errors.ServeError
-
-	// Set your custom logger if needed. Default one is log.Printf
-	// Expected interface func(string, ...interface{})
-	//
-	// Example:
-	api.Logger = log.Printf
 
 	api.JSONConsumer = runtime.JSONConsumer()
 
@@ -192,10 +187,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			ExpiresAt: int64(expiresAt),
 		})
 
-		secret, err := qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
-		if err != nil {
-			err = fmt.Errorf("Could not retrieve tls key from file:%s", APIConfig.TLSKey)
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		secret := defaultSecret
+		if APIConfig.TLSKey != "" {
+			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
+			if err != nil {
+				err = fmt.Errorf("Could not retrieve tls key from file:%s", APIConfig.TLSKey)
+				return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			}
 		}
 
 		signedString, err := token.SignedString(secret)
@@ -214,13 +212,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 // The TLS configuration before HTTPS server starts.
 func configureTLS(tlsConfig *tls.Config) {
+	if APIConfig.TLSCertificate == "" || APIConfig.TLSKey == "" {
+		return
+	}
 	tlsConfig.Certificates = make([]tls.Certificate, 1)
 	var err error
 	tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(APIConfig.TLSCertificate, APIConfig.TLSKey)
 	if err != nil {
 		panic(err)
 	}
-	tlsConfig.ServerName = APIConfig.TLSHost
+	tlsConfig.ServerName = APIConfig.Host
 	tlsConfig.MinVersion = tls.VersionTLS12
 }
 

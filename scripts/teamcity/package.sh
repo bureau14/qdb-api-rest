@@ -21,7 +21,6 @@ VERSION=`cat $SWAGGER_PATH | grep "\"version\":" | awk -F '"' '{print $4}'`
 mkdir bin
 mv $QDB_REST_BINARY bin/
 mkdir etc
-mv qdb_rest.conf.sample etc/qdb_rest.conf.sample
 
 case $(uname) in
     MINGW* )
@@ -41,10 +40,14 @@ case $(uname) in
         mv ssleay32.dll bin/
         mv "OpenSSL License.txt" etc/
         rm openssl-1.0.2o-x64_86-win64.zip
+
+        mv qdb_rest.windows.conf.sample etc/qdb_rest.conf.sample
         ;;
     * )
         ZIP="tar cvzf"
         SUFFIX=".tar.gz"
+
+        mv qdb_rest.unix.conf.sample etc/qdb_rest.conf.sample
         ;;
 esac
 

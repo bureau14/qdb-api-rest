@@ -44,15 +44,24 @@ func main() {
 
 	server.ConfigureAPI()
 	// this must be done after the api has been configured
-	if restapi.APIConfig.Log != "" {
-		f, err := os.OpenFile(restapi.APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-		if err != nil {
-			panic(err)
+	// because restapi.APIConfig is configured there
+	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
+		if server.TLSHost == "" {
+			server.TLSHost = restapi.APIConfig.Host
 		}
-		log.SetOutput(f)
+		if server.TLSPort == 0 {
+			server.TLSPort = restapi.APIConfig.Port
+		}
+		server.EnabledListeners = []string{"https"}
+	} else {
+		if server.Host == "" {
+			server.Host = restapi.APIConfig.Host
+		}
+		if server.Port == 0 {
+			server.Port = restapi.APIConfig.Port
+		}
+		server.EnabledListeners = []string{"http"}
 	}
-	server.TLSHost = restapi.APIConfig.TLSHost
-	server.TLSPort = restapi.APIConfig.TLSPort
 
 	if err := server.Serve(); err != nil {
 		log.Fatalln(err)

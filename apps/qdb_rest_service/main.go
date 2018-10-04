@@ -70,16 +70,15 @@ func (prg *program) run() {
 
 	prg.server.ConfigureAPI()
 	// this must be done after the api has been configured
-	if restapi.APIConfig.Log != "" {
-		f, err := os.OpenFile(restapi.APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-		if err != nil {
-			log.Fatalf("Failed to open log file (%s): %s\n", restapi.APIConfig.Log, err)
-		}
-		defer f.Close()
-		log.SetOutput(f)
+	// because restapi.APIConfig is configured there
+	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
+		prg.server.TLSHost = restapi.APIConfig.Host
+		prg.server.TLSPort = restapi.APIConfig.Port
+	} else {
+		prg.server.Host = restapi.APIConfig.Host
+		prg.server.Port = restapi.APIConfig.Port
+		prg.server.EnabledListeners = []string{"http"}
 	}
-	prg.server.TLSHost = restapi.APIConfig.TLSHost
-	prg.server.TLSPort = restapi.APIConfig.TLSPort
 
 	if err := prg.server.Serve(); err != nil {
 		log.Fatalln(err)

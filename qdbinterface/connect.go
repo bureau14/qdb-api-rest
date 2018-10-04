@@ -2,6 +2,7 @@ package qdbinterface
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	qdb "github.com/bureau14/qdb-api-go"
@@ -21,7 +22,7 @@ func CreateHandle(user, secret, uri, clusterPublicKeyFile string) (*qdb.HandleTy
 		return nil, err
 	}
 
-	if user != "" && secret != "" {
+	if user != "" && secret != "" && clusterPublicKeyFile != "" {
 		// Set encryption if enabled server side
 		err = handle.SetEncryption(qdb.EncryptNone)
 
@@ -32,6 +33,8 @@ func CreateHandle(user, secret, uri, clusterPublicKeyFile string) (*qdb.HandleTy
 		}
 		err = handle.AddClusterPublicKey(clusterKey)
 		err = handle.AddUserCredentials(user, secret)
+	} else if clusterPublicKeyFile == "" {
+		log.Printf("Warning: cannot connect user %s , cluster is not secured.", user)
 	}
 
 	// connect
