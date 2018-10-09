@@ -23,6 +23,18 @@ type Config struct {
 	Assets               string   `json:"assets"`
 }
 
+var defaultConfig = Config{
+	AllowedOrigins:       []string{},
+	ClusterURI:           "qdb://127.0.0.1:2836",
+	ClusterPublicKeyFile: "",
+	TLSCertificate:       "",
+	TLSKey:               "",
+	Host:                 "0.0.0.0",
+	Port:                 40000,
+	Log:                  "",
+	Assets:               "",
+}
+
 // SetDefaults : set defaults values if there are no config values
 func SetDefaults(filename string) Config {
 	if filename == "" {
@@ -33,12 +45,13 @@ func SetDefaults(filename string) Config {
 		panic(err)
 	}
 
-	err = json.Unmarshal(content, &defaultConfig)
+	var config Config
+	err = json.Unmarshal(content, &config)
 	if err != nil {
 		panic(err)
 	}
 
-	return defaultConfig
+	return config
 }
 
 // Check : check the configuration to test for basic security features

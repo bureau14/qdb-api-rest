@@ -43,22 +43,21 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 	}
 }
 
-// FileServerMiddleWare : middleware for fileserver handler
-func FileServerMiddleWare(next http.Handler, assets string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api") {
-			next.ServeHTTP(w, r)
-		} else {
-			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
-		}
-	})
-}
-
 // APIConfig : api config
 // TODO(vianney): find another way to manage the lifetime of the config
 var APIConfig config.Config
-
 var defaultSecret = []byte("default_secret")
+
+// FileServerMiddleWare : middleware for fileserver handler
+func FileServerMiddleWare(next http.Handler, assets string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
+			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
+}
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 

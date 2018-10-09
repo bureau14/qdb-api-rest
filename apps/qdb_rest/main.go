@@ -54,7 +54,7 @@ func main() {
 		}
 		server.EnabledListeners = []string{"https"}
 	} else {
-		if server.Host == "" {
+		if server.Host == "localhost" && restapi.APIConfig.Host != "" {
 			server.Host = restapi.APIConfig.Host
 		}
 		if server.Port == 0 {
