@@ -81,6 +81,6 @@ The config file need to specify the following values:
 1. cluster_public_key_file - description: "cluster public key path"
 1. tls_certificate         - description: "certificate path"
 1. tls_key                 - description: "certificate key path"
-1. tls_host                - description: "host of the rest api"
-1. tls_port                - description: "port of the rest api"
+1. host                    - description: "host of the rest api"
+1. port                    - description: "port of the rest api"
 1. assets                  - description: "served assets path"

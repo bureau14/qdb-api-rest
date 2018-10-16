@@ -4,8 +4,8 @@
     "cluster_public_key_file": "/usr/share/qdb/cluster_public.key",
     "tls_certificate": "/etc/qdb/qdb_rest.cert.pem",
     "tls_key": "/etc/qdb/qdb_rest.key.pem",
-    "tls_host": "localhost",
-    "tls_port": 40000,
+    "host": "localhost",
+    "port": 40000,
     "log": "/var/log/qdb/qdb_rest.log",
     "assets": "/var/lib/qdb/assets"
 }
