@@ -9,7 +9,7 @@ import (
 func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
 	results, err := handle.QueryExp(query).Execute()
-	if err != nil {
+	if err != nil || results == nil {
 		return nil, err
 	}
 
