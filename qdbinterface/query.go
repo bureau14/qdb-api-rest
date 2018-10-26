@@ -9,12 +9,18 @@ import (
 func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
 	results, err := handle.QueryExp(query).Execute()
-	if err != nil || results == nil {
+	if err != nil {
 		return nil, err
 	}
 
-	queryResult.Tables = make([]*models.QueryTable, results.TablesCount())
-	if results.TablesCount() != 0 {
+	tableCount := int64(0)
+
+	if results != nil {
+		tableCount = results.TablesCount()
+	}
+
+	queryResult.Tables = make([]*models.QueryTable, tableCount)
+	if tableCount != 0 {
 		for tableIdx, table := range results.Tables() {
 			queryTable := models.QueryTable{}
 			queryTable.Name = table.Name()
