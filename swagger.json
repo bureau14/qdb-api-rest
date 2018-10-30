@@ -371,7 +371,7 @@
           "minimum": 0
         },
         "cpuUsed": {
-          "type": "number",
+          "type": "integer",
           "minimum": 0
         }
       },

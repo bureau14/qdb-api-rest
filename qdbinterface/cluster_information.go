@@ -86,8 +86,11 @@ func RetrieveInformation(handle qdb.HandleType) error {
 
 		id := status.Network.ListeningEndpoint
 		node := models.Node{}
-		cpuTotal := int64(status.CPUTimes.System)
-		cpuUsed := float64(status.CPUTimes.User)
+		cpuUser := int64(status.CPUTimes.User)
+		cpuSystem := int64(status.CPUTimes.System)
+		cpuIdle := int64(status.CPUTimes.Idle)
+		cpuUsed := cpuUser + cpuSystem
+		cpuTotal := cpuUsed + cpuIdle
 		node.CPUTotal = &cpuTotal
 		node.CPUUsed = &cpuUsed
 		node.DiskTotal = &status.DiskUsage.Total
