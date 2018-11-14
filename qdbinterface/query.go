@@ -8,7 +8,7 @@ import (
 // QueryData : send a query to the server
 func QueryData(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
-	results, err := handle.QueryExp(query).Execute()
+	results, err := handle.Query(query).Execute()
 	if err != nil {
 		return nil, err
 	}
