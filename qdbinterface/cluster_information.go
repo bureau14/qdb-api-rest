@@ -88,7 +88,7 @@ func RetrieveInformation(handle qdb.HandleType) error {
 		node := models.Node{}
 		cpuUser := int64(status.CPUTimes.User)
 		cpuSystem := int64(status.CPUTimes.System)
-		cpuIdle := int64(status.CPUTimes.Idle)
+		cpuIdle := status.CPUTimes.Idle
 		cpuUsed := cpuUser + cpuSystem
 		cpuTotal := cpuUsed + cpuIdle
 		node.CPUTotal = &cpuTotal
