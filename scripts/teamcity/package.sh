@@ -51,4 +51,6 @@ case $(uname) in
         ;;
 esac
 
+mv qdb_rest.local.conf.sample etc/qdb_rest.local.conf.sample
+
 $ZIP qdb-$VERSION-$OS_NAME-rest$SUFFIX bin etc

@@ -1,0 +1,11 @@
+{
+    "allowed_origins": [],
+    "cluster_uri": "qdb://127.0.0.1:2836",
+    "cluster_public_key_file": "",
+    "tls_certificate": "",
+    "tls_key": "",
+    "host": "localhost",
+    "port": 40000,
+    "log": "qdb_rest.log",
+    "assets": "assets"
+}
