@@ -32,7 +32,11 @@ import (
 
 // ApplicationFlags : Additionl flags to setup the rest-api
 type ApplicationFlags struct {
-	ConfigFile string `long:"config-file" description:"Config file to setup the rest-api"`
+	ConfigFile           string `long:"config-file" description:"Config file to setup the rest-api"`
+	ClusterURI           string `long:"cluster" description:"URI of the cluster you connect to, ex: qdb::/127.0.0.1:2836"`
+	ClusterPublicKeyFile string `long:"cluster-public-key-file" description:"The public key file of your cluster."`
+	LogFile              string `long:"log-file" description:"Directory where we store the logging files"`
+	AssetsDir            string `long:"assets-dir" description:"Directory the assets are retrieved"`
 }
 
 var applicationFlags ApplicationFlags
@@ -64,7 +68,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	tokenToHandle := map[string]*qdb.HandleType{}
 	api.Logger = log.Printf
 
-	APIConfig = config.SetDefaults(applicationFlags.ConfigFile)
+	APIConfig = config.SetDefaults(applicationFlags.ConfigFile, applicationFlags.ClusterURI, applicationFlags.ClusterPublicKeyFile, applicationFlags.LogFile, applicationFlags.AssetsDir)
 
 	if APIConfig.Log != "" {
 		f, err := os.OpenFile(APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
@@ -72,6 +76,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			log.Printf("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
 		} else {
+			log.Printf("Warning: Logging at location %s\n", APIConfig.Log)
 			log.SetOutput(f)
 		}
 	}

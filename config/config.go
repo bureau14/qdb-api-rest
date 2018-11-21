@@ -34,19 +34,34 @@ var defaultConfig = Config{
 }
 
 // SetDefaults : set defaults values if there are no config values
-func SetDefaults(filename string) Config {
-	if filename == "" {
-		return defaultConfig
-	}
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
+func SetDefaults(configFile string, clusterURI string, clusterPublicKeyFile string, logFile string, assetsDir string) Config {
+	var config Config
+
+	if configFile == "" {
+		config = defaultConfig
+	} else {
+		content, err := ioutil.ReadFile(configFile)
+		if err != nil {
+			panic(err)
+		}
+
+		err = json.Unmarshal(content, &config)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	var config Config
-	err = json.Unmarshal(content, &config)
-	if err != nil {
-		panic(err)
+	if clusterURI != "" {
+		config.ClusterURI = clusterURI
+	}
+	if clusterPublicKeyFile != "" {
+		config.ClusterPublicKeyFile = clusterPublicKeyFile
+	}
+	if logFile != "" {
+		config.Log = logFile
+	}
+	if assetsDir != "" {
+		config.Assets = assetsDir
 	}
 
 	return config
