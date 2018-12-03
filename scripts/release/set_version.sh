@@ -17,7 +17,16 @@ PATCH_VERSION=${WITHOUT_MINOR_VERSION%%.*}
 
 XYZ_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
 
+if [[ "${INPUT_VERSION}" == *-* ]] ; then
+    TAGS_VERSION=${INPUT_VERSION#*-}
+    TAGS_VERSION=${TAGS_VERSION/nightly.*/}
+    # TODO(marek): Actually, we should put here the branch name instead of "master".
+    FULL_XYZ_VERSION="${XYZ_VERSION}master"
+else
+    FULL_XYZ_VERSION="${XYZ_VERSION%%-*}"
+fi
+
 cd $(dirname -- $0)
 cd ${PWD}/../..
 
-sed -i -e 's/"version": *"[^"]*",/"version": "'"${XYZ_VERSION}"'",/' swagger.json
+sed -i -e 's/"version": *"[^"]*",/"version": "'"${FULL_XYZ_VERSION}"'",/' swagger.json
