@@ -32,14 +32,14 @@ case $(uname) in
         mv $QDB_REST_SERVICE_BINARY bin/
 
         # Include openssl
-        curl -s https://indy.fulgan.com/SSL/openssl-1.0.2p-x64_86-win64.zip > openssl-1.0.2p-x64_86-win64.zip
+        curl -s https://indy.fulgan.com/SSL/openssl-1.0.2q-x64_86-win64.zip > openssl-1.0.2q-x64_86-win64.zip
         cp $QDB_API_REST/scripts/teamcity/openssl.cnf etc/openssl.conf
-        7z x openssl-1.0.2p-x64_86-win64.zip
+        7z x openssl-1.0.2q-x64_86-win64.zip
         mv openssl.exe bin/
         mv libeay32.dll bin/
         mv ssleay32.dll bin/
         mv "OpenSSL License.txt" etc/
-        rm openssl-1.0.2p-x64_86-win64.zip
+        rm openssl-1.0.2q-x64_86-win64.zip
 
         mv qdb_rest.windows.conf.sample etc/qdb_rest.conf.sample
         ;;
