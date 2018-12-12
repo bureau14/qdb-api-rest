@@ -22,19 +22,21 @@ func CreateHandle(user, secret, uri, clusterPublicKeyFile string) (*qdb.HandleTy
 		return nil, err
 	}
 
-	if user != "" && secret != "" && clusterPublicKeyFile != "" {
-		// Set encryption if enabled server side
-		err = handle.SetEncryption(qdb.EncryptNone)
+	if user != "" && secret != "" {
+		if clusterPublicKeyFile != "" {
+			// Set encryption if enabled server side
+			err = handle.SetEncryption(qdb.EncryptNone)
 
-		// add security if enabled server side
-		clusterKey, err := qdb.ClusterKeyFromFile(clusterPublicKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("Could not retrieve cluster key from file:%s", clusterPublicKeyFile)
+			// add security if enabled server side
+			clusterKey, err := qdb.ClusterKeyFromFile(clusterPublicKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("Could not retrieve cluster key from file:%s", clusterPublicKeyFile)
+			}
+			err = handle.AddClusterPublicKey(clusterKey)
+			err = handle.AddUserCredentials(user, secret)
+		} else {
+			log.Printf("Warning: cannot connect user %s , cluster is not secured.", user)
 		}
-		err = handle.AddClusterPublicKey(clusterKey)
-		err = handle.AddUserCredentials(user, secret)
-	} else if clusterPublicKeyFile == "" {
-		log.Printf("Warning: cannot connect user %s , cluster is not secured.", user)
 	}
 
 	// connect
