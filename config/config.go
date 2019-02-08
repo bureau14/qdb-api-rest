@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"reflect"
 )
 
 // Config : A configuration file for the rest api
@@ -52,22 +53,51 @@ func SetDefaults(filename string) Config {
 	return config
 }
 
-// Check : check the configuration to test for basic security features
-func (c *Config) Check() error {
+func (c *Config) statFiles() (bool, bool, bool) {
 	clusterKeyFile := false
 	if _, err := os.Stat(c.ClusterPublicKeyFile); !os.IsNotExist(err) {
+		log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
 		clusterKeyFile = true
 	}
 
 	tlsCert := false
 	if _, err := os.Stat(c.TLSCertificate); !os.IsNotExist(err) {
+		log.Printf("Warning: cannot find tls certificate at location %s , assuming http configuration.\n", c.TLSCertificate)
 		tlsCert = true
 	}
 
 	tlsKey := false
 	if _, err := os.Stat(c.TLSKey); !os.IsNotExist(err) {
+		log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSKey)
 		tlsKey = true
 	}
+
+	return clusterKeyFile, tlsCert, tlsKey
+}
+
+func (c Config) validate() error {
+	c.statFiles()
+	var err error
+	if c.ClusterPublicKeyFile != "" && (c.TLSCertificate == "" || c.TLSKey == "") {
+		err = fmt.Errorf("a secured cluster configuration cannot be valid without a proper tls configuration")
+	} else if (c.TLSCertificate == "" && c.TLSKey != "") || (c.TLSCertificate != "" && c.TLSKey == "") {
+		err = fmt.Errorf("you need both tls key and certificate for tls configuration")
+	} else {
+		err = nil
+	}
+
+	if err != nil && c.TLSCertificate == "" {
+		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls certificate path")
+	}
+	if err != nil && c.TLSKey == "" {
+		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls key path")
+	}
+	return err
+}
+
+// Check : check the configuration to test for basic security features
+func (c *Config) Check() error {
+	clusterKeyFile, tlsCert, tlsKey := c.statFiles()
 
 	if clusterKeyFile && (!tlsCert || !tlsKey) {
 		log.Fatalln("Error: cannot find TLS certificate while creating secured cluster.")
@@ -75,19 +105,26 @@ func (c *Config) Check() error {
 	}
 
 	if !clusterKeyFile {
-		log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
 		c.ClusterPublicKeyFile = ""
 	}
 
 	if !tlsCert {
-		log.Printf("Warning: cannot find tls certificate at location %s , assuming http configuration.\n", c.TLSCertificate)
 		c.TLSCertificate = ""
 	}
 
 	if !tlsKey {
-		log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSKey)
 		c.TLSKey = ""
 	}
 
 	return nil
+}
+
+// Print the configuration
+func (c Config) Print() {
+	v := reflect.ValueOf(c)
+
+	fmt.Println("Configuration:")
+	for i := 0; i < v.NumField(); i++ {
+		fmt.Printf(" - %s: %v\n", v.Type().Field(i).Name, v.Field(i))
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/bureau14/qdb-api-rest/config"
 	"github.com/bureau14/qdb-api-rest/restapi"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
 	loads "github.com/go-openapi/loads"
@@ -11,6 +12,10 @@ import (
 )
 
 func main() {
+	if config.Generate(config.FilledDefaultConfig) {
+		return
+	}
+
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
 		panic(err)
