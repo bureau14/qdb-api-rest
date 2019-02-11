@@ -71,13 +71,13 @@ func (prg *program) run() {
 	prg.server.ConfigureAPI()
 	// this must be done after the api has been configured
 	// because restapi.APIConfig is configured there
+	prg.server.Host = restapi.APIConfig.Host
+	prg.server.Port = restapi.APIConfig.Port
+	prg.server.EnabledListeners = []string{"http"}
 	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
 		prg.server.TLSHost = restapi.APIConfig.Host
-		prg.server.TLSPort = restapi.APIConfig.Port
-	} else {
-		prg.server.Host = restapi.APIConfig.Host
-		prg.server.Port = restapi.APIConfig.Port
-		prg.server.EnabledListeners = []string{"http"}
+		prg.server.TLSPort = restapi.APIConfig.TLSPort
+		server.EnabledListeners = append(server.EnabledListeners, "https")
 	}
 
 	if err := prg.server.Serve(); err != nil {

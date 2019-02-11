@@ -16,6 +16,7 @@ type Config struct {
 	ClusterPublicKeyFile string   `json:"cluster_public_key_file" required:"true"`
 	TLSCertificate       string   `json:"tls_certificate" required:"true"`
 	TLSKey               string   `json:"tls_key" required:"true"`
+	TLSPort              int      `json:"tls_port" required:"true"`
 	Host                 string   `json:"host" required:"true"`
 	Port                 int      `json:"port" required:"true"`
 	Log                  string   `json:"log"`
@@ -28,8 +29,9 @@ var defaultConfig = Config{
 	ClusterPublicKeyFile: "",
 	TLSCertificate:       "",
 	TLSKey:               "",
+	TLSPort:              40493,
 	Host:                 "0.0.0.0",
-	Port:                 40000,
+	Port:                 40080,
 	Log:                  "",
 	Assets:               "",
 }

@@ -48,17 +48,6 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 var APIConfig config.Config
 var defaultSecret = []byte("default_secret")
 
-// FileServerMiddleWare : middleware for fileserver handler
-func FileServerMiddleWare(next http.Handler, assets string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
-			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
-		} else {
-			next.ServeHTTP(w, r)
-		}
-	})
-}
-
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
@@ -224,17 +213,39 @@ func configureTLS(tlsConfig *tls.Config) {
 	tlsConfig.MinVersion = tls.VersionTLS12
 }
 
+var httpRedirectHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	redirection := fmt.Sprintf("https://%s:%d%s", APIConfig.Host, APIConfig.TLSPort, r.RequestURI)
+	log.Printf("Redirecting to %s", redirection)
+	http.Redirect(w, r, redirection, http.StatusPermanentRedirect)
+})
+
+var hd http.Handler
+
 // As soon as server is initialized but not run yet, this function will be called.
 // If you need to modify a config, store server instance to stop it individually later, this is the place.
 // This function can be called multiple times, depending on the number of serving schemes.
 // scheme value will be set accordingly: "http", "https" or "unix"
 func configureServer(s *http.Server, scheme, addr string) {
+	if APIConfig.TLSCertificate != "" && APIConfig.TLSKey != "" && scheme == "http" {
+		s.Handler = httpRedirectHandler
+	}
 }
 
 // The middleware configuration is for the handler executors. These do not apply to the swagger.json document.
 // The middleware executes after routing but before authentication, binding and validation
 func setupMiddlewares(handler http.Handler) http.Handler {
 	return handler
+}
+
+// HTTPSwitchMiddleWare : middleware switch between normal and fileserver handler
+func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
+			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
 }
 
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
@@ -247,8 +258,6 @@ func setupGlobalMiddleware(handler http.Handler, allowedOrigins []string, assets
 		AllowCredentials: true,
 	}).Handler
 
-	if assets == "" {
-		return corsHandler(handler)
-	}
-	return FileServerMiddleWare(corsHandler(handler), assets)
+	return corsHandler(HTTPSwitchMiddleWare(handler, assets))
+
 }
