@@ -51,6 +51,17 @@ var defaultSecret = []byte("default_secret")
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
+
+	GetHandle := func(id string) (*qdb.HandleType, error) {
+		handle, handleFound := tokenToHandle[id]
+		if !handleFound {
+			err := fmt.Errorf("Token '%s' is not valid", id)
+			log.Print(err.Error())
+			return nil, err
+		}
+		return handle, nil
+	}
+
 	api.Logger = log.Printf
 
 	APIConfig = config.SetDefaults(applicationFlags.ConfigFile)
@@ -58,7 +69,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	if APIConfig.Log != "" {
 		f, err := os.OpenFile(APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 		if err != nil {
-			log.Printf("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
+			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
 		} else {
 			log.SetOutput(f)
@@ -74,13 +85,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenParser := func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+			err := fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+			api.Logger(err.Error())
+			return nil, err
 		}
 
 		secret := defaultSecret
 		if APIConfig.TLSKey != "" {
 			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
 			if err != nil {
+				api.Logger("Failed to generate secret: %s", err.Error())
 				return nil, err
 			}
 		}
@@ -113,23 +127,30 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			token = strings.Replace(token, "Bearer ", "", 1)
 			parsedToken, err := jwt.Parse(token, tokenParser)
 			if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
+				api.Logger("Access attempt with incorrect api key auth: %s", token)
 				return nil, err
 			}
 			t := models.Principal(token)
 			return &t, nil
 		}
-		// api.Logger("Access attempt with incorrect api key auth: %s", token)
+		api.Logger("Access attempt with incorrect api key auth: %s", token)
 		return nil, errors.New(401, "incorrect api key auth")
 	}
 
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
 		signedString := string(*principal)
-		handle := tokenToHandle[signedString]
+		handle, err := GetHandle(signedString)
+		if err != nil {
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
 		result, err := qdbinterface.QueryData(*handle, params.Query)
 		if err != nil {
 			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				api.Logger("Failed to query: %s", err.Error())
 				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 			}
+			api.Logger("Failed to query: %s", err.Error())
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return query.NewPostQueryOK().WithPayload(result)
@@ -137,10 +158,14 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
 		signedString := string(*principal)
-		handle := tokenToHandle[signedString]
+		handle, err := GetHandle(signedString)
+		if err != nil {
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
 
-		err := qdbinterface.RetrieveInformation(*handle)
+		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil && err != qdb.ErrUnstableCluster && err != qdb.ErrConnectionRefused {
+			api.Logger("Failed to access cluster status: %s", err.Error())
 			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
@@ -148,24 +173,27 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
 		signedString := string(*principal)
-		handle := tokenToHandle[signedString]
-
-		err := qdbinterface.RetrieveInformation(*handle)
+		handle, err := GetHandle(signedString)
 		if err != nil {
-			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
-				return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		err = qdbinterface.RetrieveInformation(*handle)
+		if err != nil {
+			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		if val, ok := qdbinterface.NodesInformation[params.ID]; ok {
 			return cluster.NewGetNodeOK().WithPayload(&val)
 		}
+		api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 		return cluster.NewGetNodeNotFound()
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
 		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, APIConfig.ClusterPublicKeyFile)
 		if err != nil {
+			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
@@ -179,18 +207,26 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if APIConfig.TLSKey != "" {
 			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
 			if err != nil {
-				err = fmt.Errorf("Could not retrieve tls key from file:%s", APIConfig.TLSKey)
+				err = fmt.Errorf("Could not retrieve tls key from file: %s", APIConfig.TLSKey)
+				api.Logger("Warning: %s", err.Error())
 				return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 			}
 		}
 
 		signedString, err := token.SignedString(secret)
 		if err != nil {
+			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		tokenToHandle[signedString] = handle
-		t := models.Token(signedString)
-		return operations.NewLoginOK().WithPayload(t)
+
+		if params.Credential.Username != "" {
+			api.Logger("Logged in user %s", params.Credential.Username)
+		} else {
+			api.Logger("Logged anonymous user")
+		}
+
+		return operations.NewLoginOK().WithPayload(models.Token(signedString))
 	})
 
 	api.ServerShutdown = func() {}
@@ -240,6 +276,7 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 // HTTPSwitchMiddleWare : middleware switch between normal and fileserver handler
 func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Serving %s request: %s", r.Method, r.URL.Path[1:])
 		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
 			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
 		} else {
