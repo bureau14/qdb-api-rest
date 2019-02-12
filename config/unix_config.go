@@ -9,8 +9,9 @@ var FilledDefaultConfig = Config{
 	ClusterPublicKeyFile: "/usr/share/qdb/cluster_public.key",
 	TLSCertificate:       "/etc/qdb/qdb_rest.cert.pem",
 	TLSKey:               "/etc/qdb/qdb_rest.key.pem",
+	TLSPort:              40493,
 	Host:                 "localhost",
-	Port:                 40000,
+	Port:                 40080,
 	Log:                  "/var/log/qdb/qdb_rest.log",
 	Assets:               "/var/lib/qdb/assets",
 }

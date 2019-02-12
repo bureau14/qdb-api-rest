@@ -17,6 +17,7 @@ func getQuestion(field string) string {
 		"ClusterPublicKeyFile": "Enter the path of the QuasarDB cluster public key file",
 		"TLSCertificate":       "Enter the path of the tls certificate",
 		"TLSKey":               "Enter the path of the tls key",
+		"TLSPort":              "Enter a port for the tls connection",
 		"Host":                 "Enter an host name or address",
 		"Port":                 "Enter a port",
 		"Log":                  "Enter the path of the log file",
@@ -123,6 +124,7 @@ func askQuestions(defConfig Config) Config {
 	ask("ClusterPublicKeyFile", &conf, defConfig)
 	ask("TLSCertificate", &conf, defConfig)
 	ask("TLSKey", &conf, defConfig)
+	ask("TLSPort", &conf, defConfig)
 	ask("Host", &conf, defConfig)
 
 	ok := false
