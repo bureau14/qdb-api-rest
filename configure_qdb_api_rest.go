@@ -54,6 +54,8 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 var APIConfig config.Config
 var defaultSecret = []byte("default_secret")
 
+const version string = "3.2.0master"
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	tokenToHandle := map[string]*qdb.HandleType{}
@@ -86,6 +88,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+
+	api.Logger("version: %s", version)
 
 	clusterURI := APIConfig.ClusterURI
 
