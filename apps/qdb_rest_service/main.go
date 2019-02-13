@@ -77,7 +77,7 @@ func (prg *program) run() {
 	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
 		prg.server.TLSHost = restapi.APIConfig.Host
 		prg.server.TLSPort = restapi.APIConfig.TLSPort
-		server.EnabledListeners = append(server.EnabledListeners, "https")
+		prg.server.EnabledListeners = append(prg.server.EnabledListeners, "https")
 	}
 
 	if err := prg.server.Serve(); err != nil {
