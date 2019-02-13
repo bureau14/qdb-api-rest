@@ -30,15 +30,6 @@ func getQuestion(field string) string {
 	return question
 }
 
-func shouldGenerate() bool {
-	for _, arg := range os.Args {
-		if arg == "--gen-config" {
-			return true
-		}
-	}
-	return false
-}
-
 func readLine() string {
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	return line[:len(line)-1]
@@ -139,10 +130,6 @@ func askQuestions(defConfig Config) Config {
 
 // Generate a configuration file if needed
 func Generate(defConfig Config) bool {
-	if !shouldGenerate() {
-		return false
-	}
-
 	conf := askQuestions(defConfig)
 
 	if err := conf.validate(); err != nil {

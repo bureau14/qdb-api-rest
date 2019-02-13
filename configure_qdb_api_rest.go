@@ -33,11 +33,17 @@ import (
 // ApplicationFlags : Additionl flags to setup the rest-api
 type ApplicationFlags struct {
 	ConfigFile string `long:"config-file" description:"Config file to setup the rest-api"`
+	GenConfig  func() `long:"gen-config" description:"Interactively generate a config file"`
 }
 
 var applicationFlags ApplicationFlags
 
 func configureFlags(api *operations.QdbAPIRestAPI) {
+	applicationFlags.GenConfig = func() {
+		config.Generate(config.FilledDefaultConfig)
+		os.Exit(0)
+	}
+
 	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
 		{ShortDescription: "Application Flags", LongDescription: "Application Configuration Flags", Options: &applicationFlags},
 	}
