@@ -4,7 +4,7 @@
     "cluster_public_key_file": "C:/Program Files/quasardb/share/cluster_public.key",
     "tls_certificate": "C:/Program Files/quasardb/conf/qdb_rest.cert.pem",
     "tls_key": "C:/Program Files/quasardb/conf/qdb_rest.key.pem",
-    "tls_port": 40493,
+    "tls_port": 40443,
     "host": "localhost",
     "port": 40000,
     "log": "C:/Program Files/quasardb/log/qdb_rest.log",

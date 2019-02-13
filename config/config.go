@@ -29,7 +29,7 @@ var defaultConfig = Config{
 	ClusterPublicKeyFile: "",
 	TLSCertificate:       "",
 	TLSKey:               "",
-	TLSPort:              40493,
+	TLSPort:              40443,
 	Host:                 "0.0.0.0",
 	Port:                 40080,
 	Log:                  "",

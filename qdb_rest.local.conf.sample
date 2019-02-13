@@ -4,7 +4,7 @@
     "cluster_public_key_file": "",
     "tls_certificate": "",
     "tls_key": "",
-    "tls_port": 40493,
+    "tls_port": 40443,
     "host": "localhost",
     "port": 40000,
     "log": "qdb_rest.log",
