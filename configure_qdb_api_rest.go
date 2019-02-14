@@ -154,7 +154,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
-		result, err := qdbinterface.QueryData(*handle, params.Query)
+		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
 		if err != nil {
 			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
 				api.Logger("Failed to query: %s", err.Error())
@@ -236,7 +236,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Logged anonymous user")
 		}
 
-		return operations.NewLoginOK().WithPayload(models.Token(signedString))
+		return operations.NewLoginOK().WithPayload(&models.Token{Token: signedString})
 	})
 
 	api.ServerShutdown = func() {}

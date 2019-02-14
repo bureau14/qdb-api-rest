@@ -65,11 +65,11 @@
         "operationId": "post-query",
         "parameters": [
           {
-            "in": "body",
             "name": "query",
+            "in": "body",
             "required": true,
             "schema": {
-              "type": "string"
+              "$ref": "#/definitions/Query"
             }
           }
         ],
@@ -246,7 +246,20 @@
       }
     },
     "Token": {
-      "type": "string"
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    "Query": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        }
+      }
     },
     "QdbError": {
       "properties": {
