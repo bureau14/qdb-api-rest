@@ -147,6 +147,25 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return nil, errors.New(401, "incorrect api key auth")
 	}
 
+	api.PostFindHandler = operations.PostFindHandlerFunc(func(params operations.PostFindParams, principal *models.Principal) middleware.Responder {
+		signedString := string(*principal)
+		handle, err := GetHandle(signedString)
+		if err != nil {
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		result, err := qdbinterface.Find(*handle, params.Find.Query)
+		if err != nil {
+			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				api.Logger("Failed to find: %s", err.Error())
+				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			}
+			api.Logger("Failed to find: %s", err.Error())
+			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return query.NewPostQueryOK().WithPayload(result)
+	})
+
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
 		signedString := string(*principal)
 		handle, err := GetHandle(signedString)
