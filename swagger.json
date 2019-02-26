@@ -60,53 +60,6 @@
         }
       }
     },
-    "/find": {
-      "post": {
-        "operationId": "post-find",
-        "parameters": [
-          {
-            "name": "find",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/Query"
-            }
-          }
-        ],
-        "responses": {
-          "400": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Bad Request."
-          },
-          "500": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Internal Error."
-          },
-          "200": {
-            "schema": {
-              "$ref": "#/definitions/QueryResult"
-            },
-            "description": "Successful operation",
-            "examples": {
-              "application/json": {
-                "tables": [
-                  {
-                    "name": "ts-0"
-                  },
-                  {
-                    "name": "ts-1"
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
-    },
     "/query": {
       "post": {
         "operationId": "post-query",
