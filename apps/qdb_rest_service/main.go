@@ -37,7 +37,7 @@ func (prg *program) run() {
 	api := operations.NewQdbAPIRestAPI(swaggerSpec)
 	prg.server = restapi.NewServer(api)
 
-	parser := flags.NewParser(prg.server, flags.Default)
+	parser := flags.NewParser(&restapi.APIConfig, flags.Default)
 	parser.ShortDescription = "QuasarDB API"
 	parser.LongDescription = "Find out more at https://doc.quasardb.net"
 
@@ -74,7 +74,7 @@ func (prg *program) run() {
 	prg.server.Host = restapi.APIConfig.Host
 	prg.server.Port = restapi.APIConfig.Port
 	prg.server.EnabledListeners = []string{"http"}
-	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
+	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSCertificateKey != "" {
 		prg.server.TLSHost = restapi.APIConfig.Host
 		prg.server.TLSPort = restapi.APIConfig.TLSPort
 		prg.server.EnabledListeners = append(prg.server.EnabledListeners, "https")

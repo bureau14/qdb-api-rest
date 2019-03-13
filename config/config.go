@@ -7,40 +7,97 @@ import (
 	"log"
 	"os"
 	"reflect"
+
+	"github.com/jessevdk/go-flags"
 )
 
 // Config : A configuration file for the rest api
 type Config struct {
-	AllowedOrigins       []string `json:"allowed_origins" required:"true"`
-	ClusterURI           string   `json:"cluster_uri" required:"true"`
-	ClusterPublicKeyFile string   `json:"cluster_public_key_file" required:"true"`
-	TLSCertificate       string   `json:"tls_certificate" required:"true"`
-	TLSKey               string   `json:"tls_key" required:"true"`
-	TLSPort              int      `json:"tls_port" required:"true"`
-	Host                 string   `json:"host" required:"true"`
-	Port                 int      `json:"port" required:"true"`
-	Log                  string   `json:"log"`
-	Assets               string   `json:"assets"`
+	AllowedOrigins       []string       `json:"allowed_origins" long:"allowed-origins" description:"Allowed origins for cross origins"`
+	ClusterURI           string         `json:"cluster_uri" short:"c" long:"cluster" description:"URI of the cluster we connect to" env:"QDB_CLUSTER_URI"`
+	ClusterPublicKeyFile flags.Filename `json:"cluster_public_key_file" long:"cluster-public-key-file" description:"Key file used for cluster security" env:"QDB_CLUSTER_PUBLIC_KEY_FILE"`
+	TLSCertificate       flags.Filename `json:"tls_certificate" long:"tls-certificate" description:"The certificate to use for secure connections" env:"TLS_CERTIFICATE"`
+	TLSCertificateKey    flags.Filename `json:"tls_key" long:"tls-key" description:"The private key to use for secure conections" env:"TLS_PRIVATE_KEY"`
+	TLSPort              int            `json:"tls_port" long:"tls-port" description:"The port to listen on for secure connections" env:"TLS_PORT"`
+	Host                 string         `json:"host" long:"host" description:"The IP to listen on" default:"localhost" env:"HOST"`
+	Port                 int            `json:"port" long:"port" description:"The port to listen on for insecure connections, defaults to a random value" env:"PORT"`
+	Log                  flags.Filename `json:"log" long:"log-file" description:"The path to the log file" env:"QDB_REST_LOG_FILE"`
+	Assets               string         `json:"assets" long:"assets-dir" description:"The path to the assets directory you want to be published alongside the rest api" env:"QDB_REST_ASSETS_DIR"`
+
+	ConfigFile  flags.Filename `json:"-" long:"config-file" description:"Config file to setup the rest api"`
+	GenConfig   bool           `json:"-" long:"gen-config" description:"Generate a config"`
+	Interactive bool           `json:"-" short:"i" long:"interactive" description:"Switch on interactive mode for gen-config, does nothing if gen-config is not set"`
+	Local       bool           `json:"-" short:"l" long:"local" description:"Switch on local mode"`
+	Secure      bool           `json:"-" short:"s" long:"secure" description:"Switch on security default parameters (tls + cluster security)"`
 }
 
-var defaultConfig = Config{
-	AllowedOrigins:       []string{},
-	ClusterURI:           "qdb://127.0.0.1:2836",
-	ClusterPublicKeyFile: "",
-	TLSCertificate:       "",
-	TLSKey:               "",
-	TLSPort:              40443,
-	Host:                 "0.0.0.0",
-	Port:                 40080,
-	Log:                  "",
-	Assets:               "",
+// SetSecured set config to secured mode
+func (c *Config) SetSecured() {
+	if c.ClusterPublicKeyFile == FilledDefaultConfig.ClusterPublicKeyFile {
+		c.ClusterPublicKeyFile = Secured.ClusterPublicKeyFile
+	}
+	if c.TLSCertificate == FilledDefaultConfig.TLSCertificate {
+		c.TLSCertificate = Secured.TLSCertificate
+	}
+	if c.TLSCertificateKey == FilledDefaultConfig.TLSCertificateKey {
+		c.TLSCertificateKey = Secured.TLSCertificateKey
+	}
+	if c.TLSPort == FilledDefaultConfig.TLSPort {
+		c.TLSPort = Secured.TLSPort
+	}
+}
+
+// Local config
+var Local = Config{
+	Host:   "localhost",
+	Port:   40080,
+	Log:    "qdb_rest.log",
+	Assets: "assets",
+}
+
+// SetLocal set config to local mode
+func (c *Config) SetLocal() {
+	if c.Host == FilledDefaultConfig.Host {
+		c.Host = Local.Host
+	}
+	if c.Port == FilledDefaultConfig.Port {
+		c.Port = Local.Port
+	}
+	if c.Log == FilledDefaultConfig.Log {
+		c.Log = Local.Log
+	}
+	if c.Assets == FilledDefaultConfig.Assets {
+		c.Assets = Local.Assets
+	}
 }
 
 // SetDefaults : set defaults values if there are no config values
-func SetDefaults(filename string) Config {
-	if filename == "" {
-		return defaultConfig
+func (c *Config) SetDefaults() {
+	if c.Local {
+		c.SetLocal()
 	}
+	if c.Secure {
+		c.SetSecured()
+	}
+	if c.GenConfig {
+		if c.Interactive {
+			Generate(*c)
+		} else {
+			confJSON, err := json.MarshalIndent(*c, "", "    ")
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(0)
+			}
+			fmt.Print(string(confJSON))
+		}
+		os.Exit(0)
+	}
+	filename := string(c.ConfigFile)
+
+	if filename == "" {
+		return
+	}
+
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
@@ -52,25 +109,55 @@ func SetDefaults(filename string) Config {
 		panic(err)
 	}
 
-	return config
+	// if c.AllowedOrigins == FilledDefaultConfig.AllowedOrigins && config.AllowedOrigins != nil {
+	// 	c.AllowedOrigins = config.AllowedOrigins
+	// }
+	if c.ClusterURI == FilledDefaultConfig.ClusterURI {
+		c.ClusterURI = config.ClusterURI
+	}
+	if c.ClusterPublicKeyFile == FilledDefaultConfig.ClusterPublicKeyFile {
+		c.ClusterPublicKeyFile = config.ClusterPublicKeyFile
+	}
+	if c.TLSCertificate == FilledDefaultConfig.TLSCertificate {
+		c.TLSCertificate = config.TLSCertificate
+	}
+	if c.TLSCertificateKey == FilledDefaultConfig.TLSCertificateKey {
+		c.TLSCertificateKey = config.TLSCertificateKey
+	}
+	if c.TLSPort == FilledDefaultConfig.TLSPort {
+		c.TLSPort = config.TLSPort
+	}
+	if c.Host == FilledDefaultConfig.Host {
+		c.Host = config.Host
+	}
+	if c.Port == FilledDefaultConfig.Port {
+		c.Port = config.Port
+	}
+	if c.Log == FilledDefaultConfig.Log {
+		c.Log = config.Log
+	}
+	if c.Assets == FilledDefaultConfig.Assets {
+		c.Assets = config.Assets
+	}
+
 }
 
 func (c *Config) statFiles() (bool, bool, bool) {
 	clusterKeyFile := false
-	if _, err := os.Stat(c.ClusterPublicKeyFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(string(c.ClusterPublicKeyFile)); !os.IsNotExist(err) {
 		log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
 		clusterKeyFile = true
 	}
 
 	tlsCert := false
-	if _, err := os.Stat(c.TLSCertificate); !os.IsNotExist(err) {
+	if _, err := os.Stat(string(c.TLSCertificate)); !os.IsNotExist(err) {
 		log.Printf("Warning: cannot find tls certificate at location %s , assuming http configuration.\n", c.TLSCertificate)
 		tlsCert = true
 	}
 
 	tlsKey := false
-	if _, err := os.Stat(c.TLSKey); !os.IsNotExist(err) {
-		log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSKey)
+	if _, err := os.Stat(string(c.TLSCertificateKey)); !os.IsNotExist(err) {
+		log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSCertificateKey)
 		tlsKey = true
 	}
 
@@ -80,9 +167,9 @@ func (c *Config) statFiles() (bool, bool, bool) {
 func (c Config) validate() error {
 	c.statFiles()
 	var err error
-	if c.ClusterPublicKeyFile != "" && (c.TLSCertificate == "" || c.TLSKey == "") {
+	if c.ClusterPublicKeyFile != "" && (c.TLSCertificate == "" || c.TLSCertificateKey == "") {
 		err = fmt.Errorf("a secured cluster configuration cannot be valid without a proper tls configuration")
-	} else if (c.TLSCertificate == "" && c.TLSKey != "") || (c.TLSCertificate != "" && c.TLSKey == "") {
+	} else if (c.TLSCertificate == "" && c.TLSCertificateKey != "") || (c.TLSCertificate != "" && c.TLSCertificateKey == "") {
 		err = fmt.Errorf("you need both tls key and certificate for tls configuration")
 	} else {
 		err = nil
@@ -91,7 +178,7 @@ func (c Config) validate() error {
 	if err != nil && c.TLSCertificate == "" {
 		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls certificate path")
 	}
-	if err != nil && c.TLSKey == "" {
+	if err != nil && c.TLSCertificateKey == "" {
 		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls key path")
 	}
 	return err
@@ -115,7 +202,7 @@ func (c *Config) Check() error {
 	}
 
 	if !tlsKey {
-		c.TLSKey = ""
+		c.TLSCertificateKey = ""
 	}
 
 	return nil
@@ -127,6 +214,8 @@ func (c Config) Print() {
 
 	fmt.Println("Configuration:")
 	for i := 0; i < v.NumField(); i++ {
-		fmt.Printf(" - %s: %v\n", v.Type().Field(i).Name, v.Field(i))
+		if v.Type().Field(i).Tag.Get("json") != "-" {
+			fmt.Printf(" - %s: %v\n", v.Type().Field(i).Name, v.Field(i))
+		}
 	}
 }

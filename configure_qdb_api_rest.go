@@ -15,7 +15,6 @@ import (
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
-	"github.com/go-openapi/swag"
 	cors "github.com/rs/cors"
 	xid "github.com/rs/xid"
 
@@ -30,28 +29,13 @@ import (
 
 //go:generate swagger generate server --target .. --name qdb-api-rest --spec ../swagger.json
 
-// ApplicationFlags : Additionl flags to setup the rest-api
-type ApplicationFlags struct {
-	ConfigFile string `long:"config-file" description:"Config file to setup the rest-api"`
-	GenConfig  func() `long:"gen-config" description:"Interactively generate a config file"`
-}
-
-var applicationFlags ApplicationFlags
-
-func configureFlags(api *operations.QdbAPIRestAPI) {
-	applicationFlags.GenConfig = func() {
-		config.Generate(config.FilledDefaultConfig)
-		os.Exit(0)
-	}
-
-	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
-		{ShortDescription: "Application Flags", LongDescription: "Application Configuration Flags", Options: &applicationFlags},
-	}
-}
-
 // APIConfig : api config
 // TODO(vianney): find another way to manage the lifetime of the config
-var APIConfig config.Config
+var APIConfig = config.FilledDefaultConfig
+
+func configureFlags(api *operations.QdbAPIRestAPI) {
+}
+
 var defaultSecret = []byte("default_secret")
 
 const version string = "3.2.0master"
@@ -72,10 +56,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.Logger = log.Printf
 
-	APIConfig = config.SetDefaults(applicationFlags.ConfigFile)
+	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		f, err := os.OpenFile(APIConfig.Log, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		f, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 		if err != nil {
 			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
@@ -101,8 +85,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		secret := defaultSecret
-		if APIConfig.TLSKey != "" {
-			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
+		if APIConfig.TLSCertificateKey != "" {
+			secret, err = qdbinterface.CredentialsFromTLS(string(APIConfig.TLSCertificate), string(APIConfig.TLSCertificateKey))
 			if err != nil {
 				api.Logger("Failed to generate secret: %s", err.Error())
 				return nil, err
@@ -201,7 +185,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, APIConfig.ClusterPublicKeyFile)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
 		if err != nil {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -214,10 +198,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		})
 
 		secret := defaultSecret
-		if APIConfig.TLSKey != "" {
-			secret, err = qdbinterface.CredentialsFromTLS(APIConfig.TLSCertificate, APIConfig.TLSKey)
+		if APIConfig.TLSCertificateKey != "" {
+			secret, err = qdbinterface.CredentialsFromTLS(string(APIConfig.TLSCertificate), string(APIConfig.TLSCertificateKey))
 			if err != nil {
-				err = fmt.Errorf("Could not retrieve tls key from file: %s", APIConfig.TLSKey)
+				err = fmt.Errorf("Could not retrieve tls key from file: %s", APIConfig.TLSCertificateKey)
 				api.Logger("Warning: %s", err.Error())
 				return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 			}
@@ -246,12 +230,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 // The TLS configuration before HTTPS server starts.
 func configureTLS(tlsConfig *tls.Config) {
-	if APIConfig.TLSCertificate == "" || APIConfig.TLSKey == "" {
+	if APIConfig.TLSCertificate == "" || APIConfig.TLSCertificateKey == "" {
 		return
 	}
 	tlsConfig.Certificates = make([]tls.Certificate, 1)
 	var err error
-	tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(APIConfig.TLSCertificate, APIConfig.TLSKey)
+	tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(string(APIConfig.TLSCertificate), string(APIConfig.TLSCertificateKey))
 	if err != nil {
 		panic(err)
 	}
@@ -272,7 +256,7 @@ var hd http.Handler
 // This function can be called multiple times, depending on the number of serving schemes.
 // scheme value will be set accordingly: "http", "https" or "unix"
 func configureServer(s *http.Server, scheme, addr string) {
-	if APIConfig.TLSCertificate != "" && APIConfig.TLSKey != "" && scheme == "http" {
+	if APIConfig.TLSCertificate != "" && APIConfig.TLSCertificateKey != "" && scheme == "http" {
 		s.Handler = httpRedirectHandler
 	}
 }

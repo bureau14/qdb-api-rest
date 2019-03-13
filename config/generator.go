@@ -16,7 +16,7 @@ func getQuestion(field string) string {
 		"ClusterURI":           "Enter the location of the QuasarDB cluster",
 		"ClusterPublicKeyFile": "Enter the path of the QuasarDB cluster public key file",
 		"TLSCertificate":       "Enter the path of the tls certificate",
-		"TLSKey":               "Enter the path of the tls key",
+		"TLSCertificateKey":    "Enter the path of the tls key",
 		"TLSPort":              "Enter a port for the tls connection",
 		"Host":                 "Enter an host name or address",
 		"Port":                 "Enter a port",
@@ -110,11 +110,12 @@ func writeConfig(configPath string, conf Config) error {
 
 func askQuestions(defConfig Config) Config {
 	conf := Config{}
-	fmt.Println("Press enter to keep the [default] value: ")
+	fmt.Println("Press enter to keep the [default] value.")
+	fmt.Println("Press space then enter to have an empty value.")
 	ask("ClusterURI", &conf, defConfig)
 	ask("ClusterPublicKeyFile", &conf, defConfig)
 	ask("TLSCertificate", &conf, defConfig)
-	ask("TLSKey", &conf, defConfig)
+	ask("TLSCertificateKey", &conf, defConfig)
 	ask("TLSPort", &conf, defConfig)
 	ask("Host", &conf, defConfig)
 

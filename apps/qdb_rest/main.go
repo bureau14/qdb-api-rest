@@ -20,9 +20,11 @@ func main() {
 	server := restapi.NewServer(api)
 	defer server.Shutdown()
 
-	parser := flags.NewParser(server, flags.Default)
+	parser := flags.NewParser(&restapi.APIConfig, flags.Default)
 	parser.ShortDescription = "QuasarDB API"
-	parser.LongDescription = "Find out more at https://doc.quasardb.net"
+	parser.LongDescription = `Find out more at https://doc.quasardb.net
+
+	The corresponding [$VAR] variable can be set in the environment.`
 
 	server.ConfigureFlags()
 	for _, optsGroup := range api.CommandLineOptionsGroups {
@@ -45,20 +47,12 @@ func main() {
 	server.ConfigureAPI()
 	// this must be done after the api has been configured
 	// because restapi.APIConfig is configured there
-	if server.Host == "localhost" && restapi.APIConfig.Host != "" {
-		server.Host = restapi.APIConfig.Host
-	}
-	if server.Port == 0 {
-		server.Port = restapi.APIConfig.Port
-	}
+	server.Host = restapi.APIConfig.Host
+	server.Port = restapi.APIConfig.Port
 	server.EnabledListeners = []string{"http"}
-	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSKey != "" {
-		if server.TLSHost == "" {
-			server.TLSHost = restapi.APIConfig.Host
-		}
-		if server.TLSPort == 0 {
-			server.TLSPort = restapi.APIConfig.TLSPort
-		}
+	if restapi.APIConfig.TLSCertificate != "" && restapi.APIConfig.TLSCertificateKey != "" {
+		server.TLSHost = restapi.APIConfig.Host
+		server.TLSPort = restapi.APIConfig.TLSPort
 		server.EnabledListeners = append(server.EnabledListeners, "https")
 	}
 
