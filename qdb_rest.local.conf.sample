@@ -6,7 +6,7 @@
     "tls_key": "",
     "tls_port": 40443,
     "host": "localhost",
-    "port": 40000,
+    "port": 40080,
     "log": "qdb_rest.log",
     "assets": "assets"
 }

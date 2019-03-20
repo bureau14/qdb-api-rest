@@ -45,7 +45,7 @@ cp rest-api.cfg $QDB_REST_DIR/.
 ```
 docker run -d -v $QDB_QDDB_DIR:/var/lib/qdb --name qdb-server bureau14/qdb:nightly --cluster-private-file /var/lib/qdb/cluster.private --user-list /var/lib/qdb/users.cfg
 
-docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40000:40000 qdb-api-rest-server qdb://qdb:2836
+docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40080:40080 qdb-api-rest-server qdb://qdb:2836
 ```
 
 ## II. Build locally
@@ -59,19 +59,19 @@ go install ./...
 ## IV. Example
 #### Login
 ```
-curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @tintin.private https://127.0.0.1:40000/api/login
+curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @tintin.private https://127.0.0.1:40080/api/login
 ```
 #### Get cluster information
 ```
-curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i https://localhost:40000/api/cluster
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i https://localhost:40080/api/cluster
 ```
 #### Get node information
 ```
-curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i http://127.0.0.1:40000/api/cluster/nodes/127.0.0.1:2836
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -i http://127.0.0.1:40080/api/cluster/nodes/127.0.0.1:2836
 ```
 #### Run a query
 ```
-curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40000/api/query
+curl -k -H "Authorization: Bearer ${TOKEN}" -H 'Origin: http://0.0.0.0:3449' -sb -X POST -H "Content-Type: application/json" -d '"select count(*) from timeseries in range (2017,+1y)"' http://127.0.0.1:40080/api/query
 ```
 
 ## V. Config File

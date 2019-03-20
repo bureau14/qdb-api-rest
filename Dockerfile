@@ -28,7 +28,7 @@ RUN cp configure_qdb_api_rest.go restapi/configure_qdb_api_rest.go
 RUN go get -d -v ./...
 RUN go install -v ./...
 
-EXPOSE 40000
+EXPOSE 40080
 
 ADD qdb-api-rest-wrapper.sh /usr/bin/
 RUN chmod +x /usr/bin/qdb-api-rest-wrapper.sh
