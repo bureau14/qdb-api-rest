@@ -58,7 +58,14 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 			}
 			for rowIdx, row := range table.Rows() {
 				for colIdx, col := range table.Columns(row) {
-					columns[colIdx].Data[rowIdx] = col.Get().Value()
+					value := col.Get().Value()
+					if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
+						columns[colIdx].Data[rowIdx] = "(void)"
+					} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
+						columns[colIdx].Data[rowIdx] = "(undefined)"
+					} else {
+						columns[colIdx].Data[rowIdx] = value
+					}
 				}
 			}
 			for idx := range columns {
