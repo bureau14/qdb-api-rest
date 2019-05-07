@@ -48,26 +48,16 @@ func RetrieveInformation(handle qdb.HandleType) error {
 		return nil
 	}
 
-	nodeEndpoints, err := handle.Cluster().Endpoints()
 	if ClusterInformation.Status == nil {
 		ClusterInformation.Status = new(string)
 	}
+
+	stats, err := handle.Statistics()
 	if err == nil {
 		*ClusterInformation.Status = "stable"
 	} else {
 		*ClusterInformation.Status = "unstable"
 	}
-
-	var nodeStatus []qdb.NodeStatus
-	for _, nodeEndpoint := range nodeEndpoints {
-		status, err := handle.Node(nodeEndpoint.URI()).Status()
-		if err != nil {
-			lastError = err
-			return err
-		}
-		nodeStatus = append(nodeStatus, status)
-	}
-	lastError = nil
 
 	diskTotal := int64(0)
 	diskUsed := int64(0)
@@ -76,35 +66,35 @@ func RetrieveInformation(handle qdb.HandleType) error {
 
 	ClusterInformation.Nodes = []string{}
 	NodesInformation = make(map[string]models.Node)
-	for _, status := range nodeStatus {
-		diskUsedByNode := (status.DiskUsage.Total - status.DiskUsage.Free)
-		diskTotal += status.DiskUsage.Total
+	for _, stat := range stats {
+		diskUsedByNode := stat.Disk.BytesTotal - stat.Disk.BytesFree
+		diskTotal += stat.Disk.BytesTotal
 		diskUsed += diskUsedByNode
-		memoryTotal += status.Memory.Physmem.Total
-		memoryUsed += status.Memory.Physmem.Used
-		ClusterInformation.Nodes = append(ClusterInformation.Nodes, status.Network.ListeningEndpoint)
+		memoryTotal += stat.Memory.Physmem.Total
+		memoryUsed += stat.Memory.Physmem.Used
+		ClusterInformation.Nodes = append(ClusterInformation.Nodes, stat.NodeID)
 
-		id := status.Network.ListeningEndpoint
+		id := stat.NodeID
 		node := models.Node{}
-		cpuUser := int64(status.CPUTimes.User)
-		cpuSystem := int64(status.CPUTimes.System)
-		cpuIdle := status.CPUTimes.Idle
+		cpuUser := int64(stat.CPU.User)
+		cpuSystem := int64(stat.CPU.System)
+		cpuIdle := stat.CPU.Idle
 		cpuUsed := cpuUser + cpuSystem
 		cpuTotal := cpuUsed + cpuIdle
 		node.CPUTotal = &cpuTotal
 		node.CPUUsed = &cpuUsed
-		node.DiskTotal = &status.DiskUsage.Total
+		node.DiskTotal = &stat.Disk.BytesTotal
 		node.DiskUsed = &diskUsedByNode
 		node.ID = &id
-		node.MemoryTotal = &status.Memory.Physmem.Total
-		node.MemoryUsed = &status.Memory.Physmem.Used
-		node.Os = &status.OperatingSystem
-		node.QuasardbVersion = &status.EngineVersion
+		node.MemoryTotal = &stat.Memory.Physmem.Total
+		node.MemoryUsed = &stat.Memory.Physmem.Used
+		node.Os = &stat.OperatingSystem
+		node.QuasardbVersion = &stat.EngineVersion
 		NodesInformation[id] = node
 	}
 	ClusterInformation.DiskTotal = &diskTotal
 	ClusterInformation.DiskUsed = &diskUsed
 	ClusterInformation.MemoryTotal = &memoryTotal
 	ClusterInformation.MemoryUsed = &memoryUsed
-	return nil
+	return err
 }
