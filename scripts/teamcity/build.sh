@@ -12,12 +12,12 @@ esac
 
 # Build qdb_rest
 cd $1/apps/qdb_rest
-go build -x -v -o qdb_rest$SUFFIX
+go build -x -v -gcflags=-trimpath=$HOME/go -o qdb_rest$SUFFIX
 
 # Build qdb_rest_service on windows
 case $(uname) in
     MINGW* )
         cd ../qdb_rest_service
-        go build -x -v -o qdb_rest_service$SUFFIX
+        go build -x -v -gcflags=-trimpath=c:\Go -o qdb_rest_service$SUFFIX
         ;;
 esac
