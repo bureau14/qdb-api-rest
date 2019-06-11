@@ -51,7 +51,7 @@ docker run -it --link qdb-server:qdb -v $QDB_REST_DIR:/var/lib/qdb -p 40080:4008
 ## II. Build locally
 ```
 go get -u github.com/go-swagger/go-swagger/cmd/swagger
-$GOPATH/swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
+$GOPATH/bin/swagger generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
 cp configure_qdb_rest.go restapi/configure_qdb_rest.go
 go install ./...
 ```
