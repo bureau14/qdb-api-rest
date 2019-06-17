@@ -144,21 +144,30 @@ func (c *Config) SetDefaults() {
 
 func (c *Config) statFiles() (bool, bool, bool) {
 	clusterKeyFile := false
-	if _, err := os.Stat(string(c.ClusterPublicKeyFile)); !os.IsNotExist(err) {
-		log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
-		clusterKeyFile = true
+	if c.ClusterPublicKeyFile != "" {
+		if _, err := os.Stat(string(c.ClusterPublicKeyFile)); os.IsNotExist(err) {
+			log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
+		} else {
+			clusterKeyFile = true
+		}
 	}
 
 	tlsCert := false
-	if _, err := os.Stat(string(c.TLSCertificate)); !os.IsNotExist(err) {
-		log.Printf("Warning: cannot find tls certificate at location %s , assuming http configuration.\n", c.TLSCertificate)
-		tlsCert = true
+	if c.TLSCertificate != "" {
+		if _, err := os.Stat(string(c.TLSCertificate)); os.IsNotExist(err) {
+			log.Printf("Warning: cannot find tls certificate at location %s , assuming http configuration.\n", c.TLSCertificate)
+		} else {
+			tlsCert = true
+		}
 	}
 
 	tlsKey := false
-	if _, err := os.Stat(string(c.TLSCertificateKey)); !os.IsNotExist(err) {
-		log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSCertificateKey)
-		tlsKey = true
+	if c.TLSCertificateKey != "" {
+		if _, err := os.Stat(string(c.TLSCertificateKey)); os.IsNotExist(err) {
+			log.Printf("Warning: cannot find tls key at location %s , assuming http configuration.\n", c.TLSCertificateKey)
+		} else {
+			tlsKey = true
+		}
 	}
 
 	return clusterKeyFile, tlsCert, tlsKey
