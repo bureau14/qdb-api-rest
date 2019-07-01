@@ -14,3 +14,4 @@ qdb-var-rest
 rest-api.cfg
 test.sh
 tintin.private
+.vscode/
