@@ -15,6 +15,7 @@ import (
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
+	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
 	xid "github.com/rs/xid"
 
@@ -42,16 +43,18 @@ const version string = "3.4.0master"
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
-	tokenToHandle := map[string]*qdb.HandleType{}
+	tokenToHandle := cmap.New()
 
 	GetHandle := func(id string) (*qdb.HandleType, error) {
-		handle, handleFound := tokenToHandle[id]
-		if !handleFound {
+
+		if tmp, handleFound := tokenToHandle.Get(id); handleFound {
+			handle := tmp.(*qdb.HandleType)
+			return handle, nil
+		} else {
 			err := fmt.Errorf("Token '%s' is not valid", id)
 			log.Print(err.Error())
 			return nil, err
 		}
-		return handle, nil
 	}
 
 	api.Logger = log.Printf
@@ -99,10 +102,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	// Will delete unvalid keys every hour to avoid growing the map too much
 	clearHandles := func() {
 		for range time.Tick(time.Hour * 1) {
-			for token := range tokenToHandle {
+			for kv := range tokenToHandle.Iter() {
+				token := kv.Key
 				parsedToken, _ := jwt.Parse(token, tokenParser)
 				if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
-					delete(tokenToHandle, token)
+					tokenToHandle.Remove(token)
 				}
 			}
 		}
@@ -212,7 +216,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		tokenToHandle[signedString] = handle
+
+		tokenToHandle.Set(signedString, handle)
 
 		if params.Credential.Username != "" {
 			api.Logger("Logged in user %s", params.Credential.Username)
