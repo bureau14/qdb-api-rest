@@ -36,12 +36,17 @@ b9Ym/nxaqyTu0PxajXkKm5Q=
 -----END PRIVATE KEY-----`
 
 func TestJWT(t *testing.T) {
-	tokenString, err := jwt.Build(rsaPrivateKey, "mike", "pass")
+	key, err := jwt.UnmarshalRSAKey(rsaPrivateKey)
+	if err != nil {
+		t.Fatalf("Failed to parse RSA private key: %s", err.Error())
+	}
+
+	tokenString, err := jwt.Build(key, "mike", "pass")
 	if err != nil {
 		t.Fatalf("Failed to generate token: %s", err.Error())
 	}
 
-	token, err := jwt.Parse(rsaPrivateKey, tokenString)
+	token, err := jwt.Parse(key, tokenString)
 	if err != nil {
 		t.Fatalf("Failed to parse token %s: %s", tokenString, err.Error())
 	}

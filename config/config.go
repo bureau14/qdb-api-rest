@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/jessevdk/go-flags"
 )
@@ -191,6 +192,11 @@ func (c Config) validate() error {
 		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls key path")
 	}
 	return err
+}
+
+// IsSecurityEnabled returns true when the cluster security is enabled
+func (c *Config) IsSecurityEnabled() bool {
+	return strings.TrimSpace(string(c.ClusterPublicKeyFile)) != ""
 }
 
 // Check : check the configuration to test for basic security features

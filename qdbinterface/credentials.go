@@ -1,13 +1,16 @@
 package qdbinterface
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"io/ioutil"
-	"strings"
 
 	"github.com/bureau14/qdb-api-go"
 )
 
-const defaultPrivateKey = `-----BEGIN PRIVATE KEY-----
+// DefaultPrivateKey is the default rsa key used in non-secure cluster mode
+var DefaultPrivateKey = MustUnmarshalRSAKey([]byte(`-----BEGIN PRIVATE KEY-----
 MIIJRAIBADANBgkqhkiG9w0BAQEFAASCCS4wggkqAgEAAoICAQC3QlAKG82XUv2b
 sQo0mWd0SZkZbRpUnfkzImBcWj4g2JfCZzvvPKYI+r7mjir1VfndSzIQd6L2ganK
 rPQNXMh3wJbYZyUSKnW6m3j9DUe/mUzKXpj9hclN6exFbKlh215LI1UAx31R5zlR
@@ -58,7 +61,7 @@ oqs4f2V1gyvXSstLl6wJX6wvr4NvQqFQ7RRXvMhFtJMjggLmMxyjN41ZX+oOp/MB
 3sGHyqlnm2TfJ+LHMvRB1jKiewXUUB/EVPtZw8pbVWTUTGzWNdfl6MhZwWlhCgND
 evIvVWwJmQtF1SWp5huNGLPpBy2p51s/bRBYyVs4yOBxxhzOJrjle/IyUZjvkOww
 /tYUvKn0Mo+6QAcxqpQw2xbIbgnZuVE4
------END PRIVATE KEY-----`
+-----END PRIVATE KEY-----`))
 
 // Credentials : qdb user json credentials
 type Credentials struct {
@@ -71,12 +74,33 @@ func CredentialsFromFile(filename string) (string, string, error) {
 	return qdb.UserCredentialFromFile(filename)
 }
 
-// TLSKey returns the TLS private key from a file
-func TLSKey(keyPath string) (string, error) {
-	if strings.TrimSpace(keyPath) == "" {
-		return defaultPrivateKey, nil
+// MustUnmarshalRSAKeyFromFile reads and parses an RSA private key from a file
+// and panics on an error
+func MustUnmarshalRSAKeyFromFile(filePath string) *rsa.PrivateKey {
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		panic(err)
+	}
+	return MustUnmarshalRSAKey(data)
+}
+
+// MustUnmarshalRSAKey reads and parses an RSA private key from a file and
+// panics on an error
+func MustUnmarshalRSAKey(data []byte) *rsa.PrivateKey {
+	block, _ := pem.Decode(data)
+	if block == nil {
+		panic("Failed to decode PEM data")
 	}
 
-	fileBytes, err := ioutil.ReadFile(keyPath)
-	return string(fileBytes), err
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		panic(err)
+	}
+
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		panic("key is not of type *rsa.PrivateKey")
+	}
+
+	return rsaKey
 }

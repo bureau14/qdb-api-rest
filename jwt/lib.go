@@ -24,7 +24,7 @@ type JSONWebToken struct {
 	SecretKey string
 }
 
-func unmarshalRSAKey(data string) (*rsa.PrivateKey, error) {
+func UnmarshalRSAKey(data string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(data))
 	if block == nil {
 		return nil, errors.New("Failed to decode PEM data")
@@ -43,13 +43,8 @@ func unmarshalRSAKey(data string) (*rsa.PrivateKey, error) {
 	return rsaKey, nil
 }
 
-func Build(rsaPrivateKey string, username string, secretKey string) (string, error) {
+func Build(key *rsa.PrivateKey, username string, secretKey string) (string, error) {
 	var token string
-
-	key, err := unmarshalRSAKey(rsaPrivateKey)
-	if err != nil {
-		return token, err
-	}
 
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {
@@ -88,15 +83,10 @@ func Build(rsaPrivateKey string, username string, secretKey string) (string, err
 	return token, nil
 }
 
-func Parse(rsaPrivateKey string, rawToken string) (JSONWebToken, error) {
+func Parse(key *rsa.PrivateKey, rawToken string) (JSONWebToken, error) {
 	var token JSONWebToken
 	var claims jwt.Claims
 	var privateClaims privateClaims
-
-	key, err := unmarshalRSAKey(rsaPrivateKey)
-	if err != nil {
-		return token, err
-	}
 
 	encryptedToken, err := jwt.ParseSignedAndEncrypted(rawToken)
 	if err != nil {
