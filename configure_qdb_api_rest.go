@@ -3,24 +3,25 @@
 package restapi
 
 import (
+	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
 	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
-	xid "github.com/rs/xid"
 
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/config"
+	"github.com/bureau14/qdb-api-rest/jwt"
 	"github.com/bureau14/qdb-api-rest/models"
 	"github.com/bureau14/qdb-api-rest/qdbinterface"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
@@ -37,24 +38,43 @@ var APIConfig = config.FilledDefaultConfig
 func configureFlags(api *operations.QdbAPIRestAPI) {
 }
 
-var defaultSecret = []byte("default_secret")
+var secret *rsa.PrivateKey
 
 const version string = "3.5.0master"
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
+	handleCache := cmap.New()
 
-	tokenToHandle := cmap.New()
+	GetHandle := func(principal *models.Principal) (*qdb.HandleType, error) {
+		var handle *qdb.HandleType
 
-	GetHandle := func(id string) (*qdb.HandleType, error) {
+		// This is always a username:secret_key pair, validated in BearerAuth
+		credentials := strings.Split(string(*principal), ":")
 
-		if tmp, handleFound := tokenToHandle.Get(id); handleFound {
-			handle := tmp.(*qdb.HandleType)
-			return handle, nil
-		} else {
-			err := fmt.Errorf("Token '%s' is not valid", id)
-			log.Print(err.Error())
+		if len(credentials) < 2 {
+			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
+			return nil, errors.New(500, "Invalid principal")
+		}
+		username := credentials[0]
+		secretKey := credentials[1]
+
+		if tmp, handleFound := handleCache.Get(username); handleFound {
+			if handle, ok := tmp.(*qdb.HandleType); ok {
+				api.Logger("Got handle from cache")
+				return handle, nil
+			}
+			api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
+		}
+
+		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+		if err != nil {
 			return nil, err
 		}
+
+		api.Logger("Handle cache miss, got handle from credentials")
+		handleCache.Set(username, handle)
+
+		return handle, nil
 	}
 
 	api.Logger = log.Printf
@@ -76,42 +96,15 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		panic(err)
 	}
 
+	if APIConfig.IsSecurityEnabled() {
+		secret = qdbinterface.MustUnmarshalRSAKeyFromFile(string(APIConfig.TLSCertificateKey))
+	} else {
+		secret = qdbinterface.DefaultPrivateKey
+	}
+
 	api.Logger("version: %s", version)
 
 	clusterURI := APIConfig.ClusterURI
-
-	tokenParser := func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			err := fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
-			api.Logger(err.Error())
-			return nil, err
-		}
-
-		secret := defaultSecret
-		if APIConfig.TLSCertificateKey != "" {
-			secret, err = qdbinterface.CredentialsFromTLS(string(APIConfig.TLSCertificate), string(APIConfig.TLSCertificateKey))
-			if err != nil {
-				api.Logger("Failed to generate secret: %s", err.Error())
-				return nil, err
-			}
-		}
-
-		return secret, nil
-	}
-
-	// Will delete unvalid keys every hour to avoid growing the map too much
-	clearHandles := func() {
-		for range time.Tick(time.Hour * 1) {
-			for kv := range tokenToHandle.Iter() {
-				token := kv.Key
-				parsedToken, _ := jwt.Parse(token, tokenParser)
-				if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
-					tokenToHandle.Remove(token)
-				}
-			}
-		}
-	}
-	go clearHandles()
 
 	// configure the api here
 	api.ServeError = errors.ServeError
@@ -120,24 +113,69 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	api.JSONProducer = runtime.JSONProducer()
 
+	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
+		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
+		if err != nil {
+			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		token, err := jwt.Build(secret, params.Credential.Username, params.Credential.SecretKey)
+		if err != nil {
+			api.Logger("Warning: %s", err.Error())
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		if params.Credential.Username != "" {
+			api.Logger("Logged in user %s", params.Credential.Username)
+		} else {
+			api.Logger("Logged anonymous user")
+		}
+
+		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
+	})
+
 	api.BearerAuth = func(token string) (*models.Principal, error) {
 		if strings.HasPrefix(token, "Bearer ") {
 			token = strings.Replace(token, "Bearer ", "", 1)
-			parsedToken, err := jwt.Parse(token, tokenParser)
-			if _, ok := parsedToken.Claims.(jwt.MapClaims); !ok || (ok && !parsedToken.Valid) {
-				api.Logger("Access attempt with incorrect api key auth: %s", token)
-				return nil, err
-			}
-			t := models.Principal(token)
-			return &t, nil
 		}
-		api.Logger("Access attempt with incorrect api key auth: %s", token)
-		return nil, errors.New(401, "incorrect api key auth")
+
+		credentials, err := jwt.Parse(secret, token)
+		if err != nil {
+			api.Logger("Access attempt with invalid auth token: %s", token)
+			return nil, errors.New(401, "Invalid authentication token")
+		}
+
+		cacheKey := credentials.Username
+		principle := models.Principal(credentials.Username + ":" + credentials.SecretKey)
+
+		now := time.Now()
+
+		if credentials.NotBefore.After(now) {
+			api.Logger("token used before it was valid")
+			return nil, errors.New(401, "Token used before it is active. Please try again later")
+		}
+
+		if now.After(credentials.Expiry) {
+			api.Logger("Token has expired")
+			handleCache.Remove(cacheKey)
+			return nil, errors.New(401, "Token has expired. Please login again")
+		}
+
+		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+			if err != nil {
+				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
+				return nil, errors.New(401, "Incorrect api key auth")
+			}
+			handleCache.Set(cacheKey, handle)
+		}
+
+		return &principle, nil
 	}
 
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
-		signedString := string(*principal)
-		handle, err := GetHandle(signedString)
+		handle, err := GetHandle(principal)
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -148,6 +186,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 				api.Logger("Failed to query: %s", err.Error())
 				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 			}
+
+			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
+				credentials := strings.Split(string(*principal), ":")
+				handleCache.Remove(credentials[0])
+			}
+
 			api.Logger("Failed to query: %s", err.Error())
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -155,8 +199,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
-		signedString := string(*principal)
-		handle, err := GetHandle(signedString)
+		handle, err := GetHandle(principal)
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -170,14 +213,18 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
-		signedString := string(*principal)
-		handle, err := GetHandle(signedString)
+		handle, err := GetHandle(principal)
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
 		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil {
+			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
+				credentials := strings.Split(string(*principal), ":")
+				handleCache.Remove(credentials[0])
+			}
+
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -186,46 +233,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 		return cluster.NewGetNodeNotFound()
-	})
-
-	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
-		if err != nil {
-			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-
-		expiresAt := time.Now().Add(time.Duration(12) * time.Hour).Unix()
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &jwt.StandardClaims{
-			Id:        xid.New().String(),
-			ExpiresAt: int64(expiresAt),
-		})
-
-		secret := defaultSecret
-		if APIConfig.TLSCertificateKey != "" {
-			secret, err = qdbinterface.CredentialsFromTLS(string(APIConfig.TLSCertificate), string(APIConfig.TLSCertificateKey))
-			if err != nil {
-				err = fmt.Errorf("Could not retrieve tls key from file: %s", APIConfig.TLSCertificateKey)
-				api.Logger("Warning: %s", err.Error())
-				return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
-		}
-
-		signedString, err := token.SignedString(secret)
-		if err != nil {
-			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-
-		tokenToHandle.Set(signedString, handle)
-
-		if params.Credential.Username != "" {
-			api.Logger("Logged in user %s", params.Credential.Username)
-		} else {
-			api.Logger("Logged anonymous user")
-		}
-
-		return operations.NewLoginOK().WithPayload(&models.Token{Token: signedString})
 	})
 
 	api.ServerShutdown = func() {}
