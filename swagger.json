@@ -29,6 +29,82 @@
   ],
   "basePath": "/api",
   "paths": {
+    "/prometheus/read": {
+      "post": {
+        "operationId": "prometheusRead",
+        "description": "The read endpoint for remote Prometheus storage",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "body",
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            },
+            "required": true,
+            "description": "The samples in snappy-encoded protocol buffer format sent from Prometheus"
+          }
+        ],
+        "security": [],
+        "consumes": [
+          "application/x-protobuf"
+        ],
+        "produces": [
+          "application/x-protobuf"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "500": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Internal Error."
+          }
+        }
+      }
+    },
+    "/prometheus/write": {
+      "post": {
+        "operationId": "prometheusWrite",
+        "description": "The write endpoint for remote Prometheus storage",
+        "parameters": [
+          {
+            "name": "timeseries",
+            "in": "body",
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            },
+            "required": true,
+            "description": "The samples in snappy-encoded protocol buffer format sent from Prometheus"
+          }
+        ],
+        "security": [],
+        "consumes": [
+          "application/x-protobuf"
+        ],
+        "produces": [
+          "application/x-protobuf"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Internal Error."
+          }
+        }
+      }
+    },
     "/login": {
       "post": {
         "operationId": "login",
