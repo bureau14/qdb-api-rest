@@ -3,9 +3,12 @@
 package restapi
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -19,10 +22,16 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
 
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+
+	"github.com/prometheus/prometheus/prompb"
+
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/config"
 	"github.com/bureau14/qdb-api-rest/jwt"
 	"github.com/bureau14/qdb-api-rest/models"
+	"github.com/bureau14/qdb-api-rest/prometheus"
 	"github.com/bureau14/qdb-api-rest/qdbinterface"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
@@ -41,6 +50,18 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 var secret *rsa.PrivateKey
 
 const version string = "3.5.0master"
+
+func dummyConsumer() runtime.Consumer {
+	return runtime.ConsumerFunc(func(reader io.Reader, data interface{}) error {
+		return nil
+	})
+}
+
+func dummyProducer() runtime.Producer {
+	return runtime.ProducerFunc(func(writer io.Writer, data interface{}) error {
+		return nil
+	})
+}
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
@@ -110,8 +131,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	api.ServeError = errors.ServeError
 
 	api.JSONConsumer = runtime.JSONConsumer()
-
 	api.JSONProducer = runtime.JSONProducer()
+
+	// Keep go-swagger happy for now
+	api.ProtobufConsumer = dummyConsumer()
+	api.ProtobufProducer = dummyProducer()
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
 		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
@@ -233,6 +257,80 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 		return cluster.NewGetNodeNotFound()
+	})
+
+	// Prometheus Integration
+	client := prometheus.Client{ClusterURI: clusterURI}
+
+	api.PrometheusWriteHandler = operations.PrometheusWriteHandlerFunc(func(params operations.PrometheusWriteParams) middleware.Responder {
+		compressed, err := ioutil.ReadAll(params.Timeseries)
+		if err != nil {
+			api.Logger("Failed to read payload: %s", err.Error())
+			return operations.NewPrometheusWriteInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		reqBuf, err := snappy.Decode(nil, compressed)
+		if err != nil {
+			api.Logger("Failed to snappy decode payload: %s", err.Error())
+			return operations.NewPrometheusWriteInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		var req prompb.WriteRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			api.Logger("Failed to decompress snappy payload: %s", err.Error())
+			return operations.NewPrometheusWriteInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		err = client.Write(req.Timeseries)
+
+		if err != nil {
+			return operations.NewPrometheusWriteInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		return operations.NewPrometheusWriteOK()
+	})
+
+	api.PrometheusReadHandler = operations.PrometheusReadHandlerFunc(func(params operations.PrometheusReadParams) middleware.Responder {
+		compressed, err := ioutil.ReadAll(params.HTTPRequest.Body)
+		if err != nil {
+			api.Logger("Failed to read payload: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		reqBuf, err := snappy.Decode(nil, compressed)
+		if err != nil {
+			api.Logger("Failed to snappy decode payload: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		var req prompb.ReadRequest
+		if err := proto.Unmarshal(reqBuf, &req); err != nil {
+			api.Logger("Failed to decompress snappy payload: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		var resp *prompb.ReadResponse
+		resp, err = client.Read(&req)
+		if err != nil {
+			api.Logger("Failed to read samples: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		data, err := proto.Marshal(resp)
+		if err != nil {
+			api.Logger("Failed to marshal protocol buffer response: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		compressed = snappy.Encode(nil, data)
+		if err != nil {
+			api.Logger("Failed to snappy compress data: %s", err.Error())
+			return operations.NewPrometheusReadInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		readCloser := ioutil.NopCloser(bytes.NewReader(compressed))
+
+		return operations.NewPrometheusReadOK().WithPayload(readCloser)
 	})
 
 	api.ServerShutdown = func() {}
