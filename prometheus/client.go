@@ -2,7 +2,6 @@ package prometheus
 
 import (
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
@@ -20,7 +19,7 @@ import (
 type Client struct {
 	ClusterURI string
 	Handle     *qdb.HandleType
-	Logger     io.Writer
+	Logger     func(string, ...interface{})
 }
 
 // Write takes a slice prometheus Timeseries and writes them to QuasarDB
@@ -200,12 +199,14 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 	for _, query := range req.Queries {
 		qdbQuery, name, err := buildQuasarDbQuery(query)
 		if err != nil {
-			return nil, nil
+			c.Logger("Failed to build query: %+v", *query)
+			return nil, err
 		}
 
 		q := handle.Query(qdbQuery)
 		result, err := q.Execute()
 		if err != nil {
+			c.Logger("Failed to execute query: %s", qdbQuery)
 			return nil, err
 		}
 		defer handle.Release(unsafe.Pointer(result))
@@ -314,10 +315,10 @@ func buildQuasarDbQuery(q *prom.Query) (string, string, error) {
 		} else {
 			switch matcher.Type {
 			case prom.LabelMatcher_EQ:
-				condition := fmt.Sprintf("WHERE %s = '%s'", matcher.Name, matcher.Value)
+				condition := fmt.Sprintf("%s = '%s'", matcher.Name, matcher.Value)
 				whereConditions = append(whereConditions, condition)
 			case prom.LabelMatcher_NEQ:
-				condition := fmt.Sprintf("WHERE %s != '%s'", matcher.Name, matcher.Value)
+				condition := fmt.Sprintf("%s != '%s'", matcher.Name, matcher.Value)
 				whereConditions = append(whereConditions, condition)
 			default:
 				return query, metricName, fmt.Errorf("unknown metric type %v", matcher.Type)
@@ -331,7 +332,7 @@ func buildQuasarDbQuery(q *prom.Query) (string, string, error) {
 
 	var where string
 	if len(whereConditions) > 0 {
-		where = fmt.Sprintf(" WHERE %s", strings.Join(whereConditions, " AND "))
+		where = fmt.Sprintf(" WHERE %s ", strings.Join(whereConditions, " AND "))
 	}
 
 	query = fmt.Sprintf("SELECT * FROM %s%s", tableName, where)

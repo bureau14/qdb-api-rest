@@ -260,7 +260,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	// Prometheus Integration
-	client := prometheus.Client{ClusterURI: clusterURI}
+	client := prometheus.Client{ClusterURI: clusterURI, Logger: api.Logger}
 
 	api.PrometheusWriteHandler = operations.PrometheusWriteHandlerFunc(func(params operations.PrometheusWriteParams) middleware.Responder {
 		compressed, err := ioutil.ReadAll(params.Timeseries)
@@ -284,6 +284,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		err = client.Write(req.Timeseries)
 
 		if err != nil {
+			api.Logger("Failed to write samples: %s", err.Error())
 			return operations.NewPrometheusWriteInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
@@ -329,6 +330,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		readCloser := ioutil.NopCloser(bytes.NewReader(compressed))
+
+		api.Logger("Successfully read prometheus request")
 
 		return operations.NewPrometheusReadOK().WithPayload(readCloser)
 	})
