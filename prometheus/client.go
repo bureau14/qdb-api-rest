@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -20,6 +21,7 @@ type Client struct {
 	ClusterURI string
 	Handle     *qdb.HandleType
 	Logger     func(string, ...interface{})
+	mutex      sync.Mutex
 }
 
 // Write takes a slice prometheus Timeseries and writes them to QuasarDB
@@ -98,6 +100,7 @@ func (c *Client) Write(tses []prom.TimeSeries) error {
 
 // GetHandle caches and returns an anonymous user qdb handle
 func (c *Client) GetHandle() (*qdb.HandleType, error) {
+	c.mutex.Lock()
 	if c.Handle == nil {
 		handle, err := qdb.SetupHandle(c.ClusterURI, time.Duration(12)*time.Hour)
 		if err != nil {
@@ -105,6 +108,7 @@ func (c *Client) GetHandle() (*qdb.HandleType, error) {
 		}
 		c.Handle = &handle
 	}
+	c.mutex.Unlock()
 
 	return c.Handle, nil
 }
