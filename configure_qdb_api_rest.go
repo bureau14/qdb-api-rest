@@ -39,7 +39,7 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 
 var defaultSecret = []byte("default_secret")
 
-const version string = "3.4.2"
+const version string = "3.4.3"
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
