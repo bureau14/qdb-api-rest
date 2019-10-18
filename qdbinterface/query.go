@@ -1,6 +1,7 @@
 package qdbinterface
 
 import (
+	"fmt"
 	"strings"
 
 	qdb "github.com/bureau14/qdb-api-go"
@@ -38,42 +39,79 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 		return nil, err
 	}
 
-	tableCount := int64(0)
+	var tableMap map[string][]*models.QueryColumn
+	tableNames := make([]string, 0, 10)
 
-	if results != nil {
-		tableCount = results.TablesCount()
+	// get table names
+	for i, row := range results.Rows() {
+		columns := results.Columns(row)
+		b, err := columns[1].GetBlob()
+		if err != nil {
+			fmt.Printf("Failed to get column name. Row: %v", i)
+			continue
+		}
+		tableNames = append(tableNames, string(b))
 	}
 
-	queryResult.Tables = make([]*models.QueryTable, tableCount)
-	if tableCount != 0 {
-		for tableIdx, table := range results.Tables() {
-			queryTable := models.QueryTable{}
-			queryTable.Name = table.Name()
-			queryTable.Columns = make([]*models.QueryColumn, table.ColumnsCount())
-			columns := make([]models.QueryColumn, table.ColumnsCount())
-
-			for idx, colName := range table.ColumnsNames() {
-				columns[idx].Name = colName
-				columns[idx].Data = make([]interface{}, len(table.Rows()))
+	// initialise results container
+	for _, name := range tableNames {
+		tableMap[name] = make([]*models.QueryColumn, results.ColumnsCount()-1)
+		for i, colName := range results.ColumnsNames() {
+			switch i {
+			case 0:
+				tableMap[name][i].Name = colName
+				tableMap[name][i].Data = make([]interface{}, 0, results.RowCount())
+			case 1:
+				continue
+			default:
+				tableMap[name][i-1].Name = colName
+				tableMap[name][i-1].Data = make([]interface{}, 0, results.RowCount())
 			}
-			for rowIdx, row := range table.Rows() {
-				for colIdx, col := range table.Columns(row) {
-					value := col.Get().Value()
-					if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
-						columns[colIdx].Data[rowIdx] = "(void)"
-					} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
-						columns[colIdx].Data[rowIdx] = "(undefined)"
-					} else {
-						columns[colIdx].Data[rowIdx] = value
-					}
-				}
-			}
-			for idx := range columns {
-				queryTable.Columns[idx] = &columns[idx]
-			}
-			queryResult.Tables[tableIdx] = &queryTable
 		}
 	}
+
+	// set the values from the results
+	for _, row := range results.Rows() {
+		columns := results.Columns(row)
+		b, err := columns[1].GetBlob()
+		if err != nil {
+			continue
+		}
+
+		name := string(b)
+
+		for j, col := range columns {
+			switch j {
+			case 0:
+				value := col.Get().Value()
+				if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
+					tableMap[name][j].Data = append(tableMap[name][j].Data, "(void)")
+				} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
+					tableMap[name][j].Data = append(tableMap[name][j].Data, "(undefined)")
+				} else {
+					tableMap[name][j].Data = append(tableMap[name][j].Data, value)
+				}
+			case 1:
+				continue
+			default:
+				value := col.Get().Value()
+				if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
+					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(void)")
+				} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
+					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(undefined)")
+				} else {
+					tableMap[name][j-1].Data = append(tableMap[name][j].Data, value)
+				}
+			}
+		}
+	}
+
+	// Set the table results
+	queryResult.Tables = make([]*models.QueryTable, len(tableNames))
+	for i, name := range tableNames {
+		queryResult.Tables[i] = &models.QueryTable{Name: name, Columns: tableMap[name]}
+	}
+
 	return &queryResult, nil
 }
 

@@ -208,15 +208,14 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 		}
 
 		q := handle.Query(qdbQuery)
-		result, err := q.Execute()
+		table, err := q.Execute()
 		if err != nil {
 			c.Logger("Failed to execute query: %s", qdbQuery)
 			return nil, err
 		}
-		defer handle.Release(unsafe.Pointer(result))
+		defer handle.Release(unsafe.Pointer(table))
 
 		// query only ever has one table result
-		table := result.Tables()[0]
 		colNames := table.ColumnsNames()
 
 		for _, row := range table.Rows() {
@@ -241,7 +240,7 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 						return nil, err
 					}
 					value = double
-				} else {
+				} else if colName != "$table" {
 					blob, err := columns[i].GetBlob()
 					if err == nil {
 						labels[colName] = string(blob)
