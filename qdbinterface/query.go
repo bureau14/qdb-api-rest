@@ -39,7 +39,7 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 		return nil, err
 	}
 
-	var tableMap map[string][]*models.QueryColumn
+	tableMap := make(map[string][]*models.QueryColumn)
 	tableNames := make([]string, 0, 10)
 
 	// get table names
@@ -56,6 +56,9 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 	// initialise results container
 	for _, name := range tableNames {
 		tableMap[name] = make([]*models.QueryColumn, results.ColumnsCount()-1)
+		for i := range tableMap[name] {
+			tableMap[name][i] = &models.QueryColumn{}
+		}
 		for i, colName := range results.ColumnsNames() {
 			switch i {
 			case 0:
@@ -96,11 +99,11 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 			default:
 				value := col.Get().Value()
 				if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(void)")
+					tableMap[name][j-1].Data = append(tableMap[name][j-1].Data, "(void)")
 				} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(undefined)")
+					tableMap[name][j-1].Data = append(tableMap[name][j-1].Data, "(undefined)")
 				} else {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, value)
+					tableMap[name][j-1].Data = append(tableMap[name][j-1].Data, value)
 				}
 			}
 		}
