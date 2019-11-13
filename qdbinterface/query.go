@@ -1,7 +1,6 @@
 package qdbinterface
 
 import (
-	"fmt"
 	"strings"
 
 	qdb "github.com/bureau14/qdb-api-go"
@@ -39,78 +38,37 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 		return nil, err
 	}
 
-	var tableMap map[string][]*models.QueryColumn
-	tableNames := make([]string, 0, 10)
-
-	// get table names
-	for i, row := range results.Rows() {
-		columns := results.Columns(row)
-		b, err := columns[1].GetBlob()
-		if err != nil {
-			fmt.Printf("Failed to get column name. Row: %v", i)
-			continue
-		}
-		tableNames = append(tableNames, string(b))
+	// initial columns
+	columns := make([]*models.QueryColumn, results.ColumnsCount())
+	for i := range columns {
+		columns[i] = &models.QueryColumn{}
 	}
 
-	// initialise results container
-	for _, name := range tableNames {
-		tableMap[name] = make([]*models.QueryColumn, results.ColumnsCount()-1)
-		for i, colName := range results.ColumnsNames() {
-			switch i {
-			case 0:
-				tableMap[name][i].Name = colName
-				tableMap[name][i].Data = make([]interface{}, 0, results.RowCount())
-			case 1:
-				continue
-			default:
-				tableMap[name][i-1].Name = colName
-				tableMap[name][i-1].Data = make([]interface{}, 0, results.RowCount())
-			}
-		}
+	// set table column names and initialise data
+	for i, colName := range results.ColumnsNames() {
+		columns[i].Name = colName
+		columns[i].Data = make([]interface{}, 0, results.RowCount())
 	}
 
-	// set the values from the results
+	// set column data
 	for _, row := range results.Rows() {
-		columns := results.Columns(row)
-		b, err := columns[1].GetBlob()
-		if err != nil {
-			continue
-		}
+		cols := results.Columns(row)
 
-		name := string(b)
-
-		for j, col := range columns {
-			switch j {
-			case 0:
-				value := col.Get().Value()
-				if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
-					tableMap[name][j].Data = append(tableMap[name][j].Data, "(void)")
-				} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
-					tableMap[name][j].Data = append(tableMap[name][j].Data, "(undefined)")
-				} else {
-					tableMap[name][j].Data = append(tableMap[name][j].Data, value)
-				}
-			case 1:
-				continue
-			default:
-				value := col.Get().Value()
-				if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(void)")
-				} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, "(undefined)")
-				} else {
-					tableMap[name][j-1].Data = append(tableMap[name][j].Data, value)
-				}
+		for i, col := range cols {
+			value := col.Get().Value()
+			if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
+				columns[i].Data = append(columns[i].Data, "(void)")
+			} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
+				columns[i].Data = append(columns[i].Data, "(undefined)")
+			} else {
+				columns[i].Data = append(columns[i].Data, value)
 			}
 		}
 	}
 
 	// Set the table results
-	queryResult.Tables = make([]*models.QueryTable, len(tableNames))
-	for i, name := range tableNames {
-		queryResult.Tables[i] = &models.QueryTable{Name: name, Columns: tableMap[name]}
-	}
+	queryResult.Tables = make([]*models.QueryTable, 1)
+	queryResult.Tables[0] = &models.QueryTable{Name: "", Columns: columns}
 
 	return &queryResult, nil
 }
