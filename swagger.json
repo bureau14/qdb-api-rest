@@ -20,11 +20,19 @@
       "type": "apiKey",
       "name": "Authorization",
       "in": "header"
+    },
+    "UrlParam": {
+      "type": "apiKey",
+      "name": "token",
+      "in": "query"
     }
   },
   "security": [
     {
       "Bearer": []
+    },
+    { 
+      "UrlParam": []
     }
   ],
   "basePath": "/api",
@@ -198,6 +206,50 @@
           "query"
         ],
         "summary": "Query the database"
+      }
+    },
+    "/tables/{name}.csv": {
+      "get": {
+        "operationId": "get-table-csv",
+        "summary": "Fetch the rows of a table between a given date range and return as csv",
+        "produces": [
+          "text/csv"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "type": "string",
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "type": "string",
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "type": "string",
+            "required": true
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request."
+          },
+          "500": {
+            "description": "Internal Error."
+          },
+          "200": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            },
+            "description": "Successful operation"
+          }
+        }
       }
     },
     "/cluster": {

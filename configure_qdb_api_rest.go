@@ -51,6 +51,26 @@ var secret *rsa.PrivateKey
 
 const version string = "3.5.0master"
 
+func excelSerialNumber(t time.Time) float64 {
+	return (float64(t.UTC().Unix()) / 86400) + 25569
+}
+
+func chunkRange(start time.Time, end time.Time) []qdb.TsRange {
+	var timePoints []time.Time
+
+	for t := start; t.Before(end); t = t.Add(4 * time.Hour) {
+		timePoints = append(timePoints, t)
+	}
+
+	chunks := make([]qdb.TsRange, 0, len(timePoints)-1)
+
+	for i := 0; i < len(timePoints)-1; i++ {
+		chunks = append(chunks, qdb.NewRange(timePoints[i], timePoints[i+1]))
+	}
+
+	return chunks
+}
+
 func dummyConsumer() runtime.Consumer {
 	return runtime.ConsumerFunc(func(reader io.Reader, data interface{}) error {
 		return nil
@@ -137,6 +157,18 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	api.ProtobufConsumer = dummyConsumer()
 	api.ProtobufProducer = dummyProducer()
 
+	api.CsvProducer = runtime.ProducerFunc(func(w io.Writer, data interface{}) error {
+		api.Logger("producing csv")
+		r, ok := data.(io.ReadCloser)
+		if !ok {
+			api.Logger("Csv not receiving a reader closer")
+			return fmt.Errorf("Csv not receiving a reader closer")
+		} else {
+			_, err = io.Copy(w, r)
+			return err
+		}
+	})
+
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
 		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
 		if err != nil {
@@ -160,10 +192,47 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.BearerAuth = func(token string) (*models.Principal, error) {
+		api.Logger("Authorising from Authorisation header")
 		if strings.HasPrefix(token, "Bearer ") {
 			token = strings.Replace(token, "Bearer ", "", 1)
 		}
 
+		credentials, err := jwt.Parse(secret, token)
+		if err != nil {
+			api.Logger("Access attempt with invalid auth token: %s", token)
+			return nil, errors.New(401, "Invalid authentication token")
+		}
+
+		cacheKey := credentials.Username
+		principle := models.Principal(credentials.Username + ":" + credentials.SecretKey)
+
+		now := time.Now()
+
+		if credentials.NotBefore.After(now) {
+			api.Logger("token used before it was valid")
+			return nil, errors.New(401, "Token used before it is active. Please try again later")
+		}
+
+		if now.After(credentials.Expiry) {
+			api.Logger("Token has expired")
+			handleCache.Remove(cacheKey)
+			return nil, errors.New(401, "Token has expired. Please login again")
+		}
+
+		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+			if err != nil {
+				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
+				return nil, errors.New(401, "Incorrect api key auth")
+			}
+			handleCache.Set(cacheKey, handle)
+		}
+
+		return &principle, nil
+	}
+
+	api.URLParamAuth = func(token string) (*models.Principal, error) {
+		api.Logger("Authorising from url parameter")
 		credentials, err := jwt.Parse(secret, token)
 		if err != nil {
 			api.Logger("Access attempt with invalid auth token: %s", token)
@@ -220,6 +289,154 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return query.NewPostQueryOK().WithPayload(result)
+	})
+
+	api.GetTableCsvHandler = operations.GetTableCsvHandlerFunc(func(params operations.GetTableCsvParams, principal *models.Principal) middleware.Responder {
+		name := params.Name
+		start, err := time.Parse(time.RFC3339Nano, params.Start)
+		if err != nil {
+			api.Logger("Failed to parse start timestamp: %s", params.Start)
+			return operations.NewGetTableCsvBadRequest()
+		}
+		end, err := time.Parse(time.RFC3339Nano, params.End)
+		if err != nil {
+			api.Logger("Failed to parse end timestamp: %s", params.End)
+			return operations.NewGetTableCsvBadRequest()
+		}
+
+		api.Logger("name: %s, start: %s, end: %s", name, start, end)
+
+		// Liquidity Edge specific, parameterize this later
+		leDateFormat := "2006-01-02"
+		leTimeFormat := "15:04:05.999999999"
+		var leDateColumnIndex int
+		var leTimeColumnIndex int
+		var leDateColumnLabel string
+		var leTimeColumnLabel string
+
+		if name == "currenex_trade_reports" {
+			leDateColumnIndex = 12
+			leTimeColumnIndex = 23
+			leDateColumnLabel = "Trade Date"
+			leTimeColumnLabel = "Trade Time"
+		} else {
+			leDateColumnIndex = 0
+			leTimeColumnIndex = 1
+			leDateColumnLabel = "Date"
+			leTimeColumnLabel = "Time"
+		}
+
+		handle, err := GetHandle(principal)
+		if err != nil {
+			api.Logger("Failed to get handle from token: %s", err.Error())
+			return operations.NewGetTableCsvInternalServerError()
+		}
+
+		table := handle.Timeseries(name)
+		columnsInfo, err := table.ColumnsInfo()
+
+		if err != nil {
+			api.Logger("Failed to get table column info: %s", err.Error())
+			return operations.NewGetTableCsvInternalServerError()
+		}
+
+		// We add two columns by splitting timestamp into date and time columns
+		columnsLength := len(columnsInfo) + 2
+		columnNames := make([]string, 0, columnsLength)
+		columnTypes := make([]qdb.TsColumnType, 0, columnsLength)
+
+		for i, j := 0, 0; i < columnsLength; i++ {
+			if i == leDateColumnIndex {
+				columnNames = append(columnNames, leDateColumnLabel)
+				columnTypes = append(columnTypes, qdb.TsColumnUninitialized)
+			} else if i == leTimeColumnIndex {
+				columnNames = append(columnNames, leTimeColumnLabel)
+				columnTypes = append(columnTypes, qdb.TsColumnUninitialized)
+			} else {
+				columnNames = append(columnNames, columnsInfo[j].Name())
+				columnTypes = append(columnTypes, columnsInfo[j].Type())
+				j++
+			}
+		}
+
+		rangeChunks := chunkRange(start, end)
+
+		pr, pw := io.Pipe()
+		result := ioutil.NopCloser(pr)
+
+		go func() {
+			defer pw.Close()
+			fmt.Fprintln(pw, strings.Join(columnNames, ";"))
+
+			var rowNumber int64
+			var processingDuration time.Duration
+			var writingDuration time.Duration
+
+			for _, chunk := range rangeChunks {
+				api.Logger("Processed %v rows", rowNumber)
+				bulk, err := table.Bulk(columnsInfo...)
+				if err != nil {
+					api.Logger("Failed to get bulk from table: %s", err.Error())
+					continue
+				}
+
+				err = bulk.GetRanges(chunk)
+				if err != nil {
+					api.Logger("failed to get chunk %v %s", chunk, err.Error())
+					bulk.Release()
+					continue
+				}
+
+				startTime := time.Now()
+				for {
+					timestamp, err := bulk.NextRow()
+					if err != nil {
+						break
+					}
+
+					row := make([]string, len(columnTypes))
+
+					rowNumber++
+
+					for i, colType := range columnTypes {
+						if i == leDateColumnIndex {
+							row[i] = timestamp.UTC().Format(leDateFormat)
+						} else if i == leTimeColumnIndex {
+							row[i] = timestamp.UTC().Format(leTimeFormat)
+						} else if colType == qdb.TsColumnBlob {
+							b, err := bulk.GetBlob()
+							if err == nil {
+								row[i] = string(b)
+							}
+						} else if colType == qdb.TsColumnDouble {
+							d, err := bulk.GetDouble()
+							if err == nil {
+								row[i] = fmt.Sprintf("%v", d)
+							}
+						} else if colType == qdb.TsColumnInt64 {
+							i64, err := bulk.GetInt64()
+							if err == nil {
+								row[i] = fmt.Sprintf("%v", i64)
+							}
+						} else if colType == qdb.TsColumnTimestamp {
+							t, err := bulk.GetTimestamp()
+							if err == nil {
+								row[i] = t.UTC().Format(leDateFormat)
+							}
+						}
+					}
+					startWriting := time.Now()
+					fmt.Fprintln(pw, strings.Join(row, ";"))
+					writingDuration += time.Since(startWriting)
+				}
+				bulk.Release()
+				processingDuration += time.Since(startTime)
+			}
+
+			fmt.Printf("%v\n", processingDuration)
+			fmt.Printf("%v\n", writingDuration)
+		}()
+		return operations.NewGetTableCsvOK().WithPayload(result)
 	})
 
 	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
