@@ -163,10 +163,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if !ok {
 			api.Logger("Csv not receiving a reader closer")
 			return fmt.Errorf("Csv not receiving a reader closer")
-		} else {
-			_, err = io.Copy(w, r)
-			return err
 		}
+		_, err = io.Copy(w, r)
+		return err
+
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
