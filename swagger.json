@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "QuasarDB API",
-    "version": "3.5.0master",
+    "version": "3.5.0-rc2",
     "description": "Find out more at https://doc.quasardb.net"
   },
   "produces": [
