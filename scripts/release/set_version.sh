@@ -29,4 +29,4 @@ cd $(dirname -- $0)
 cd ${PWD}/../..
 
 sed -i -e 's/"version": *"[^"]*",/"version": "'"${FULL_XYZ_VERSION}"'",/' swagger.json
-sed -i -e 's/const version string = .*/const version string = "'${FULL_XYZ_VERSION}'"/' configure_qdb_api_rest.go
+sed -i -e 's/const version string = .*/const version string = "'${FULL_XYZ_VERSION}'"/' restapi/configure_qdb_api_rest.go
