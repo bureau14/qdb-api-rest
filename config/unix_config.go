@@ -7,7 +7,7 @@ var Secured = Config{
 	ClusterPublicKeyFile: "/usr/share/qdb/cluster_public.key",
 	TLSCertificate:       "/etc/qdb/qdb_rest.cert.pem",
 	TLSCertificateKey:    "/etc/qdb/qdb_rest.key.pem",
-	TLSPort:              40493,
+	TLSPort:              40443,
 }
 
 // FilledDefaultConfig for unix
@@ -17,7 +17,7 @@ var FilledDefaultConfig = Config{
 	ClusterPublicKeyFile: "",
 	TLSCertificate:       "",
 	TLSCertificateKey:    "",
-	TLSPort:              40493,
+	TLSPort:              40443,
 	Host:                 "localhost",
 	Port:                 40080,
 	Log:                  "/var/log/qdb/qdb_rest.log",

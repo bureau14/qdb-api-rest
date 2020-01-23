@@ -7,7 +7,7 @@ var Secured = Config{
 	ClusterPublicKeyFile: "C:/Program Files/quasardb/share/cluster_public.key",
 	TLSCertificate:       "C:/Program Files/quasardb/conf/qdb_rest.cert.pem",
 	TLSCertificateKey:    "C:/Program Files/quasardb/conf/qdb_rest.key.pem",
-	TLSPort:              40493,
+	TLSPort:              40443,
 }
 
 // FilledDefaultConfig for windows
@@ -17,7 +17,7 @@ var FilledDefaultConfig = Config{
 	ClusterPublicKeyFile: "",
 	TLSCertificate:       "",
 	TLSCertificateKey:    "",
-	TLSPort:              40493,
+	TLSPort:              40443,
 	Host:                 "localhost",
 	Port:                 40080,
 	Log:                  "C:/Program Files/quasardb/log/qdb_rest.log",
