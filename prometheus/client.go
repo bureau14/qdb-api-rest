@@ -139,7 +139,7 @@ func (c *Client) EnsureTable(ts *prom.TimeSeries) error {
 	}
 
 	table := handle.Timeseries(fmt.Sprintf("$qdb.prom.%s", tableName))
-	doubleCols, blobCols, _, _, err := table.Columns()
+	doubleCols, blobCols, _, _, _, err := table.Columns()
 
 	// Unexpected error
 	if err != nil && err != qdb.ErrAliasNotFound {

@@ -260,7 +260,7 @@ func TestEnsureMetricExistingTableMissingColumns(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	doubleCols, blobCols, _, _, err := table.Columns()
+	doubleCols, blobCols, _, _, _, err := table.Columns()
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")

@@ -418,6 +418,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 							if err == nil {
 								row[i] = fmt.Sprintf("%v", i64)
 							}
+						} else if colType == qdb.TsColumnString {
+							s, err := bulk.GetString()
+							if err == nil {
+								row[i] = fmt.Sprintf("%s", s)
+							}
 						} else if colType == qdb.TsColumnTimestamp {
 							t, err := bulk.GetTimestamp()
 							if err == nil {
