@@ -10,7 +10,7 @@ Find out more at https://doc.quasardb.net
       https
     Host: localhost
     BasePath: /api
-    Version: 3.7.0-nightly.1
+    Version: 3.8.0-nightly.0
 
     Consumes:
     - application/json
