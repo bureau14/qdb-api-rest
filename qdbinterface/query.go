@@ -38,6 +38,12 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 		return nil, err
 	}
 
+	// results RowCount is the only function that does not access the underlying
+	// pointer, at the moment it's the only safe way to check for nil return
+	if results.RowCount() == 0 {
+		return &queryResult, nil
+	}
+
 	// initial columns
 	columns := make([]*models.QueryColumn, results.ColumnsCount())
 	for i := range columns {
