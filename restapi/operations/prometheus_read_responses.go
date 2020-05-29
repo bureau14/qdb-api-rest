@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-openapi/runtime"
 
-	models "github.com/bureau14/qdb-api-rest/models"
+	"github.com/bureau14/qdb-api-rest/models"
 )
 
 // PrometheusReadOKCode is the HTTP code returned for type PrometheusReadOK
