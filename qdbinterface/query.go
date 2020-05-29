@@ -62,12 +62,29 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 
 		for i, col := range cols {
 			value := col.Get().Value()
-			if col.Get().Type() == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
+			colType := col.Get().Type()
+			if colType == qdb.QueryResultTimestamp && value == qdb.MinTimespec() {
 				columns[i].Data = append(columns[i].Data, "(void)")
-			} else if col.Get().Type() == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
+			} else if colType == qdb.QueryResultInt64 && value == qdb.Int64Undefined() {
 				columns[i].Data = append(columns[i].Data, "(undefined)")
 			} else {
 				columns[i].Data = append(columns[i].Data, value)
+				switch colType {
+				case qdb.QueryResultBlob:
+					columns[i].Type = "blob"
+				case qdb.QueryResultDouble:
+					columns[i].Type = "double"
+				case qdb.QueryResultInt64:
+					columns[i].Type = "int64"
+				case qdb.QueryResultString:
+					columns[i].Type = "string"
+				case qdb.QueryResultTimestamp:
+					columns[i].Type = "timestamp"
+				case qdb.QueryResultCount:
+					columns[i].Type = "count"
+				case qdb.QueryResultNone:
+					columns[i].Type = "none"
+				}
 			}
 		}
 	}

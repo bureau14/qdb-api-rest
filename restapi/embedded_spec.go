@@ -473,6 +473,9 @@ func init() {
         },
         "name": {
           "type": "string"
+        },
+        "type": {
+          "type": "string"
         }
       }
     },
@@ -1004,6 +1007,9 @@ func init() {
           }
         },
         "name": {
+          "type": "string"
+        },
+        "type": {
           "type": "string"
         }
       }
