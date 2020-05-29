@@ -526,10 +526,10 @@ func init() {
   },
   "security": [
     {
-      "Bearer": null
+      "Bearer": []
     },
     {
-      "UrlParam": null
+      "UrlParam": []
     }
   ],
   "tags": [

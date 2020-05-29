@@ -8,14 +8,14 @@ package models
 import (
 	"encoding/json"
 
-	strfmt "github.com/go-openapi/strfmt"
-
 	"github.com/go-openapi/errors"
+	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 	"github.com/go-openapi/validate"
 )
 
 // Cluster cluster
+//
 // swagger:model Cluster
 type Cluster struct {
 
@@ -170,7 +170,7 @@ const (
 
 // prop value enum
 func (m *Cluster) validateStatusEnum(path, location string, value string) error {
-	if err := validate.Enum(path, location, value, clusterTypeStatusPropEnum); err != nil {
+	if err := validate.EnumCase(path, location, value, clusterTypeStatusPropEnum, true); err != nil {
 		return err
 	}
 	return nil

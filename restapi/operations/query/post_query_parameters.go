@@ -13,7 +13,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 
-	models "github.com/bureau14/qdb-api-rest/models"
+	"github.com/bureau14/qdb-api-rest/models"
 )
 
 // NewPostQueryParams creates a new PostQueryParams object

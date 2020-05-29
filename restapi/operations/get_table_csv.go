@@ -8,9 +8,9 @@ package operations
 import (
 	"net/http"
 
-	middleware "github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/runtime/middleware"
 
-	models "github.com/bureau14/qdb-api-rest/models"
+	"github.com/bureau14/qdb-api-rest/models"
 )
 
 // GetTableCsvHandlerFunc turns a function with the right signature into a get table csv handler
