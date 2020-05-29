@@ -20,6 +20,9 @@ type QueryColumn struct {
 
 	// name
 	Name string `json:"name,omitempty"`
+
+	// type
+	Type string `json:"type,omitempty"`
 }
 
 // Validate validates this query column
