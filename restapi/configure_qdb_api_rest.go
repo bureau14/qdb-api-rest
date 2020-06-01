@@ -49,7 +49,7 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 
 var secret *rsa.PrivateKey
 
-const version string = "3.8.2"
+const version string = "3.8.3"
 
 func excelSerialNumber(t time.Time) float64 {
 	return (float64(t.UTC().Unix()) / 86400) + 25569
