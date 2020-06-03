@@ -23,6 +23,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/models"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/tags"
 )
 
 // NewQdbAPIRestAPI creates a new QdbAPIRest instance
@@ -63,6 +64,9 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		}),
 		GetTableCsvHandler: GetTableCsvHandlerFunc(func(params GetTableCsvParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation GetTableCsv has not yet been implemented")
+		}),
+		TagsGetTagsHandler: tags.GetTagsHandlerFunc(func(params tags.GetTagsParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation tags.GetTags has not yet been implemented")
 		}),
 		LoginHandler: LoginHandlerFunc(func(params LoginParams) middleware.Responder {
 			return middleware.NotImplemented("operation Login has not yet been implemented")
@@ -146,6 +150,8 @@ type QdbAPIRestAPI struct {
 	ClusterGetNodeHandler cluster.GetNodeHandler
 	// GetTableCsvHandler sets the operation handler for the get table csv operation
 	GetTableCsvHandler GetTableCsvHandler
+	// TagsGetTagsHandler sets the operation handler for the get tags operation
+	TagsGetTagsHandler tags.GetTagsHandler
 	// LoginHandler sets the operation handler for the login operation
 	LoginHandler LoginHandler
 	// QueryPostQueryHandler sets the operation handler for the post query operation
@@ -244,6 +250,9 @@ func (o *QdbAPIRestAPI) Validate() error {
 	}
 	if o.GetTableCsvHandler == nil {
 		unregistered = append(unregistered, "GetTableCsvHandler")
+	}
+	if o.TagsGetTagsHandler == nil {
+		unregistered = append(unregistered, "tags.GetTagsHandler")
 	}
 	if o.LoginHandler == nil {
 		unregistered = append(unregistered, "LoginHandler")
@@ -380,6 +389,10 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/tables/{name}.csv"] = NewGetTableCsv(o.context, o.GetTableCsvHandler)
+	if o.handlers["GET"] == nil {
+		o.handlers["GET"] = make(map[string]http.Handler)
+	}
+	o.handlers["GET"]["/tags"] = tags.NewGetTags(o.context, o.TagsGetTagsHandler)
 	if o.handlers["POST"] == nil {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}

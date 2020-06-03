@@ -349,6 +349,61 @@ func init() {
           }
         }
       }
+    },
+    "/tags": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "Query the database for all tag names",
+        "operationId": "get-tags",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "regex",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Operation",
+            "schema": {
+              "$ref": "#/definitions/QueryResult"
+            },
+            "examples": {
+              "application/json": {
+                "tables": [
+                  {
+                    "columns": [
+                      {
+                        "data": [
+                          "tag1",
+                          "tag2"
+                        ],
+                        "name": "tag",
+                        "type": "string"
+                      }
+                    ],
+                    "name": "tags"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          },
+          "500": {
+            "description": "Internal Error.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {
@@ -871,6 +926,61 @@ func init() {
           },
           "500": {
             "description": "Internal Error."
+          }
+        }
+      }
+    },
+    "/tags": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "Query the database for all tag names",
+        "operationId": "get-tags",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "regex",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Operation",
+            "schema": {
+              "$ref": "#/definitions/QueryResult"
+            },
+            "examples": {
+              "application/json": {
+                "tables": [
+                  {
+                    "columns": [
+                      {
+                        "data": [
+                          "tag1",
+                          "tag2"
+                        ],
+                        "name": "tag",
+                        "type": "string"
+                      }
+                    ],
+                    "name": "tags"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          },
+          "500": {
+            "description": "Internal Error.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
           }
         }
       }

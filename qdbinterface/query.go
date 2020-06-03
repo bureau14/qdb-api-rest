@@ -53,6 +53,7 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 	// set table column names and initialise data
 	for i, colName := range results.ColumnsNames() {
 		columns[i].Name = colName
+		columns[i].Type = "none"
 		columns[i].Data = make([]interface{}, 0, results.RowCount())
 	}
 
@@ -82,8 +83,6 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 					columns[i].Type = "timestamp"
 				case qdb.QueryResultCount:
 					columns[i].Type = "count"
-				case qdb.QueryResultNone:
-					columns[i].Type = "none"
 				}
 			}
 		}

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/tags"
 )
 
 //go:generate swagger generate server --target .. --name qdb-api-rest --spec ../swagger.json
@@ -289,6 +291,65 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return query.NewPostQueryOK().WithPayload(result)
+	})
+
+	// Get Tags
+	api.TagsGetTagsHandler = tags.GetTagsHandlerFunc(func(params tags.GetTagsParams, principal *models.Principal) middleware.Responder {
+		// if there is a regex param try and parse it
+		var re *regexp.Regexp
+		if params.Regex != nil {
+			re, err = regexp.Compile(*params.Regex)
+			if err != nil {
+				return tags.NewGetTagsInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+			}
+		}
+
+		// try and get the handle
+		handle, err := GetHandle(principal)
+		if err != nil {
+			return tags.NewGetTagsInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		// try and get all the tags by finding entities tagged with $qdb.tagroot
+		results, err := handle.Find().ExecuteString("find(tag='$qdb.tagroot')")
+		if err != nil {
+			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				api.Logger("Failed to query: %s", err.Error())
+				return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			}
+
+			if err == qdb.ErrAccessDenied {
+				credentials := strings.Split(string(*principal), ":")
+				handleCache.Remove(credentials[0])
+			}
+
+			api.Logger("Failed to query: %s", err.Error())
+			return tags.NewGetTagsInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
+		// build the QueryResult
+		data := make([]interface{}, 0, len(results))
+		// filter the tags by matching the regex if it exists
+		if re != nil {
+			for _, tagName := range results {
+				if re.MatchString(tagName) {
+					data = append(data, tagName)
+				}
+			}
+		} else { // otherwise add all the tags
+			for _, tagName := range results {
+				data = append(data, tagName)
+			}
+		}
+		column := models.QueryColumn{Name: "name", Type: "string", Data: data}
+		columns := make([]*models.QueryColumn, 1)
+		columns[0] = &column
+		table := models.QueryTable{Name: "", Columns: columns}
+		tables := make([]*models.QueryTable, 1)
+		tables[0] = &table
+		queryResult := models.QueryResult{Tables: tables}
+
+		return tags.NewGetTagsOK().WithPayload(&queryResult)
 	})
 
 	api.GetTableCsvHandler = operations.GetTableCsvHandlerFunc(func(params operations.GetTableCsvParams, principal *models.Principal) middleware.Responder {
