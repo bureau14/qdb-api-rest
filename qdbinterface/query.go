@@ -33,6 +33,8 @@ func runFind(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 
 func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) {
 	queryResult := models.QueryResult{}
+	queryResult.Tables = make([]*models.QueryTable, 0, 1)
+
 	results, err := handle.Query(query).Execute()
 	if err != nil {
 		return nil, err
@@ -89,8 +91,7 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 	}
 
 	// Set the table results
-	queryResult.Tables = make([]*models.QueryTable, 1)
-	queryResult.Tables[0] = &models.QueryTable{Name: "", Columns: columns}
+	queryResult.Tables = append(queryResult.Tables, &models.QueryTable{Name: "", Columns: columns})
 
 	return &queryResult, nil
 }
