@@ -208,6 +208,62 @@
         "summary": "Query the database"
       }
     },
+    "/tags": {
+      "get": {
+        "operationId": "get-tags",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "regex",
+            "type": "string",
+            "required": false
+          }
+        ],
+        "responses": {
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Bad Request."
+          },
+          "500": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Internal Error."
+          },
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/QueryResult"
+            },
+            "description": "Successful Operation",
+            "examples": {
+              "application/json": {
+                "tables": [
+                  {
+                    "name": "tags",
+                    "columns": [
+                      {
+                        "name": "tag",
+                        "type": "string",
+                        "data": [
+                          "tag1",
+                          "tag2"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "tags": [
+          "tags"
+        ],
+        "summary": "Query the database for all tag names"
+      }
+    },
     "/tables/{name}.csv": {
       "get": {
         "operationId": "get-table-csv",
