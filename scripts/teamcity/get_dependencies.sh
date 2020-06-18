@@ -32,7 +32,7 @@ case $(uname) in
         ;;
 esac
 
-$SWAGGER generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
+# $SWAGGER generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
 
 go get -d ./...
 go get -d "github.com/bureau14/qdb-api-go"
