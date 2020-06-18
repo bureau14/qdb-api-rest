@@ -53,7 +53,7 @@ func (o *LoginParams) BindRequest(r *http.Request, route *middleware.MatchedRout
 		var body models.Credential
 		if err := route.Consumer.Consume(r.Body, &body); err != nil {
 			if err == io.EOF {
-				res = append(res, errors.Required("credential", "body"))
+				res = append(res, errors.Required("credential", "body", ""))
 			} else {
 				res = append(res, errors.NewParseError("credential", "body", "", err))
 			}
@@ -68,7 +68,7 @@ func (o *LoginParams) BindRequest(r *http.Request, route *middleware.MatchedRout
 			}
 		}
 	} else {
-		res = append(res, errors.Required("credential", "body"))
+		res = append(res, errors.Required("credential", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)

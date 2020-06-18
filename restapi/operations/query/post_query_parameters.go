@@ -53,7 +53,7 @@ func (o *PostQueryParams) BindRequest(r *http.Request, route *middleware.Matched
 		var body models.Query
 		if err := route.Consumer.Consume(r.Body, &body); err != nil {
 			if err == io.EOF {
-				res = append(res, errors.Required("query", "body"))
+				res = append(res, errors.Required("query", "body", ""))
 			} else {
 				res = append(res, errors.NewParseError("query", "body", "", err))
 			}
@@ -68,7 +68,7 @@ func (o *PostQueryParams) BindRequest(r *http.Request, route *middleware.Matched
 			}
 		}
 	} else {
-		res = append(res, errors.Required("query", "body"))
+		res = append(res, errors.Required("query", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
