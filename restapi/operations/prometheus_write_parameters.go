@@ -49,7 +49,7 @@ func (o *PrometheusWriteParams) BindRequest(r *http.Request, route *middleware.M
 	if runtime.HasBody(r) {
 		o.Timeseries = r.Body
 	} else {
-		res = append(res, errors.Required("timeseries", "body"))
+		res = append(res, errors.Required("timeseries", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)

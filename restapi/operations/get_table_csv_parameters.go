@@ -83,7 +83,7 @@ func (o *GetTableCsvParams) BindRequest(r *http.Request, route *middleware.Match
 // bindEnd binds and validates parameter End from query.
 func (o *GetTableCsvParams) bindEnd(rawData []string, hasKey bool, formats strfmt.Registry) error {
 	if !hasKey {
-		return errors.Required("end", "query")
+		return errors.Required("end", "query", rawData)
 	}
 	var raw string
 	if len(rawData) > 0 {
@@ -119,7 +119,7 @@ func (o *GetTableCsvParams) bindName(rawData []string, hasKey bool, formats strf
 // bindStart binds and validates parameter Start from query.
 func (o *GetTableCsvParams) bindStart(rawData []string, hasKey bool, formats strfmt.Registry) error {
 	if !hasKey {
-		return errors.Required("start", "query")
+		return errors.Required("start", "query", rawData)
 	}
 	var raw string
 	if len(rawData) > 0 {

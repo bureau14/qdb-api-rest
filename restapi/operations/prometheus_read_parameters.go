@@ -49,7 +49,7 @@ func (o *PrometheusReadParams) BindRequest(r *http.Request, route *middleware.Ma
 	if runtime.HasBody(r) {
 		o.Query = r.Body
 	} else {
-		res = append(res, errors.Required("query", "body"))
+		res = append(res, errors.Required("query", "body", ""))
 	}
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
