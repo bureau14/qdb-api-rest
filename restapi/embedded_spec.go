@@ -32,7 +32,7 @@ func init() {
   "info": {
     "description": "Find out more at https://doc.quasardb.net",
     "title": "QuasarDB API",
-    "version": "3.8.4"
+    "version": "3.8.5-nightly.0"
   },
   "basePath": "/api",
   "paths": {
@@ -612,7 +612,7 @@ func init() {
   "info": {
     "description": "Find out more at https://doc.quasardb.net",
     "title": "QuasarDB API",
-    "version": "3.8.4"
+    "version": "3.8.5-nightly.0"
   },
   "basePath": "/api",
   "paths": {
