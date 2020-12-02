@@ -131,6 +131,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			APIConfig.Log = ""
 		} else {
 			log.SetOutput(f)
+			qdb.SetLogFile(string(APIConfig.Log))
 		}
 	}
 
