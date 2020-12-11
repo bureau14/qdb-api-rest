@@ -145,7 +145,7 @@ func TestEnsureMetricEmptyTable(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	_, blobCols, _, _, err := table.Columns()
+	_, blobCols, _, _, _, err := table.Columns()
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")
@@ -201,7 +201,7 @@ func TestEnsureMetricExistingTable(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	_, blobCols, _, _, err := table.Columns()
+	_, blobCols, _, _, _, err := table.Columns()
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")
@@ -260,7 +260,7 @@ func TestEnsureMetricExistingTableMissingColumns(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	doubleCols, blobCols, _, _, _, err := table.Columns()
+	doubleCols, blobCols, _, _, _, _, err := table.Columns()
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")
