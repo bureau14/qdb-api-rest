@@ -13,3 +13,4 @@ rest-api.cfg
 test.sh
 tintin.private
 .vscode/
+qdb/
