@@ -84,3 +84,4 @@ The config file need to specify the following values:
 1. host                    - description: "host of the rest api"
 1. port                    - description: "port of the rest api"
 1. assets                  - description: "served assets path"
+1. max_in_buffer_size      - description: "maximum input buffer incomming from the server"
