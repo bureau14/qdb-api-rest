@@ -22,4 +22,5 @@ var FilledDefaultConfig = Config{
 	Port:                 40080,
 	Log:                  "C:/Program Files/quasardb/log/qdb_rest.log",
 	Assets:               "C:/Program Files/quasardb//assets",
+	MaxInBufferSize:      131072000,
 }
