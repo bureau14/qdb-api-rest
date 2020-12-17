@@ -24,6 +24,7 @@ type Config struct {
 	Port                 int            `json:"port" long:"port" description:"The port to listen on for insecure connections, defaults to a random value" env:"PORT"`
 	Log                  flags.Filename `json:"log" long:"log-file" description:"The path to the log file" env:"QDB_REST_LOG_FILE"`
 	Assets               string         `json:"assets" long:"assets-dir" description:"The path to the assets directory you want to be published alongside the rest api" env:"QDB_REST_ASSETS_DIR"`
+	MaxInBufferSize      uint           `json:"max_in_buffer_size" long:"max-in-buffer-size" description:"The maximum input buffer size coming from the server" env:"QDB_MAX_IN_BUFFER_SIZE"`
 
 	ConfigFile  flags.Filename `json:"-" long:"config-file" description:"Config file to setup the rest api"`
 	GenConfig   bool           `json:"-" long:"gen-config" description:"Generate a config"`
@@ -140,6 +141,9 @@ func (c *Config) SetDefaults() {
 	if c.Assets == FilledDefaultConfig.Assets {
 		c.Assets = config.Assets
 	}
+	if c.MaxInBufferSize == FilledDefaultConfig.MaxInBufferSize && config.MaxInBufferSize != 0 {
+		c.MaxInBufferSize = config.MaxInBufferSize
+	}
 
 }
 
@@ -174,22 +178,32 @@ func (c *Config) statFiles() (bool, bool, bool) {
 	return clusterKeyFile, tlsCert, tlsKey
 }
 
+func addError(err error, msg string) error {
+	if err != nil {
+		return fmt.Errorf("%s\n%s", err.Error(), msg)
+	}
+	return fmt.Errorf("%s", msg)
+}
+
 func (c Config) validate() error {
 	c.statFiles()
 	var err error
 	if c.ClusterPublicKeyFile != "" && (c.TLSCertificate == "" || c.TLSCertificateKey == "") {
-		err = fmt.Errorf("a secured cluster configuration cannot be valid without a proper tls configuration")
+		err = addError(err, "a secured cluster configuration cannot be valid without a proper tls configuration")
 	} else if (c.TLSCertificate == "" && c.TLSCertificateKey != "") || (c.TLSCertificate != "" && c.TLSCertificateKey == "") {
-		err = fmt.Errorf("you need both tls key and certificate for tls configuration")
+		err = addError(err, "you need both tls key and certificate for tls configuration")
 	} else {
 		err = nil
 	}
 
 	if err != nil && c.TLSCertificate == "" {
-		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls certificate path")
+		err = addError(err, "Please enter a tls certificate path")
 	}
 	if err != nil && c.TLSCertificateKey == "" {
-		err = fmt.Errorf("%s\n%s", err.Error(), "Please enter a tls key path")
+		err = addError(err, "Please enter a tls key path")
+	}
+	if c.MaxInBufferSize < 1500 {
+		err = addError(err, "MaxInBufferSize too small")
 	}
 	return err
 }

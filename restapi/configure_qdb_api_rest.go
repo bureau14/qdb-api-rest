@@ -109,7 +109,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
 		}
 
-		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 		if err != nil {
 			return nil, err
 		}
@@ -173,7 +173,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile))
+		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 		if err != nil {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -223,7 +223,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
-			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 			if err != nil {
 				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
 				return nil, errors.New(401, "Incorrect api key auth")
@@ -259,7 +259,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
-			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile))
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 			if err != nil {
 				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
 				return nil, errors.New(401, "Incorrect api key auth")
