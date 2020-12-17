@@ -22,4 +22,5 @@ var FilledDefaultConfig = Config{
 	Port:                 40080,
 	Log:                  "/var/log/qdb/qdb_rest.log",
 	Assets:               "/var/lib/qdb/assets",
+	MaxInBufferSize:      131072000,
 }

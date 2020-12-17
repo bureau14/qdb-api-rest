@@ -8,5 +8,6 @@
     "host": "localhost",
     "port": 40080,
     "log": "C:/Program Files/quasardb/log/qdb_rest.log",
-    "assets": "C:/Program Files/quasardb//assets"
+    "assets": "C:/Program Files/quasardb//assets",
+    "max_in_buffer_size": 131072000
 }

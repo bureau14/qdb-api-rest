@@ -22,6 +22,7 @@ func getQuestion(field string) string {
 		"Port":                 "Enter a port",
 		"Log":                  "Enter the path of the log file",
 		"Assets":               "Enter the path of the asset directory",
+		"MaxInBufferSize":      "Enter the maximum client side buffer in bytes",
 	}
 	question, ok := fieldToQuestion[field]
 	if !ok {
@@ -126,6 +127,7 @@ func askQuestions(defConfig Config) Config {
 
 	ask("Log", &conf, defConfig)
 	ask("Assets", &conf, defConfig)
+	ask("MaxInBufferSize", &conf, defConfig)
 	return conf
 }
 
