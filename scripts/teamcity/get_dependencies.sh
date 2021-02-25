@@ -9,7 +9,7 @@ cd $1
 # this permits to create the home folder of gopath
 # it also serves as a fallback in case we don't find any version
 # TODO(vianney): find a better solution to the vendor problem
-go get github.com/go-swagger/go-swagger/cmd/swagger
+# go get github.com/go-swagger/go-swagger/cmd/swagger
 case $(uname) in
     MINGW* )
         curl -sL "https://github.com/go-swagger/go-swagger/releases/download/v0.17.2/swagger_windows_amd64.exe" > swagger-0.17.2.exe
