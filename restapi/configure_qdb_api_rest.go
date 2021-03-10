@@ -218,6 +218,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
+
+			if tmp, handleFound := handleCache.Get(cacheKey); !handleFound {
+				if handle, ok := tmp.(*qdb.HandleType); ok {
+					handle.Close()
+				}
+			}
+
 			handleCache.Remove(cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
@@ -254,6 +261,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
+			if tmp, handleFound := handleCache.Get(cacheKey); !handleFound {
+				if handle, ok := tmp.(*qdb.HandleType); ok {
+					handle.Close()
+				}
+			}
 			handleCache.Remove(cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
@@ -285,6 +297,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
 				credentials := strings.Split(string(*principal), ":")
+				handle.Close()
 				handleCache.Remove(credentials[0])
 			}
 
@@ -321,6 +334,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 			if err == qdb.ErrAccessDenied {
 				credentials := strings.Split(string(*principal), ":")
+				handle.Close()
 				handleCache.Remove(credentials[0])
 			}
 
@@ -530,6 +544,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
 				credentials := strings.Split(string(*principal), ":")
+				handle.Close()
 				handleCache.Remove(credentials[0])
 			}
 
