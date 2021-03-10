@@ -85,6 +85,14 @@ func dummyProducer() runtime.Producer {
 	})
 }
 
+func RemoveFromCache(cache *cmap.ConcurrentMap, key string) {
+	if tmp, handleFound := cache.Pop(key); handleFound {
+		if handle, ok := tmp.(*qdb.HandleType); ok {
+			handle.Close()
+		}
+	}
+}
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
 
@@ -173,7 +181,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		_, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 		if err != nil {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -190,6 +198,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		} else {
 			api.Logger("Logged anonymous user")
 		}
+
+		cacheKey := params.Credential.Username
+		handleCache.Set(cacheKey, handle)
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
 	})
@@ -218,14 +229,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
-
-			if tmp, handleFound := handleCache.Get(cacheKey); !handleFound {
-				if handle, ok := tmp.(*qdb.HandleType); ok {
-					handle.Close()
-				}
-			}
-
-			handleCache.Remove(cacheKey)
+			RemoveFromCache(&handleCache, cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
@@ -261,12 +265,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
-			if tmp, handleFound := handleCache.Get(cacheKey); !handleFound {
-				if handle, ok := tmp.(*qdb.HandleType); ok {
-					handle.Close()
-				}
-			}
-			handleCache.Remove(cacheKey)
+			RemoveFromCache(&handleCache, cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
@@ -297,8 +296,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
 				credentials := strings.Split(string(*principal), ":")
-				handle.Close()
-				handleCache.Remove(credentials[0])
+				RemoveFromCache(&handleCache, credentials[0])
 			}
 
 			api.Logger("Failed to query: %s", err.Error())
@@ -334,8 +332,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 			if err == qdb.ErrAccessDenied {
 				credentials := strings.Split(string(*principal), ":")
-				handle.Close()
-				handleCache.Remove(credentials[0])
+				RemoveFromCache(&handleCache, credentials[0])
 			}
 
 			api.Logger("Failed to query: %s", err.Error())
@@ -544,8 +541,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
 				credentials := strings.Split(string(*principal), ":")
-				handle.Close()
-				handleCache.Remove(credentials[0])
+				RemoveFromCache(&handleCache, credentials[0])
 			}
 
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
