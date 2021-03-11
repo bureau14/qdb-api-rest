@@ -689,7 +689,15 @@ func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Serving %s request: %s", r.Method, r.URL.Path[1:])
 		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
-			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
+			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+				http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			gzw := gzipResponseWriter{Writer: gz, ResponseWriter: w}
+			http.FileServer(http.Dir(assets)).ServeHTTP(gzw, r)
 		} else {
 			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 				next.ServeHTTP(w, r)
