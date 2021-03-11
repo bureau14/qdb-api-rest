@@ -290,14 +290,14 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
 		if err != nil {
+			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
+				credentials := strings.Split(string(*principal), ":")
+				RemoveFromCache(&handleCache, credentials[0])
+			}
+
 			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
 				api.Logger("Failed to query: %s", err.Error())
 				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
-
-			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
-				credentials := strings.Split(string(*principal), ":")
-				RemoveFromCache(&handleCache, credentials[0])
 			}
 
 			api.Logger("Failed to query: %s", err.Error())
@@ -326,17 +326,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		// try and get all the tags by finding entities tagged with $qdb.tagroot
 		results, err := handle.Find().ExecuteString("find(tag='$qdb.tagroot')")
 		if err != nil {
-			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
-				api.Logger("Failed to query: %s", err.Error())
-				return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
-
-			if err == qdb.ErrAccessDenied {
+			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
 				credentials := strings.Split(string(*principal), ":")
 				RemoveFromCache(&handleCache, credentials[0])
 			}
 
-			api.Logger("Failed to query: %s", err.Error())
+			api.Logger("Failed to get tags: %s", err.Error())
+			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
+				return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			}
+
 			return tags.NewGetTagsInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
@@ -540,7 +539,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil {
-			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused {
+			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
 				credentials := strings.Split(string(*principal), ":")
 				RemoveFromCache(&handleCache, credentials[0])
 			}
