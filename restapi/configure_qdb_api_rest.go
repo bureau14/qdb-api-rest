@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"compress/gzip"
 
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
@@ -675,6 +676,15 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 	return handler
 }
 
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
 // HTTPSwitchMiddleWare : middleware switch between normal and fileserver handler
 func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -682,7 +692,15 @@ func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
 		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
 			http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
 		} else {
-			next.ServeHTTP(w, r)
+			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			gzw := gzipResponseWriter{Writer: gz, ResponseWriter: w}
+			next.ServeHTTP(gzw, r)
 		}
 	})
 }
