@@ -2,6 +2,7 @@ package qdbinterface
 
 import (
 	"strings"
+	"unsafe"
 
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
@@ -39,6 +40,7 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 	if err != nil {
 		return nil, err
 	}
+	defer handle.Release(unsafe.Pointer(results))
 
 	// results RowCount is the only function that does not access the underlying
 	// pointer, at the moment it's the only safe way to check for nil return
