@@ -3,6 +3,7 @@ package qdbinterface
 import (
 	"strings"
 	"unsafe"
+	"fmt"
 
 	qdb "github.com/bureau14/qdb-api-go"
 	"github.com/bureau14/qdb-api-rest/models"
@@ -38,6 +39,9 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 
 	results, err := handle.Query(query).Execute()
 	if err != nil {
+		if results != nil {
+			err = fmt.Errorf("%s %s", err.Error(), results.ErrorMessage())
+		}
 		return nil, err
 	}
 	defer handle.Release(unsafe.Pointer(results))
