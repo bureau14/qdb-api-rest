@@ -4,6 +4,7 @@ package restapi
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
@@ -16,7 +17,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"compress/gzip"
 
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
@@ -29,7 +29,8 @@ import (
 
 	"github.com/prometheus/prometheus/prompb"
 
-	qdb ""github.com/bureau14/qdb-api-go/v3""
+	qdb "bureau14/qdb-pi-go"
+
 	"github.com/bureau14/qdb-api-rest/config"
 	"github.com/bureau14/qdb-api-rest/jwt"
 	"github.com/bureau14/qdb-api-rest/models"

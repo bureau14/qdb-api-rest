@@ -11,7 +11,8 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	prom "github.com/prometheus/prometheus/prompb"
 
-	qdb ""github.com/bureau14/qdb-api-go/v3""
+	qdb "bureau14/qdb-pi-go"
+
 	"github.com/prometheus/common/model"
 )
 

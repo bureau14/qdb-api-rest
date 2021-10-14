@@ -6,7 +6,7 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	""github.com/bureau14/qdb-api-go/v3""
+	"bureau14/qdb-pi-go"
 )
 
 // DefaultPrivateKey is the default rsa key used in non-secure cluster mode
