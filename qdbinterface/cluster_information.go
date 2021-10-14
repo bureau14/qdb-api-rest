@@ -5,7 +5,7 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/models"
 
-	"bureau14/qdb-api-go"
+	"github.com/bureau14/qdb-api-go/v3"
 )
 
 // global structures, I know not pretty
