@@ -12,7 +12,7 @@ esac
 
 # Build qdb_rest
 cd $1/apps/qdb_rest
-go build -x -v -o qdb_rest$SUFFIX
+env GOOS=linux GOARCH=arm go build -x -v -o qdb_rest$SUFFIX
 
 # Build qdb_rest_service on windows
 case $(uname) in
