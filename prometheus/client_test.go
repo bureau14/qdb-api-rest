@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	qdb "bureau14/qdb-pi-go"
+	qdb "bureau14/qdb-api-go"
 
 	"github.com/prometheus/common/model"
 	prom "github.com/prometheus/prometheus/prompb"

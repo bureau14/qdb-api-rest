@@ -35,4 +35,4 @@ esac
 # $SWAGGER generate server -f ./swagger.json -A qdb-api-rest -P models.Principal --exclude-main
 
 go get -d ./...
-# go get -d "bureau14/qdb-pi-go"
+# go get -d "bureau14/qdb-api-go"

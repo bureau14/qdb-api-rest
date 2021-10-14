@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unsafe"
 
-	qdb "bureau14/qdb-pi-go"
+	qdb "bureau14/qdb-api-go"
 
 	"github.com/bureau14/qdb-api-rest/models"
 )

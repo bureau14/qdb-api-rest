@@ -29,7 +29,7 @@ import (
 
 	"github.com/prometheus/prometheus/prompb"
 
-	qdb "bureau14/qdb-pi-go"
+	qdb "bureau14/qdb-api-go"
 
 	"github.com/bureau14/qdb-api-rest/config"
 	"github.com/bureau14/qdb-api-rest/jwt"

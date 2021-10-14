@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	qdb "bureau14/qdb-pi-go"
+	qdb "bureau14/qdb-api-go"
 )
 
 // CreateHandle : creates a handle with config values
