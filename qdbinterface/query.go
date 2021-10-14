@@ -5,7 +5,7 @@ import (
 	"unsafe"
 	"fmt"
 
-	qdb "github.com/bureau14/qdb-api-go"
+	qdb ""github.com/bureau14/qdb-api-go/v3""
 	"github.com/bureau14/qdb-api-rest/models"
 )
 
