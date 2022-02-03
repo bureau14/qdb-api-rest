@@ -88,8 +88,6 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 					columns[i].Type = "int64"
 				case qdb.QueryResultString:
 					columns[i].Type = "string"
-				case qdb.QueryResultSymbol:
-					columns[i].Type = "symbol"
 				case qdb.QueryResultTimestamp:
 					columns[i].Type = "timestamp"
 				case qdb.QueryResultCount:
