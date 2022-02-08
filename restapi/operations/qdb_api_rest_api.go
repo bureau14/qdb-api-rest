@@ -22,6 +22,7 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/models"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/option"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/tags"
 )
@@ -63,6 +64,9 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		ClusterGetNodeHandler: cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation cluster.GetNode has not yet been implemented")
 		}),
+		OptionGetParallelismHandler: option.GetParallelismHandlerFunc(func(params option.GetParallelismParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation option.GetParallelism has not yet been implemented")
+		}),
 		GetTableCsvHandler: GetTableCsvHandlerFunc(func(params GetTableCsvParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation GetTableCsv has not yet been implemented")
 		}),
@@ -80,6 +84,9 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		}),
 		PrometheusWriteHandler: PrometheusWriteHandlerFunc(func(params PrometheusWriteParams) middleware.Responder {
 			return middleware.NotImplemented("operation PrometheusWrite has not yet been implemented")
+		}),
+		OptionSetParallelismHandler: option.SetParallelismHandlerFunc(func(params option.SetParallelismParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation option.SetParallelism has not yet been implemented")
 		}),
 
 		// Applies when the "Authorization" header is set
@@ -152,6 +159,8 @@ type QdbAPIRestAPI struct {
 	ClusterGetClusterHandler cluster.GetClusterHandler
 	// ClusterGetNodeHandler sets the operation handler for the get node operation
 	ClusterGetNodeHandler cluster.GetNodeHandler
+	// OptionGetParallelismHandler sets the operation handler for the get parallelism operation
+	OptionGetParallelismHandler option.GetParallelismHandler
 	// GetTableCsvHandler sets the operation handler for the get table csv operation
 	GetTableCsvHandler GetTableCsvHandler
 	// TagsGetTagsHandler sets the operation handler for the get tags operation
@@ -164,6 +173,8 @@ type QdbAPIRestAPI struct {
 	PrometheusReadHandler PrometheusReadHandler
 	// PrometheusWriteHandler sets the operation handler for the prometheus write operation
 	PrometheusWriteHandler PrometheusWriteHandler
+	// OptionSetParallelismHandler sets the operation handler for the set parallelism operation
+	OptionSetParallelismHandler option.SetParallelismHandler
 
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
@@ -263,6 +274,9 @@ func (o *QdbAPIRestAPI) Validate() error {
 	if o.ClusterGetNodeHandler == nil {
 		unregistered = append(unregistered, "cluster.GetNodeHandler")
 	}
+	if o.OptionGetParallelismHandler == nil {
+		unregistered = append(unregistered, "option.GetParallelismHandler")
+	}
 	if o.GetTableCsvHandler == nil {
 		unregistered = append(unregistered, "GetTableCsvHandler")
 	}
@@ -280,6 +294,9 @@ func (o *QdbAPIRestAPI) Validate() error {
 	}
 	if o.PrometheusWriteHandler == nil {
 		unregistered = append(unregistered, "PrometheusWriteHandler")
+	}
+	if o.OptionSetParallelismHandler == nil {
+		unregistered = append(unregistered, "option.SetParallelismHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -403,6 +420,10 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
+	o.handlers["GET"]["/option/parallelism"] = option.NewGetParallelism(o.context, o.OptionGetParallelismHandler)
+	if o.handlers["GET"] == nil {
+		o.handlers["GET"] = make(map[string]http.Handler)
+	}
 	o.handlers["GET"]["/tables/{name}.csv"] = NewGetTableCsv(o.context, o.GetTableCsvHandler)
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
@@ -424,6 +445,10 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
 	o.handlers["POST"]["/prometheus/write"] = NewPrometheusWrite(o.context, o.PrometheusWriteHandler)
+	if o.handlers["POST"] == nil {
+		o.handlers["POST"] = make(map[string]http.Handler)
+	}
+	o.handlers["POST"]["/option/parallelism"] = option.NewSetParallelism(o.context, o.OptionSetParallelismHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP

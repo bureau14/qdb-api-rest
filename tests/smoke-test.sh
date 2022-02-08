@@ -34,4 +34,20 @@ fi
 
 curl -k -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -sb -X POST -d '{"query":"DROP TABLE ts"}' http://127.0.0.1:40080/api/query
 
+curl -k -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -sb -X POST -d '4' http://127.0.0.1:40080/api/option/parallelism
+
+RESULT=`curl -k -H "Accept-Encoding: gzip" -H "Authorization: Bearer ${TOKEN}" -sb -X GET http://127.0.0.1:40080/api/option/parallelism | gunzip`
+if [ "4" != $RESULT ]; then
+    echo "Result does not match with encoding."
+    ERROR=1
+fi
+
+curl -k -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -sb -X POST -d '8' http://127.0.0.1:40080/api/option/parallelism
+
+RESULT=`curl -k -H "Accept-Encoding: gzip" -H "Authorization: Bearer ${TOKEN}" -sb -X GET http://127.0.0.1:40080/api/option/parallelism | gunzip`
+if [ "8" != $RESULT ]; then
+    echo "Result does not match with encoding."
+    ERROR=1
+fi
+
 exit $ERROR
