@@ -38,6 +38,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/qdbinterface"
 	"github.com/bureau14/qdb-api-rest/restapi/operations"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/cluster"
+	"github.com/bureau14/qdb-api-rest/restapi/operations/option"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/query"
 	"github.com/bureau14/qdb-api-rest/restapi/operations/tags"
 )
@@ -282,6 +283,30 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		return &principle, nil
 	}
+
+	api.OptionGetParallelismHandler = option.GetParallelismHandlerFunc(func(params option.GetParallelismParams, principal *models.Principal) middleware.Responder {
+		handle, err := GetHandle(principal)
+		if err != nil {
+			return option.NewGetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		result, err := handle.GetClientMaxParallelism()
+		if err != nil {
+			return option.NewGetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return option.NewGetParallelismOK().WithPayload(int64(result))
+	})
+
+	api.OptionSetParallelismHandler = option.SetParallelismHandlerFunc(func(params option.SetParallelismParams, principal *models.Principal) middleware.Responder {
+		handle, err := GetHandle(principal)
+		if err != nil {
+			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		err = handle.SetClientMaxParallelism(uint(params.Parallelism))
+		if err != nil {
+			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return option.NewSetParallelismOK()
+	})
 
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
 		handle, err := GetHandle(principal)
