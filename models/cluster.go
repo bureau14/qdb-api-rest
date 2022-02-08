@@ -6,6 +6,7 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/go-openapi/errors"
@@ -89,7 +90,7 @@ func (m *Cluster) validateDiskTotal(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("diskTotal", "body", int64(*m.DiskTotal), 0, false); err != nil {
+	if err := validate.MinimumInt("diskTotal", "body", *m.DiskTotal, 0, false); err != nil {
 		return err
 	}
 
@@ -102,7 +103,7 @@ func (m *Cluster) validateDiskUsed(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("diskUsed", "body", int64(*m.DiskUsed), 0, false); err != nil {
+	if err := validate.MinimumInt("diskUsed", "body", *m.DiskUsed, 0, false); err != nil {
 		return err
 	}
 
@@ -115,7 +116,7 @@ func (m *Cluster) validateMemoryTotal(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("memoryTotal", "body", int64(*m.MemoryTotal), 0, false); err != nil {
+	if err := validate.MinimumInt("memoryTotal", "body", *m.MemoryTotal, 0, false); err != nil {
 		return err
 	}
 
@@ -128,7 +129,7 @@ func (m *Cluster) validateMemoryUsed(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("memoryUsed", "body", int64(*m.MemoryUsed), 0, false); err != nil {
+	if err := validate.MinimumInt("memoryUsed", "body", *m.MemoryUsed, 0, false); err != nil {
 		return err
 	}
 
@@ -187,6 +188,11 @@ func (m *Cluster) validateStatus(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this cluster based on context it is used
+func (m *Cluster) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

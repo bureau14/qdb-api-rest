@@ -16,7 +16,8 @@ import (
 )
 
 // NewGetTableCsvParams creates a new GetTableCsvParams object
-// no default values defined in spec.
+//
+// There are no default values defined in the spec.
 func NewGetTableCsvParams() GetTableCsvParams {
 
 	return GetTableCsvParams{}
@@ -73,7 +74,6 @@ func (o *GetTableCsvParams) BindRequest(r *http.Request, route *middleware.Match
 	if err := o.bindStart(qStart, qhkStart, route.Formats); err != nil {
 		res = append(res, err)
 	}
-
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
@@ -92,10 +92,10 @@ func (o *GetTableCsvParams) bindEnd(rawData []string, hasKey bool, formats strfm
 
 	// Required: true
 	// AllowEmptyValue: false
+
 	if err := validate.RequiredString("end", "query", raw); err != nil {
 		return err
 	}
-
 	o.End = raw
 
 	return nil
@@ -110,7 +110,6 @@ func (o *GetTableCsvParams) bindName(rawData []string, hasKey bool, formats strf
 
 	// Required: true
 	// Parameter is provided by construction from the route
-
 	o.Name = raw
 
 	return nil
@@ -128,10 +127,10 @@ func (o *GetTableCsvParams) bindStart(rawData []string, hasKey bool, formats str
 
 	// Required: true
 	// AllowEmptyValue: false
+
 	if err := validate.RequiredString("start", "query", raw); err != nil {
 		return err
 	}
-
 	o.Start = raw
 
 	return nil

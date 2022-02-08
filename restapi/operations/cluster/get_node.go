@@ -31,7 +31,7 @@ func NewGetNode(ctx *middleware.Context, handler GetNodeHandler) *GetNode {
 	return &GetNode{Context: ctx, Handler: handler}
 }
 
-/*GetNode swagger:route GET /cluster/nodes/{id} cluster getNode
+/* GetNode swagger:route GET /cluster/nodes/{id} cluster getNode
 
 Get information about a single node in the cluster
 
@@ -44,17 +44,16 @@ type GetNode struct {
 func (o *GetNode) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	route, rCtx, _ := o.Context.RouteInfo(r)
 	if rCtx != nil {
-		r = rCtx
+		*r = *rCtx
 	}
 	var Params = NewGetNodeParams()
-
 	uprinc, aCtx, err := o.Context.Authorize(r, route)
 	if err != nil {
 		o.Context.Respond(rw, r, route.Produces, route, err)
 		return
 	}
 	if aCtx != nil {
-		r = aCtx
+		*r = *aCtx
 	}
 	var principal *models.Principal
 	if uprinc != nil {
@@ -67,7 +66,6 @@ func (o *GetNode) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	res := o.Handler.Handle(Params, principal) // actually handle the request
-
 	o.Context.Respond(rw, r, route.Produces, route, res)
 
 }

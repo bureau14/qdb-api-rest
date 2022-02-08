@@ -14,7 +14,8 @@ import (
 )
 
 // NewGetNodeParams creates a new GetNodeParams object
-// no default values defined in spec.
+//
+// There are no default values defined in the spec.
 func NewGetNodeParams() GetNodeParams {
 
 	return GetNodeParams{}
@@ -49,7 +50,6 @@ func (o *GetNodeParams) BindRequest(r *http.Request, route *middleware.MatchedRo
 	if err := o.bindID(rID, rhkID, route.Formats); err != nil {
 		res = append(res, err)
 	}
-
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
@@ -65,7 +65,6 @@ func (o *GetNodeParams) bindID(rawData []string, hasKey bool, formats strfmt.Reg
 
 	// Required: true
 	// Parameter is provided by construction from the route
-
 	o.ID = raw
 
 	return nil

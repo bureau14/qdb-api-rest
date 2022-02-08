@@ -31,7 +31,7 @@ func NewGetTags(ctx *middleware.Context, handler GetTagsHandler) *GetTags {
 	return &GetTags{Context: ctx, Handler: handler}
 }
 
-/*GetTags swagger:route GET /tags tags getTags
+/* GetTags swagger:route GET /tags tags getTags
 
 Query the database for all tag names
 
@@ -44,17 +44,16 @@ type GetTags struct {
 func (o *GetTags) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	route, rCtx, _ := o.Context.RouteInfo(r)
 	if rCtx != nil {
-		r = rCtx
+		*r = *rCtx
 	}
 	var Params = NewGetTagsParams()
-
 	uprinc, aCtx, err := o.Context.Authorize(r, route)
 	if err != nil {
 		o.Context.Respond(rw, r, route.Produces, route, err)
 		return
 	}
 	if aCtx != nil {
-		r = aCtx
+		*r = *aCtx
 	}
 	var principal *models.Principal
 	if uprinc != nil {
@@ -67,7 +66,6 @@ func (o *GetTags) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	res := o.Handler.Handle(Params, principal) // actually handle the request
-
 	o.Context.Respond(rw, r, route.Produces, route, res)
 
 }

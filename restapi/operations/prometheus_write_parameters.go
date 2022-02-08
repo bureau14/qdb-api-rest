@@ -15,7 +15,8 @@ import (
 )
 
 // NewPrometheusWriteParams creates a new PrometheusWriteParams object
-// no default values defined in spec.
+//
+// There are no default values defined in the spec.
 func NewPrometheusWriteParams() PrometheusWriteParams {
 
 	return PrometheusWriteParams{}

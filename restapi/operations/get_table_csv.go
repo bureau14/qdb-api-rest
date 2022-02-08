@@ -31,7 +31,7 @@ func NewGetTableCsv(ctx *middleware.Context, handler GetTableCsvHandler) *GetTab
 	return &GetTableCsv{Context: ctx, Handler: handler}
 }
 
-/*GetTableCsv swagger:route GET /tables/{name}.csv getTableCsv
+/* GetTableCsv swagger:route GET /tables/{name}.csv getTableCsv
 
 Fetch the rows of a table between a given date range and return as csv
 
@@ -44,17 +44,16 @@ type GetTableCsv struct {
 func (o *GetTableCsv) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	route, rCtx, _ := o.Context.RouteInfo(r)
 	if rCtx != nil {
-		r = rCtx
+		*r = *rCtx
 	}
 	var Params = NewGetTableCsvParams()
-
 	uprinc, aCtx, err := o.Context.Authorize(r, route)
 	if err != nil {
 		o.Context.Respond(rw, r, route.Produces, route, err)
 		return
 	}
 	if aCtx != nil {
-		r = aCtx
+		*r = *aCtx
 	}
 	var principal *models.Principal
 	if uprinc != nil {
@@ -67,7 +66,6 @@ func (o *GetTableCsv) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	res := o.Handler.Handle(Params, principal) // actually handle the request
-
 	o.Context.Respond(rw, r, route.Produces, route, res)
 
 }
