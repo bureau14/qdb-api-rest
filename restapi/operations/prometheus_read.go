@@ -29,7 +29,7 @@ func NewPrometheusRead(ctx *middleware.Context, handler PrometheusReadHandler) *
 	return &PrometheusRead{Context: ctx, Handler: handler}
 }
 
-/*PrometheusRead swagger:route POST /prometheus/read prometheusRead
+/* PrometheusRead swagger:route POST /prometheus/read prometheusRead
 
 The read endpoint for remote Prometheus storage
 
@@ -42,17 +42,15 @@ type PrometheusRead struct {
 func (o *PrometheusRead) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	route, rCtx, _ := o.Context.RouteInfo(r)
 	if rCtx != nil {
-		r = rCtx
+		*r = *rCtx
 	}
 	var Params = NewPrometheusReadParams()
-
 	if err := o.Context.BindValidRequest(r, route, &Params); err != nil { // bind params
 		o.Context.Respond(rw, r, route.Produces, route, err)
 		return
 	}
 
 	res := o.Handler.Handle(Params) // actually handle the request
-
 	o.Context.Respond(rw, r, route.Produces, route, res)
 
 }

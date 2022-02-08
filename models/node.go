@@ -6,6 +6,8 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
+
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
@@ -112,7 +114,7 @@ func (m *Node) validateCPUTotal(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("cpuTotal", "body", int64(*m.CPUTotal), 0, false); err != nil {
+	if err := validate.MinimumInt("cpuTotal", "body", *m.CPUTotal, 0, false); err != nil {
 		return err
 	}
 
@@ -125,7 +127,7 @@ func (m *Node) validateCPUUsed(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("cpuUsed", "body", int64(*m.CPUUsed), 0, false); err != nil {
+	if err := validate.MinimumInt("cpuUsed", "body", *m.CPUUsed, 0, false); err != nil {
 		return err
 	}
 
@@ -138,7 +140,7 @@ func (m *Node) validateDiskTotal(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("diskTotal", "body", int64(*m.DiskTotal), 0, false); err != nil {
+	if err := validate.MinimumInt("diskTotal", "body", *m.DiskTotal, 0, false); err != nil {
 		return err
 	}
 
@@ -151,7 +153,7 @@ func (m *Node) validateDiskUsed(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("diskUsed", "body", int64(*m.DiskUsed), 0, false); err != nil {
+	if err := validate.MinimumInt("diskUsed", "body", *m.DiskUsed, 0, false); err != nil {
 		return err
 	}
 
@@ -173,7 +175,7 @@ func (m *Node) validateMemoryTotal(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("memoryTotal", "body", int64(*m.MemoryTotal), 0, false); err != nil {
+	if err := validate.MinimumInt("memoryTotal", "body", *m.MemoryTotal, 0, false); err != nil {
 		return err
 	}
 
@@ -186,7 +188,7 @@ func (m *Node) validateMemoryUsed(formats strfmt.Registry) error {
 		return err
 	}
 
-	if err := validate.MinimumInt("memoryUsed", "body", int64(*m.MemoryUsed), 0, false); err != nil {
+	if err := validate.MinimumInt("memoryUsed", "body", *m.MemoryUsed, 0, false); err != nil {
 		return err
 	}
 
@@ -208,6 +210,11 @@ func (m *Node) validateQuasardbVersion(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this node based on context it is used
+func (m *Node) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 
