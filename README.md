@@ -59,7 +59,7 @@ go install ./...
 ## IV. Example
 #### Login
 ```
-curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @tintin.private https://127.0.0.1:40080/api/login
+curl -k -H 'Origin: http://0.0.0.0:3449'  -H "Content-Type: application/json" -X POST --data-binary @tintin.private http://127.0.0.1:40080/api/login
 ```
 #### Get cluster information
 ```

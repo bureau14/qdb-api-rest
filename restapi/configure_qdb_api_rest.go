@@ -96,6 +96,10 @@ func RemoveFromCache(cache *cmap.ConcurrentMap, key string) {
 	}
 }
 
+func RemoveHandleFromCache(cache *cmap.ConcurrentMap, key string) {
+	cache.Set(key, nil)
+}
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
 
@@ -114,10 +118,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if tmp, handleFound := handleCache.Get(username); handleFound {
 			if handle, ok := tmp.(*qdb.HandleType); ok {
-				api.Logger("Got handle from cache")
-				return handle, nil
+				if handle != nil {
+					api.Logger("Got handle from cache")
+					return handle, nil
+				}
+			} else {
+				api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
 			}
-			api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
 		}
 
 		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
@@ -291,6 +298,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		result, err := handle.GetClientMaxParallelism()
 		if err != nil {
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 			return option.NewGetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return option.NewGetParallelismOK().WithPayload(int64(result))
@@ -303,6 +312,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		err = handle.SetClientMaxParallelism(uint(params.Parallelism))
 		if err != nil {
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return option.NewSetParallelismOK()
@@ -316,18 +327,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
 		if err != nil {
-			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
-				credentials := strings.Split(string(*principal), ":")
-				RemoveFromCache(&handleCache, credentials[0])
-			}
-
-			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
-				api.Logger("Failed to query: %s", err.Error())
-				return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to query: %s", err.Error())
-			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+			return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return query.NewPostQueryOK().WithPayload(result)
 	})
@@ -352,17 +356,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		// try and get all the tags by finding entities tagged with $qdb.tagroot
 		results, err := handle.Find().ExecuteString("find(tag='$qdb.tagroot')")
 		if err != nil {
-			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
-				credentials := strings.Split(string(*principal), ":")
-				RemoveFromCache(&handleCache, credentials[0])
-			}
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to get tags: %s", err.Error())
-			if err != qdb.ErrConnectionRefused && err != qdb.ErrUnstableCluster {
-				return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-			}
-
-			return tags.NewGetTagsInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+			return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
 		// build the QueryResult
@@ -565,10 +563,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil {
-			if err == qdb.ErrAccessDenied || err == qdb.ErrConnectionRefused || err == qdb.ErrConnectionReset {
-				credentials := strings.Split(string(*principal), ":")
-				RemoveFromCache(&handleCache, credentials[0])
-			}
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
