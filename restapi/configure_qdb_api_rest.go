@@ -100,6 +100,13 @@ func RemoveHandleFromCache(cache *cmap.ConcurrentMap, key string) {
 	cache.Set(key, nil)
 }
 
+func formatDuration(d time.Duration) string {
+	millis := d.Milliseconds()
+
+	real_micros := d.Microseconds() - millis*int64(time.Millisecond)/int64(time.Microsecond)
+	return fmt.Sprintf("%d.%03dms", millis, real_micros)
+}
+
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
 
@@ -325,7 +332,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
+		queryStart := time.Now()
+		api.Logger("Executing query: %s", params.Query.Query)
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
+		api.Logger("Executed query in %s: %s", formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
 		if err != nil {
 			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
