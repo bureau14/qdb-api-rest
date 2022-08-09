@@ -45,6 +45,9 @@ func runQuery(handle qdb.HandleType, query string) (*models.QueryResult, error) 
 		}
 		return nil, err
 	}
+	if results == nil {
+		return &queryResult, nil
+	}
 	defer handle.Release(unsafe.Pointer(results))
 
 	// results RowCount is the only function that does not access the underlying
