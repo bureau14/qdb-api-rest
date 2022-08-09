@@ -107,87 +107,14 @@ func formatDuration(d time.Duration) string {
 	millis := d.Milliseconds()
 
 	real_micros := d.Microseconds() - millis*int64(time.Millisecond)/int64(time.Microsecond)
-	return fmt.Sprintf("%d.%03d ms", millis, real_micros)
+	return fmt.Sprintf("%d.%03dms", millis, real_micros)
 }
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
 
-	CreatePool := func(username string, secretKey string, clusterURI string) (*pool.Pool, error) {
-		factory := func() (interface{}, error) {
-			return qdbinterface.CreateHandle(username, secretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
-		}
-
-		//close Specify the method to close the connection
-		close := func(v interface{}) error { return v.(*qdb.HandleType).Close() }
-
-		poolConfig := &pool.Config{
-			InitialCap: int(APIConfig.PoolSize),
-			MaxIdle:    int(APIConfig.PoolSize),
-			MaxCap:     int(APIConfig.PoolSize) * 2,
-			Factory:    factory,
-			Close:      close,
-			//Ping:       ping,
-			//The maximum idle time of the connection, the connection exceeding this time will be closed, which can avoid the problem of automatic failure when connecting to EOF when idle
-			IdleTimeout: 1 * time.Minute,
-		}
-
-		p, err := pool.NewChannelPool(poolConfig)
-		if err != nil {
-			api.Logger("Could not create pool%s", username, err.Error())
-		}
-		v, err := p.Get()
-		if err != nil {
-			api.Logger("Failed to login user %s: %s", username, err.Error())
-			return nil, fmt.Errorf("Failed to login user %s: %s", username, err.Error())
-		}
-		p.Put(v)
-		return &p, nil
-	}
-
-	PutHandle := func(principal *models.Principal, handle *qdb.HandleType) error {
-		credentials := strings.Split(string(*principal), ":")
-
-		if len(credentials) < 2 {
-			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
-			return errors.New(500, "Invalid principal")
-		}
-		username := credentials[0]
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				(*pl).Put(handle)
-				return nil
-			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-		}
-		str := fmt.Sprintf("Could not connection pool for user: %s. Please try reconnecting", username)
-		api.Logger(str)
-		return errors.New(500, str)
-	}
-
-	CloseHandle := func(principal *models.Principal, handle *qdb.HandleType) error {
-		credentials := strings.Split(string(*principal), ":")
-
-		if len(credentials) < 2 {
-			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
-			return errors.New(500, "Invalid principal")
-		}
-		username := credentials[0]
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				(*pl).Close(handle)
-				return nil
-			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-		}
-		str := fmt.Sprintf("Could not connection pool for user: %s. Please try reconnecting", username)
-		api.Logger(str)
-		return errors.New(500, str)
-	}
-
 	GetHandle := func(principal *models.Principal) (*qdb.HandleType, error) {
+		var handle *qdb.HandleType
 
 		// This is always a username:secret_key pair, validated in BearerAuth
 		credentials := strings.Split(string(*principal), ":")
@@ -197,22 +124,28 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(500, "Invalid principal")
 		}
 		username := credentials[0]
+		secretKey := credentials[1]
 
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				v, err := (*pl).Get()
-				if err != nil {
-					api.Logger("Got handle from cache: %s", err.Error())
-					return nil, errors.New(500, "Invalid handle")
+		if tmp, handleFound := handleCache.Get(username); handleFound {
+			if handle, ok := tmp.(*qdb.HandleType); ok {
+				if handle != nil {
+					api.Logger("Got handle from cache")
+					return handle, nil
 				}
-				return v.(*qdb.HandleType), nil
+			} else {
+				api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
 			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return nil, errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
 		}
-		api.Logger("Could not find connection pool for user: %s. Please try reconnecting", username)
 
-		return nil, errors.New(500, "User not found")
+		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+		if err != nil {
+			return nil, err
+		}
+
+		api.Logger("Handle cache miss, got handle from credentials")
+		handleCache.Set(username, handle)
+
+		return handle, nil
 	}
 
 	api.Logger = log.Printf
@@ -220,21 +153,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		logFile, err := os.OpenFile(string(APIConfig.Log), os.O_CREATE, 0644)
-		defer logFile.Close()
+		f, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 		if err != nil {
-			log.SetOutput(os.Stdout)
 			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
 		} else {
-			lumberJackLogger := &lumberjack.Logger{
-				Filename:   string(APIConfig.Log),
-				MaxSize:    APIConfig.LogMaxSize,
-				MaxBackups: APIConfig.LogMaxRetention,
-				MaxAge:     APIConfig.LogMaxAge,
-				Compress:   APIConfig.LogCompress,
-			}
-			log.SetOutput(lumberJackLogger)
+			log.SetOutput(f)
 			qdb.SetLogFile(string(APIConfig.Log))
 		}
 	}
@@ -250,7 +174,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		secret = qdbinterface.DefaultPrivateKey
 	}
 
-	api.Logger("version: %s", meta.Version)
+	api.Logger("version: %s", version)
 
 	clusterURI := APIConfig.ClusterURI
 
@@ -273,13 +197,20 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		_, err = io.Copy(w, r)
 		return err
+
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+		if err != nil {
+			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+
 		token, err := jwt.Build(secret, params.Credential.Username, params.Credential.SecretKey)
 		if err != nil {
 			api.Logger("Warning: %s", err.Error())
-			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
+			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
 		if params.Credential.Username != "" {
@@ -288,44 +219,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Logged anonymous user")
 		}
 
-		// Check whether an existing pool already exists for this user, if so, remember it so we
-		// can clean it up later
-		oldPool, oldPoolFound := handleCache.Get(params.Credential.Username)
-
-		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
-		if err != nil {
-			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		handleCache.Set(params.Credential.Username, p)
-
-		if oldPoolFound {
-			if pl, ok := oldPool.(*pool.Pool); ok {
-				api.Logger("Releasing all old handles after allocating new pool")
-				(*pl).Release()
-			}
-		}
+		cacheKey := params.Credential.Username
+		handleCache.Set(cacheKey, handle)
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
-	})
-
-	api.StatusLivenessHandler = operations.StatusLivenessHandlerFunc(func(params operations.StatusLivenessParams) middleware.Responder {
-		return operations.NewStatusLivelinessOK()
-	})
-
-	api.StatusReadinessHandler = operations.StatusReadinessHandlerFunc(func(params operations.StatusReadinessParams) middleware.Responder {
-		statusHandle, err := qdbinterface.CreateStatusHandle(string(APIConfig.ClusterURI), string(APIConfig.RestPrivateKeyFile), string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
-		if err != nil {
-			return operations.NewStatusReadinessInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		if APIConfig.ReadinessQuery != "" {
-			_, err = statusHandle.Query(APIConfig.ReadinessQuery).Execute()
-		} else {
-			_, err = statusHandle.Statistics()
-		}
-		if err != nil {
-			return operations.NewStatusReadinessInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		return operations.NewStatusReadinessOK()
 	})
 
 	api.BearerAuth = func(token string) (*models.Principal, error) {
@@ -356,12 +253,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
-		if _, found := handleCache.Get(cacheKey); !found {
-			p, err := CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 			if err != nil {
-				return nil, errors.New(401, err.Error())
+				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
+				return nil, errors.New(401, "Incorrect api key auth")
 			}
-			handleCache.Set(credentials.Username, p)
+			handleCache.Set(cacheKey, handle)
 		}
 
 		return &principle, nil
@@ -391,30 +289,17 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
-		if _, found := handleCache.Get(cacheKey); !found {
-			p, err := CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
 			if err != nil {
-				return nil, errors.New(401, err.Error())
+				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
+				return nil, errors.New(401, "Incorrect api key auth")
 			}
-			handleCache.Set(credentials.Username, p)
+			handleCache.Set(cacheKey, handle)
 		}
 
 		return &principle, nil
 	}
-
-	api.OptionGetMaxInBufferSizeHandler = option.GetMaxInBufferSizeHandlerFunc(func(params option.GetMaxInBufferSizeParams, principal *models.Principal) middleware.Responder {
-		handle, err := GetHandle(principal)
-		if err != nil {
-			return option.NewGetMaxInBufferSizeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		result, err := handle.GetClientMaxInBufSize()
-		if err != nil {
-			defer CloseHandle(principal, handle)
-			return option.NewGetMaxInBufferSizeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		defer PutHandle(principal, handle)
-		return option.NewGetMaxInBufferSizeOK().WithPayload(int64(result))
-	})
 
 	api.OptionGetParallelismHandler = option.GetParallelismHandlerFunc(func(params option.GetParallelismParams, principal *models.Principal) middleware.Responder {
 		handle, err := GetHandle(principal)
@@ -423,11 +308,25 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		result, err := handle.GetClientMaxParallelism()
 		if err != nil {
-			defer CloseHandle(principal, handle)
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 			return option.NewGetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		defer PutHandle(principal, handle)
 		return option.NewGetParallelismOK().WithPayload(int64(result))
+	})
+
+	api.OptionSetParallelismHandler = option.SetParallelismHandlerFunc(func(params option.SetParallelismParams, principal *models.Principal) middleware.Responder {
+		handle, err := GetHandle(principal)
+		if err != nil {
+			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		err = handle.SetClientMaxParallelism(uint(params.Parallelism))
+		if err != nil {
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
+			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return option.NewSetParallelismOK()
 	})
 
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {
@@ -435,19 +334,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		credentials := strings.Split(string(*principal), ":")
-
-		queryStart := time.Now()
 		api.Logger("Executing query: %s", params.Query.Query)
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
-		api.Logger("Executed query by %s in %s: %s", credentials[0], formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
+		api.Logger("Executed query in %s: %s", formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
 		if err != nil {
-			defer CloseHandle(principal, handle)
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to query: %s", err.Error())
 			return query.NewPostQueryBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		defer PutHandle(principal, handle)
 		return query.NewPostQueryOK().WithPayload(result)
 	})
 
@@ -471,12 +367,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		// try and get all the tags by finding entities tagged with $qdb.tagroot
 		results, err := handle.Find().ExecuteString("find(tag='$qdb.tagroot')")
 		if err != nil {
-			defer CloseHandle(principal, handle)
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to get tags: %s", err.Error())
 			return tags.NewGetTagsBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		defer PutHandle(principal, handle)
 
 		// build the QueryResult
 		data := make([]interface{}, 0, len(results))
@@ -548,11 +444,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		columnsInfo, err := table.ColumnsInfo()
 
 		if err != nil {
-			defer CloseHandle(principal, handle)
 			api.Logger("Failed to get table column info: %s", err.Error())
 			return operations.NewGetTableCsvInternalServerError()
 		}
-		defer PutHandle(principal, handle)
 
 		// We add two columns by splitting timestamp into date and time columns
 		columnsLength := len(columnsInfo) + 2
@@ -666,11 +560,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil && err != qdb.ErrUnstableCluster && err != qdb.ErrConnectionRefused {
-			defer CloseHandle(principal, handle)
 			api.Logger("Failed to access cluster status: %s", err.Error())
 			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		defer PutHandle(principal, handle)
 		return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
 	})
 
@@ -682,7 +574,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		err = qdbinterface.RetrieveInformation(*handle)
 		if err != nil {
-			defer CloseHandle(principal, handle)
 			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
 
@@ -690,10 +581,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		if val, ok := qdbinterface.NodesInformation[params.ID]; ok {
-			defer PutHandle(principal, handle)
 			return cluster.NewGetNodeOK().WithPayload(&val)
 		}
-		defer CloseHandle(principal, handle)
 		api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 		return cluster.NewGetNodeNotFound()
 	})
