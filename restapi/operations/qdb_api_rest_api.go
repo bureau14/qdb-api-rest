@@ -61,9 +61,6 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		ClusterGetClusterHandler: cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation cluster.GetCluster has not yet been implemented")
 		}),
-		OptionGetMaxInBufferSizeHandler: option.GetMaxInBufferSizeHandlerFunc(func(params option.GetMaxInBufferSizeParams, principal *models.Principal) middleware.Responder {
-			return middleware.NotImplemented("operation option.GetMaxInBufferSize has not yet been implemented")
-		}),
 		ClusterGetNodeHandler: cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation cluster.GetNode has not yet been implemented")
 		}),
@@ -87,12 +84,6 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		}),
 		PrometheusWriteHandler: PrometheusWriteHandlerFunc(func(params PrometheusWriteParams) middleware.Responder {
 			return middleware.NotImplemented("operation PrometheusWrite has not yet been implemented")
-		}),
-		StatusLivenessHandler: StatusLivenessHandlerFunc(func(params StatusLivenessParams) middleware.Responder {
-			return middleware.NotImplemented("operation StatusLiveness has not yet been implemented")
-		}),
-		StatusReadinessHandler: StatusReadinessHandlerFunc(func(params StatusReadinessParams) middleware.Responder {
-			return middleware.NotImplemented("operation StatusReadiness has not yet been implemented")
 		}),
 
 		// Applies when the "Authorization" header is set
@@ -163,8 +154,6 @@ type QdbAPIRestAPI struct {
 
 	// ClusterGetClusterHandler sets the operation handler for the get cluster operation
 	ClusterGetClusterHandler cluster.GetClusterHandler
-	// OptionGetMaxInBufferSizeHandler sets the operation handler for the get max in buffer size operation
-	OptionGetMaxInBufferSizeHandler option.GetMaxInBufferSizeHandler
 	// ClusterGetNodeHandler sets the operation handler for the get node operation
 	ClusterGetNodeHandler cluster.GetNodeHandler
 	// OptionGetParallelismHandler sets the operation handler for the get parallelism operation
@@ -181,10 +170,6 @@ type QdbAPIRestAPI struct {
 	PrometheusReadHandler PrometheusReadHandler
 	// PrometheusWriteHandler sets the operation handler for the prometheus write operation
 	PrometheusWriteHandler PrometheusWriteHandler
-	// StatusLivenessHandler sets the operation handler for the status liveness operation
-	StatusLivenessHandler StatusLivenessHandler
-	// StatusReadinessHandler sets the operation handler for the status readiness operation
-	StatusReadinessHandler StatusReadinessHandler
 
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
@@ -281,9 +266,6 @@ func (o *QdbAPIRestAPI) Validate() error {
 	if o.ClusterGetClusterHandler == nil {
 		unregistered = append(unregistered, "cluster.GetClusterHandler")
 	}
-	if o.OptionGetMaxInBufferSizeHandler == nil {
-		unregistered = append(unregistered, "option.GetMaxInBufferSizeHandler")
-	}
 	if o.ClusterGetNodeHandler == nil {
 		unregistered = append(unregistered, "cluster.GetNodeHandler")
 	}
@@ -307,12 +289,6 @@ func (o *QdbAPIRestAPI) Validate() error {
 	}
 	if o.PrometheusWriteHandler == nil {
 		unregistered = append(unregistered, "PrometheusWriteHandler")
-	}
-	if o.StatusLivenessHandler == nil {
-		unregistered = append(unregistered, "StatusLivenessHandler")
-	}
-	if o.StatusReadinessHandler == nil {
-		unregistered = append(unregistered, "StatusReadinessHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -432,10 +408,6 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
-	o.handlers["GET"]["/option/max-in-buffer-size"] = option.NewGetMaxInBufferSize(o.context, o.OptionGetMaxInBufferSizeHandler)
-	if o.handlers["GET"] == nil {
-		o.handlers["GET"] = make(map[string]http.Handler)
-	}
 	o.handlers["GET"]["/cluster/nodes/{id}"] = cluster.NewGetNode(o.context, o.ClusterGetNodeHandler)
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
@@ -465,14 +437,6 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
 	o.handlers["POST"]["/prometheus/write"] = NewPrometheusWrite(o.context, o.PrometheusWriteHandler)
-	if o.handlers["GET"] == nil {
-		o.handlers["GET"] = make(map[string]http.Handler)
-	}
-	o.handlers["GET"]["/status/liveness"] = NewStatusLiveness(o.context, o.StatusLivenessHandler)
-	if o.handlers["GET"] == nil {
-		o.handlers["GET"] = make(map[string]http.Handler)
-	}
-	o.handlers["GET"]["/status/readiness"] = NewStatusReadiness(o.context, o.StatusReadinessHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP
@@ -482,6 +446,9 @@ func (o *QdbAPIRestAPI) Serve(builder middleware.Builder) http.Handler {
 
 	if o.Middleware != nil {
 		return o.Middleware(builder)
+	}
+	if o.useSwaggerUI {
+		return o.context.APIHandlerSwaggerUI(builder)
 	}
 	return o.context.APIHandler(builder)
 }

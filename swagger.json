@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "QuasarDB API",
-    "version": "3.14.3-nightly.0",
+    "version": "3.15.0-nightly.0",
     "description": "Find out more at https://doc.quasardb.net"
   },
   "produces": [
@@ -135,41 +135,7 @@
             },
             "description": "Successful operation"
           },
-          "401": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Bad Request."
-          }
-        }
-      }
-    },
-    "/status/liveness": {
-      "get": {
-        "security": [],
-        "operationId": "status-liveness",
-        "responses": {
-          "200": {
-            "description": "Successful operation"
-          },
-          "500": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Bad Request."
-          }
-        }
-      }
-    },
-    "/status/readiness": {
-      "get": {
-        "security": [],
-        "operationId": "status-readiness",
-        "responses": {
-          "200": {
-            "description": "Successful operation"
-          },
-          "500": {
+          "400": {
             "schema": {
               "$ref": "#/definitions/QdbError"
             },
@@ -197,35 +163,9 @@
           }
         },
         "tags": [
-          "option",
-          "parallelism"
+          "option", "parallelism"
         ],
         "summary": "Get the client max parallelism for this logged-in user"
-      }
-    },
-    "/option/max-in-buffer-size": {
-      "get": {
-        "operationId": "get-max-in-buffer-size",
-        "responses": {
-          "200": {
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            },
-            "description": "Successful operation"
-          },
-          "400": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Bad Request."
-          }
-        },
-        "tags": [
-          "option",
-          "max-in-buffer-size"
-        ],
-        "summary": "Get the client max in buffer size"
       }
     },
     "/query": {

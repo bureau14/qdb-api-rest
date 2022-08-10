@@ -15,7 +15,6 @@ func getQuestion(field string) string {
 	fieldToQuestion := map[string]string{
 		"ClusterURI":           "Enter the location of the QuasarDB cluster",
 		"ClusterPublicKeyFile": "Enter the path of the QuasarDB cluster public key file",
-		"ReadinessQuery":       "Enter the query you would use to check cluster readiness",
 		"TLSCertificate":       "Enter the path of the tls certificate",
 		"TLSCertificateKey":    "Enter the path of the tls key",
 		"TLSPort":              "Enter a port for the tls connection",
@@ -25,7 +24,6 @@ func getQuestion(field string) string {
 		"Assets":               "Enter the path of the asset directory",
 		"MaxInBufferSize":      "Enter the maximum client side buffer in bytes",
 		"ParallelismCount":     "Enter the number of threads used by the client",
-		"PoolSize":             "Enter the number of connections per user",
 	}
 	question, ok := fieldToQuestion[field]
 	if !ok {
@@ -118,7 +116,6 @@ func askQuestions(defConfig Config) Config {
 	fmt.Println("Press space then enter to have an empty value.")
 	ask("ClusterURI", &conf, defConfig)
 	ask("ClusterPublicKeyFile", &conf, defConfig)
-	ask("ReadinessQuery", &conf, defConfig)
 	ask("TLSCertificate", &conf, defConfig)
 	ask("TLSCertificateKey", &conf, defConfig)
 	ask("TLSPort", &conf, defConfig)
@@ -133,7 +130,6 @@ func askQuestions(defConfig Config) Config {
 	ask("Assets", &conf, defConfig)
 	ask("MaxInBufferSize", &conf, defConfig)
 	ask("ParallelismCount", &conf, defConfig)
-	ask("PoolSize", &conf, defConfig)
 	return conf
 }
 
