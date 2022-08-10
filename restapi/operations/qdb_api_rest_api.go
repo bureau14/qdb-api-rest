@@ -61,6 +61,9 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		ClusterGetClusterHandler: cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation cluster.GetCluster has not yet been implemented")
 		}),
+		OptionGetMaxInBufferSizeHandler: option.GetMaxInBufferSizeHandlerFunc(func(params option.GetMaxInBufferSizeParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation option.GetMaxInBufferSize has not yet been implemented")
+		}),
 		ClusterGetNodeHandler: cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation cluster.GetNode has not yet been implemented")
 		}),
@@ -154,6 +157,8 @@ type QdbAPIRestAPI struct {
 
 	// ClusterGetClusterHandler sets the operation handler for the get cluster operation
 	ClusterGetClusterHandler cluster.GetClusterHandler
+	// OptionGetMaxInBufferSizeHandler sets the operation handler for the get max in buffer size operation
+	OptionGetMaxInBufferSizeHandler option.GetMaxInBufferSizeHandler
 	// ClusterGetNodeHandler sets the operation handler for the get node operation
 	ClusterGetNodeHandler cluster.GetNodeHandler
 	// OptionGetParallelismHandler sets the operation handler for the get parallelism operation
@@ -265,6 +270,9 @@ func (o *QdbAPIRestAPI) Validate() error {
 
 	if o.ClusterGetClusterHandler == nil {
 		unregistered = append(unregistered, "cluster.GetClusterHandler")
+	}
+	if o.OptionGetMaxInBufferSizeHandler == nil {
+		unregistered = append(unregistered, "option.GetMaxInBufferSizeHandler")
 	}
 	if o.ClusterGetNodeHandler == nil {
 		unregistered = append(unregistered, "cluster.GetNodeHandler")
@@ -405,6 +413,10 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/cluster"] = cluster.NewGetCluster(o.context, o.ClusterGetClusterHandler)
+	if o.handlers["GET"] == nil {
+		o.handlers["GET"] = make(map[string]http.Handler)
+	}
+	o.handlers["GET"]["/option/max-in-buffer-size"] = option.NewGetMaxInBufferSize(o.context, o.OptionGetMaxInBufferSizeHandler)
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
