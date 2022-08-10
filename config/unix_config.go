@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package config
@@ -23,4 +24,5 @@ var FilledDefaultConfig = Config{
 	Log:                  "/var/log/qdb/qdb_rest.log",
 	Assets:               "/var/lib/qdb/assets",
 	MaxInBufferSize:      131072000,
+	ParallelismCount:     1,
 }

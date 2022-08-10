@@ -9,7 +9,7 @@ import (
 )
 
 // CreateHandle : creates a handle with config values
-func CreateHandle(user, secret, uri, clusterPublicKeyFile string, maxInBufferSize uint) (*qdb.HandleType, error) {
+func CreateHandle(user, secret, uri, clusterPublicKeyFile string, maxInBufferSize uint, parallelismCount uint) (*qdb.HandleType, error) {
 
 	handle, err := qdb.NewHandle()
 	if err != nil {
@@ -26,6 +26,11 @@ func CreateHandle(user, secret, uri, clusterPublicKeyFile string, maxInBufferSiz
 	err = handle.SetClientMaxInBufSize(maxInBufferSize)
 	if err != nil {
 		err = fmt.Errorf("Invalid max in buffer size: %d", maxInBufferSize)
+		return nil, err
+	}
+	err = handle.SetClientMaxParallelism(parallelismCount)
+	if err != nil {
+		err = fmt.Errorf("Invalid max parallelism count: %d", parallelismCount)
 		return nil, err
 	}
 

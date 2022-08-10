@@ -9,5 +9,6 @@
     "port": 40080,
     "log": "/var/log/qdb/qdb_rest.log",
     "assets": "/var/lib/qdb/assets",
-    "max_in_buffer_size": 131072000
+    "max_in_buffer_size": 131072000,
+    "parallelism_count": 1
 }
