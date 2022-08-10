@@ -189,36 +189,6 @@ func init() {
             }
           }
         }
-      },
-      "post": {
-        "tags": [
-          "option",
-          "parallelism"
-        ],
-        "summary": "Set the client max parallelism for this logged-in user",
-        "operationId": "set-parallelism",
-        "parameters": [
-          {
-            "name": "parallelism",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation"
-          },
-          "400": {
-            "description": "Bad Request.",
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            }
-          }
-        }
       }
     },
     "/prometheus/read": {
@@ -816,36 +786,6 @@ func init() {
               "type": "integer",
               "format": "int64"
             }
-          },
-          "400": {
-            "description": "Bad Request.",
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "option",
-          "parallelism"
-        ],
-        "summary": "Set the client max parallelism for this logged-in user",
-        "operationId": "set-parallelism",
-        "parameters": [
-          {
-            "name": "parallelism",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation"
           },
           "400": {
             "description": "Bad Request.",

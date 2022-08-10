@@ -85,9 +85,6 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		PrometheusWriteHandler: PrometheusWriteHandlerFunc(func(params PrometheusWriteParams) middleware.Responder {
 			return middleware.NotImplemented("operation PrometheusWrite has not yet been implemented")
 		}),
-		OptionSetParallelismHandler: option.SetParallelismHandlerFunc(func(params option.SetParallelismParams, principal *models.Principal) middleware.Responder {
-			return middleware.NotImplemented("operation option.SetParallelism has not yet been implemented")
-		}),
 
 		// Applies when the "Authorization" header is set
 		BearerAuth: func(token string) (*models.Principal, error) {
@@ -173,8 +170,6 @@ type QdbAPIRestAPI struct {
 	PrometheusReadHandler PrometheusReadHandler
 	// PrometheusWriteHandler sets the operation handler for the prometheus write operation
 	PrometheusWriteHandler PrometheusWriteHandler
-	// OptionSetParallelismHandler sets the operation handler for the set parallelism operation
-	OptionSetParallelismHandler option.SetParallelismHandler
 
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
@@ -294,9 +289,6 @@ func (o *QdbAPIRestAPI) Validate() error {
 	}
 	if o.PrometheusWriteHandler == nil {
 		unregistered = append(unregistered, "PrometheusWriteHandler")
-	}
-	if o.OptionSetParallelismHandler == nil {
-		unregistered = append(unregistered, "option.SetParallelismHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -445,10 +437,6 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
 	o.handlers["POST"]["/prometheus/write"] = NewPrometheusWrite(o.context, o.PrometheusWriteHandler)
-	if o.handlers["POST"] == nil {
-		o.handlers["POST"] = make(map[string]http.Handler)
-	}
-	o.handlers["POST"]["/option/parallelism"] = option.NewSetParallelism(o.context, o.OptionSetParallelismHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP

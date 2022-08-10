@@ -134,7 +134,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			}
 		}
 
-		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +198,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
 		if err != nil {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
@@ -251,7 +251,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
-			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
 			if err != nil {
 				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
 				return nil, errors.New(401, "Incorrect api key auth")
@@ -287,7 +287,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		if _, handleFound := handleCache.Get(cacheKey); !handleFound {
-			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize)
+			handle, err := qdbinterface.CreateHandle(credentials.Username, credentials.SecretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
 			if err != nil {
 				api.Logger("Invalid username and secret key pair for user %s with token %s", credentials.Username, token)
 				return nil, errors.New(401, "Incorrect api key auth")
@@ -310,20 +310,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return option.NewGetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		return option.NewGetParallelismOK().WithPayload(int64(result))
-	})
-
-	api.OptionSetParallelismHandler = option.SetParallelismHandlerFunc(func(params option.SetParallelismParams, principal *models.Principal) middleware.Responder {
-		handle, err := GetHandle(principal)
-		if err != nil {
-			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		err = handle.SetClientMaxParallelism(uint(params.Parallelism))
-		if err != nil {
-			credentials := strings.Split(string(*principal), ":")
-			RemoveHandleFromCache(&handleCache, credentials[0])
-			return option.NewSetParallelismBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		return option.NewSetParallelismOK()
 	})
 
 	api.QueryPostQueryHandler = query.PostQueryHandlerFunc(func(params query.PostQueryParams, principal *models.Principal) middleware.Responder {

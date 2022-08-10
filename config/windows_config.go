@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package config
@@ -23,4 +24,5 @@ var FilledDefaultConfig = Config{
 	Log:                  "C:/Program Files/quasardb/log/qdb_rest.log",
 	Assets:               "C:/Program Files/quasardb//assets",
 	MaxInBufferSize:      131072000,
+	ParallelismCount:     1,
 }

@@ -166,35 +166,6 @@
           "option", "parallelism"
         ],
         "summary": "Get the client max parallelism for this logged-in user"
-      },
-      "post": {
-        "operationId": "set-parallelism",
-        "parameters": [
-          {
-            "name": "parallelism",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation"
-          },
-          "400": {
-            "schema": {
-              "$ref": "#/definitions/QdbError"
-            },
-            "description": "Bad Request."
-          }
-        },
-        "tags": [
-          "option", "parallelism"
-        ],
-        "summary": "Set the client max parallelism for this logged-in user"
       }
     },
     "/query": {

@@ -25,6 +25,7 @@ type Config struct {
 	Log                  flags.Filename `json:"log" long:"log-file" description:"The path to the log file" env:"QDB_REST_LOG_FILE"`
 	Assets               string         `json:"assets" long:"assets-dir" description:"The path to the assets directory you want to be published alongside the rest api" env:"QDB_REST_ASSETS_DIR"`
 	MaxInBufferSize      uint           `json:"max_in_buffer_size" long:"max-in-buffer-size" description:"The maximum input buffer size coming from the server" env:"QDB_MAX_IN_BUFFER_SIZE"`
+	ParallelismCount     uint           `json:"parallelism_count" long:"parallelism-count" description:"The number of threads used by the client" env:"QDB_PARALLELISM_COUNT"`
 
 	ConfigFile  flags.Filename `json:"-" long:"config-file" description:"Config file to setup the rest api"`
 	GenConfig   bool           `json:"-" long:"gen-config" description:"Generate a config"`
@@ -144,6 +145,9 @@ func (c *Config) SetDefaults() {
 	if c.MaxInBufferSize == FilledDefaultConfig.MaxInBufferSize && config.MaxInBufferSize != 0 {
 		c.MaxInBufferSize = config.MaxInBufferSize
 	}
+	if c.ParallelismCount == FilledDefaultConfig.ParallelismCount && config.ParallelismCount != 0 {
+		c.ParallelismCount = config.ParallelismCount
+	}
 
 }
 
@@ -204,6 +208,9 @@ func (c Config) validate() error {
 	}
 	if c.MaxInBufferSize < 1500 {
 		err = addError(err, "MaxInBufferSize too small")
+	}
+	if c.ParallelismCount < 1 {
+		err = addError(err, "ParallelismCount too small")
 	}
 	return err
 }
