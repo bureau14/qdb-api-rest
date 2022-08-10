@@ -140,7 +140,7 @@ func TestEnsureMetricEmptyTable(t *testing.T) {
 			prom.Label{Name: "test_tag", Value: "hello"},
 		},
 	}
-	err = c.EnsureTable(&ts)
+	err = c.EnsureTable(ts)
 
 	if err != nil {
 		t.Fatalf("Error: %s", err)
@@ -196,7 +196,7 @@ func TestEnsureMetricExistingTable(t *testing.T) {
 		},
 	}
 
-	err = c.EnsureTable(&ts)
+	err = c.EnsureTable(ts)
 
 	if err != nil {
 		t.Fatalf("Error: %s", err)
@@ -255,13 +255,13 @@ func TestEnsureMetricExistingTableMissingColumns(t *testing.T) {
 		},
 	}
 
-	err = c.EnsureTable(&ts)
+	err = c.EnsureTable(ts)
 
 	if err != nil {
 		t.Fatalf("Error: %s", err)
 	}
 
-	doubleCols, blobCols, _, _, _, _, err := table.Columns()
+	doubleCols, blobCols, _, _, _, err := table.Columns()
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")

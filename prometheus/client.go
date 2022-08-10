@@ -26,7 +26,7 @@ type Client struct {
 }
 
 // Write takes a slice prometheus Timeseries and writes them to QuasarDB
-func (c *Client) Write(tses []*prom.TimeSeries) error {
+func (c *Client) Write(tses []prom.TimeSeries) error {
 	for _, ts := range tses {
 		var tableName string
 		var labelNames []string
@@ -115,7 +115,7 @@ func (c *Client) GetHandle() (*qdb.HandleType, error) {
 }
 
 // EnsureTable ensures the prometheus metric table and required columns exist
-func (c *Client) EnsureTable(ts *prom.TimeSeries) error {
+func (c *Client) EnsureTable(ts prom.TimeSeries) error {
 	var tableName string
 	var columnNames []string
 
@@ -254,14 +254,14 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 
 			// Initialise timeseries if it doesn't exist yet
 			if !ok {
-				labelPairs := make([]*prom.Label, 0, len(labels)+1)
-				labelPairs = append(labelPairs, &prom.Label{
+				labelPairs := make([]prom.Label, 0, len(labels)+1)
+				labelPairs = append(labelPairs, prom.Label{
 					Name:  model.MetricNameLabel,
 					Value: name,
 				})
 
 				for k, v := range labels {
-					labelPairs = append(labelPairs, &prom.Label{
+					labelPairs = append(labelPairs, prom.Label{
 						Name:  k,
 						Value: v,
 					})
