@@ -298,6 +298,20 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return &principle, nil
 	}
 
+	api.OptionGetMaxInBufferSizeHandler = option.GetMaxInBufferSizeHandlerFunc(func(params option.GetMaxInBufferSizeParams, principal *models.Principal) middleware.Responder {
+		handle, err := GetHandle(principal)
+		if err != nil {
+			return option.NewGetMaxInBufferSizeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		result, err := handle.GetClientMaxInBufSize()
+		if err != nil {
+			credentials := strings.Split(string(*principal), ":")
+			RemoveHandleFromCache(&handleCache, credentials[0])
+			return option.NewGetMaxInBufferSizeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return option.NewGetMaxInBufferSizeOK().WithPayload(int64(result))
+	})
+
 	api.OptionGetParallelismHandler = option.GetParallelismHandlerFunc(func(params option.GetParallelismParams, principal *models.Principal) middleware.Responder {
 		handle, err := GetHandle(principal)
 		if err != nil {

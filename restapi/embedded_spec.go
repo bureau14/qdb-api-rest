@@ -166,6 +166,31 @@ func init() {
         }
       }
     },
+    "/option/max-in-buffer-size": {
+      "get": {
+        "tags": [
+          "option",
+          "max-in-buffer-size"
+        ],
+        "summary": "Get the client max in buffer size",
+        "operationId": "get-max-in-buffer-size",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "400": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
     "/option/parallelism": {
       "get": {
         "tags": [
@@ -760,6 +785,31 @@ func init() {
             "description": "Successful operation",
             "schema": {
               "$ref": "#/definitions/Token"
+            }
+          },
+          "400": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
+    "/option/max-in-buffer-size": {
+      "get": {
+        "tags": [
+          "option",
+          "max-in-buffer-size"
+        ],
+        "summary": "Get the client max in buffer size",
+        "operationId": "get-max-in-buffer-size",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           },
           "400": {
