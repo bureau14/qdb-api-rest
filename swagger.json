@@ -168,6 +168,30 @@
         "summary": "Get the client max parallelism for this logged-in user"
       }
     },
+    "/option/max-in-buffer-size": {
+      "get": {
+        "operationId": "get-max-in-buffer-size",
+        "responses": {
+          "200": {
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Successful operation"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Bad Request."
+          }
+        },
+        "tags": [
+          "option", "max-in-buffer-size"
+        ],
+        "summary": "Get the client max in buffer size"
+      }
+    },
     "/query": {
       "post": {
         "operationId": "post-query",
