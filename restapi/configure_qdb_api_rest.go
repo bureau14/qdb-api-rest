@@ -23,6 +23,7 @@ import (
 	middleware "github.com/go-openapi/runtime/middleware"
 	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
+	pool "github.com/silenceper/pool"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -111,7 +112,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	handleCache := cmap.New()
 
 	GetHandle := func(principal *models.Principal) (*qdb.HandleType, error) {
-		var handle *qdb.HandleType
 
 		// This is always a username:secret_key pair, validated in BearerAuth
 		credentials := strings.Split(string(*principal), ":")
@@ -121,28 +121,22 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(500, "Invalid principal")
 		}
 		username := credentials[0]
-		secretKey := credentials[1]
 
-		if tmp, handleFound := handleCache.Get(username); handleFound {
-			if handle, ok := tmp.(*qdb.HandleType); ok {
-				if handle != nil {
-					api.Logger("Got handle from cache")
-					return handle, nil
+		if tmp, found := handleCache.Get(username); found {
+			if pl, ok := tmp.(pool.Pool); ok {
+				v, err := pl.Get()
+				if err != nil {
+					api.Logger("Got handle from cache: %s", err.Error())
+					return nil, nil
 				}
+				return v.(*qdb.HandleType), nil
 			} else {
 				api.Logger("Warning: expected handle type from cache to be *qdb.HandleType but got %s", reflect.TypeOf(tmp))
 			}
 		}
+		api.Logger("Could not connection pool for user: %s. Please try reconnecting", username)
 
-		handle, err := qdbinterface.CreateHandle(username, secretKey, APIConfig.ClusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
-		if err != nil {
-			return nil, err
-		}
-
-		api.Logger("Handle cache miss, got handle from credentials")
-		handleCache.Set(username, handle)
-
-		return handle, nil
+		return nil, nil
 	}
 
 	api.Logger = log.Printf
@@ -198,11 +192,34 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-		handle, err := qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
+		factory := func() (interface{}, error) {
+			return qdbinterface.CreateHandle(params.Credential.Username, params.Credential.SecretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
+		}
+
+		//close Specify the method to close the connection
+		close := func(v interface{}) error { return v.(*qdb.HandleType).Close() }
+
+		poolConfig := &pool.Config{
+			InitialCap: int(APIConfig.PoolSize),
+			MaxIdle:    int(APIConfig.PoolSize),
+			MaxCap:     int(APIConfig.PoolSize) * 2,
+			Factory:    factory,
+			Close:      close,
+			//Ping:       ping,
+			//The maximum idle time of the connection, the connection exceeding this time will be closed, which can avoid the problem of automatic failure when connecting to EOF when idle
+			IdleTimeout: 15 * time.Second,
+		}
+
+		p, err := pool.NewChannelPool(poolConfig)
+		if err != nil {
+			api.Logger("Could not create pool%s", params.Credential.Username, err.Error())
+		}
+		v, err := p.Get()
 		if err != nil {
 			api.Logger("Failed to login user %s: %s", params.Credential.Username, err.Error())
 			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
+		p.Put(v)
 
 		token, err := jwt.Build(secret, params.Credential.Username, params.Credential.SecretKey)
 		if err != nil {
@@ -217,7 +234,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		cacheKey := params.Credential.Username
-		handleCache.Set(cacheKey, handle)
+		handleCache.Set(cacheKey, p)
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
 	})

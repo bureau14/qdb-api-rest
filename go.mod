@@ -24,6 +24,8 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
+require github.com/sirupsen/logrus v1.8.1 // indirect
+
 require (
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
@@ -51,6 +53,7 @@ require (
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
+	github.com/silenceper/pool v1.0.0
 	github.com/spf13/afero v1.8.1 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect

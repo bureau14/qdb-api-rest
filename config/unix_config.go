@@ -25,4 +25,5 @@ var FilledDefaultConfig = Config{
 	Assets:               "/var/lib/qdb/assets",
 	MaxInBufferSize:      131072000,
 	ParallelismCount:     1,
+	PoolSize:             1,
 }
