@@ -104,7 +104,7 @@ func formatDuration(d time.Duration) string {
 	millis := d.Milliseconds()
 
 	real_micros := d.Microseconds() - millis*int64(time.Millisecond)/int64(time.Microsecond)
-	return fmt.Sprintf("%d.%03dms", millis, real_micros)
+	return fmt.Sprintf("%d.%03d ms", millis, real_micros)
 }
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
