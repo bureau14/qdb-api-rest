@@ -8,8 +8,6 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
-	"github.com/bureau14/qdb-api-rest/lumberjack"
-	"github.com/bureau14/qdb-api-rest/meta"
 	"io"
 	"io/ioutil"
 	"log"
@@ -25,7 +23,6 @@ import (
 	middleware "github.com/go-openapi/runtime/middleware"
 	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
-	pool "github.com/silenceper/pool"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -57,7 +54,7 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 
 var secret *rsa.PrivateKey
 
-const version string = "3.14.3-nightly.0"
+const version string = "3.15.0-nightly.0"
 
 func excelSerialNumber(t time.Time) float64 {
 	return (float64(t.UTC().Unix()) / 86400) + 25569
@@ -334,11 +331,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
+		credentials := strings.Split(string(*principal), ":")
+
+		queryStart := time.Now()
 		api.Logger("Executing query: %s", params.Query.Query)
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
-		api.Logger("Executed query in %s: %s", formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
+		api.Logger("Executed query by %s in %s: %s", credentials[0], formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
 		if err != nil {
-			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to query: %s", err.Error())
