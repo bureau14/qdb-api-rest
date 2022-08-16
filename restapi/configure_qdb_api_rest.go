@@ -331,13 +331,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
+		credentials := strings.Split(string(*principal), ":")
 
 		queryStart := time.Now()
 		api.Logger("Executing query: %s", params.Query.Query)
 		result, err := qdbinterface.QueryData(*handle, params.Query.Query)
-		api.Logger("Executed query in %s: %s", formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
+		api.Logger("Executed query by %s in %s: %s", credentials[0], formatDuration(time.Now().Sub(queryStart)), params.Query.Query)
 		if err != nil {
-			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
 
 			api.Logger("Failed to query: %s", err.Error())
