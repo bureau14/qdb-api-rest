@@ -25,4 +25,5 @@ var FilledDefaultConfig = Config{
 	Assets:               "C:/Program Files/quasardb//assets",
 	MaxInBufferSize:      131072000,
 	ParallelismCount:     1,
+	PoolSize:             1,
 }
