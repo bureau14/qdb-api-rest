@@ -24,6 +24,7 @@ func getQuestion(field string) string {
 		"Assets":               "Enter the path of the asset directory",
 		"MaxInBufferSize":      "Enter the maximum client side buffer in bytes",
 		"ParallelismCount":     "Enter the number of threads used by the client",
+		"PoolSize":             "Enter the number of connections per user",
 	}
 	question, ok := fieldToQuestion[field]
 	if !ok {
@@ -130,6 +131,7 @@ func askQuestions(defConfig Config) Config {
 	ask("Assets", &conf, defConfig)
 	ask("MaxInBufferSize", &conf, defConfig)
 	ask("ParallelismCount", &conf, defConfig)
+	ask("PoolSize", &conf, defConfig)
 	return conf
 }
 
