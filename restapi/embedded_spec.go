@@ -356,6 +356,23 @@ func init() {
         }
       }
     },
+    "/status": {
+      "get": {
+        "security": [],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "400": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
     "/tables/{name}.csv": {
       "get": {
         "produces": [
@@ -979,6 +996,23 @@ func init() {
           },
           "500": {
             "description": "Internal Error.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "security": [],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "400": {
+            "description": "Bad Request.",
             "schema": {
               "$ref": "#/definitions/QdbError"
             }

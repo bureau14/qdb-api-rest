@@ -144,6 +144,23 @@
         }
       }
     },
+    "/status": {
+      "get": {
+        "security": [],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Bad Request."
+          }
+        }
+      }
+    },
     "/option/parallelism": {
       "get": {
         "operationId": "get-parallelism",
@@ -163,7 +180,8 @@
           }
         },
         "tags": [
-          "option", "parallelism"
+          "option",
+          "parallelism"
         ],
         "summary": "Get the client max parallelism for this logged-in user"
       }
@@ -187,7 +205,8 @@
           }
         },
         "tags": [
-          "option", "max-in-buffer-size"
+          "option",
+          "max-in-buffer-size"
         ],
         "summary": "Get the client max in buffer size"
       }
