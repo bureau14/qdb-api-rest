@@ -268,7 +268,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		token, err := jwt.Build(secret, params.Credential.Username, params.Credential.SecretKey)
 		if err != nil {
 			api.Logger("Warning: %s", err.Error())
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 
 		if params.Credential.Username != "" {
@@ -279,7 +279,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
 		if err != nil {
-			return operations.NewLoginBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		handleCache.Set(params.Credential.Username, p)
 

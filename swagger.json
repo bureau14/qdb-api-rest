@@ -135,7 +135,7 @@
             },
             "description": "Successful operation"
           },
-          "400": {
+          "401": {
             "schema": {
               "$ref": "#/definitions/QdbError"
             },
