@@ -262,11 +262,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		_, err = io.Copy(w, r)
 		return err
-
 	})
 
 	api.LoginHandler = operations.LoginHandlerFunc(func(params operations.LoginParams) middleware.Responder {
-
 		token, err := jwt.Build(secret, params.Credential.Username, params.Credential.SecretKey)
 		if err != nil {
 			api.Logger("Warning: %s", err.Error())
@@ -286,6 +284,18 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		handleCache.Set(params.Credential.Username, p)
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
+	})
+
+	api.StatusHandler = operations.StatusHandlerFunc(func(params operations.StatusParams) middleware.Responder {
+		statusHandle, err := qdbinterface.CreateStatusHandle(string(APIConfig.ClusterURI), string(APIConfig.RestPrivateKeyFile), string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
+		if err != nil {
+			return operations.NewStatusBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		_, err = statusHandle.Statistics()
+		if err != nil {
+			return operations.NewStatusBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		return operations.NewStatusOK()
 	})
 
 	api.BearerAuth = func(token string) (*models.Principal, error) {

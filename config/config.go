@@ -17,6 +17,7 @@ type Config struct {
 	AllowedOrigins       []string       `json:"allowed_origins" long:"allowed-origins" description:"Allowed origins for cross origins"`
 	ClusterURI           string         `json:"cluster_uri" short:"c" long:"cluster" description:"URI of the cluster we connect to" env:"QDB_CLUSTER_URI"`
 	ClusterPublicKeyFile flags.Filename `json:"cluster_public_key_file" long:"cluster-public-key-file" description:"Key file used for cluster security" env:"QDB_CLUSTER_PUBLIC_KEY_FILE"`
+	RestPrivateKeyFile   flags.Filename `json:"rest_private_key_file" long:"rest-private-key-file" description:"Key file used for cluster security" env:"QDB_REST_PRIVATE_KEY_FILE"`
 	TLSCertificate       flags.Filename `json:"tls_certificate" long:"tls-certificate" description:"The certificate to use for secure connections" env:"TLS_CERTIFICATE"`
 	TLSCertificateKey    flags.Filename `json:"tls_key" long:"tls-key" description:"The private key to use for secure conections" env:"TLS_PRIVATE_KEY"`
 	TLSPort              int            `json:"tls_port" long:"tls-port" description:"The port to listen on for secure connections" env:"TLS_PORT"`
@@ -39,6 +40,9 @@ type Config struct {
 func (c *Config) SetSecured() {
 	if c.ClusterPublicKeyFile == FilledDefaultConfig.ClusterPublicKeyFile {
 		c.ClusterPublicKeyFile = Secured.ClusterPublicKeyFile
+	}
+	if c.RestPrivateKeyFile == FilledDefaultConfig.RestPrivateKeyFile {
+		c.RestPrivateKeyFile = Secured.RestPrivateKeyFile
 	}
 	if c.TLSCertificate == FilledDefaultConfig.TLSCertificate {
 		c.TLSCertificate = Secured.TLSCertificate
@@ -122,6 +126,9 @@ func (c *Config) SetDefaults() {
 	if c.ClusterPublicKeyFile == FilledDefaultConfig.ClusterPublicKeyFile {
 		c.ClusterPublicKeyFile = config.ClusterPublicKeyFile
 	}
+	if c.RestPrivateKeyFile == FilledDefaultConfig.RestPrivateKeyFile {
+		c.RestPrivateKeyFile = config.RestPrivateKeyFile
+	}
 	if c.TLSCertificate == FilledDefaultConfig.TLSCertificate {
 		c.TLSCertificate = config.TLSCertificate
 	}
@@ -155,13 +162,21 @@ func (c *Config) SetDefaults() {
 
 }
 
-func (c *Config) statFiles() (bool, bool, bool) {
+func (c *Config) statFiles() (bool, bool, bool, bool) {
 	clusterKeyFile := false
 	if c.ClusterPublicKeyFile != "" {
 		if _, err := os.Stat(string(c.ClusterPublicKeyFile)); os.IsNotExist(err) {
 			log.Printf("Warning: cannot find cluster public key file at location %s , assuming non-secure cluster configuration.\n", c.ClusterPublicKeyFile)
 		} else {
 			clusterKeyFile = true
+		}
+	}
+	privateKeyFile := false
+	if c.RestPrivateKeyFile != "" {
+		if _, err := os.Stat(string(c.RestPrivateKeyFile)); os.IsNotExist(err) {
+			log.Printf("Warning: cannot find rest api private key file at location %s , assuming non-secure cluster configuration.\n", c.RestPrivateKeyFile)
+		} else {
+			privateKeyFile = true
 		}
 	}
 
@@ -183,7 +198,7 @@ func (c *Config) statFiles() (bool, bool, bool) {
 		}
 	}
 
-	return clusterKeyFile, tlsCert, tlsKey
+	return clusterKeyFile, privateKeyFile, tlsCert, tlsKey
 }
 
 func addError(err error, msg string) error {
@@ -224,12 +239,12 @@ func (c Config) validate() error {
 
 // IsSecurityEnabled returns true when the cluster security is enabled
 func (c *Config) IsSecurityEnabled() bool {
-	return strings.TrimSpace(string(c.ClusterPublicKeyFile)) != ""
+	return strings.TrimSpace(string(c.ClusterPublicKeyFile)) != "" && strings.TrimSpace(string(c.RestPrivateKeyFile)) != ""
 }
 
 // Check : check the configuration to test for basic security features
 func (c *Config) Check() error {
-	clusterKeyFile, tlsCert, tlsKey := c.statFiles()
+	clusterKeyFile, privateKeyFile, tlsCert, tlsKey := c.statFiles()
 
 	if clusterKeyFile && (!tlsCert || !tlsKey) {
 		log.Fatalln("Error: cannot find TLS certificate while creating secured cluster.")
@@ -238,6 +253,10 @@ func (c *Config) Check() error {
 
 	if !clusterKeyFile {
 		c.ClusterPublicKeyFile = ""
+	}
+
+	if !privateKeyFile {
+		c.RestPrivateKeyFile = ""
 	}
 
 	if !tlsCert {
