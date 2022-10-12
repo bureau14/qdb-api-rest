@@ -57,14 +57,14 @@ func (o *LoginOK) WriteResponse(rw http.ResponseWriter, producer runtime.Produce
 	}
 }
 
-// LoginBadRequestCode is the HTTP code returned for type LoginBadRequest
-const LoginBadRequestCode int = 400
+// LoginUnauthorizedCode is the HTTP code returned for type LoginUnauthorized
+const LoginUnauthorizedCode int = 401
 
-/*LoginBadRequest Bad Request.
+/*LoginUnauthorized Bad Request.
 
-swagger:response loginBadRequest
+swagger:response loginUnauthorized
 */
-type LoginBadRequest struct {
+type LoginUnauthorized struct {
 
 	/*
 	  In: Body
@@ -72,27 +72,27 @@ type LoginBadRequest struct {
 	Payload *models.QdbError `json:"body,omitempty"`
 }
 
-// NewLoginBadRequest creates LoginBadRequest with default headers values
-func NewLoginBadRequest() *LoginBadRequest {
+// NewLoginUnauthorized creates LoginUnauthorized with default headers values
+func NewLoginUnauthorized() *LoginUnauthorized {
 
-	return &LoginBadRequest{}
+	return &LoginUnauthorized{}
 }
 
-// WithPayload adds the payload to the login bad request response
-func (o *LoginBadRequest) WithPayload(payload *models.QdbError) *LoginBadRequest {
+// WithPayload adds the payload to the login unauthorized response
+func (o *LoginUnauthorized) WithPayload(payload *models.QdbError) *LoginUnauthorized {
 	o.Payload = payload
 	return o
 }
 
-// SetPayload sets the payload to the login bad request response
-func (o *LoginBadRequest) SetPayload(payload *models.QdbError) {
+// SetPayload sets the payload to the login unauthorized response
+func (o *LoginUnauthorized) SetPayload(payload *models.QdbError) {
 	o.Payload = payload
 }
 
 // WriteResponse to the client
-func (o *LoginBadRequest) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
+func (o *LoginUnauthorized) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
 
-	rw.WriteHeader(400)
+	rw.WriteHeader(401)
 	if o.Payload != nil {
 		payload := o.Payload
 		if err := producer.Produce(rw, payload); err != nil {

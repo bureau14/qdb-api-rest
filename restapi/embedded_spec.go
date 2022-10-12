@@ -157,7 +157,7 @@ func init() {
               "$ref": "#/definitions/Token"
             }
           },
-          "400": {
+          "401": {
             "description": "Bad Request.",
             "schema": {
               "$ref": "#/definitions/QdbError"
@@ -804,7 +804,7 @@ func init() {
               "$ref": "#/definitions/Token"
             }
           },
-          "400": {
+          "401": {
             "description": "Bad Request.",
             "schema": {
               "$ref": "#/definitions/QdbError"
