@@ -3,6 +3,7 @@
     "cluster_uri": "qdb://127.0.0.1:2836",
     "cluster_public_key_file": "/usr/share/qdb/cluster_public.key",
     "rest_private_key_file": "/etc/qdb/qdb_rest_private.key",
+    "readiness_query": "",
     "tls_certificate": "/etc/qdb/qdb_rest.cert.pem",
     "tls_key": "/etc/qdb/qdb_rest.key.pem",
     "tls_port": 40443,
