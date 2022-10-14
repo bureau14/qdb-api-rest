@@ -144,15 +144,32 @@
         }
       }
     },
-    "/status": {
+    "/status/liveness": {
       "get": {
         "security": [],
-        "operationId": "status",
+        "operationId": "status-liveness",
         "responses": {
           "200": {
             "description": "Successful operation"
           },
-          "400": {
+          "500": {
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            },
+            "description": "Bad Request."
+          }
+        }
+      }
+    },
+    "/status/readiness": {
+      "get": {
+        "security": [],
+        "operationId": "status-readiness",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "500": {
             "schema": {
               "$ref": "#/definitions/QdbError"
             },

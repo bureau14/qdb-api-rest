@@ -286,16 +286,24 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
 	})
 
-	api.StatusHandler = operations.StatusHandlerFunc(func(params operations.StatusParams) middleware.Responder {
+	api.StatusLivenessHandler = operations.StatusLivenessHandlerFunc(func(params operations.StatusLivenessParams) middleware.Responder {
+		return operations.NewStatusLivelinessOK()
+	})
+
+	api.StatusReadinessHandler = operations.StatusReadinessHandlerFunc(func(params operations.StatusReadinessParams) middleware.Responder {
 		statusHandle, err := qdbinterface.CreateStatusHandle(string(APIConfig.ClusterURI), string(APIConfig.RestPrivateKeyFile), string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
 		if err != nil {
-			return operations.NewStatusBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			return operations.NewStatusReadinessInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		_, err = statusHandle.Statistics()
+		if APIConfig.ReadinessQuery != "" {
+			_, err = statusHandle.Query(APIConfig.ReadinessQuery).Execute()
+		} else {
+			_, err = statusHandle.Statistics()
+		}
 		if err != nil {
-			return operations.NewStatusBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+			return operations.NewStatusReadinessInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		return operations.NewStatusOK()
+		return operations.NewStatusReadinessOK()
 	})
 
 	api.BearerAuth = func(token string) (*models.Principal, error) {

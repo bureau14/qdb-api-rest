@@ -18,6 +18,7 @@ type Config struct {
 	ClusterURI           string         `json:"cluster_uri" short:"c" long:"cluster" description:"URI of the cluster we connect to" env:"QDB_CLUSTER_URI"`
 	ClusterPublicKeyFile flags.Filename `json:"cluster_public_key_file" long:"cluster-public-key-file" description:"Key file used for cluster security" env:"QDB_CLUSTER_PUBLIC_KEY_FILE"`
 	RestPrivateKeyFile   flags.Filename `json:"rest_private_key_file" long:"rest-private-key-file" description:"Key file used for cluster security" env:"QDB_REST_PRIVATE_KEY_FILE"`
+	ReadinessQuery       string         `json:"readiness_query" long:"readiness-query" description:"Query used to check cluster readiness" env:"QDB_READINESS_QUERY"`
 	TLSCertificate       flags.Filename `json:"tls_certificate" long:"tls-certificate" description:"The certificate to use for secure connections" env:"TLS_CERTIFICATE"`
 	TLSCertificateKey    flags.Filename `json:"tls_key" long:"tls-key" description:"The private key to use for secure conections" env:"TLS_PRIVATE_KEY"`
 	TLSPort              int            `json:"tls_port" long:"tls-port" description:"The port to listen on for secure connections" env:"TLS_PORT"`
@@ -131,6 +132,9 @@ func (c *Config) SetDefaults() {
 	}
 	if c.TLSCertificate == FilledDefaultConfig.TLSCertificate {
 		c.TLSCertificate = config.TLSCertificate
+	}
+	if c.ReadinessQuery == FilledDefaultConfig.ReadinessQuery {
+		c.ReadinessQuery = config.ReadinessQuery
 	}
 	if c.TLSCertificateKey == FilledDefaultConfig.TLSCertificateKey {
 		c.TLSCertificateKey = config.TLSCertificateKey

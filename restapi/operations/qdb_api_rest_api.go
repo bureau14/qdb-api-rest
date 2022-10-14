@@ -88,8 +88,11 @@ func NewQdbAPIRestAPI(spec *loads.Document) *QdbAPIRestAPI {
 		PrometheusWriteHandler: PrometheusWriteHandlerFunc(func(params PrometheusWriteParams) middleware.Responder {
 			return middleware.NotImplemented("operation PrometheusWrite has not yet been implemented")
 		}),
-		StatusHandler: StatusHandlerFunc(func(params StatusParams) middleware.Responder {
-			return middleware.NotImplemented("operation Status has not yet been implemented")
+		StatusLivenessHandler: StatusLivenessHandlerFunc(func(params StatusLivenessParams) middleware.Responder {
+			return middleware.NotImplemented("operation StatusLiveness has not yet been implemented")
+		}),
+		StatusReadinessHandler: StatusReadinessHandlerFunc(func(params StatusReadinessParams) middleware.Responder {
+			return middleware.NotImplemented("operation StatusReadiness has not yet been implemented")
 		}),
 
 		// Applies when the "Authorization" header is set
@@ -178,8 +181,10 @@ type QdbAPIRestAPI struct {
 	PrometheusReadHandler PrometheusReadHandler
 	// PrometheusWriteHandler sets the operation handler for the prometheus write operation
 	PrometheusWriteHandler PrometheusWriteHandler
-	// StatusHandler sets the operation handler for the status operation
-	StatusHandler StatusHandler
+	// StatusLivenessHandler sets the operation handler for the status liveness operation
+	StatusLivenessHandler StatusLivenessHandler
+	// StatusReadinessHandler sets the operation handler for the status readiness operation
+	StatusReadinessHandler StatusReadinessHandler
 
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
@@ -303,8 +308,11 @@ func (o *QdbAPIRestAPI) Validate() error {
 	if o.PrometheusWriteHandler == nil {
 		unregistered = append(unregistered, "PrometheusWriteHandler")
 	}
-	if o.StatusHandler == nil {
-		unregistered = append(unregistered, "StatusHandler")
+	if o.StatusLivenessHandler == nil {
+		unregistered = append(unregistered, "StatusLivenessHandler")
+	}
+	if o.StatusReadinessHandler == nil {
+		unregistered = append(unregistered, "StatusReadinessHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -460,7 +468,11 @@ func (o *QdbAPIRestAPI) initHandlerCache() {
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
-	o.handlers["GET"]["/status"] = NewStatus(o.context, o.StatusHandler)
+	o.handlers["GET"]["/status/liveness"] = NewStatusLiveness(o.context, o.StatusLivenessHandler)
+	if o.handlers["GET"] == nil {
+		o.handlers["GET"] = make(map[string]http.Handler)
+	}
+	o.handlers["GET"]["/status/readiness"] = NewStatusReadiness(o.context, o.StatusReadinessHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP

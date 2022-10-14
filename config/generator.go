@@ -15,6 +15,7 @@ func getQuestion(field string) string {
 	fieldToQuestion := map[string]string{
 		"ClusterURI":           "Enter the location of the QuasarDB cluster",
 		"ClusterPublicKeyFile": "Enter the path of the QuasarDB cluster public key file",
+		"ReadinessQuery":       "Enter the query you would use to check cluster readiness",
 		"TLSCertificate":       "Enter the path of the tls certificate",
 		"TLSCertificateKey":    "Enter the path of the tls key",
 		"TLSPort":              "Enter a port for the tls connection",
@@ -117,6 +118,7 @@ func askQuestions(defConfig Config) Config {
 	fmt.Println("Press space then enter to have an empty value.")
 	ask("ClusterURI", &conf, defConfig)
 	ask("ClusterPublicKeyFile", &conf, defConfig)
+	ask("ReadinessQuery", &conf, defConfig)
 	ask("TLSCertificate", &conf, defConfig)
 	ask("TLSCertificateKey", &conf, defConfig)
 	ask("TLSPort", &conf, defConfig)
