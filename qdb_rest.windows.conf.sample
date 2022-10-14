@@ -3,6 +3,7 @@
     "cluster_uri": "qdb://127.0.0.1:2836",
     "cluster_public_key_file": "C:/Program Files/quasardb/share/cluster_public.key",
     "rest_private_key_file": "C:/Program Files/quasardb/conf/qdb_rest_private.key",
+    "readiness_query": "",
     "tls_certificate": "C:/Program Files/quasardb/conf/qdb_rest.cert.pem",
     "tls_key": "C:/Program Files/quasardb/conf/qdb_rest.key.pem",
     "tls_port": 40443,

@@ -356,15 +356,32 @@ func init() {
         }
       }
     },
-    "/status": {
+    "/status/liveness": {
       "get": {
         "security": [],
-        "operationId": "status",
+        "operationId": "status-liveness",
         "responses": {
           "200": {
             "description": "Successful operation"
           },
-          "400": {
+          "500": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
+    "/status/readiness": {
+      "get": {
+        "security": [],
+        "operationId": "status-readiness",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "500": {
             "description": "Bad Request.",
             "schema": {
               "$ref": "#/definitions/QdbError"
@@ -1003,15 +1020,32 @@ func init() {
         }
       }
     },
-    "/status": {
+    "/status/liveness": {
       "get": {
         "security": [],
-        "operationId": "status",
+        "operationId": "status-liveness",
         "responses": {
           "200": {
             "description": "Successful operation"
           },
-          "400": {
+          "500": {
+            "description": "Bad Request.",
+            "schema": {
+              "$ref": "#/definitions/QdbError"
+            }
+          }
+        }
+      }
+    },
+    "/status/readiness": {
+      "get": {
+        "security": [],
+        "operationId": "status-readiness",
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "500": {
             "description": "Bad Request.",
             "schema": {
               "$ref": "#/definitions/QdbError"
