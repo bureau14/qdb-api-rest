@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="1acb4d18-9b76-4f71-9c61-d61aed0d4cbb" xsi:noNamespaceSchemaLocation="https://www.jetbrains.com/teamcity/schemas/2021.1/project-config.xsd">
+  <name>Linux</name>
+  <description />
+  <settings ref="Tools_RestApiServer_Build">
+    <options>
+      <option name="artifactRules" value="%system.teamcity.build.checkoutDir%/qdb-api-rest/*.tar.gz" />
+    </options>
+    <disabled-settings>
+      <setting-ref ref="RUNNER_58" />
+    </disabled-settings>
+    <parameters>
+      <param name="env.LD_LIBRARY_PATH" value="%QDB_API_PATH%/lib" />
+      <param name="env_path.sep" value=":" />
+      <param name="os_name" value="linux-64bit" />
+      <param name="platform" value="linux-64bit" />
+      <param name="update.library.path" value="" />
+    </parameters>
+    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_58, RUNNER_203">
+      <runner id="RUNNER_58" name="Generate Documentation" type="simpleRunner">
+        <parameters>
+          <param name="script.content"><![CDATA[rm -rf doc
+mkdir doc
+npx redoc-cli bundle swagger.json --output doc/index.html
+tar -czvf doc.tar.gz doc/*]]></param>
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use.custom.script" value="true" />
+        </parameters>
+      </runner>
+    </build-runners>
+    <vcs-settings />
+    <requirements>
+      <contains id="RQ_17" name="teamcity.agent.jvm.os.name" value="Linux" />
+      <does-not-equal id="RQ_325" name="teamcity.agent.jvm.os.arch" value="aarch64" />
+    </requirements>
+    <build-triggers />
+    <artifact-dependencies>
+      <dependency id="ARTIFACT_DEPENDENCY_457" sourceBuildTypeId="Quasardb_Artifacts_Release_Linux_X8664Haswell_Default" cleanDestination="false">
+        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
+        <artifact sourcePath="qdb-*-c-api.tar.gz!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.gz!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
+      </dependency>
+    </artifact-dependencies>
+    <dependencies>
+      <depend-on sourceBuildTypeId="Api_Go_Go119_Linux">
+        <options>
+          <option name="sync-revisions" value="false" />
+          <option name="take-started-build-with-same-revisions" value="true" />
+          <option name="take-successful-builds-only" value="true" />
+        </options>
+      </depend-on>
+      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_Linux_X8664Haswell_Default">
+        <options>
+          <option name="take-started-build-with-same-revisions" value="true" />
+          <option name="take-successful-builds-only" value="true" />
+        </options>
+      </depend-on>
+    </dependencies>
+    <cleanup />
+  </settings>
+</build-type>
+

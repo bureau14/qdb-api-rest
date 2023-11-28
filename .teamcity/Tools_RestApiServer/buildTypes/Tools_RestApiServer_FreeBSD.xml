@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="5a57da44-1133-4677-8456-9aadd8acebfd" xsi:noNamespaceSchemaLocation="https://www.jetbrains.com/teamcity/schemas/2021.1/project-config.xsd">
+  <name>FreeBSD</name>
+  <description />
+  <settings ref="Tools_RestApiServer_Build">
+    <options>
+      <option name="artifactRules" value="%system.teamcity.build.checkoutDir%/qdb-api-rest/*.tar.gz" />
+    </options>
+    <parameters>
+      <param name="env_path.sep" value=":" />
+      <param name="os_name" value="freebsd-64bit" />
+      <param name="platform" value="freebsd-64bit" />
+    </parameters>
+    <build-runners />
+    <vcs-settings />
+    <requirements>
+      <equals id="RQ_108" name="teamcity.agent.jvm.os.name" value="FreeBSD" />
+    </requirements>
+    <build-triggers />
+    <artifact-dependencies>
+      <dependency id="ARTIFACT_DEPENDENCY_456" sourceBuildTypeId="Quasardb_Artifacts_Release_FreeBSD_X8664Haswell_Default" cleanDestination="false">
+        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
+        <artifact sourcePath="qdb-*-c-api.tar.gz!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.gz!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
+      </dependency>
+    </artifact-dependencies>
+    <dependencies>
+      <depend-on sourceBuildTypeId="Api_Go_Go119_FreeBSD">
+        <options>
+          <option name="sync-revisions" value="false" />
+          <option name="take-started-build-with-same-revisions" value="true" />
+          <option name="take-successful-builds-only" value="true" />
+        </options>
+      </depend-on>
+      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_FreeBSD_X8664Haswell_Default">
+        <options>
+          <option name="take-started-build-with-same-revisions" value="true" />
+          <option name="take-successful-builds-only" value="true" />
+        </options>
+      </depend-on>
+    </dependencies>
+    <cleanup />
+  </settings>
+</build-type>
+
