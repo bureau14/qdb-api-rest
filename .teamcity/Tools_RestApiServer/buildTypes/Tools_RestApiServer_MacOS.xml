@@ -19,7 +19,7 @@
     </requirements>
     <build-triggers />
     <artifact-dependencies>
-      <dependency id="ARTIFACT_DEPENDENCY_459" sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_X8664Haswell_Default" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_459" sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_X8664Haswell_Composite" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="qdb-*-c-api.tar.gz!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.gz!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
       </dependency>
@@ -32,7 +32,7 @@
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_X8664Haswell_Default">
+      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_X8664Haswell_Composite">
         <options>
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
