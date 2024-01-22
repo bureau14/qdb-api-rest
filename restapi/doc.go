@@ -8,7 +8,7 @@
 //    https
 //  Host: localhost
 //  BasePath: /api
-//  Version: 3.14.1
+//  Version: 3.14.2-nightly.0
 //
 //  Consumes:
 //    - application/json
