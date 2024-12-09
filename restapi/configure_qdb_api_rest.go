@@ -127,7 +127,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			Close:      close,
 			//Ping:       ping,
 			//The maximum idle time of the connection, the connection exceeding this time will be closed, which can avoid the problem of automatic failure when connecting to EOF when idle
-			IdleTimeout: 15 * time.Minute,
+			IdleTimeout: 1 * time.Minute,
 		}
 
 		p, err := pool.NewChannelPool(poolConfig)
@@ -277,11 +277,22 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Logged anonymous user")
 		}
 
+		// Check whether an existing pool already exists for this user, if so, remember it so we
+		// can clean it up later
+		oldPool, oldPoolFound := handleCache.Get(params.Credential.Username)
+
 		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
 		if err != nil {
 			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		handleCache.Set(params.Credential.Username, p)
+
+		if oldPoolFound {
+			if pl, ok := oldPool.(*pool.Pool); ok {
+				api.Logger("Releasing all old handles after allocating new pool")
+				(*pl).Release()
+			}
+		}
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
 	})
