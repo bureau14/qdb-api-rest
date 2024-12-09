@@ -277,11 +277,22 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Logged anonymous user")
 		}
 
+		// Check whether an existing pool already exists for this user, if so, remember it so we
+		// can clean it up later
+		oldPool, oldPoolfound := handleCache.Get(username)
+
 		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
 		if err != nil {
 			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
 		}
 		handleCache.Set(params.Credential.Username, p)
+
+		if oldPoolFound {
+			if pl, ok := oldPool.(*pool.Pool); ok {
+				api.logger("Releasing all old handles after allocating new pool")
+				pl.Release()
+			}
+		}
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
 	})
