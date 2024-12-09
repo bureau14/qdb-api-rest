@@ -279,7 +279,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		// Check whether an existing pool already exists for this user, if so, remember it so we
 		// can clean it up later
-		oldPool, oldPoolfound := handleCache.Get(username)
+		oldPool, oldPoolFound := handleCache.Get(params.Credential.Username)
 
 		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
 		if err != nil {
@@ -289,7 +289,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if oldPoolFound {
 			if pl, ok := oldPool.(*pool.Pool); ok {
-				api.logger("Releasing all old handles after allocating new pool")
+				api.Logger("Releasing all old handles after allocating new pool")
 				pl.Release()
 			}
 		}
