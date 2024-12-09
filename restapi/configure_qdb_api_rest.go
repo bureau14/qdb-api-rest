@@ -290,7 +290,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if oldPoolFound {
 			if pl, ok := oldPool.(*pool.Pool); ok {
 				api.Logger("Releasing all old handles after allocating new pool")
-				pl.Release()
+				(*pl).Release()
 			}
 		}
 
