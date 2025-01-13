@@ -32,7 +32,7 @@ case $(uname) in
         mv $QDB_REST_SERVICE_BINARY bin/
 
         # Include openssl
-        curl -s https://teamcity-agentbuilddepsbucket-1hnzq872q5c3n.s3.eu-west-1.amazonaws.com/windows/openssl/openssl-1.0.2q-x64_86-win64.zip > openssl.zip
+        curl -s https://teamcity-agentbuilddeps-20241223095405875100000001.s3.eu-west-1.amazonaws.com/windows/openssl/openssl-1.0.2q-x64_86-win64.zip > openssl.zip
         cp $QDB_API_REST/scripts/teamcity/openssl.cnf etc/openssl.conf
         7z x openssl.zip
         mv openssl.exe bin/
