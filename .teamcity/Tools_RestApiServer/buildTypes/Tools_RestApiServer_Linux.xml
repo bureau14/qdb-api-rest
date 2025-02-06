@@ -38,7 +38,7 @@ tar -czvf doc.tar.gz doc/*]]></param>
     <artifact-dependencies>
       <dependency id="ARTIFACT_DEPENDENCY_457" sourceBuildTypeId="Quasardb_Artifacts_Release_Linux_X8664Haswell_Composite" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="qdb-*-c-api.tar.gz!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.gz!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.gz!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
+        <artifact sourcePath="qdb-*-c-api.tar.zst!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.zst!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
       </dependency>
     </artifact-dependencies>
     <dependencies>
