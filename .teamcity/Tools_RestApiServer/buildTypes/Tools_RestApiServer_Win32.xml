@@ -28,15 +28,15 @@
       </dependency>
     </artifact-dependencies>
     <dependencies>
-      <depend-on sourceBuildTypeId="Api_Go_Go119_Win32">
+      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_Windows_X86Haswell">
         <options>
-          <option name="sync-revisions" value="false" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_Windows_X86Haswell">
+      <depend-on sourceBuildTypeId="Api_Go_Windows_X86Core2_Composite">
         <options>
+          <option name="sync-revisions" value="false" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
         </options>
