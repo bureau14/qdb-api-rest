@@ -24,15 +24,15 @@
       </dependency>
     </artifact-dependencies>
     <dependencies>
-      <depend-on sourceBuildTypeId="Api_Go_Go119_FreeBSD">
+      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_FreeBSD_X8664Haswell_Composite">
         <options>
-          <option name="sync-revisions" value="false" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Quasardb_Artifacts_Release_FreeBSD_X8664Haswell_Composite">
+      <depend-on sourceBuildTypeId="Api_Go_FreeBSD_X8664Haswell_Composite">
         <options>
+          <option name="sync-revisions" value="false" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
         </options>
