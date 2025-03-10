@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/natefinch/lumberjack.v2"
+
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
@@ -218,12 +220,20 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		f, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		_, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 		if err != nil {
+			log.SetOutput(os.Stdout)
 			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
 		} else {
-			log.SetOutput(f)
+			lumberJackLogger := &lumberjack.Logger{
+				Filename:   string(APIConfig.Log),
+				MaxSize:    APIConfig.LogMaxSize,
+				MaxBackups: APIConfig.LogMaxBackups,
+				MaxAge:     APIConfig.LogMaxAge,
+				Compress:   APIConfig.LogCompress,
+			}
+			log.SetOutput(lumberJackLogger)
 			qdb.SetLogFile(string(APIConfig.Log))
 		}
 	}
