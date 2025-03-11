@@ -36,10 +36,10 @@ type Config struct {
 	Local       bool           `json:"-" short:"l" long:"local" description:"Switch on local mode"`
 	Secure      bool           `json:"-" short:"s" long:"secure" description:"Switch on security default parameters (tls + cluster security)"`
 	//additional log params
-	LogMaxSize    int  `json:"logMaxSize" long:"logMaxSize" description:"Max size of the log file, MB" env:"QDB_LOG_MAX_SIZE"`
-	LogMaxBackups int  `json:"logMaxBackups" long:"logMaxBackups" description:"Maximum numbers of log files to keep" env:"QDB_LOG_MAX_BACKUPS"`
-	LogMaxAge     int  `json:"logMaxAge" long:"LogMaxAge" description:"Maximum numbers of days to keep log files" env:"QDB_LOG_MAX_AGE"`
-	LogCompress   bool `json:"logCompress" long:"logCompress" description:"Use or not compression on log files" env:"QDB_LOG_COMPRESS"`
+	LogMaxSize    int  `json:"log_max_size_mb" long:"log-max-size-mb" description:"Max size of the log file, MB" env:"QDB_REST_LOG_MAX_SIZE_MB"`
+	LogMaxBackups int  `json:"log_max_backups" long:"log-max-backups" description:"Maximum numbers of log files to keep" env:"QDB_REST_LOG_MAX_BACKUPS"`
+	LogMaxAge     int  `json:"log_max_age_days" long:"log-max-age-days" description:"Maximum numbers of days to keep log files" env:"QDB_REST_LOG_MAX_AGE_DAYS"`
+	LogCompress   bool `json:"log_compress" long:"log-compress" description:"Use or not compression on log files" env:"QDB_REST_LOG_COMPRESS"`
 }
 
 // SetSecured set config to secured mode
