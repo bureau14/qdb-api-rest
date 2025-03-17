@@ -20,7 +20,7 @@
     </requirements>
     <build-triggers />
     <artifact-dependencies>
-      <dependency id="ARTIFACT_DEPENDENCY_459" sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_X8664Core2_Composite" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_459" sourceBuildTypeId="Quasardb_Artifacts_Release_MacOS_AArch64_Composite" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="qdb-*-c-api.tar.zst!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.zst!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
       </dependency>
