@@ -85,7 +85,7 @@ bash -e scripts/teamcity/build.sh .]]></param>
       </runner>
     </build-runners>
     <vcs-settings>
-      <vcs-entry-ref root-id="Tools_RestApiServer_QdbApiRest">
+      <vcs-entry-ref root-id="Tools_RestApiServer_QdbApiRest_2">
         <checkout-rule rule="+:. =&gt; qdb-api-rest" />
       </vcs-entry-ref>
       <vcs-entry-ref root-id="Api_Go_QdbApiGo">
