@@ -21,7 +21,7 @@
       </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_179" sourceBuildTypeId="Tools_RestApiServer_Linux" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="* =&gt; ." />
+        <artifact sourcePath="** =&gt; ." />
       </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_338" sourceBuildTypeId="Tools_RestApiServer_LinuxArm64" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
