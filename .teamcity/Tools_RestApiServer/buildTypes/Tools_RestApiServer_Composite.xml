@@ -37,7 +37,7 @@
       </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_229" sourceBuildTypeId="Tools_RestApiServer_Win64" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="* =&gt; ." />
+        <artifact sourcePath="** =&gt; ." />
       </dependency>
     </artifact-dependencies>
     <dependencies>
