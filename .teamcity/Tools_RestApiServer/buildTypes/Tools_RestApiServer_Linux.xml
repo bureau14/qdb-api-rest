@@ -48,8 +48,9 @@ tar -czvf doc.tar.gz doc/*]]></param>
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Api_Go_Linux_X8664Haswell_Composite">
+      <depend-on sourceBuildTypeId="Api_Go_Linux_X8664Haswell">
         <options>
+          <option name="run-build-if-dependency-failed" value="RUN_ADD_PROBLEM" />
           <option name="sync-revisions" value="false" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
