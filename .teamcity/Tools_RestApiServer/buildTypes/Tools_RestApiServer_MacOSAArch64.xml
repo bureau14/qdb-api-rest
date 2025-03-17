@@ -16,7 +16,7 @@
     <requirements>
       <equals id="RQ_126" name="teamcity.agent.jvm.os.name" value="Mac OS X" />
       <does-not-equal id="RQ_175" name="system.agent.name" value="Mac Mini 3" />
-      <does-not-contain id="RQ_35" name="system.agent.name" value="aarch64" />
+      <equals id="RQ_35" name="system.agent.name" value="aarch64" />
     </requirements>
     <build-triggers />
     <artifact-dependencies>
