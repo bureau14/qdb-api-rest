@@ -13,7 +13,16 @@
       <vcs-entry-ref root-id="Tools_RestApiServer_QdbApiRest" />
     </vcs-settings>
     <requirements />
-    <build-triggers />
+    <build-triggers>
+      <build-trigger id="TRIGGER_29" type="vcsTrigger">
+        <parameters>
+          <param name="branchFilter" value="+:*" />
+          <param name="enableQueueOptimization" value="true" />
+          <param name="quietPeriodMode" value="USE_DEFAULT" />
+          <param name="watchChangesInDependencies" value="true" />
+        </parameters>
+      </build-trigger>
+    </build-triggers>
     <artifact-dependencies>
       <dependency id="ARTIFACT_DEPENDENCY_178" sourceBuildTypeId="Tools_RestApiServer_FreeBSD" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
