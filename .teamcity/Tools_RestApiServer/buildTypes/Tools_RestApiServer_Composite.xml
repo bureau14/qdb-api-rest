@@ -23,9 +23,9 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; linux/" />
       </dependency>
-      <dependency id="ARTIFACT_DEPENDENCY_229" sourceBuildTypeId="Tools_RestApiServer_Windows_X8664Haswell" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_229" sourceBuildTypeId="Tools_RestApiServer_Windows_Composite" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="** =&gt; ." />
+        <artifact sourcePath="** =&gt; windows/" />
       </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_217" sourceBuildTypeId="Tools_RestApiServer_MacOS_AArch64" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
