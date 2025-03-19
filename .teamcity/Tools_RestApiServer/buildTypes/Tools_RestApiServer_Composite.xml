@@ -41,12 +41,6 @@
       </dependency>
     </artifact-dependencies>
     <dependencies>
-      <depend-on sourceBuildTypeId="Tools_RestApiServer_FreeBSD_X8664Haswell">
-        <options>
-          <option name="take-started-build-with-same-revisions" value="true" />
-          <option name="take-successful-builds-only" value="true" />
-        </options>
-      </depend-on>
       <depend-on sourceBuildTypeId="Tools_RestApiServer_Linux_X8664Haswell">
         <options>
           <option name="take-started-build-with-same-revisions" value="true" />
@@ -74,6 +68,13 @@
       </depend-on>
       <depend-on sourceBuildTypeId="Tools_RestApiServer_MacOS_AArch64">
         <options>
+          <option name="take-started-build-with-same-revisions" value="true" />
+          <option name="take-successful-builds-only" value="true" />
+        </options>
+      </depend-on>
+      <depend-on sourceBuildTypeId="Tools_RestApiServer_FreeBSD_Composite">
+        <options>
+          <option name="run-build-if-dependency-failed" value="RUN_ADD_PROBLEM" />
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
         </options>
