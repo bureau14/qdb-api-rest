@@ -9,9 +9,7 @@
     </options>
     <parameters />
     <build-runners />
-    <vcs-settings>
-      <vcs-entry-ref root-id="Api_Go_QdbApiGo" />
-    </vcs-settings>
+    <vcs-settings />
     <requirements />
     <build-triggers />
     <artifact-dependencies>
