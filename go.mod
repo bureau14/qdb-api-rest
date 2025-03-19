@@ -21,6 +21,7 @@ require (
 	github.com/rs/cors v1.8.2
 	golang.org/x/net v0.5.0
 	golang.org/x/sys v0.4.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
