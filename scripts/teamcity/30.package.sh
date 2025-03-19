@@ -21,6 +21,12 @@ case $(uname) in
             ARCH="aarch64"
         fi
         ;;
+
+    MINGW* )
+        # Don't know how to probe this in windows, but we only do amd64 anyway
+        ARCH="amd64"
+        ;;
+
     * )
         echo "Unable to probe environment"
         exit -1
