@@ -23,7 +23,7 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; ." />
       </dependency>
-      <dependency id="ARTIFACT_DEPENDENCY_338" sourceBuildTypeId="Tools_RestApiServer_LinuxArm64" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_338" sourceBuildTypeId="Tools_RestApiServer_Linux_AArch64" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; ." />
       </dependency>
@@ -65,7 +65,7 @@
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Tools_RestApiServer_LinuxArm64">
+      <depend-on sourceBuildTypeId="Tools_RestApiServer_Linux_AArch64">
         <options>
           <option name="run-build-if-dependency-failed" value="RUN_ADD_PROBLEM" />
           <option name="take-started-build-with-same-revisions" value="true" />
