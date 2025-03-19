@@ -27,7 +27,7 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; ." />
       </dependency>
-      <dependency id="ARTIFACT_DEPENDENCY_182" sourceBuildTypeId="Tools_RestApiServer_MacOS" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_182" sourceBuildTypeId="Tools_RestApiServer_MacOS_X8664Haswell" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; ." />
       </dependency>
@@ -53,7 +53,7 @@
           <option name="take-successful-builds-only" value="true" />
         </options>
       </depend-on>
-      <depend-on sourceBuildTypeId="Tools_RestApiServer_MacOS">
+      <depend-on sourceBuildTypeId="Tools_RestApiServer_MacOS_X8664Haswell">
         <options>
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
