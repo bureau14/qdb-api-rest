@@ -73,6 +73,7 @@
         <parameters>
           <param name="command.executable" value="bash" />
           <param name="command.parameters" value="scripts/teamcity/30.package.sh" />
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
           <param name="teamcity.step.mode" value="default" />
         </parameters>
       </runner>
