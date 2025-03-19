@@ -9,7 +9,9 @@
     </options>
     <parameters />
     <build-runners />
-    <vcs-settings />
+    <vcs-settings>
+      <vcs-entry-ref root-id="Tools_RestApiServer_QdbApiRest_2" />
+    </vcs-settings>
     <requirements />
     <build-triggers />
     <artifact-dependencies>
