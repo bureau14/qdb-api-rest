@@ -17,6 +17,10 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; aarch64/" />
       </dependency>
+      <dependency id="ARTIFACT_DEPENDENCY_11343" sourceBuildTypeId="Tools_RestApiServer_MacOS_X8664Core2" cleanDestination="false">
+        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
+        <artifact sourcePath="** =&gt; x86_64-core2/" />
+      </dependency>
     </artifact-dependencies>
     <dependencies>
       <depend-on sourceBuildTypeId="Tools_RestApiServer_MacOS_AArch64">
