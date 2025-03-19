@@ -18,6 +18,14 @@
       <param name="select.gcc" value="" />
     </parameters>
     <build-runners>
+      <runner id="RUNNER_288" name="Start services" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="bash" />
+          <param name="command.parameters" value="scripts/tests/setup/start-services.sh" />
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
       <runner id="RUNNER_152" name="Get dependencies" type="simpleRunner">
         <parameters>
           <param name="command.executable" value="bash" />
@@ -30,14 +38,6 @@
         <parameters>
           <param name="command.executable" value="bash" />
           <param name="command.parameters" value="scripts/teamcity/20.build.sh" />
-          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
-          <param name="teamcity.step.mode" value="default" />
-        </parameters>
-      </runner>
-      <runner id="RUNNER_288" name="Start services" type="simpleRunner">
-        <parameters>
-          <param name="command.executable" value="bash" />
-          <param name="command.parameters" value="scripts/tests/setup/start-services.sh" />
           <param name="teamcity.build.workingDir" value="qdb-api-rest" />
           <param name="teamcity.step.mode" value="default" />
         </parameters>
