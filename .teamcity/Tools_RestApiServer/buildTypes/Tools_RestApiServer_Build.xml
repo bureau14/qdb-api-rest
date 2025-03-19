@@ -28,11 +28,10 @@
       </runner>
       <runner id="RUNNER_182" name="Build" type="simpleRunner">
         <parameters>
-          <param name="script.content"><![CDATA[%select.gcc%
-bash -e scripts/teamcity/build.sh .]]></param>
+          <param name="command.executable" value="bash" />
+          <param name="command.parameters" value="scripts/teamcity/20.build.sh" />
           <param name="teamcity.build.workingDir" value="qdb-api-rest" />
           <param name="teamcity.step.mode" value="default" />
-          <param name="use.custom.script" value="true" />
         </parameters>
       </runner>
       <runner id="RUNNER_288" name="Start services" type="simpleRunner">
