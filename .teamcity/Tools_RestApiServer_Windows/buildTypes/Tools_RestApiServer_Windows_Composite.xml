@@ -12,6 +12,12 @@
     <vcs-settings />
     <requirements />
     <build-triggers />
+    <artifact-dependencies>
+      <dependency id="ARTIFACT_DEPENDENCY_11350" sourceBuildTypeId="Tools_RestApiServer_Windows_X8664Haswell" cleanDestination="false">
+        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
+        <artifact sourcePath="** =&gt; x86_64-haswell/" />
+      </dependency>
+    </artifact-dependencies>
     <dependencies>
       <depend-on sourceBuildTypeId="Tools_RestApiServer_Windows_X8664Haswell">
         <options>
