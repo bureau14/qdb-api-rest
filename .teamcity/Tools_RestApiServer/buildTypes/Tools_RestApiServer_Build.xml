@@ -71,10 +71,9 @@
       </runner>
       <runner id="RUNNER_203" name="Package" type="simpleRunner">
         <parameters>
-          <param name="script.content" value="bash -e scripts/teamcity/package.sh . %platform%" />
-          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="command.executable" value="bash" />
+          <param name="command.parameters" value="scripts/teamcity/30.package.sh" />
           <param name="teamcity.step.mode" value="default" />
-          <param name="use.custom.script" value="true" />
         </parameters>
       </runner>
       <runner id="RUNNER_289" name="Stop services" type="simpleRunner">
