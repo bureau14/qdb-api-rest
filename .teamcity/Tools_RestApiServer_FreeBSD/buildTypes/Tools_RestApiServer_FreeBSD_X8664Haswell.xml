@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="5a57da44-1133-4677-8456-9aadd8acebfd" xsi:noNamespaceSchemaLocation="https://www.jetbrains.com/teamcity/schemas/2021.1/project-config.xsd">
-  <name>FreeBSD</name>
+  <name>x86_64 Haswell</name>
   <description />
   <settings ref="Tools_RestApiServer_Build">
     <options>

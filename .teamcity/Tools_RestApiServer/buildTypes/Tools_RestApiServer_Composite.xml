@@ -15,7 +15,7 @@
     <requirements />
     <build-triggers />
     <artifact-dependencies>
-      <dependency id="ARTIFACT_DEPENDENCY_178" sourceBuildTypeId="Tools_RestApiServer_FreeBSD" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_178" sourceBuildTypeId="Tools_RestApiServer_FreeBSD_X8664Haswell" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; ." />
       </dependency>
@@ -41,7 +41,7 @@
       </dependency>
     </artifact-dependencies>
     <dependencies>
-      <depend-on sourceBuildTypeId="Tools_RestApiServer_FreeBSD">
+      <depend-on sourceBuildTypeId="Tools_RestApiServer_FreeBSD_X8664Haswell">
         <options>
           <option name="take-started-build-with-same-revisions" value="true" />
           <option name="take-successful-builds-only" value="true" />
