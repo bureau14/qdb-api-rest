@@ -19,9 +19,9 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; freebsd/" />
       </dependency>
-      <dependency id="ARTIFACT_DEPENDENCY_338" sourceBuildTypeId="Tools_RestApiServer_Linux_AArch64" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_338" sourceBuildTypeId="Tools_RestApiServer_Linux_Composite" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="** =&gt; ." />
+        <artifact sourcePath="** =&gt; linux/" />
       </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_179" sourceBuildTypeId="Tools_RestApiServer_Linux_X8664Haswell" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
