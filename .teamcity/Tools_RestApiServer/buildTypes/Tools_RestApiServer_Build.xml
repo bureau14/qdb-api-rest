@@ -112,6 +112,9 @@
           <param name="swabra.processes" value="kill" />
         </parameters>
       </extension>
+      <extension id="perfmon" type="perfmon">
+        <parameters />
+      </extension>
     </build-extensions>
     <cleanup />
   </settings>
