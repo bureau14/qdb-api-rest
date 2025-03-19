@@ -3,5 +3,6 @@
   <name>macOS</name>
   <parameters />
   <cleanup />
+  <buildTypesOrder order="Tools_RestApiServer_MacOS_Composite,Tools_RestApiServer_MacOS_AArch64,Tools_RestApiServer_MacOS_X8664Core2" />
 </project>
 
