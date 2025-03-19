@@ -18,12 +18,12 @@
       <param name="select.gcc" value="" />
     </parameters>
     <build-runners>
-      <runner id="RUNNER_152" name="Get" type="simpleRunner">
+      <runner id="RUNNER_152" name="Get dependencies" type="simpleRunner">
         <parameters>
-          <param name="script.content" value="bash -eux scripts/teamcity/get_dependencies.sh ." />
+          <param name="command.executable" value="bash" />
+          <param name="command.parameters" value="scripts/teamcity/10.get.sh" />
           <param name="teamcity.build.workingDir" value="qdb-api-rest" />
           <param name="teamcity.step.mode" value="default" />
-          <param name="use.custom.script" value="true" />
         </parameters>
       </runner>
       <runner id="RUNNER_182" name="Build" type="simpleRunner">
