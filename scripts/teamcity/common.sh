@@ -96,5 +96,6 @@ export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
 export GO="${GO}"
 
+export BASE_DIR="${BASE_DIR}"
 export QDB_REST_DIR="${QDB_REST_DIR}"
 export QDB_REST_SERVICE_DIR="${QDB_REST_SERVICE_DIR}"
