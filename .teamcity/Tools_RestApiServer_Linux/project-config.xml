@@ -3,5 +3,6 @@
   <name>Linux</name>
   <parameters />
   <cleanup />
+  <buildTypesOrder order="Tools_RestApiServer_Linux_Composite,Tools_RestApiServer_Linux_AArch64,Tools_RestApiServer_Linux_X8664Haswell" />
 </project>
 
