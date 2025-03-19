@@ -78,7 +78,7 @@ case $(uname) in
         SUFFIX=".zip"
 
         # Include qdb_rest_service
-        QDB_REST_SERVICE_BINARY=${QDB_REST_DIR}/apps/qdb_rest_service/qdb_rest_service.exe
+        QDB_REST_SERVICE_BINARY=${QDB_REST_SERVICE_DIR}/qdb_rest_service.exe
         mv ${QDB_REST_SERVICE_BINARY} bin/
 
         # Include openssl
