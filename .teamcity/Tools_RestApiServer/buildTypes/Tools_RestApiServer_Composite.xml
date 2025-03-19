@@ -31,10 +31,6 @@
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; macos/" />
       </dependency>
-      <dependency id="ARTIFACT_DEPENDENCY_182" sourceBuildTypeId="Tools_RestApiServer_MacOS_X8664Core2" cleanDestination="false">
-        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
-        <artifact sourcePath="** =&gt; ." />
-      </dependency>
     </artifact-dependencies>
     <dependencies>
       <depend-on sourceBuildTypeId="Tools_RestApiServer_FreeBSD_Composite">
