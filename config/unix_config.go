@@ -26,7 +26,7 @@ var FilledDefaultConfig = Config{
 	Port:                 40080,
 	Log:                  "/var/log/qdb/qdb_rest.log",
 	LogMaxSize:           1024,
-	LogMaxBackups:        5,
+	LogMaxRetention:      5,
 	LogMaxAge:            10,
 	LogCompress:          false,
 	Assets:               "/var/lib/qdb/assets",

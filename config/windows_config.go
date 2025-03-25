@@ -26,7 +26,7 @@ var FilledDefaultConfig = Config{
 	Port:                 40080,
 	Log:                  "C:/Program Files/quasardb/log/qdb_rest.log",
 	LogMaxSize:           1024,
-	LogMaxBackups:        5,
+	LogMaxRetention:      5,
 	LogMaxAge:            10,
 	LogCompress:          false,
 	Assets:               "C:/Program Files/quasardb//assets",

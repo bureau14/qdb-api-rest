@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
+	"github.com/bureau14/qdb-api-rest/lumberjack"
 	"io"
 	"io/ioutil"
 	"log"
@@ -17,8 +18,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
@@ -229,7 +228,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			lumberJackLogger := &lumberjack.Logger{
 				Filename:   string(APIConfig.Log),
 				MaxSize:    APIConfig.LogMaxSize,
-				MaxBackups: APIConfig.LogMaxBackups,
+				MaxBackups: APIConfig.LogMaxRetention,
 				MaxAge:     APIConfig.LogMaxAge,
 				Compress:   APIConfig.LogCompress,
 			}
