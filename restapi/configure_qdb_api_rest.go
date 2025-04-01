@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
+	"github.com/bureau14/qdb-api-rest/lumberjack"
 	"io"
 	"io/ioutil"
 	"log"
@@ -218,12 +219,21 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		f, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		logFile, err := os.OpenFile(string(APIConfig.Log), os.O_CREATE, 0644)
+		defer logFile.Close()
 		if err != nil {
+			log.SetOutput(os.Stdout)
 			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
 			APIConfig.Log = ""
 		} else {
-			log.SetOutput(f)
+			lumberJackLogger := &lumberjack.Logger{
+				Filename:   string(APIConfig.Log),
+				MaxSize:    APIConfig.LogMaxSize,
+				MaxBackups: APIConfig.LogMaxRetention,
+				MaxAge:     APIConfig.LogMaxAge,
+				Compress:   APIConfig.LogCompress,
+			}
+			log.SetOutput(lumberJackLogger)
 			qdb.SetLogFile(string(APIConfig.Log))
 		}
 	}
