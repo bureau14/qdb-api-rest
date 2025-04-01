@@ -219,7 +219,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		_, err := os.OpenFile(string(APIConfig.Log), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		logFile, err := os.OpenFile(string(APIConfig.Log), os.O_CREATE, 0644)
+		defer logFile.Close()
 		if err != nil {
 			log.SetOutput(os.Stdout)
 			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
