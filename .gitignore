@@ -33,3 +33,5 @@ rest_log.err.txt
 rest_log.out.txt
 secure/
 user_private.key
+/qdb-api-rest.iml
+.idea
