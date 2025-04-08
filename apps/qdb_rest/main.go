@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/bureau14/qdb-api-rest/meta"
 	"log"
 	"os"
 
@@ -42,6 +43,10 @@ func main() {
 			}
 		}
 		os.Exit(code)
+	}
+
+	if restapi.APIConfig.Version {
+		meta.GetVersionInfo()
 	}
 
 	server.ConfigureAPI()
