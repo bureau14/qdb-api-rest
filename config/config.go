@@ -40,6 +40,7 @@ type Config struct {
 	LogMaxRetention int  `json:"log_max_retention" long:"log-max-retention" description:"Maximum numbers of log files to keep" env:"QDB_REST_LOG_MAX_RETENTION"`
 	LogMaxAge       int  `json:"log_max_age_seconds" long:"log-max-age-seconds" description:"Maximum numbers of seconds to keep log files" env:"QDB_REST_LOG_MAX_AGE_SECONDS"`
 	LogCompress     bool `json:"log_compress" long:"log-compress" description:"Use or not compression on log files" env:"QDB_REST_LOG_COMPRESS"`
+	Version         bool `json:"-" long:"version" description:"Show current version of rest-api"`
 }
 
 // SetSecured set config to secured mode

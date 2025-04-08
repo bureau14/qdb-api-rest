@@ -3,58 +3,8 @@
 set -eux
 
 SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/../common.sh"
 
-ARCH=""
-
-# Probe architecture, i.e. whether we're amd64 or aarch64
-
-case $(uname) in
-    Darwin | Linux | FreeBSD )
-        ARCH=$(uname -m)
-
-        # Sanitize architecture description
-        if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]
-        then
-            ARCH="amd64"
-        else
-            ARCH="aarch64"
-        fi
-        ;;
-
-    MINGW* )
-        # Don't know how to probe this in windows, but we only do amd64 anyway
-        ARCH="amd64"
-        ;;
-
-    * )
-        echo "Unable to probe environment"
-        exit -1
-        ;;
-esac
-
-OS=""
-
-case $(uname) in
-    MINGW* )
-        OS="windows"
-        ;;
-
-    Darwin )
-        OS="darwin"
-        ;;
-
-    Linux )
-        OS="linux"
-        ;;
-
-    FreeBSD )
-        OS="freebsd"
-        ;;
-esac
-
-PLATFORM="${OS}-${ARCH}"
-echo "PLATFORM=${PLATFORM}"
 
 SWAGGER_PATH=${BASE_DIR}/swagger.json
 QDB_REST_BINARY=${QDB_REST_DIR}/qdb_rest
