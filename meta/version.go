@@ -20,6 +20,6 @@ const versionInfoTemplate string = `quasardb rest api version: %s
 
          Copyright (c) 2009-2025, quasardb SAS. All rights reserved.`
 
-func GetVersionInfo() string {
+func GetVersionInfoString() string {
 	return fmt.Sprintf(versionInfoTemplate, Version, GitHash, BuildTime, GoVersion, BuildType, Platform)
 }

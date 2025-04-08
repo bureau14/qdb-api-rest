@@ -141,7 +141,7 @@ echo "GOROOT: ${GOROOT}"
 echo "GOPATH: ${GOPATH}"
 echo "GO: ${GO}"
 
-export GO_COMPILER_VERSION=`${GO} version`
+export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
 
 echo "${GO_COMPILER_VERSION}"
 
