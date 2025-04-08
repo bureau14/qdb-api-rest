@@ -48,6 +48,7 @@ func main() {
 
 	if restapi.APIConfig.Version {
 		fmt.Print(meta.GetVersionInfoString())
+		os.Exit(0)
 	}
 
 	server.ConfigureAPI()

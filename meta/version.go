@@ -9,16 +9,18 @@ const GoVersion string = ""
 const BuildType string = ""
 const Platform string = ""
 
-const versionInfoTemplate string = `quasardb rest api version: %s
-		 build: %s
-         date: %s
+const versionInfoTemplate string = `
+quasardb rest api version: %s
+build: %s
+date: %s
 
-         compiler: %s
+compiler: %s
  
-         build type: %s
-         platform: %s
+build type: %s
+platform: %s
 
-         Copyright (c) 2009-2025, quasardb SAS. All rights reserved.`
+Copyright (c) 2009-2025, quasardb SAS. All rights reserved.
+`
 
 func GetVersionInfoString() string {
 	return fmt.Sprintf(versionInfoTemplate, Version, GitHash, BuildTime, GoVersion, BuildType, Platform)
