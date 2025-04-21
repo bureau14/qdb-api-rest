@@ -19,7 +19,7 @@
       <contains id="RQ_280" name="teamcity.agent.name" value="default" />
     </requirements>
     <artifact-dependencies>
-      <dependency id="ARTIFACT_DEPENDENCY_461" sourceBuildTypeId="Quasardb_Artifacts_Release_Windows_X8664Haswell" cleanDestination="false">
+      <dependency id="ARTIFACT_DEPENDENCY_461" sourceBuildTypeId="Quasardb_Artifacts_Release_Windows_X86Haswell" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="qdb-*-c-api.tar.zst!**/*=&gt;%QDB_API_PATH%&#xD;&#xA;qdb-*-c-api.tar.zst!**/*=&gt;%QDB_REST_PATH%/qdb&#xD;&#xA;qdb-*-server.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin&#xD;&#xA;qdb-*-utils.tar.zst!bin/*=&gt;%QDB_REST_PATH%/qdb/bin" />
       </dependency>
