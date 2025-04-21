@@ -11,6 +11,10 @@
       <vcs-entry-ref root-id="Tools_RestApiServer_QdbApiRest_2" />
     </vcs-settings>
     <artifact-dependencies>
+      <dependency id="ARTIFACT_DEPENDENCY_20290" sourceBuildTypeId="Tools_RestApiServer_Windows_X86Haswell" cleanDestination="false">
+        <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
+        <artifact sourcePath="** =&gt; x86-haswell/" />
+      </dependency>
       <dependency id="ARTIFACT_DEPENDENCY_11350" sourceBuildTypeId="Tools_RestApiServer_Windows_X8664Haswell" cleanDestination="false">
         <revisionRule name="sameChainOrLastFinished" revision="latest.sameChainOrLastFinished" />
         <artifact sourcePath="** =&gt; x86_64-haswell/" />
