@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="1dcb961e-fd23-4d61-a1ea-c014a6da7816" xsi:noNamespaceSchemaLocation="https://www.jetbrains.com/teamcity/schemas/2025.3/project-config.xsd">
-  <name>x86_64 Haswell</name>
+<build-type xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" uuid="08eac52b-f902-4a5e-9190-e4648b680ca2" xsi:noNamespaceSchemaLocation="https://www.jetbrains.com/teamcity/schemas/2025.3/project-config.xsd">
+  <name>x86 Haswell</name>
   <description />
   <settings ref="Tools_RestApiServer_Build">
     <options>
