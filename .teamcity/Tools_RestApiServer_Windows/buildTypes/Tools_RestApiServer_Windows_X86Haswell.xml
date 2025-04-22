@@ -12,7 +12,7 @@
       <param name="os_name" value="windows-64bit" />
       <param name="path.sep" value="\" />
       <param name="platform" value="windows-64bit" />
-      <param name="select.gcc" value="%system.gcc-64.select%" />
+      <param name="select.gcc" value="%system.gcc-32.select%" />
     </parameters>
     <build-runners order="RUNNER_152, RUNNER_182, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203" />
     <requirements>
