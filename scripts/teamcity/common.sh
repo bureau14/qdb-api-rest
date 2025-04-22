@@ -56,6 +56,11 @@ echo "GO: ${GO}"
 
 ${GO} version
 
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
+DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}
+CGO_CFLAGS=${CGO_CFLAGS:-}
+CGO_LDFLAGS=${CGO_LDFLAGS:-}
+
 ##
 # Add QuasarDB's library path to LD_LIBRARY_PATH since we dynamically
 # link libqdb_api.so/dylib
@@ -67,9 +72,6 @@ case $(uname) in
         ;;
 
     Darwin )
-        DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}
-        CGO_CFLAGS=${CGO_CFLAGS:-}
-        CGO_LDLAGS=${CGO_LDLAGS:-}
         export DYLD_LIBRARY_PATH="${QDB_LIB_DIR}:${DYLD_LIBRARY_PATH}"
         export CGO_CFLAGS="$CGO_CFLAGS -I${QDB_API_DIR}/include"
         export CGO_LDFLAGS="$CGO_LDFLAGS -L${QDB_LIB_DIR} -Wl,-rpath -Wl,${QDB_LIB_DIR}"
