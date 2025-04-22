@@ -20,17 +20,12 @@ echo "QDB_LIB_DIR: ${QDB_LIB_DIR}"
 echo "QDB_REST_DIR: ${QDB_REST_DIR}"
 echo "QDB_REST_SERVICE_DIR: ${QDB_REST_SERVICE_DIR}"
 
+
 ##
 # Validation of the GOROOT and GOPATH env vars
 
 GOROOT=${GOROOT:-}
 GOPATH=${GOPATH:-}
-
-if [[ -z "${GOROOT}" ]]
-then
-    echo "GOROOT environment variable is expect to be set"
-    exit 1
-fi
 
 if [[ -z "${GOPATH}" ]]
 then
@@ -38,10 +33,28 @@ then
     exit 1
 fi
 
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
-DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}
-CGO_CFLAGS=${CGO_CFLAGS:-}
-CGO_LDFLAGS=${CGO_LDFLAGS:-}
+GO=""
+
+if [[ -z "${GOROOT}" ]]
+then
+    echo "GOROOT is not set, using go from path"
+    GO=$(command -v go)
+else
+    echo "GOROOT is set, using go from GOROOT: ${GOROOT}/bin/go"
+    GO=$(${REALPATH} "${GOROOT}/bin/go")
+fi
+
+if [[ ! -x "${GO}" ]]
+then
+    echo "Executable not found: ${GO}"
+    exit 1
+fi
+
+echo "GOROOT: ${GOROOT}"
+echo "GOPATH: ${GOPATH}"
+echo "GO: ${GO}"
+
+${GO} version
 
 ##
 # Add QuasarDB's library path to LD_LIBRARY_PATH since we dynamically
@@ -63,8 +76,22 @@ case $(uname) in
        ;;
 
     MINGW* )
+
+        # We need to decide whether to use mingw64 or mingw32, we will probe whether the
+        # go binary is 32bit or 64bit to decide this.
+        VERSION=$(${GO} version)
+
         echo "Adding GCC to path"
-        export PATH="/c/mingw64/bin:${PATH}"
+
+        if [[ "${VERSION}" == *386 ]]
+        then
+            echo "32bit go detected, using 32bit mingw"
+            export PATH="/c/mingw32/bin:${PATH}"
+        else
+            echo "64bit go detected, using 64bit mingw"
+            export PATH="/c/mingw64/bin:${PATH}"
+        fi
+
         export PATH="${QDB_LIB_DIR}:${PATH}"
         export PATH="${QDB_API_DIR}/bin:${PATH}"
         echo "PATH: ${PATH}"
@@ -75,22 +102,6 @@ case $(uname) in
         exit -1
         ;;
 esac
-
-##
-# Validate installation of qdb/ base directory
-GO=$(${REALPATH} "${GOROOT}/bin/go")
-
-if [[ ! -x "${GO}" ]]
-then
-    echo "Executable not found: ${GO}"
-    exit 1
-fi
-
-echo "GOROOT: ${GOROOT}"
-echo "GOPATH: ${GOPATH}"
-echo "GO: ${GO}"
-
-${GO} version
 
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
