@@ -14,6 +14,9 @@ sed -i -e 's/const BuildTime string = .*/const BuildTime string = "'${CURRENT_DA
 sed -i -e 's/const GoVersion string = .*/const GoVersion string = "'${GO_COMPILER_VERSION}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const Platform string = .*/const Platform string = "'${PLATFORM}'"/' ${BASE_DIR}/meta/version.go
 
+# Fix permission issue when using docker builds
+git config --global --add safe.directory '*'
+
 SUFFIX=""
 
 case $(uname) in
