@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/bureau14/qdb-api-rest/lumberjack"
+	"github.com/bureau14/qdb-api-rest/meta"
 	"io"
 	"io/ioutil"
 	"log"
@@ -249,7 +250,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		secret = qdbinterface.DefaultPrivateKey
 	}
 
-	api.Logger("version: %s", version)
+	api.Logger("version: %s", meta.Version)
 
 	clusterURI := APIConfig.ClusterURI
 
