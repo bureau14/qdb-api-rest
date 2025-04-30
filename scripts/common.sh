@@ -6,7 +6,7 @@ set -eu
 # Define default commands/variables
 REALPATH=$(command -v realpath)
 SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-BASE_DIR=$(${REALPATH} "${SCRIPT_DIR}/../../")
+BASE_DIR=$(${REALPATH} "${SCRIPT_DIR}/../")
 QDB_API_DIR=$(${REALPATH} "${BASE_DIR}/qdb/")
 QDB_LIB_DIR=$(${REALPATH} "${QDB_API_DIR}/lib/")
 
@@ -108,6 +108,75 @@ case $(uname) in
         ;;
 esac
 
+ARCH=""
+
+# Probe architecture, i.e. whether we're amd64 or aarch64
+
+case $(uname) in
+    Darwin | Linux | FreeBSD )
+        ARCH=$(uname -m)
+
+        # Sanitize architecture description
+        if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]
+        then
+            ARCH="amd64"
+        else
+            ARCH="aarch64"
+        fi
+        ;;
+
+    MINGW* )
+        # Don't know how to probe this in windows, but we only do amd64 anyway
+        ARCH="amd64"
+        ;;
+
+    * )
+        echo "Unable to probe environment"
+        exit -1
+        ;;
+esac
+
+OS=""
+
+case $(uname) in
+    MINGW* )
+        OS="windows"
+        ;;
+
+    Darwin )
+        OS="darwin"
+        ;;
+
+    Linux )
+        OS="linux"
+        ;;
+
+    FreeBSD )
+        OS="freebsd"
+        ;;
+esac
+
+export PLATFORM="${OS}-${ARCH}"
+echo "PLATFORM=${PLATFORM}"
+
+##
+# Validate installation of qdb/ base directory
+GO=$(${REALPATH} "${GOROOT}/bin/go")
+
+if [[ ! -x "${GO}" ]]
+then
+    echo "Executable not found: ${GO}"
+    exit 1
+fi
+
+echo "GOROOT: ${GOROOT}"
+echo "GOPATH: ${GOPATH}"
+echo "GO: ${GO}"
+
+export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
+
+echo "${GO_COMPILER_VERSION}"
+
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
 export GO="${GO}"
@@ -115,3 +184,6 @@ export GO="${GO}"
 export BASE_DIR="${BASE_DIR}"
 export QDB_REST_DIR="${QDB_REST_DIR}"
 export QDB_REST_SERVICE_DIR="${QDB_REST_SERVICE_DIR}"
+
+export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
+export GIT_HASH=`git rev-parse HEAD || "NONE"`
