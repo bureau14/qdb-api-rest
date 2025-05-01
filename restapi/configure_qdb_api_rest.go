@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/bureau14/qdb-api-rest/lumberjack"
+	"github.com/bureau14/qdb-api-rest/meta"
 	"io"
 	"io/ioutil"
 	"log"
@@ -55,8 +56,6 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 }
 
 var secret *rsa.PrivateKey
-
-const version string = "3.15.0-nightly.0"
 
 func excelSerialNumber(t time.Time) float64 {
 	return (float64(t.UTC().Unix()) / 86400) + 25569
@@ -246,7 +245,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		secret = qdbinterface.DefaultPrivateKey
 	}
 
-	api.Logger("version: %s", version)
+	api.Logger("version: %s", meta.Version)
 
 	clusterURI := APIConfig.ClusterURI
 
