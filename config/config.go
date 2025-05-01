@@ -36,10 +36,10 @@ type Config struct {
 	Local       bool           `json:"-" short:"l" long:"local" description:"Switch on local mode"`
 	Secure      bool           `json:"-" short:"s" long:"secure" description:"Switch on security default parameters (tls + cluster security)"`
 	//additional log params
-	LogMaxSize      int  `json:"log_max_size_bytes" long:"log-max-size-bytes" description:"Max size of the log file, bytes" env:"QDB_REST_LOG_MAX_SIZE_BYTES"`
-	LogMaxRetention int  `json:"log_max_retention" long:"log-max-retention" description:"Maximum numbers of log files to keep" env:"QDB_REST_LOG_MAX_RETENTION"`
-	LogMaxAge       int  `json:"log_max_age_seconds" long:"log-max-age-seconds" description:"Maximum numbers of seconds to keep log files" env:"QDB_REST_LOG_MAX_AGE_SECONDS"`
-	LogCompress     bool `json:"log_compress" long:"log-compress" description:"Use or not compression on log files" env:"QDB_REST_LOG_COMPRESS"`
+	LogMaxSizeBytes  int  `json:"log_max_size_bytes" long:"log-max-size-bytes" description:"Max size of the log file, bytes" env:"QDB_REST_LOG_MAX_SIZE_BYTES"`
+	LogMaxRetention  int  `json:"log_max_retention" long:"log-max-retention" description:"Maximum numbers of log files to keep" env:"QDB_REST_LOG_MAX_RETENTION"`
+	LogMaxAgeSeconds int  `json:"log_max_age_seconds" long:"log-max-age-seconds" description:"Maximum numbers of seconds before file rotation" env:"QDB_REST_LOG_MAX_AGE_SECONDS"`
+	LogCompress      bool `json:"log_compress" long:"log-compress" description:"Use or not compression on log files" env:"QDB_REST_LOG_COMPRESS"`
 }
 
 // SetSecured set config to secured mode
@@ -63,14 +63,14 @@ func (c *Config) SetSecured() {
 
 // Local config
 var Local = Config{
-	Host:            "localhost",
-	Port:            40080,
-	Log:             "qdb_rest.log",
-	LogMaxSize:      100 * 1024,
-	LogMaxRetention: 10,
-	LogMaxAge:       5 * 24 * 60 * 60,
-	LogCompress:     false,
-	Assets:          "assets",
+	Host:             "localhost",
+	Port:             40080,
+	Log:              "qdb_rest.log",
+	LogMaxSizeBytes:  100 * 1024 * 1024,
+	LogMaxRetention:  10,
+	LogMaxAgeSeconds: 5 * 24 * 60 * 60,
+	LogCompress:      false,
+	Assets:           "assets",
 }
 
 // SetLocal set config to local mode
@@ -160,14 +160,14 @@ func (c *Config) SetDefaults() {
 	if c.Log == FilledDefaultConfig.Log {
 		c.Log = config.Log
 	}
-	if c.LogMaxSize == FilledDefaultConfig.LogMaxSize {
-		c.LogMaxSize = config.LogMaxSize
+	if c.LogMaxSizeBytes == FilledDefaultConfig.LogMaxSizeBytes {
+		c.LogMaxSizeBytes = config.LogMaxSizeBytes
 	}
 	if c.LogMaxRetention == FilledDefaultConfig.LogMaxRetention {
 		c.LogMaxRetention = config.LogMaxRetention
 	}
-	if c.LogMaxAge == FilledDefaultConfig.LogMaxAge {
-		c.LogMaxAge = config.LogMaxAge
+	if c.LogMaxAgeSeconds == FilledDefaultConfig.LogMaxAgeSeconds {
+		c.LogMaxAgeSeconds = config.LogMaxAgeSeconds
 	}
 	if c.LogCompress == FilledDefaultConfig.LogCompress {
 		c.LogCompress = config.LogCompress

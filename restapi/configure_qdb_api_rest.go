@@ -221,9 +221,9 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	if APIConfig.Log != "" {
 		lumberJackLogger := &lumberjack.Logger{
 			Filename:   string(APIConfig.Log),
-			MaxSize:    APIConfig.LogMaxSize,
+			MaxSize:    APIConfig.LogMaxSizeBytes,
 			MaxBackups: APIConfig.LogMaxRetention,
-			MaxAge:     APIConfig.LogMaxAge,
+			MaxAge:     APIConfig.LogMaxAgeSeconds,
 			Compress:   APIConfig.LogCompress,
 			LocalTime:  true,
 		}
