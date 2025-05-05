@@ -87,8 +87,8 @@ type Logger struct {
 	// rotated. It defaults to 100 megabytes.
 	MaxSize int `json:"maxsize" yaml:"maxsize"`
 
-	// MaxAge is the maximum number of seconds to retain old log files based on the
-	// timestamp encoded in their filename.
+	// MaxAge is the maximum number of seconds before log file would be rotated.
+	//We support rotation on time and on size.
 	MaxAge int `json:"maxage" yaml:"maxage"`
 
 	// MaxBackups is the maximum number of old log files to retain.  The default
@@ -111,6 +111,8 @@ type Logger struct {
 
 	millCh    chan bool
 	startMill sync.Once
+
+	lastTimeRotate time.Time
 }
 
 var (
@@ -119,11 +121,6 @@ var (
 
 	// os_Stat exists so it can be mocked out by tests.
 	osStat = os.Stat
-
-	// megabyte is the conversion factor between MaxSize and bytes.  It is a
-	// variable so tests can mock it out and not need to write megabytes of data
-	// to disk.
-	megabyte = 1024 * 1024
 )
 
 // Write implements io.Writer.  If a write would cause the log file to be larger
@@ -150,6 +147,17 @@ func (l *Logger) Write(p []byte) (n int, err error) {
 	if l.size+writeLen > l.max() {
 		if err := l.rotate(); err != nil {
 			return 0, err
+		}
+	}
+
+	if l.MaxAge > 0 {
+		diff := time.Duration(int64(time.Second) * int64(l.MaxAge))
+		cutoff := l.lastTimeRotate.Add(1 * diff)
+
+		if currentTime().After(cutoff) {
+			if err := l.rotate(); err != nil {
+				return 0, err
+			}
 		}
 	}
 
@@ -198,6 +206,7 @@ func (l *Logger) rotate() error {
 		return err
 	}
 	l.mill()
+	l.lastTimeRotate = currentTime()
 	return nil
 }
 
@@ -259,6 +268,8 @@ func backupName(name string, local bool) string {
 // openExistingOrNew opens the logfile if it exists and if the current write
 // would not put it over MaxSize.  If there is no such file or the write would
 // put it over the MaxSize, a new file is created.
+// It also checks should we rotate file based on MaxAge.
+// If age of current file > MaxAge, file would be backed up and new one created
 func (l *Logger) openExistingOrNew(writeLen int) error {
 	l.mill()
 
@@ -324,20 +335,6 @@ func (l *Logger) millRunOnce() error {
 			preserved[fn] = true
 
 			if len(preserved) > l.MaxBackups {
-				remove = append(remove, f)
-			} else {
-				remaining = append(remaining, f)
-			}
-		}
-		files = remaining
-	}
-	if l.MaxAge > 0 {
-		diff := time.Duration(int64(time.Second) * int64(l.MaxAge))
-		cutoff := currentTime().Add(-1 * diff)
-
-		var remaining []logInfo
-		for _, f := range files {
-			if f.timestamp.Before(cutoff) {
 				remove = append(remove, f)
 			} else {
 				remaining = append(remaining, f)
