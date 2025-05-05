@@ -111,6 +111,8 @@ type Logger struct {
 
 	millCh    chan bool
 	startMill sync.Once
+
+	lastTimeRotate time.Time
 }
 
 var (
@@ -119,11 +121,6 @@ var (
 
 	// os_Stat exists so it can be mocked out by tests.
 	osStat = os.Stat
-
-	// megabyte is the conversion factor between MaxSize and bytes.  It is a
-	// variable so tests can mock it out and not need to write megabytes of data
-	// to disk.
-	megabyte = 1024 * 1024
 )
 
 // Write implements io.Writer.  If a write would cause the log file to be larger
@@ -150,6 +147,17 @@ func (l *Logger) Write(p []byte) (n int, err error) {
 	if l.size+writeLen > l.max() {
 		if err := l.rotate(); err != nil {
 			return 0, err
+		}
+	}
+
+	if l.MaxAge > 0 {
+		diff := time.Duration(int64(time.Second) * int64(l.MaxAge))
+		cutoff := l.lastTimeRotate.Add(1 * diff)
+
+		if currentTime().After(cutoff) {
+			if err := l.rotate(); err != nil {
+				return 0, err
+			}
 		}
 	}
 
@@ -198,6 +206,7 @@ func (l *Logger) rotate() error {
 		return err
 	}
 	l.mill()
+	l.lastTimeRotate = currentTime()
 	return nil
 }
 
@@ -275,15 +284,6 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 
 	if info.Size()+int64(writeLen) >= l.max() {
 		return l.rotate()
-	}
-
-	if l.MaxAge > 0 {
-		diff := time.Duration(int64(time.Second) * int64(l.MaxAge))
-		cutoff := currentTime().Add(-1 * diff)
-
-		if info.ModTime().Before(cutoff) {
-			return l.rotate()
-		}
 	}
 
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
