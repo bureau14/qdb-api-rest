@@ -189,3 +189,4 @@ export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
 
 git config --global --add safe.directory ${BASE_DIR}
 export GIT_HASH=`git rev-parse HEAD`
+export SET_VERSION_SCRIPT=$(${REALPATH} "${SCRIPT_DIR}/release/set_version.sh")
