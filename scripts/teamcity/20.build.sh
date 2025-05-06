@@ -6,6 +6,9 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
+#setting version
+${SCRIPT_DIR}/../release/set_version.sh
+
 # Fix permission issue when using docker builds
 git config --global --add safe.directory '*'
 
