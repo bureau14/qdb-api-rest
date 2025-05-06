@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
 #setting version
-${SET_VERSION_SCRIPT}
+${SET_VERSION_SCRIPT} 3.15.0
 
 # Fix permission issue when using docker builds
 git config --global --add safe.directory '*'
