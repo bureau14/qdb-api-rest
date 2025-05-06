@@ -186,4 +186,6 @@ export QDB_REST_DIR="${QDB_REST_DIR}"
 export QDB_REST_SERVICE_DIR="${QDB_REST_SERVICE_DIR}"
 
 export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
-export GIT_HASH=`git rev-parse HEAD || "NONE"`
+
+git config --global --add safe.directory ${BASE_DIR}
+export GIT_HASH=`git rev-parse HEAD`
