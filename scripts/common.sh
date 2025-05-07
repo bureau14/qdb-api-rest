@@ -175,7 +175,7 @@ echo "GO: ${GO}"
 
 export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
 
-echo "${GO_COMPILER_VERSION}"
+echo "GO VERSION: ${GO_COMPILER_VERSION}"
 
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
@@ -189,4 +189,4 @@ export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
 
 git config --global --add safe.directory ${BASE_DIR}
 export GIT_HASH=`git rev-parse HEAD`
-export SET_VERSION_SCRIPT=$(${REALPATH} "${SCRIPT_DIR}/release/set_version.sh")
+
