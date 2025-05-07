@@ -22,13 +22,11 @@ XYZ_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
 SUB_RELEASE_VERSION=${INPUT_VERSION#*-}
 SUB_RELEASE_TYPE=${SUB_RELEASE_VERSION%%.*}
 SUB_RELEASE_MINOR_VERSION=${SUB_RELEASE_VERSION#*.}
-BUILD_TYPE="Debug"
+
 if [[ "${SUB_RELEASE_TYPE}" == "rc" ]] ; then
     FULL_XYZ_VERSION="${XYZ_VERSION}-${SUB_RELEASE_TYPE}${SUB_RELEASE_MINOR_VERSION}"
-    BUILD_TYPE="Debug"
 else
     FULL_XYZ_VERSION="${XYZ_VERSION}"
-    BUILD_TYPE="Release"
 fi
 
 cd $(dirname -- $0)
@@ -36,4 +34,3 @@ cd ${PWD}/../..
 
 sed -i -e 's/"version": *"[^"]*",/"version": "'"${FULL_XYZ_VERSION}"'",/' swagger.json
 sed -i -e 's/const Version string = .*/const Version string = "'${FULL_XYZ_VERSION}'"/' meta/version.go
-sed -i -e 's/const BuildType string = .*/const BuildType string = "'${BUILD_TYPE}'"/' ${BASE_DIR}/meta/version.go

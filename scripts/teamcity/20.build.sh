@@ -15,7 +15,6 @@ BUILD_TYPE=${BUILD_TYPE:-Debug}
 sed -i -e 's/const GitHash string = .*/const GitHash string = "'${GIT_HASH}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const BuildTime string = .*/const BuildTime string = "'${CURRENT_DATETIME}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const GoVersion string = .*/const GoVersion string = "'${GO_COMPILER_VERSION}'"/' ${BASE_DIR}/meta/version.go
-sed -i -e 's/const BuildType string = .*/const BuildType string = "'${BUILD_TYPE}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const Platform string = .*/const Platform string = "'${PLATFORM}'"/' ${BASE_DIR}/meta/version.go
 
 SUFFIX=""
