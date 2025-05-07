@@ -3,11 +3,11 @@ package meta
 import "fmt"
 
 const Version string = "3.15.0-nightly.0"
-const GitHash string = "4df0625753830e88eb06d82991cbaf0d309669cb"
-const BuildTime string = "2025-05-06 23:41:40 -0400"
-const GoVersion string = "go1.24.2"
-const BuildType string = "Debug"
-const Platform string = "linux-amd64"
+const GitHash string = ""
+const BuildTime string = ""
+const GoVersion string = ""
+const BuildType string = ""
+const Platform string = ""
 
 const versionInfoTemplate string = `
 quasardb rest api version: %s
