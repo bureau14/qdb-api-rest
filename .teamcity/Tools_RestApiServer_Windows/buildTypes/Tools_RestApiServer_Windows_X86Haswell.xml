@@ -7,7 +7,7 @@
       <option name="artifactRules" value="%system.teamcity.build.checkoutDir%\qdb-api-rest\*.zip" />
     </options>
     <parameters>
-      <param name="env.GOROOT" value="%system.go1.19-32.goroot%" />
+      <param name="env.GOROOT" value="%system.go1.24-32.goroot%" />
       <param name="env_path.sep" value=";" />
       <param name="os_name" value="windows-64bit" />
       <param name="path.sep" value="\" />
