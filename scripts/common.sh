@@ -175,7 +175,7 @@ echo "GO: ${GO}"
 
 export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
 
-echo "${GO_COMPILER_VERSION}"
+echo "GO VERSION: ${GO_COMPILER_VERSION}"
 
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
@@ -186,4 +186,7 @@ export QDB_REST_DIR="${QDB_REST_DIR}"
 export QDB_REST_SERVICE_DIR="${QDB_REST_SERVICE_DIR}"
 
 export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
-export GIT_HASH=`git rev-parse HEAD || "NONE"`
+
+git config --global --add safe.directory ${BASE_DIR}
+export GIT_HASH=`git rev-parse HEAD`
+
