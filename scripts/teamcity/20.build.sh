@@ -13,7 +13,7 @@ ${SET_VERSION_SCRIPT} 3.15.0
 git config --global --add safe.directory '*'
 
 sed -i -e 's/const GitHash string = .*/const GitHash string = "'${GIT_HASH}'"/' ${BASE_DIR}/meta/version.go
-sed -i -e 's/const BuildTime string = .*/const BuildTime string = "'${CURRENT_DATETIME}'"/' ${BASE_DIR}/meta/version.go
+sed -i -e 's/const BuildTime string = .*/const BuildTime string = "'${GIT_CURRENT_COMMIT_TIME}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const GoVersion string = .*/const GoVersion string = "'${GO_COMPILER_VERSION}'"/' ${BASE_DIR}/meta/version.go
 sed -i -e 's/const Platform string = .*/const Platform string = "'${PLATFORM}'"/' ${BASE_DIR}/meta/version.go
 
