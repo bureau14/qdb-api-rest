@@ -11,7 +11,7 @@ rm qdb-3.0.0master-linux-64bit-server.tar.gz
 ```
 ##### Generate a user key
 ```
-/usr/local/bin/qdb_user_add -u tintin -s tintin.private -p users.cfg
+/usr/local/bin/qdb_user_add -u tintin -s tintin.private -p users.cfg --uid 1
 ```
 ##### Generate a cluster key
 ```
