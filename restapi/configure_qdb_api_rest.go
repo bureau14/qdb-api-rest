@@ -132,7 +132,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		p, err := pool.NewChannelPool(poolConfig)
 		if err != nil {
-			api.Logger("Could not create pool%s", username, err.Error())
+			api.Logger("Could not create pool %s: %v", username, err)
+			return nil, fmt.Errorf("could not create pool for %s: %w", username, err)
 		}
 		v, err := p.Get()
 		if err != nil {
