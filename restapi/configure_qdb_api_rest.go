@@ -90,15 +90,15 @@ func dummyProducer() runtime.Producer {
 }
 
 func RemoveFromCache(cache *cmap.ConcurrentMap, key string) {
-	if tmp, handleFound := cache.Pop(key); handleFound {
-		if handle, ok := tmp.(*qdb.HandleType); ok {
-			handle.Close()
+	if tmp, found := cache.Pop(key); found {
+		if pl, ok := tmp.(*pool.Pool); ok && pl != nil {
+			(*pl).Release()
 		}
 	}
 }
 
 func RemoveHandleFromCache(cache *cmap.ConcurrentMap, key string) {
-	cache.Set(key, nil)
+	cache.Remove(key)
 }
 
 func formatDuration(d time.Duration) string {
@@ -113,11 +113,40 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	CreatePool := func(username string, secretKey string, clusterURI string) (*pool.Pool, error) {
 		factory := func() (interface{}, error) {
-			return qdbinterface.CreateHandle(username, secretKey, clusterURI, string(APIConfig.ClusterPublicKeyFile), APIConfig.MaxInBufferSize, APIConfig.ParallelismCount)
+			api.Logger("Creating handle: user=%s cluster=%s", username, clusterURI)
+		
+			handle, err := qdbinterface.CreateHandle(
+				username,
+				secretKey,
+				clusterURI,
+				string(APIConfig.ClusterPublicKeyFile),
+				APIConfig.MaxInBufferSize,
+				APIConfig.ParallelismCount,
+			)
+		
+			if err != nil {
+				api.Logger("CreateHandle failed: user=%s cluster=%s error=%v",
+					username, clusterURI, err)
+				return nil, fmt.Errorf("handle creation failed for user %s: %w", username, err)
+			}
+		
+			if handle == nil {
+				api.Logger("CreateHandle returned nil handle for user %s", username)
+				return nil, fmt.Errorf("handle creation returned nil for user %s", username)
+			}
+		
+			api.Logger("CreateHandle succeeded for user %s", username)
+			return handle, nil
 		}
 
 		//close Specify the method to close the connection
-		close := func(v interface{}) error { return v.(*qdb.HandleType).Close() }
+		close := func(v interface{}) error {
+			handle, ok := v.(*qdb.HandleType)
+			if !ok || handle == nil {
+				return nil
+			}
+			return handle.Close()
+		}
 
 		poolConfig := &pool.Config{
 			InitialCap: int(APIConfig.PoolSize),
@@ -133,14 +162,28 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		p, err := pool.NewChannelPool(poolConfig)
 		if err != nil {
 			api.Logger("Could not create pool %s: %v", username, err)
-			return nil, fmt.Errorf("could not create pool for %s: %w", username, err)
+			return nil, fmt.Errorf(
+				"failed to create connection pool for user %s on cluster %s: %w",
+				username,
+				clusterURI,
+				err,
+			)
 		}
 		v, err := p.Get()
 		if err != nil {
-			api.Logger("Failed to login user %s: %s", username, err.Error())
-			return nil, fmt.Errorf("Failed to login user %s: %s", username, err.Error())
+			api.Logger("Failed to login user %s: %v", username, err)
+			return nil, fmt.Errorf("failed to login user %s: %w", username, err)
 		}
-		p.Put(v)
+		if v == nil {
+			api.Logger("Pool returned nil handle for user %s", username)
+			return nil, fmt.Errorf("pool returned nil handle for user %s", username)
+		}
+		handle, ok := v.(*qdb.HandleType)
+		if !ok || handle == nil {
+			api.Logger("Pool returned invalid handle type %T for user %s", v, username)
+			return nil, fmt.Errorf("pool returned invalid handle for user %s", username)
+		}
+		p.Put(handle)
 		return &p, nil
 	}
 
@@ -204,7 +247,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 					api.Logger("Got handle from cache: %s", err.Error())
 					return nil, errors.New(500, "Invalid handle")
 				}
-				return v.(*qdb.HandleType), nil
+				if v == nil {
+					api.Logger("Pool returned nil handle for user %s", username)
+					return nil, errors.New(500, "Nil handle")
+				}
+				handle, ok := v.(*qdb.HandleType)
+				if !ok || handle == nil {
+					api.Logger("Pool returned invalid handle type %T for user %s", v, username)
+					return nil, errors.New(500, "Invalid handle")
+				}
+				return handle, nil
 			}
 			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
 			return nil, errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
@@ -660,7 +712,11 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
 		handle, err := GetHandle(principal)
 		if err != nil {
-			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+			return cluster.NewGetClusterInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		if handle == nil {
+			api.Logger("GetHandle returned nil handle")
+			return cluster.NewGetClusterInternalServerError().WithPayload(&models.QdbError{Message: "invalid nil handle"})
 		}
 
 		err = qdbinterface.RetrieveInformation(*handle)
@@ -676,15 +732,20 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	api.ClusterGetNodeHandler = cluster.GetNodeHandlerFunc(func(params cluster.GetNodeParams, principal *models.Principal) middleware.Responder {
 		handle, err := GetHandle(principal)
 		if err != nil {
-			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+			return cluster.NewGetNodeInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+		}
+		if handle == nil {
+			api.Logger("GetHandle returned nil handle")
+			return cluster.NewGetNodeInternalServerError().WithPayload(&models.QdbError{Message: "invalid nil handle"})
 		}
 
 		err = qdbinterface.RetrieveInformation(*handle)
+		
 		if err != nil {
 			defer CloseHandle(principal, handle)
 			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
-
+		
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -692,10 +753,39 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			defer PutHandle(principal, handle)
 			return cluster.NewGetNodeOK().WithPayload(&val)
 		}
-		defer CloseHandle(principal, handle)
-		api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
+		defer PutHandle(principal, handle)
+		api.Logger("Node not found: %s", params.ID)
 		return cluster.NewGetNodeNotFound()
 	})
+	// api.ClusterGetClusterHandler = cluster.GetClusterHandlerFunc(func(params cluster.GetClusterParams, principal *models.Principal) middleware.Responder {
+	// 	handle, err := GetHandle(principal)
+	// 	if err != nil {
+	// 		return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
+	// 	}
+	
+	// 	// Attempt to get the info
+	// 	err = qdbinterface.RetrieveInformation(*handle)
+		
+	// 	// THE FIX: If ANY error happens, we do not proceed to the "OK" response.
+	// 	if err != nil {
+	// 		// We still defer the cleanup
+	// 		defer CloseHandle(principal, handle)
+			
+	// 		api.Logger("Failed to access cluster status: %s", err.Error())
+			
+	// 		// Return a specific message if the cluster is unstable
+	// 		if err == qdb.ErrUnstableCluster || err == qdb.ErrConnectionRefused {
+	// 			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: "Cluster is currently unstable or connection was refused. Please try again."})
+	// 		}
+			
+	// 		// Otherwise return the standard error
+	// 		return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
+	// 	}
+	
+	// 	// Only if err is perfectly nil do we put the handle back and return the data
+	// 	defer PutHandle(principal, handle)
+	// 	return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
+	// })
 
 	// Prometheus Integration
 	client := prometheus.Client{ClusterURI: clusterURI, Logger: api.Logger}
