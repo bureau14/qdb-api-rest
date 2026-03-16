@@ -91,8 +91,8 @@ func dummyProducer() runtime.Producer {
 
 func RemoveFromCache(cache *cmap.ConcurrentMap, key string) {
 	if tmp, found := cache.Pop(key); found {
-		if pl, ok := tmp.(*pool.Pool); ok && pl != nil {
-			(*pl).Release()
+		if handle, ok := tmp.(*qdb.HandleType); ok {
+			handle.Close()
 		}
 	}
 }
