@@ -25,39 +25,39 @@ function qdb_rest_start {
 function qdbsh_seed_db {
     echo "Seeding ${QDB_SHELL} with data"
 
-    $QDB_SHELL -c 'CREATE TABLE foo_01 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE foo_01 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO foo_01 ($timestamp, value) VALUES (2020-01-01, 1.0), (2020-01-02, 2.0), (2020-01-03, 3.0)'
     $QDB_SHELL -c 'attach_tag foo_01 tag_01'
 
-    $QDB_SHELL -c 'CREATE TABLE foo_02 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE foo_02 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO foo_02 ($timestamp, value) VALUES (2020-01-01, 4.0), (2020-01-02, 5.0), (2020-01-03, 6.0)'
     $QDB_SHELL -c 'attach_tag foo_02 tag_02'
 
-    $QDB_SHELL -c 'CREATE TABLE foo_03 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE foo_03 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO foo_03 ($timestamp, value) VALUES (2020-01-01, 7.0), (2020-01-02, 8.0), (2020-01-03, 9.0)'
     $QDB_SHELL -c 'attach_tag foo_03 tag_03'
 
-    $QDB_SHELL -c 'CREATE TABLE bar_01 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE bar_01 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO bar_01 ($timestamp, value) VALUES (2020-01-01, 10.0), (2020-01-02, 11.0), (2020-01-03, 12.0)'
     $QDB_SHELL -c 'attach_tag bar_01 tag_01'
 
-    $QDB_SHELL -c 'CREATE TABLE bar_02 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE bar_02 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO bar_02 ($timestamp, value) VALUES (2020-01-01, 13.0), (2020-01-02, 14.0), (2020-01-03, 15.0)'
     $QDB_SHELL -c 'attach_tag bar_02 tag_02'
 
-    $QDB_SHELL -c 'CREATE TABLE bar_03 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE bar_03 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO bar_03 ($timestamp, value) VALUES (2020-01-01, 16.0), (2020-01-02, 17.0), (2020-01-03, 18.0)'
     $QDB_SHELL -c 'attach_tag bar_03 tag_03'
 
-    $QDB_SHELL -c 'CREATE TABLE baz_01 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE baz_01 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO baz_01 ($timestamp, value) VALUES (2020-01-01, 19.0), (2020-01-02, 20.0), (2020-01-03, 21.0)'
     $QDB_SHELL -c 'attach_tag baz_01 tag_01'
 
-    $QDB_SHELL -c 'CREATE TABLE baz_02 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE baz_02 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO baz_02 ($timestamp, value) VALUES (2020-01-01, 22.0), (2020-01-02, 23.0), (2020-01-03, 24.0)'
     $QDB_SHELL -c 'attach_tag baz_02 tag_02'
 
-    $QDB_SHELL -c 'CREATE TABLE baz_03 (value DOUBLE)'
+    $QDB_SHELL -c 'CREATE TABLE baz_03 ($timestamp TIMESTAMP, value DOUBLE)'
     $QDB_SHELL -c 'INSERT INTO baz_03 ($timestamp, value) VALUES (2020-01-01, 25.0), (2020-01-02, 26.0), (2020-01-03, 27.0)'
     $QDB_SHELL -c 'attach_tag baz_03 tag_03'
 
