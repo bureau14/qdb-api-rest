@@ -8,7 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
-	"github.com/bureau14/qdb-api-rest/lumberjack"
+	"path/filepath"
 	"github.com/bureau14/qdb-api-rest/meta"
 	"io"
 	"io/ioutil"
@@ -270,25 +270,31 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 	APIConfig.SetDefaults()
 
-	if APIConfig.Log != "" {
-		logFile, err := os.OpenFile(string(APIConfig.Log), os.O_CREATE, 0644)
-		defer logFile.Close()
-		if err != nil {
-			log.SetOutput(os.Stdout)
-			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
-			APIConfig.Log = ""
-		} else {
-			lumberJackLogger := &lumberjack.Logger{
-				Filename:   string(APIConfig.Log),
-				MaxSize:    APIConfig.LogMaxSize,
-				MaxBackups: APIConfig.LogMaxRetention,
-				MaxAge:     APIConfig.LogMaxAge,
-				Compress:   APIConfig.LogCompress,
-			}
-			log.SetOutput(lumberJackLogger)
-			qdb.SetLogFile(string(APIConfig.Log))
-		}
-	}
+    if APIConfig.Log != "" {
+        logPath := string(APIConfig.Log)
+
+        if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+            log.SetOutput(os.Stdout)
+            api.Logger("cannot create log directory for %s; falling back to stdout", logPath)
+            APIConfig.Log = ""
+        } else {
+            logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+            if err != nil {
+                log.SetOutput(os.Stdout)
+                api.Logger("cannot open log file %s; falling back to stdout", logPath)
+                APIConfig.Log = ""
+            } else {
+                log.SetOutput(logFile)
+                qdb.SetLogFile(logPath)
+
+                api.ServerShutdown = func() {
+                    _ = logFile.Close()
+                }
+            }
+        }
+    } else {
+        log.SetOutput(os.Stdout)
+    }
 
 	err := APIConfig.Check()
 	if err != nil {
