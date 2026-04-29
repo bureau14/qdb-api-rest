@@ -8,17 +8,17 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
-	"path/filepath"
-	"github.com/bureau14/qdb-api-rest/meta"
 	"io"
 	"io/ioutil"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bureau14/qdb-api-rest/meta"
 
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
@@ -56,6 +56,30 @@ func configureFlags(api *operations.QdbAPIRestAPI) {
 }
 
 var secret *rsa.PrivateKey
+
+var appLogger = newLogger()
+
+func newLogger() *slog.Logger {
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
+
+	return slog.New(handler)
+}
+
+func slogPrintf(logger *slog.Logger) func(string, ...interface{}) {
+	return func(format string, args ...interface{}) {
+		logger.Info(fmt.Sprintf(format, args...))
+	}
+}
+
+func setAppLogger(logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+	appLogger = logger
+	slog.SetDefault(logger)
+}
 
 func excelSerialNumber(t time.Time) float64 {
 	return (float64(t.UTC().Unix()) / 86400) + 25569
@@ -114,7 +138,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	CreatePool := func(username string, secretKey string, clusterURI string) (*pool.Pool, error) {
 		factory := func() (interface{}, error) {
 			api.Logger("Creating handle: user=%s cluster=%s", username, clusterURI)
-		
+
 			handle, err := qdbinterface.CreateHandle(
 				username,
 				secretKey,
@@ -123,18 +147,18 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 				APIConfig.MaxInBufferSize,
 				APIConfig.ParallelismCount,
 			)
-		
+
 			if err != nil {
 				api.Logger("CreateHandle failed: user=%s cluster=%s error=%v",
 					username, clusterURI, err)
 				return nil, fmt.Errorf("handle creation failed for user %s: %w", username, err)
 			}
-		
+
 			if handle == nil {
 				api.Logger("CreateHandle returned nil handle for user %s", username)
 				return nil, fmt.Errorf("handle creation returned nil for user %s", username)
 			}
-		
+
 			api.Logger("CreateHandle succeeded for user %s", username)
 			return handle, nil
 		}
@@ -266,35 +290,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return nil, errors.New(500, "User not found")
 	}
 
-	api.Logger = log.Printf
+	baseLogger := newLogger()
+	setAppLogger(baseLogger)
+	api.Logger = slogPrintf(baseLogger)
 
 	APIConfig.SetDefaults()
 
-    if APIConfig.Log != "" {
-        logPath := string(APIConfig.Log)
-
-        if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-            log.SetOutput(os.Stdout)
-            api.Logger("cannot create log directory for %s; falling back to stdout", logPath)
-            APIConfig.Log = ""
-        } else {
-            logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-            if err != nil {
-                log.SetOutput(os.Stdout)
-                api.Logger("cannot open log file %s; falling back to stdout", logPath)
-                APIConfig.Log = ""
-            } else {
-                log.SetOutput(logFile)
-                qdb.SetLogFile(logPath)
-
-                api.ServerShutdown = func() {
-                    _ = logFile.Close()
-                }
-            }
-        }
-    } else {
-        log.SetOutput(os.Stdout)
-    }
+	api.ServerShutdown = func() {}
 
 	err := APIConfig.Check()
 	if err != nil {
@@ -307,7 +309,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		secret = qdbinterface.DefaultPrivateKey
 	}
 
-	api.Logger("version: %s", meta.Version)
+	baseLogger.Info("service starting", "version", meta.Version)
 
 	clusterURI := APIConfig.ClusterURI
 
@@ -746,12 +748,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 
 		err = qdbinterface.RetrieveInformation(*handle)
-		
+
 		if err != nil {
 			defer CloseHandle(principal, handle)
 			credentials := strings.Split(string(*principal), ":")
 			RemoveHandleFromCache(&handleCache, credentials[0])
-		
+
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
@@ -768,26 +770,26 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	// 	if err != nil {
 	// 		return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 	// 	}
-	
+
 	// 	// Attempt to get the info
 	// 	err = qdbinterface.RetrieveInformation(*handle)
-		
+
 	// 	// THE FIX: If ANY error happens, we do not proceed to the "OK" response.
 	// 	if err != nil {
 	// 		// We still defer the cleanup
 	// 		defer CloseHandle(principal, handle)
-			
+
 	// 		api.Logger("Failed to access cluster status: %s", err.Error())
-			
+
 	// 		// Return a specific message if the cluster is unstable
 	// 		if err == qdb.ErrUnstableCluster || err == qdb.ErrConnectionRefused {
 	// 			return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: "Cluster is currently unstable or connection was refused. Please try again."})
 	// 		}
-			
+
 	// 		// Otherwise return the standard error
 	// 		return cluster.NewGetClusterBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 	// 	}
-	
+
 	// 	// Only if err is perfectly nil do we put the handle back and return the data
 	// 	defer PutHandle(principal, handle)
 	// 	return cluster.NewGetClusterOK().WithPayload(&qdbinterface.ClusterInformation)
@@ -870,8 +872,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return operations.NewPrometheusReadOK().WithPayload(readCloser)
 	})
 
-	api.ServerShutdown = func() {}
-
 	return setupGlobalMiddleware(api.Serve(setupMiddlewares), APIConfig.AllowedOrigins, APIConfig.Assets)
 }
 
@@ -892,7 +892,7 @@ func configureTLS(tlsConfig *tls.Config) {
 
 var httpRedirectHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	redirection := fmt.Sprintf("https://%s:%d%s", APIConfig.Host, APIConfig.TLSPort, r.RequestURI)
-	log.Printf("Redirecting to %s", redirection)
+	appLogger.Info("redirecting request", "to", redirection)
 	http.Redirect(w, r, redirection, http.StatusPermanentRedirect)
 })
 
@@ -926,7 +926,7 @@ func (w gzipResponseWriter) Write(b []byte) (int, error) {
 // HTTPSwitchMiddleWare : middleware switch between normal and fileserver handler
 func HTTPSwitchMiddleWare(next http.Handler, assets string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Serving %s request: %s", r.Method, r.URL.Path[1:])
+		appLogger.Info("serving request", "method", r.Method, "path", r.URL.Path)
 		if APIConfig.Assets != "" && !strings.HasPrefix(r.URL.Path, "/api") && !strings.HasSuffix(r.URL.Path, "/swagger.json") {
 			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 				http.FileServer(http.Dir(assets)).ServeHTTP(w, r)
