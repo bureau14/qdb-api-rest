@@ -20,6 +20,18 @@ function qdb_rest_start {
     echo "Redirecting error output to ${err_output}"
 
     $QDB_REST ${args} 1>${output} 2>${err_output} &
+    REST_PID=$!
+    echo "Started ${QDB_REST} with PID=${REST_PID}"
+
+    sleep 1
+    if ! kill -0 "${REST_PID}" 2>/dev/null; then
+        echo "${QDB_REST} exited immediately"
+        echo "----- ${err_output} -----"
+        cat "${err_output}" || true
+        echo "----- ${output} -----"
+        cat "${output}" || true
+        wait "${REST_PID}" || true
+    fi
 }
 
 function qdbsh_seed_db {
