@@ -68,11 +68,13 @@ var secret *rsa.PrivateKey
 var appLogger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 func newLogger() *slog.Logger {
-	if err := os.MkdirAll(filepath.Dir(APIConfig.Log), 0755); err != nil {
+	logPath := string(APIConfig.Log)
+
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
 		panic(err)
 	}
 
-	f, err := os.OpenFile(APIConfig.Log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		panic(err)
 	}
