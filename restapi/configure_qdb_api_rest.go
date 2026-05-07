@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	errors "github.com/go-openapi/errors"
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
+	swag "github.com/go-openapi/swag"
 	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
 	pool "github.com/silenceper/pool"
@@ -53,14 +55,24 @@ import (
 var APIConfig = config.FilledDefaultConfig
 
 func configureFlags(api *operations.QdbAPIRestAPI) {
+	api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{
+		{
+			ShortDescription: "QDB API REST options",
+			Options:          &APIConfig,
+		},
+	}
 }
 
 var secret *rsa.PrivateKey
 
-var appLogger = newLogger()
+var appLogger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 func newLogger() *slog.Logger {
-	f, err := os.OpenFile("qdb_rest.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err := os.MkdirAll(filepath.Dir(APIConfig.Log), 0755); err != nil {
+		panic(err)
+	}
+
+	f, err := os.OpenFile(APIConfig.Log, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -295,10 +307,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		return nil, errors.New(500, "User not found")
 	}
 
-	baseLogger := newLogger()
-	setAppLogger(baseLogger)
-	api.Logger = slogPrintf(baseLogger)
-
 	APIConfig.SetDefaults()
 
 	api.ServerShutdown = func() {}
@@ -307,6 +315,10 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+
+	baseLogger := newLogger()
+	setAppLogger(baseLogger)
+	api.Logger = slogPrintf(baseLogger)
 
 	if APIConfig.IsSecurityEnabled() {
 		secret = qdbinterface.MustUnmarshalRSAKeyFromFile(string(APIConfig.TLSCertificateKey))
