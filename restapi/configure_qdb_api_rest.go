@@ -60,7 +60,12 @@ var secret *rsa.PrivateKey
 var appLogger = newLogger()
 
 func newLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	f, err := os.OpenFile("qdb_rest.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	handler := slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
 
@@ -711,8 +716,8 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 				processingDuration += time.Since(startTime)
 			}
 
-			fmt.Printf("%v\n", processingDuration)
-			fmt.Printf("%v\n", writingDuration)
+			api.Logger("processing duration: %v", processingDuration)
+			api.Logger("writing duration: %v", writingDuration)
 		}()
 		return operations.NewGetTableCsvOK().WithPayload(result)
 	})
