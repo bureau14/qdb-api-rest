@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -70,9 +69,9 @@ var appLogger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 func newLogger() *slog.Logger {
 	logPath := string(APIConfig.Log)
 
-	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-		panic(err)
-	}
+	// if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+	// 	panic(err)
+	// }
 
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
