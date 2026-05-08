@@ -69,12 +69,22 @@ var appLogger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 func newLogger() *slog.Logger {
 	logPath := string(APIConfig.Log)
+	if logPath == "" {
+		logPath = "qdb_rest.log"
+	}
 
-	fmt.Fprintf(os.Stderr, "initializing logger with path=%q\n", logPath)
-
-	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "logger mkdir failed for %q: %v\n", filepath.Dir(logPath), err)
-		panic(err)
+	dir := filepath.Dir(logPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fallbackPath := filepath.Base(logPath)
+		fmt.Fprintf(
+			os.Stderr,
+			"warning: could not create log directory %q for %q: %v; falling back to cwd log file %q\n",
+			dir,
+			logPath,
+			err,
+			fallbackPath,
+		)
+		logPath = fallbackPath
 	}
 
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -87,7 +97,10 @@ func newLogger() *slog.Logger {
 		Level: slog.LevelInfo,
 	})
 
-	return slog.New(handler)
+	logger := slog.New(handler)
+	logger.Warn("log path fallback active", "path", logPath)
+
+	return logger
 }
 
 func slogPrintf(logger *slog.Logger) func(string, ...interface{}) {
