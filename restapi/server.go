@@ -490,13 +490,13 @@ func (s *Server) TLSListener() (net.Listener, error) {
 
 func handleInterrupt(once *sync.Once, s *Server) {
 	once.Do(func() {
-		for range s.interrupt {
+		for sig := range s.interrupt {
 			if s.interrupted {
-				s.Logf("Server already shutting down")
+				s.Logf("Server already shutting down after receiving %s", sig.String())
 				continue
 			}
 			s.interrupted = true
-			s.Logf("Shutting down... ")
+			s.Logf("Shutting down after receiving %s", sig.String())
 			if err := s.Shutdown(); err != nil {
 				s.Logf("HTTP server Shutdown: %v", err)
 			}
