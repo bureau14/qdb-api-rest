@@ -412,6 +412,13 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			return operations.NewStatusReadinessInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
+
+		defer func() {
+			if err := statusHandle.Close(); err != nil {
+				api.Logger("Failed to close readiness handle: %s", err.Error())
+			}
+		}()
+
 		if APIConfig.ReadinessQuery != "" {
 			_, err = statusHandle.Query(APIConfig.ReadinessQuery).Execute()
 		} else {
