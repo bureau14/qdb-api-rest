@@ -56,50 +56,43 @@ echo "GO: ${GO}"
 
 ${GO} version
 
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
-DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}
-CGO_CFLAGS=${CGO_CFLAGS:-}
-CGO_LDFLAGS=${CGO_LDFLAGS:-}
+# Keep the CGO environment in one place. This mirrors qdb-nats-connector:
+# .envrc owns the qdb/include + qdb/lib wiring required by vendored
+# qdb-api-go, while the CI script only sources it and emits diagnostics.
+source "${BASE_DIR}/.envrc"
 
-##
-# Add QuasarDB's library path to LD_LIBRARY_PATH since we dynamically
-# link libqdb_api.so/dylib
+export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
+mkdir -p "${TEST_REPORT_DIR}"
+
+# We need the output of `go test` to be in JUnit format for Buildkite's test
+# reporting, but `go test` doesn't support that natively. Use the same
+# go-junit-report tool as qdb-api-go and qdb-nats-connector.
+if ! command -v go-junit-report > /dev/null 2>&1; then
+    echo "go-junit-report not found, installing"
+    ${GO} install github.com/jstemmer/go-junit-report/v2@latest
+else
+    echo "go-junit-report is already installed; skipping installation."
+fi
+export GO_JUNIT_REPORT="${GOPATH}/bin/go-junit-report"
+${GO_JUNIT_REPORT} --version
 
 case $(uname) in
     Linux | FreeBSD )
-        export LD_LIBRARY_PATH="${QDB_LIB_DIR}:${LD_LIBRARY_PATH}"
         echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+        echo "CGO_CFLAGS=${CGO_CFLAGS}"
+        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
         ;;
 
     Darwin )
-        export DYLD_LIBRARY_PATH="${QDB_LIB_DIR}:${DYLD_LIBRARY_PATH}"
-        export CGO_CFLAGS="$CGO_CFLAGS -I${QDB_API_DIR}/include"
-        export CGO_LDFLAGS="$CGO_LDFLAGS -L${QDB_LIB_DIR} -Wl,-rpath -Wl,${QDB_LIB_DIR}"
         echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}"
         echo "CGO_CFLAGS=${CGO_CFLAGS}"
         echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
        ;;
 
     MINGW* )
-
-        # We need to decide whether to use mingw64 or mingw32, we will probe whether the
-        # go binary is 32bit or 64bit to decide this.
-        VERSION=$(${GO} version)
-
-        echo "Adding GCC to path"
-
-        if [[ "${VERSION}" == *386 ]]
-        then
-            echo "32bit go detected, using 32bit mingw"
-            export PATH="/c/mingw32/bin:${PATH}"
-        else
-            echo "64bit go detected, using 64bit mingw"
-            export PATH="/c/mingw64/bin:${PATH}"
-        fi
-
-        export PATH="${QDB_LIB_DIR}:${PATH}"
-        export PATH="${QDB_API_DIR}/bin:${PATH}"
-        echo "PATH: ${PATH}"
+        echo "PATH prepended with qdb/lib and qdb/bin"
+        echo "CGO_CFLAGS=${CGO_CFLAGS}"
+        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
         ;;
 
     * )
@@ -176,6 +169,7 @@ echo "GO: ${GO}"
 export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
 
 echo "GO VERSION: ${GO_COMPILER_VERSION}"
+echo "GO_JUNIT_REPORT: ${GO_JUNIT_REPORT}"
 
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
