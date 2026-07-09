@@ -22,6 +22,28 @@ mkdir etc
 
 cp $QDB_REST_BINARY bin/
 
+QDB_C_API_LIBS=()
+shopt -s nullglob
+case $(uname) in
+    MINGW* )
+        QDB_C_API_LIBS=("${BASE_DIR}/qdb/bin/qdb_api.dll")
+        ;;
+    Darwin* )
+        QDB_C_API_LIBS=("${QDB_LIB_DIR}"/libqdb_api*.dylib)
+        ;;
+    * )
+        QDB_C_API_LIBS=("${QDB_LIB_DIR}"/libqdb_api*.so*)
+        ;;
+esac
+shopt -u nullglob
+
+if [[ ${#QDB_C_API_LIBS[@]} -eq 0 ]]; then
+    echo "Unable to find qdb C API runtime library for packaging"
+    exit 1
+fi
+
+cp -v "${QDB_C_API_LIBS[@]}" bin/
+
 case $(uname) in
     MINGW* )
         # Include qdb_rest_service
