@@ -24,9 +24,6 @@ cp $QDB_REST_BINARY bin/
 
 case $(uname) in
     MINGW* )
-        ZIP="7z a -y"
-        SUFFIX=".zip"
-
         # Include qdb_rest_service
         QDB_REST_SERVICE_BINARY=${QDB_REST_SERVICE_DIR}/qdb_rest_service.exe
         mv ${QDB_REST_SERVICE_BINARY} bin/
@@ -35,6 +32,9 @@ case $(uname) in
         cp -v ${BASE_DIR}/scripts/teamcity/openssl.cnf etc/openssl.conf
 
         curl -s https://teamcity-agentbuilddeps-20241223095405875100000001.s3.eu-west-1.amazonaws.com/windows/openssl/openssl-1.0.2q-x64_86-win64.zip > openssl.zip
+        # Windows agents have tar for final package creation, but the OpenSSL
+        # dependency is a zip file; Git Bash tar may not support zip extraction.
+        # Keep 7z here only for unpacking this input archive.
         7z x openssl.zip
         mv openssl.exe bin/
         mv libeay32.dll bin/
@@ -45,13 +45,11 @@ case $(uname) in
         cp -v ${BASE_DIR}/qdb_rest.windows.conf.sample etc/qdb_rest.conf.sample
         ;;
     * )
-        ZIP="tar cvzf"
-        SUFFIX=".tar.gz"
-
         cp -v ${BASE_DIR}/qdb_rest.unix.conf.sample etc/qdb_rest.conf.sample
         ;;
 esac
 
 cp -v ${BASE_DIR}/qdb_rest.local.conf.sample etc/qdb_rest.local.conf.sample
 
-$ZIP qdb-${VERSION}-${PLATFORM}-rest${SUFFIX} bin etc
+ARCHIVE_BASENAME="qdb-${VERSION}-${PLATFORM}-rest"
+tar --use-compress-program=zstd -cf "${ARCHIVE_BASENAME}.tar.zst" bin etc
