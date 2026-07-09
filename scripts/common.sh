@@ -56,9 +56,7 @@ echo "GO: ${GO}"
 
 ${GO} version
 
-# Keep the CGO environment in one place. This mirrors qdb-nats-connector:
-# .envrc owns the qdb/include + qdb/lib wiring required by vendored
-# qdb-api-go, while the CI script only sources it and emits diagnostics.
+# Propagate .envrc exports to build scripts
 source "${BASE_DIR}/.envrc"
 
 export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
