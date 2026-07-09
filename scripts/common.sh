@@ -64,42 +64,9 @@ source "${BASE_DIR}/.envrc"
 export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
 mkdir -p "${TEST_REPORT_DIR}"
 
-# We need the output of `go test` to be in JUnit format for Buildkite's test
-# reporting, but `go test` doesn't support that natively. Use the same
-# go-junit-report tool as qdb-api-go and qdb-nats-connector.
-if ! command -v go-junit-report > /dev/null 2>&1; then
-    echo "go-junit-report not found, installing"
-    ${GO} install github.com/jstemmer/go-junit-report/v2@latest
-else
-    echo "go-junit-report is already installed; skipping installation."
-fi
-export GO_JUNIT_REPORT="${GOPATH}/bin/go-junit-report"
-${GO_JUNIT_REPORT} --version
-
-case $(uname) in
-    Linux | FreeBSD )
-        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
-        echo "CGO_CFLAGS=${CGO_CFLAGS}"
-        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
-        ;;
-
-    Darwin )
-        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}"
-        echo "CGO_CFLAGS=${CGO_CFLAGS}"
-        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
-       ;;
-
-    MINGW* )
-        echo "PATH prepended with qdb/lib and qdb/bin"
-        echo "CGO_CFLAGS=${CGO_CFLAGS}"
-        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
-        ;;
-
-    * )
-        echo "Unable to probe environment"
-        exit -1
-        ;;
-esac
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+echo "CGO_CFLAGS=${CGO_CFLAGS}"
+echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
 
 ARCH=""
 
@@ -169,7 +136,6 @@ echo "GO: ${GO}"
 export GO_COMPILER_VERSION=`${GO} version | cut -d" " -f3`
 
 echo "GO VERSION: ${GO_COMPILER_VERSION}"
-echo "GO_JUNIT_REPORT: ${GO_JUNIT_REPORT}"
 
 export GOROOT="${GOROOT}"
 export GOPATH="${GOPATH}"
