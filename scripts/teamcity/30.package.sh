@@ -32,9 +32,6 @@ case $(uname) in
         cp -v ${BASE_DIR}/scripts/teamcity/openssl.cnf etc/openssl.conf
 
         curl -s https://teamcity-agentbuilddeps-20241223095405875100000001.s3.eu-west-1.amazonaws.com/windows/openssl/openssl-1.0.2q-x64_86-win64.zip > openssl.zip
-        # Windows agents have tar for final package creation, but the OpenSSL
-        # dependency is a zip file; Git Bash tar may not support zip extraction.
-        # Keep 7z here only for unpacking this input archive.
         7z x openssl.zip
         mv openssl.exe bin/
         mv libeay32.dll bin/
