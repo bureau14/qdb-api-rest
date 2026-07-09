@@ -59,10 +59,8 @@ ${GO} version
 # Propagate .envrc exports to build scripts
 source "${BASE_DIR}/.envrc"
 
-export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
-mkdir -p "${TEST_REPORT_DIR}"
-
-echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}"
 echo "CGO_CFLAGS=${CGO_CFLAGS}"
 echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
 
