@@ -56,57 +56,15 @@ echo "GO: ${GO}"
 
 ${GO} version
 
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
-DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH:-}
-CGO_CFLAGS=${CGO_CFLAGS:-}
-CGO_LDFLAGS=${CGO_LDFLAGS:-}
+# Propagate .envrc exports to build scripts
+source "${BASE_DIR}/.envrc"
 
-##
-# Add QuasarDB's library path to LD_LIBRARY_PATH since we dynamically
-# link libqdb_api.so/dylib
+export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
+mkdir -p "${TEST_REPORT_DIR}"
 
-case $(uname) in
-    Linux | FreeBSD )
-        export LD_LIBRARY_PATH="${QDB_LIB_DIR}:${LD_LIBRARY_PATH}"
-        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
-        ;;
-
-    Darwin )
-        export DYLD_LIBRARY_PATH="${QDB_LIB_DIR}:${DYLD_LIBRARY_PATH}"
-        export CGO_CFLAGS="$CGO_CFLAGS -I${QDB_API_DIR}/include"
-        export CGO_LDFLAGS="$CGO_LDFLAGS -L${QDB_LIB_DIR} -Wl,-rpath -Wl,${QDB_LIB_DIR}"
-        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}"
-        echo "CGO_CFLAGS=${CGO_CFLAGS}"
-        echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
-       ;;
-
-    MINGW* )
-
-        # We need to decide whether to use mingw64 or mingw32, we will probe whether the
-        # go binary is 32bit or 64bit to decide this.
-        VERSION=$(${GO} version)
-
-        echo "Adding GCC to path"
-
-        if [[ "${VERSION}" == *386 ]]
-        then
-            echo "32bit go detected, using 32bit mingw"
-            export PATH="/c/mingw32/bin:${PATH}"
-        else
-            echo "64bit go detected, using 64bit mingw"
-            export PATH="/c/mingw64/bin:${PATH}"
-        fi
-
-        export PATH="${QDB_LIB_DIR}:${PATH}"
-        export PATH="${QDB_API_DIR}/bin:${PATH}"
-        echo "PATH: ${PATH}"
-        ;;
-
-    * )
-        echo "Unable to probe environment"
-        exit -1
-        ;;
-esac
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+echo "CGO_CFLAGS=${CGO_CFLAGS}"
+echo "CGO_LDFLAGS=${CGO_LDFLAGS}"
 
 ARCH=""
 

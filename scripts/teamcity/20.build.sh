@@ -25,7 +25,7 @@ esac
 # Build qdb_rest
 (
     pushd ${QDB_REST_DIR}
-    ${GO} build -x -v -o qdb_rest$SUFFIX
+    ${GO} build -mod=vendor -buildvcs=false -x -v -o qdb_rest$SUFFIX
     popd
 )
 
@@ -34,7 +34,7 @@ esac
     case $(uname) in
         MINGW* )
             pushd ${QDB_REST_SERVICE_DIR}
-            ${GO} build -x -v -o qdb_rest_service$SUFFIX
+            ${GO} build -mod=vendor -buildvcs=false -x -v -o qdb_rest_service$SUFFIX
             popd
             ;;
     esac
