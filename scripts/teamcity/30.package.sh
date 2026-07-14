@@ -71,4 +71,4 @@ esac
 cp -v ${BASE_DIR}/qdb_rest.local.conf.sample etc/qdb_rest.local.conf.sample
 
 ARCHIVE_BASENAME="qdb-${VERSION}-${PLATFORM}-rest"
-tar --use-compress-program=zstd -cf "${ARCHIVE_BASENAME}.tar.zst" bin etc
+tar -czf "${ARCHIVE_BASENAME}.tar.gz" bin etc
