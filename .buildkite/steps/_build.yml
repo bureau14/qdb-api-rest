@@ -30,5 +30,5 @@ plugins:
               - "*-utils.tar.zst!*"
       upload:
         files:
-          - "*.tar.zst"
+          - "*.tar.gz"
       promote: {}
