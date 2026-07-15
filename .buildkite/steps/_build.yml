@@ -31,4 +31,5 @@ plugins:
       upload:
         files:
           - "*.tar.gz"
+          - "*.zip"
       promote: {}
