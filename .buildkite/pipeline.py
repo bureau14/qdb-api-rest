@@ -135,6 +135,10 @@ def generate_pipeline() -> Pipeline:
                     "upload": {
                         "variant": slug,
                         "git-ref": git_ref,
+                    },
+                    "promote": {
+                        "variant": slug,
+                        "git-ref": git_ref,
                     }
                 }
 
