@@ -71,4 +71,11 @@ esac
 cp -v ${BASE_DIR}/qdb_rest.local.conf.sample etc/qdb_rest.local.conf.sample
 
 ARCHIVE_BASENAME="qdb-${VERSION}-${PLATFORM}-rest"
-tar -czf "${ARCHIVE_BASENAME}.tar.gz" bin etc
+case $(uname) in
+    MINGW* )
+        7z a -tzip "${ARCHIVE_BASENAME}.zip" bin etc
+        ;;
+    * )
+        tar -czf "${ARCHIVE_BASENAME}.tar.gz" bin etc
+        ;;
+esac
