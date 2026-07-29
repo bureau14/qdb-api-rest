@@ -1,7 +1,7 @@
 # github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/bureau14/qdb-api-go/v3 v3.14.3-0.20260707072116-f32c237ff02a
+# github.com/bureau14/qdb-api-go/v3 v3.14.3-0.20260729111830-61e4f36a1bd3
 ## explicit; go 1.23.0
 github.com/bureau14/qdb-api-go/v3
 # github.com/davecgh/go-spew v1.1.1
@@ -109,7 +109,7 @@ github.com/silenceper/pool
 # github.com/sirupsen/logrus v1.8.1
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/stretchr/testify v1.10.0
+# github.com/stretchr/testify v1.11.1
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
@@ -148,6 +148,6 @@ gopkg.in/square/go-jose.v2/jwt
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# pgregory.net/rapid v1.2.0
-## explicit; go 1.18
+# pgregory.net/rapid v1.3.0
+## explicit; go 1.23
 pgregory.net/rapid
