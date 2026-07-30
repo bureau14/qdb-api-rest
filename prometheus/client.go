@@ -54,70 +54,64 @@ func (c *Client) Write(tses []prom.TimeSeries) error {
 			return err
 		}
 
-		writerTable, err := newWriterTable(tableName, labelNames, labelValues, ts.Samples)
+		if len(ts.Samples) == 0 {
+			continue
+		}
+
+		columns := make([]qdb.WriterColumn, 0, len(labelNames)+1)
+		columnData := make([]qdb.ColumnData, 0, len(labelValues)+1)
+
+		for i, labelName := range labelNames {
+			columns = append(columns, qdb.WriterColumn{
+				ColumnName: labelName,
+				ColumnType: qdb.TsColumnBlob,
+			})
+
+			values := make([][]byte, len(ts.Samples))
+			for j := range values {
+				values[j] = []byte(labelValues[i])
+			}
+			data := qdb.NewColumnDataBlob(values)
+			columnData = append(columnData, &data)
+		}
+
+		timestamps := make([]time.Time, len(ts.Samples))
+		values := make([]float64, len(ts.Samples))
+		for i, sample := range ts.Samples {
+			timestamps[i] = model.Time(sample.Timestamp).Time()
+			values[i] = sample.Value
+		}
+
+		columns = append(columns, qdb.WriterColumn{
+			ColumnName: "value",
+			ColumnType: qdb.TsColumnDouble,
+		})
+		valueData := qdb.NewColumnDataDouble(values)
+		columnData = append(columnData, &valueData)
+
+		writerTable, err := qdb.NewWriterTable(tableName, columns)
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to create qdb.WriterTable: %s", err.Error())
+		}
+		writerTable.SetIndex(timestamps)
+		err = writerTable.SetDatas(columnData)
+		if err != nil {
+			return fmt.Errorf("Failed to set qdb.WriterTable data: %s", err.Error())
 		}
 
 		writer := qdb.NewWriterWithDefaultOptions()
 		err = writer.SetTable(writerTable)
 		if err != nil {
-			return fmt.Errorf("Failed to add table to qdb.Writer: %s", err.Error())
+			return fmt.Errorf("Failed to set qdb.Writer table: %s", err.Error())
 		}
 
 		err = writer.Push(*handle)
 		if err != nil {
-			return fmt.Errorf("Failed to flush qdb.Writer: %s", err.Error())
+			return fmt.Errorf("Failed to push qdb.Writer: %s", err.Error())
 		}
 	}
 
 	return nil
-}
-
-// newWriterTable converts a Prometheus time series into the columnar data
-// required by qdb.Writer. Label values are constant for every sample in a
-// Prometheus series, so each label column repeats its value for each row.
-func newWriterTable(tableName string, labelNames, labelValues []string, samples []prom.Sample) (qdb.WriterTable, error) {
-	if len(labelNames) != len(labelValues) {
-		return qdb.WriterTable{}, fmt.Errorf("prometheus time series has %d label names but %d label values", len(labelNames), len(labelValues))
-	}
-
-	columns := make([]qdb.WriterColumn, 0, len(labelNames)+1)
-	for _, labelName := range labelNames {
-		columns = append(columns, qdb.WriterColumn{ColumnName: labelName, ColumnType: qdb.TsColumnBlob})
-	}
-	columns = append(columns, qdb.WriterColumn{ColumnName: "value", ColumnType: qdb.TsColumnDouble})
-
-	table, err := qdb.NewWriterTable(tableName, columns)
-	if err != nil {
-		return qdb.WriterTable{}, err
-	}
-
-	timestamps := make([]time.Time, len(samples))
-	data := make([]qdb.ColumnData, 0, len(columns))
-	for _, labelValue := range labelValues {
-		values := make([][]byte, len(samples))
-		for j := range values {
-			values[j] = []byte(labelValue)
-		}
-		columnData := qdb.NewColumnDataBlob(values)
-		data = append(data, &columnData)
-	}
-
-	values := make([]float64, len(samples))
-	for i, sample := range samples {
-		timestamps[i] = model.Time(sample.Timestamp).Time()
-		values[i] = sample.Value
-	}
-	valueData := qdb.NewColumnDataDouble(values)
-	data = append(data, &valueData)
-
-	table.SetIndex(timestamps)
-	if err := table.SetDatas(data); err != nil {
-		return qdb.WriterTable{}, err
-	}
-
-	return table, nil
 }
 
 // GetHandle caches and returns an anonymous user qdb handle
