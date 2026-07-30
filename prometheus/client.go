@@ -54,45 +54,60 @@ func (c *Client) Write(tses []prom.TimeSeries) error {
 			return err
 		}
 
-		var tsBatchColInfo []qdb.TsBatchColumnInfo
-		for _, labelName := range labelNames {
-			tsBatchColInfo = append(tsBatchColInfo, qdb.NewTsBatchColumnInfo(tableName, labelName, int64(len(ts.Samples))))
-		}
-		tsBatchColInfo = append(tsBatchColInfo, qdb.NewTsBatchColumnInfo(tableName, "value", int64(len(ts.Samples))))
-
-		tsBatch, err := handle.TsBatch(tsBatchColInfo...)
-
-		if err != nil {
-			return fmt.Errorf("Failed to created qdb.TsBatch: %s", err.Error())
+		if len(ts.Samples) == 0 {
+			continue
 		}
 
-		for _, sample := range ts.Samples {
-			timestamp := model.Time(sample.Timestamp).Time()
-			err = tsBatch.StartRow(timestamp)
-			if err != nil {
-				return err
+		columns := make([]qdb.WriterColumn, 0, len(labelNames)+1)
+		columnData := make([]qdb.ColumnData, 0, len(labelValues)+1)
+
+		for i, labelName := range labelNames {
+			columns = append(columns, qdb.WriterColumn{
+				ColumnName: labelName,
+				ColumnType: qdb.TsColumnBlob,
+			})
+
+			values := make([][]byte, len(ts.Samples))
+			for j := range values {
+				values[j] = []byte(labelValues[i])
 			}
-			var i int64
-			for _, col := range labelValues {
-				err = tsBatch.RowSetBlob(i, []byte(col))
-				if err != nil {
-					return err
-				}
-				i++
-			}
-			err = tsBatch.RowSetDouble(i, sample.Value)
-			if err != nil {
-				return err
-			}
+			data := qdb.NewColumnDataBlob(values)
+			columnData = append(columnData, &data)
 		}
 
-		if err != nil {
-			return fmt.Errorf("Failed to set TsBatch rows: %s", err.Error())
+		timestamps := make([]time.Time, len(ts.Samples))
+		values := make([]float64, len(ts.Samples))
+		for i, sample := range ts.Samples {
+			timestamps[i] = model.Time(sample.Timestamp).Time()
+			values[i] = sample.Value
 		}
 
-		err = tsBatch.Push()
+		columns = append(columns, qdb.WriterColumn{
+			ColumnName: "value",
+			ColumnType: qdb.TsColumnDouble,
+		})
+		valueData := qdb.NewColumnDataDouble(values)
+		columnData = append(columnData, &valueData)
+
+		writerTable, err := qdb.NewWriterTable(tableName, columns)
 		if err != nil {
-			return fmt.Errorf("Failed to flush TsBatch: %s", err.Error())
+			return fmt.Errorf("Failed to create qdb.WriterTable: %s", err.Error())
+		}
+		writerTable.SetIndex(timestamps)
+		err = writerTable.SetDatas(columnData)
+		if err != nil {
+			return fmt.Errorf("Failed to set qdb.WriterTable data: %s", err.Error())
+		}
+
+		writer := qdb.NewWriterWithDefaultOptions()
+		err = writer.SetTable(writerTable)
+		if err != nil {
+			return fmt.Errorf("Failed to set qdb.Writer table: %s", err.Error())
+		}
+
+		err = writer.Push(*handle)
+		if err != nil {
+			return fmt.Errorf("Failed to push qdb.Writer: %s", err.Error())
 		}
 	}
 
