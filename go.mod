@@ -3,7 +3,7 @@ module github.com/bureau14/qdb-api-rest
 go 1.23.0
 
 require (
-	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260707072009-1675a4d77067
+	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260728075543-91ca6c4fce11
 	github.com/go-openapi/errors v0.20.2
 	github.com/go-openapi/loads v0.21.1
 	github.com/go-openapi/runtime v0.24.1
@@ -29,8 +29,8 @@ require (
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
-	pgregory.net/rapid v1.2.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
+	pgregory.net/rapid v1.3.0 // indirect
 )
 
 require (
