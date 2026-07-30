@@ -140,7 +140,7 @@ func (c *Client) EnsureTable(ts prom.TimeSeries) error {
 	}
 
 	table := handle.Timeseries(fmt.Sprintf("$qdb.prom.%s", tableName))
-	colsInfo, err := table.ColumnsInfo()
+	doubleCols, blobCols, _, _, _, err := table.Columns()
 
 	// Unexpected error
 	if err != nil && err != qdb.ErrAliasNotFound {
@@ -149,37 +149,36 @@ func (c *Client) EnsureTable(ts prom.TimeSeries) error {
 
 	// Timeseries doesn't exist so we create it
 	if err == qdb.ErrAliasNotFound {
-		var newTableCols []qdb.TsColumnInfo
+		var colsInfo []qdb.TsColumnInfo
 		for _, name := range columnNames {
-			newTableCols = append(newTableCols, qdb.NewTsColumnInfo(name, qdb.TsColumnBlob))
+			colsInfo = append(colsInfo, qdb.NewTsColumnInfo(name, qdb.TsColumnBlob))
 		}
-		newTableCols = append(newTableCols, qdb.NewTsColumnInfo("value", qdb.TsColumnDouble))
+		colsInfo = append(colsInfo, qdb.NewTsColumnInfo("value", qdb.TsColumnDouble))
 
-		return table.Create(24*time.Hour, newTableCols...)
-	}
-
-	existingBlobCols := make(map[string]bool, len(colsInfo))
-	var hasValueColumn bool
-
-	for _, col := range colsInfo {
-		switch col.Type() {
-		case qdb.TsColumnBlob:
-			existingBlobCols[col.Name()] = true
-		case qdb.TsColumnDouble:
-			if col.Name() == "value" {
-				hasValueColumn = true
-			}
-		}
+		err = table.Create(24*time.Hour, colsInfo...)
+		return err
 	}
 
 	// Add any missing prometheus labels as blob columns
 	var newColsInfo []qdb.TsColumnInfo
 	for _, label := range columnNames {
-		if !existingBlobCols[label] {
+		var hasColumn bool
+		for _, col := range blobCols {
+			if label == col.Name() {
+				hasColumn = true
+			}
+		}
+		if !hasColumn {
 			newColsInfo = append(newColsInfo, qdb.NewTsColumnInfo(label, qdb.TsColumnBlob))
 		}
 	}
 
+	var hasValueColumn bool
+	for _, col := range doubleCols {
+		if col.Name() == "value" {
+			hasValueColumn = true
+		}
+	}
 	if !hasValueColumn {
 		newColsInfo = append(newColsInfo, qdb.NewTsColumnInfo("value", qdb.TsColumnDouble))
 	}
@@ -189,9 +188,9 @@ func (c *Client) EnsureTable(ts prom.TimeSeries) error {
 		return nil
 	}
 
-	return table.InsertColumns(newColsInfo...)
+	err = table.InsertColumns(newColsInfo...)
+	return err
 }
-
 
 // Read takes a Prometheus read request, fetches the corresponding data from the
 // client's configured QuasarDB server daemon and returns Promethus read response
@@ -200,7 +199,6 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	labelsToSeries := map[string]*prom.TimeSeries{}
 
 	for _, query := range req.Queries {
@@ -211,51 +209,42 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 		}
 
 		q := handle.Query(qdbQuery)
-		result, err := q.Execute()
+		table, err := q.Execute()
 		if err != nil {
 			c.Logger("Failed to execute query: %s", qdbQuery)
 			return nil, err
 		}
-		defer handle.Release(unsafe.Pointer(result))
+		defer handle.Release(unsafe.Pointer(table))
 
-		colNames := result.ColumnsNames()
+		// query only ever has one table result
+		colNames := table.ColumnsNames()
 
-		for _, row := range result.Rows() {
-			columns := result.Columns(row)
+		for _, row := range table.Rows() {
+			columns := table.Columns(row)
 			var (
-				tsMillis int64
-				value    float64
-				labels   = make(map[string]string)
+				time   int64
+				value  float64
+				labels = make(map[string]string)
 			)
 
+			// Read row values
 			for i, colName := range colNames {
-				switch colName {
-				case "$timestamp":
+				if colName == "$timestamp" {
 					timestamp, err := columns[i].GetTimestamp()
 					if err != nil {
 						return nil, err
 					}
-					tsMillis = timestamp.UnixNano() / int64(time.Millisecond)
-
-				case "value":
+					time = timestamp.UnixNano() / 1000000
+				} else if colName == "value" {
 					double, err := columns[i].GetDouble()
 					if err != nil {
 						return nil, err
 					}
 					value = double
-
-				case "$table":
-					continue
-
-				default:
-					if blob, err := columns[i].GetBlob(); err == nil {
+				} else if colName != "$table" {
+					blob, err := columns[i].GetBlob()
+					if err == nil {
 						labels[colName] = string(blob)
-						continue
-					}
-
-					if s, err := columns[i].GetString(); err == nil {
-						labels[colName] = s
-						continue
 					}
 				}
 			}
@@ -263,6 +252,7 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 			key := promTimeSeriesKey(name, labels)
 			ts, ok := labelsToSeries[key]
 
+			// Initialise timeseries if it doesn't exist yet
 			if !ok {
 				labelPairs := make([]prom.Label, 0, len(labels)+1)
 				labelPairs = append(labelPairs, prom.Label{
@@ -284,8 +274,9 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 				labelsToSeries[key] = ts
 			}
 
+			// Append samples
 			ts.Samples = append(ts.Samples, prom.Sample{
-				Timestamp: tsMillis,
+				Timestamp: time,
 				Value:     value,
 			})
 		}
@@ -299,6 +290,7 @@ func (c *Client) Read(req *prom.ReadRequest) (*prom.ReadResponse, error) {
 		},
 	}
 
+	// Build result
 	for _, ts := range labelsToSeries {
 		resp.Results[0].Timeseries = append(resp.Results[0].Timeseries, ts)
 	}
