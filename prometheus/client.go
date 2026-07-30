@@ -54,49 +54,70 @@ func (c *Client) Write(tses []prom.TimeSeries) error {
 			return err
 		}
 
-		var tsBatchColInfo []qdb.TsBatchColumnInfo
-		for _, labelName := range labelNames {
-			tsBatchColInfo = append(tsBatchColInfo, qdb.NewTsBatchColumnInfo(tableName, labelName, int64(len(ts.Samples))))
-		}
-		tsBatchColInfo = append(tsBatchColInfo, qdb.NewTsBatchColumnInfo(tableName, "value", int64(len(ts.Samples))))
-
-		tsBatch, err := handle.TsBatch(tsBatchColInfo...)
-
+		writerTable, err := newWriterTable(tableName, labelNames, labelValues, ts.Samples)
 		if err != nil {
-			return fmt.Errorf("Failed to created qdb.TsBatch: %s", err.Error())
+			return err
 		}
 
-		for _, sample := range ts.Samples {
-			timestamp := model.Time(sample.Timestamp).Time()
-			err = tsBatch.StartRow(timestamp)
-			if err != nil {
-				return err
-			}
-			var i int64
-			for _, col := range labelValues {
-				err = tsBatch.RowSetBlob(i, []byte(col))
-				if err != nil {
-					return err
-				}
-				i++
-			}
-			err = tsBatch.RowSetDouble(i, sample.Value)
-			if err != nil {
-				return err
-			}
-		}
-
+		writer := qdb.NewWriterWithDefaultOptions()
+		err = writer.SetTable(writerTable)
 		if err != nil {
-			return fmt.Errorf("Failed to set TsBatch rows: %s", err.Error())
+			return fmt.Errorf("Failed to add table to qdb.Writer: %s", err.Error())
 		}
 
-		err = tsBatch.Push()
+		err = writer.Push(*handle)
 		if err != nil {
-			return fmt.Errorf("Failed to flush TsBatch: %s", err.Error())
+			return fmt.Errorf("Failed to flush qdb.Writer: %s", err.Error())
 		}
 	}
 
 	return nil
+}
+
+// newWriterTable converts a Prometheus time series into the columnar data
+// required by qdb.Writer. Label values are constant for every sample in a
+// Prometheus series, so each label column repeats its value for each row.
+func newWriterTable(tableName string, labelNames, labelValues []string, samples []prom.Sample) (qdb.WriterTable, error) {
+	if len(labelNames) != len(labelValues) {
+		return qdb.WriterTable{}, fmt.Errorf("prometheus time series has %d label names but %d label values", len(labelNames), len(labelValues))
+	}
+
+	columns := make([]qdb.WriterColumn, 0, len(labelNames)+1)
+	for _, labelName := range labelNames {
+		columns = append(columns, qdb.WriterColumn{ColumnName: labelName, ColumnType: qdb.TsColumnBlob})
+	}
+	columns = append(columns, qdb.WriterColumn{ColumnName: "value", ColumnType: qdb.TsColumnDouble})
+
+	table, err := qdb.NewWriterTable(tableName, columns)
+	if err != nil {
+		return qdb.WriterTable{}, err
+	}
+
+	timestamps := make([]time.Time, len(samples))
+	data := make([]qdb.ColumnData, 0, len(columns))
+	for _, labelValue := range labelValues {
+		values := make([][]byte, len(samples))
+		for j := range values {
+			values[j] = []byte(labelValue)
+		}
+		columnData := qdb.NewColumnDataBlob(values)
+		data = append(data, &columnData)
+	}
+
+	values := make([]float64, len(samples))
+	for i, sample := range samples {
+		timestamps[i] = model.Time(sample.Timestamp).Time()
+		values[i] = sample.Value
+	}
+	valueData := qdb.NewColumnDataDouble(values)
+	data = append(data, &valueData)
+
+	table.SetIndex(timestamps)
+	if err := table.SetDatas(data); err != nil {
+		return qdb.WriterTable{}, err
+	}
+
+	return table, nil
 }
 
 // GetHandle caches and returns an anonymous user qdb handle
