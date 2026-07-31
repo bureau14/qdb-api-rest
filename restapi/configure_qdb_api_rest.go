@@ -218,23 +218,20 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	APIConfig.SetDefaults()
 
 	if APIConfig.Log != "" {
-		logFile, err := os.OpenFile(string(APIConfig.Log), os.O_CREATE, 0644)
-		defer logFile.Close()
-		if err != nil {
-			log.SetOutput(os.Stdout)
-			api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
-			APIConfig.Log = ""
-		} else {
-			lumberJackLogger := &lumberjack.Logger{
-				Filename:   string(APIConfig.Log),
-				MaxSize:    APIConfig.LogMaxSize,
-				MaxBackups: APIConfig.LogMaxRetention,
-				MaxAge:     APIConfig.LogMaxAge,
-				Compress:   APIConfig.LogCompress,
-			}
-			log.SetOutput(lumberJackLogger)
-			qdb.SetLogFile(string(APIConfig.Log))
+		lumberJackLogger := &lumberjack.Logger{
+			Filename:   string(APIConfig.Log),
+			MaxSize:    APIConfig.LogMaxSizeBytes,
+			MaxBackups: APIConfig.LogMaxRetention,
+			MaxAge:     APIConfig.LogMaxAgeSeconds,
+			Compress:   APIConfig.LogCompress,
+			LocalTime:  true,
 		}
+		log.SetOutput(lumberJackLogger)
+		qdb.SetLogFile(string(APIConfig.Log))
+	} else {
+		log.SetOutput(os.Stdout)
+		api.Logger("Warning: cannot create log file at location %s , logging to console.\n", APIConfig.Log)
+		APIConfig.Log = ""
 	}
 
 	err := APIConfig.Check()
