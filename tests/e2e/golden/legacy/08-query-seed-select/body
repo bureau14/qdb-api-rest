@@ -1,0 +1,1 @@
+{"tables":[{"columns":[{"data":["2020-01-01T00:00:00Z","2020-01-02T00:00:00Z","2020-01-03T00:00:00Z"],"name":"$timestamp","type":"timestamp"},{"data":["foo_01","foo_01","foo_01"],"name":"$table","type":"string"},{"data":[1,2,3],"name":"value","type":"double"}]}]}
