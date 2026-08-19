@@ -206,9 +206,10 @@ rule), so no separate start script exists. Each server module exposes
 `server_cmd(cfg) -> list[str]`; the harness runs it as a child, polls the
 port, measures, terminates. `qdbd` has no server module.
 
-Server binaries are built by `make old-server` (git worktree of `master`,
-`go build`) and `make new-server` (this branch); `bench.py` receives the
-binary paths as flags. Old-server launch flags that matter (verified):
+Server binaries are built by `make old-server` (delegates to
+`tests/e2e`'s target: git worktree of `master` in `tests/e2e/.old-master`,
+`go build` against the repo's `qdb/`) and `make new-server` (this branch);
+`bench.py` receives the binary paths as flags. Old-server launch flags that matter (verified):
 `--local -c qdb://127.0.0.1:2836 --pool-size 4 --parallelism-count 4
 --max-in-buffer-size 8589934592 --log-file <path>`. The deployed binary
 has no HTTP timeouts (server flag group never parsed), so no timeout
