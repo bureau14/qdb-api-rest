@@ -1,0 +1,27 @@
+# Extracted QuasarDB distribution (C API, server, utils); fetched, never committed
+qdb/
+# Local qdbd data dirs and test-setup residue
+db/
+insecure/
+secure/
+*.out.txt
+*.err.txt
+cluster_private.key
+cluster_public.key
+user_private.key
+users.cfg
+license.key
+# Build outputs
+bin/
+# e2e harness working files
+tests/e2e/datasets/
+tests/e2e/.old-master/
+tests/e2e/actual/
+tests/e2e/*.log
+tests/e2e/*.pid
+tests/e2e/bench/results/
+# Python venvs
+.env/
+.venv/
+__pycache__/
+qdbsh.log*
