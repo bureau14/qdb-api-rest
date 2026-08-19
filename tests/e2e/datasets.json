@@ -1,0 +1,11 @@
+{
+  "base_url": "https://qdb-cicd-builddeps-20260226074339625300000001.s3.amazonaws.com/datasets/qdb-api-rest",
+  "archives": [
+    {
+      "name": "reproduce",
+      "date": "2026-08-19",
+      "rows": 5613032,
+      "sha256": "175bdb58d9919a80c4cee8488df2fedb2fb6635a6f3d52880e6564a01a197fd6"
+    }
+  ]
+}
