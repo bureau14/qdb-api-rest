@@ -20,10 +20,11 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 
 ## Sub-folders
 
-| Folder  | Contains                                                | Open its `AGENTS.md` when                                            |
-| ------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| `docs/` | project brief, plans, ADRs, project log (current state) | starting any session; reading or writing any planning or design text |
+| Folder                 | Contains                                                        | Open its `AGENTS.md` when                                                 |
+| ---------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `docs/`                | project brief, plans, ADRs, project log (current state)         | starting any session; reading or writing any planning or design text      |
+| `tests/e2e/`           | e2e harness: Makefile, helpers, legacy goldens, dataset tooling | touching tests, goldens, the dataset, or starting a REST server for tests |
+| `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd); has no `AGENTS.md`  | never edit here; update by bumping the submodule SHA                      |
 
-Folders introduced by later milestones (`cmd/`, `internal/`, `tests/e2e/`,
-`scripts/`, `.buildkite/`) get their own row here when they gain an
-`AGENTS.md`.
+Folders introduced by later milestones (`cmd/`, `internal/`, `scripts/cicd/`,
+`.buildkite/`) get their own row here when they gain an `AGENTS.md`.
