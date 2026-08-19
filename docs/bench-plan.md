@@ -114,6 +114,22 @@ Supporting:
 - `server_peak_rss_bytes`: REST-server process (absent for `native@qdbd`).
 - `server_cpu_seconds`: REST-server CPU time delta (informational only).
 - `response_bytes` where the protocol exposes it.
+- **Data-volume metrics** (the gateway-thesis evidence; see "Two volumes"
+  below):
+  - `qdbd_out_bytes`, `qdbd_request_count`: bytes and requests qdbd sent
+    to whichever process held the C API handle for this run (the Python
+    client for `native`, the REST server otherwise). Delta of the
+    node-wide cumulative counters `$qdb.statistics.requests.out_bytes` /
+    `.total_count`, read by the parent before the child starts and after
+    it exits.
+  - `client_bytes`: bytes the measured client process received, per
+    protocol: `native` = `qdbd_out_bytes` by definition (the client is
+    the reducer); `legacy` = HTTP body bytes read (gzip controlled
+    explicitly, recorded); `flightsql` = sum of Arrow IPC record-batch
+    sizes (approximate; gRPC may compress on the wire).
+  - `client_cpu_seconds`: user+sys CPU of the measurement child
+    (`resource.getrusage`), the "low-CPU client machine" proxy.
+  - `report` derives `reduction = qdbd_out_bytes / client_bytes`.
 - `legacy_wart_count`: occurrences of `"(void)"` / `"(undefined)"` seen by
   the legacy parser before normalization (informational; makes a silent
   wart drop visible in `report` even though fingerprints are compared
@@ -128,6 +144,80 @@ where `/proc` does not exist) and collects a JSON result line from the
 child's stdout. The REST server is **restarted between runs** so RSS
 baselines reset. Default 3 runs per query; mean and per-run values are
 both persisted.
+
+## Two volumes: qdbd -> reducer, reducer -> client
+
+QuasarDB is map/reduce-shaped: every shard touched is a mapped entry and
+the reduce phase runs in the process that holds the C API handle. For
+`native@qdbd` that process is the customer's client; for every REST run
+it is the REST server, co-located with qdbd. The benchmark therefore
+measures two volumes per query and keeps them apart:
+
+1. **qdbd -> reducer**: what qdbd pushes to the C client. Identical for
+   every run of the same query (same query, same qdbd, same C API); the
+   difference between runs is _where_ those bytes land -- on the customer
+   WAN link (`native`) or on the datacenter loopback (any REST run).
+2. **reducer -> client**: what the final consumer actually receives. For
+   `native` it equals volume 1; for REST runs it is the encoded response.
+
+Query shapes behave very differently on these two axes; the reduce-shape
+query family below exists to cover each class:
+
+| class                                            | qdbd -> reducer    | reducer -> client | what the comparison shows                                          |
+| ------------------------------------------------ | ------------------ | ----------------- | ------------------------------------------------------------------ |
+| `LIMIT n` on a raw select, `COUNT(*)`            | tiny (pushed down) | tiny              | the gateway's extra-hop cost (brief, Open risk 5); no win expected |
+| coarse `GROUP BY` (bucket >= shard, low-card)    | small              | small             | already reduced inside qdbd; control case                          |
+| fine `GROUP BY` / high-cardinality key, no LIMIT | large              | large             | reduce cost moves to the gateway, encoding + streaming decide      |
+| same + `ORDER BY agg DESC LIMIT k`               | **large**          | **tiny**          | the gateway thesis: WAN bytes and client CPU collapse to ~k rows   |
+| full raw select                                  | large              | large             | the existing headline materialization KPI                          |
+
+Patterns learned while probing the dataset (mechanics, not numbers; the
+numbers are measured by the bench and debated there):
+
+- `LIMIT` without `ORDER BY` is pushed down: qdbd ships roughly the
+  limited rows. `ORDER BY <aggregate> ... LIMIT k` is **not**: qdbd ships
+  the complete aggregate to the reducer, which sorts and discards. So the
+  top-k variant of an aggregate costs exactly as much on volume 1 as the
+  unlimited variant and almost nothing on volume 2. This gap is the
+  property being measured.
+- Volume 1 scales with _groups x shards touched_, not rows scanned. On
+  this dataset (96 shards of 15 min, one day) low-cardinality keys such
+  as `accountId` / `orderStreamId` with hourly buckets are already
+  reduced almost entirely server-side; `GROUP BY id` (~1.5M distinct)
+  or second-granularity buckets are needed to make the reducer work.
+- Where qdbd itself is the bottleneck (very fine time buckets), wall
+  clock barely moves between protocols on localhost; choose at least one
+  reduce query whose qdbd time is short relative to its transfer + reduce
+  so differences between runs are visible locally. Bytes and client CPU
+  remain meaningful even when seconds do not.
+- Note for `report`: the reduce-next-to-the-data advantage is a property
+  of the architecture, and the **old** server has it too (it runs
+  `qdb_query` server-side). The bench presents `native@qdbd` vs any REST
+  run as the architectural delta, and old vs new REST as the
+  implementation delta (encoding, streaming, gateway overhead).
+
+Measurement mechanics, verified 2026-08-19:
+
+- qdbd exposes node-wide cumulative counters
+  `$qdb.statistics.requests.{in_bytes,out_bytes,total_count,...}` as
+  integer entries readable with `direct_int_get` (qdbsh, or
+  `quasardb.stats` in Python). They refresh periodically
+  (`statistics_refresh_interval`, 500 ms in the shared test-setup config,
+  5 s qdbd default): read them after a settle of at least 2x the interval
+  or the delta is zero. They are node-global with no per-connection
+  attribution in insecure mode -- acceptable because the bench runs one
+  (protocol, server) pair at a time; the read itself costs a few
+  requests, measured once per run as a no-op baseline and subtracted.
+- OS-level socket accounting (`nettop`) reports zero for loopback traffic
+  on macOS; the qdbd counters are the only portable source for volume 1.
+- Whether the counter is pre- or post-compression is unverified; it is
+  comparable across runs as long as every client uses the same
+  `qdb_compression_t` (both qdb-api-go and qdb-api-python default to
+  balanced); the bench asserts and records the setting.
+- No WAN emulation (dummynet/netem) in the first version: bytes stand in
+  for bandwidth, client CPU seconds for client compute. A throttled-link
+  mode converting bytes into seconds is an opt-in later addition if the
+  byte numbers alone do not settle the debate.
 
 ## Version purity rules
 
@@ -167,14 +257,33 @@ underneath held identical:
 
 A small fixed set, identical across runs:
 
+Materialization family (the original KPI):
+
 | id      | query                                   | purpose                       |
 | ------- | --------------------------------------- | ----------------------------- |
 | `count` | `SELECT COUNT(*) FROM "reproduce"`      | sanity + tiny-result latency  |
 | `head`  | `SELECT * FROM "reproduce" LIMIT 65536` | mid-size, TTFB shape          |
 | `full`  | `SELECT * FROM "reproduce"`             | the headline 5.6M-row KPI run |
 
-The set is data, not code (a table in `bench.py`); adding an aggregation
-query later is a one-line change.
+Reduce-shape family (the gateway thesis; see "Two volumes"), one query
+per class, exact SQL chosen when the bench is built:
+
+| id           | shape                                                          | class                    |
+| ------------ | -------------------------------------------------------------- | ------------------------ |
+| `limit10`    | `SELECT * ... LIMIT 10`                                        | pushed-down, extra hop   |
+| `agg_coarse` | hourly bucket x low-cardinality key                            | reduced in qdbd, control |
+| `agg_wide`   | high-cardinality key (`id`) or fine bucket, several aggregates | heavy both ways          |
+| `agg_topk`   | `agg_wide` + `ORDER BY <agg> DESC, <key> ASC LIMIT 10`         | heavy in, tiny out       |
+
+Rules for the reduce family: every `ORDER BY` carries a full tiebreaker
+(ties at the top-k boundary are real on this dataset and would make the
+fingerprint nondeterministic); `agg_topk` is the `agg_wide` text plus the
+`ORDER BY ... LIMIT` clause, nothing else, so their volume-1 numbers are
+directly comparable; double aggregates (`SUM`, `AVG`) go through the
+existing float tolerance.
+
+The set is data, not code (a table in `bench.py`); adding a query is a
+one-line change.
 
 ## Layout
 
@@ -243,6 +352,11 @@ whatever result files exist and prints two sections:
    deltas: `legacy@new-rest` vs `legacy@old-rest` (drop-in speedup) and
    `flightsql@new-rest` vs `legacy@old-rest` (gateway thesis), and
    `native@qdbd` as the floor.
+3. **Gateway leverage**: per query, `qdbd_out_bytes` vs `client_bytes`
+   vs `client_cpu_seconds` across all runs, with `reduction` derived. The
+   sentence that matters is per reduce-family query: what `native@qdbd`
+   must download and compute to end up with k rows versus what
+   `flightsql@new-rest` delivers for the same k rows.
 
 ## Module contract
 
@@ -358,3 +472,14 @@ When new-rest wins on both, the tool has done its job and is removed.
 | Run = (protocol, server) pair            | one legacy client module runs unchanged against old and new server: compat and perf from the same code | three opaque "targets" (conflates client code with the server it hits)       |
 | Makefile as the only config source       | one place for paths/ports, passed as explicit flags                                                    | `env.sh` sourced by many scripts                                             |
 | Python only here, never in CI            | qdb-api-python build + master worktree are heavyweight and temporary                                   | bench harness as the CI performance-budget mechanism                         |
+
+## Decision log (2026-08-19)
+
+| Decision                                                      | Why                                                                                                         | Rejected                                                             |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Measure two volumes (qdbd -> reducer, reducer -> client)      | the gateway thesis is about where the reduce runs; one byte count cannot show it                            | response size only                                                   |
+| Volume 1 from qdbd `$qdb.statistics.requests.*` counters      | only portable source; macOS loopback is invisible to OS accounting; one run at a time makes it attributable | `nettop`/`/proc/net`, per-connection instrumentation in the bindings |
+| Reduce-shape query family, one query per class                | classes behave differently on the two axes; a single aggregate would show only one of them                  | one "aggregation query"                                              |
+| High-cardinality / fine-bucket keys for `agg_wide`/`agg_topk` | coarse buckets over low-cardinality keys are already reduced in qdbd and prove nothing                      | hourly x `accountId`-style queries as the headline                   |
+| Bytes + client CPU, no WAN emulation in v1                    | honest, portable, enough to settle the architectural question; seconds can be derived later                 | dummynet/netem throttling as a prerequisite                          |
+| Hard measured numbers stay out of this plan                   | they are subject to debate; the bench produces them, results files hold them                                | recording probe numbers as verified facts here                       |
