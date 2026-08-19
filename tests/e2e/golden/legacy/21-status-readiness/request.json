@@ -1,0 +1,7 @@
+{
+  "method": "GET",
+  "path": "/api/status/readiness",
+  "headers": {},
+  "auth": "none",
+  "compare": "bytes"
+}

@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/query",
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept-Encoding": "gzip"
+  },
+  "body": {
+    "query": "SELECT COUNT(*) FROM \"reproduce\""
+  },
+  "auth": "bearer",
+  "compare": "gunzip"
+}

@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/query",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer garbage"
+  },
+  "body": {
+    "query": "SELECT COUNT(*) FROM \"reproduce\""
+  },
+  "auth": "none",
+  "compare": "bytes"
+}
