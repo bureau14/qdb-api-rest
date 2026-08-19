@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/tags",
+  "query": "regex=tag_0%5B12%5D",
+  "headers": {},
+  "auth": "bearer",
+  "compare": "bytes"
+}

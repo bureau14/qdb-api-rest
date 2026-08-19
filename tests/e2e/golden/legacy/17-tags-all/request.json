@@ -1,0 +1,7 @@
+{
+  "method": "GET",
+  "path": "/api/tags",
+  "headers": {},
+  "auth": "bearer",
+  "compare": "bytes"
+}

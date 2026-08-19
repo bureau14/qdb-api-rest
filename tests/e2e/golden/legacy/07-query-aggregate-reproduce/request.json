@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/api/query",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "query": "SELECT side, COUNT(id), SUM(amount), MIN(rate), MAX(rate), SUM(firmLpId) FROM \"reproduce\" GROUP BY side ORDER BY side"
+  },
+  "auth": "bearer",
+  "compare": "bytes"
+}

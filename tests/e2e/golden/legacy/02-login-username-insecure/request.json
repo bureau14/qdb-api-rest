@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/login",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "username": "someone",
+    "secret_key": "not-a-real-key"
+  },
+  "auth": "none",
+  "compare": "login-shape"
+}

@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/api/query",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "query": "find(tag='no_such_tag')"
+  },
+  "auth": "bearer",
+  "compare": "bytes"
+}

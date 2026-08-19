@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/api/query",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "query": "SELECT * FROM foo_01 IN RANGE (1990, 1991)"
+  },
+  "auth": "bearer",
+  "compare": "bytes"
+}
