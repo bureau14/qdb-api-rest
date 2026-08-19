@@ -698,7 +698,10 @@ tests exist only where a pure function has genuine logic worth pinning.
    code against both servers is the drop-in compatibility check
    (semantic, via normalized result fingerprints; byte-shape lives in
    item 2). Supporting metrics: time to first byte (per-protocol
-   definition), client peak RSS, REST-server peak RSS. Judgment rule:
+   definition), client peak RSS, REST-server peak RSS, and the two data
+   volumes (qdbd -> reducer, reducer -> client) plus client CPU that
+   make the map/reduce offload visible for aggregate/top-k queries.
+   Judgment rule:
    increased gateway compute is a win whenever client wall clock
    improves versus the old server. It consumes the e2e harness's qdbd
    and dataset and owns only its venv, the old-server build, and the
