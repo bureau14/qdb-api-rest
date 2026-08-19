@@ -28,7 +28,8 @@ Next:
    `make load DATASETS_LOCAL_DIR=~/datasets`.
 2. M0 entry criteria: define, record here. Remove old-checkout clutter
    (`apps/`, `etc/`, `.buildkite/tools/__pycache__`, `db/`) by hand.
-3. Bench Phase 1 (`docs/bench-plan.md`, Implementation order, steps 2-4);
+3. Bench Phase 1 (`docs/bench-plan.md`, Implementation order, steps 2-4;
+   includes the reduce-shape query family and the two-volume metrics);
    its `make old-server` delegates to `tests/e2e`.
 4. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green.
 
@@ -37,6 +38,29 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-19 -- Bench: two-volume measurement and reduce-shape queries
+
+- Investigated how to make the benchmark show the map/reduce thesis
+  (reduce runs in the C-API holder; the gateway moves it next to qdbd).
+  Outcome recorded in `docs/bench-plan.md`, "Two volumes" + the
+  reduce-shape query family + decision log 2026-08-19. No hard numbers
+  recorded on purpose; the bench will produce them.
+- Lessons:
+  - qdbd's `$qdb.statistics.requests.out_bytes` / `total_count` give the
+    qdbd -> client volume; refresh is periodic (500 ms in test-setup),
+    so settle before reading. `nettop` sees nothing on macOS loopback.
+  - `LIMIT` is pushed down; `ORDER BY <agg> LIMIT k` is not -- the full
+    aggregate reaches the reducer. That gap is the thing to measure.
+  - qdbd -> client volume scales with groups x shards, not rows; on this
+    dataset (96 x 15-min shards, low-cardinality string keys) only
+    high-cardinality keys (`id`) or fine buckets load the reducer.
+    Second-granularity buckets are qdbd-bound and hide protocol
+    differences on localhost.
+  - Probing tools that work today: `qdbsh --output-format csv` as a C
+    client; `direct_set_node` + `direct_int_get` via qdbsh stdin (the
+    `-c` flag cannot be repeated). Single-shot `SELECT *` of the full
+    table overflows qdbsh's input buffer (125 MiB), same as `qdb_export`.
 
 ## 2026-08-19 -- e2e harness: dataset, legacy goldens, red bar for M1
 
