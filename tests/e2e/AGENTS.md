@@ -26,4 +26,5 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   (`seed.sql`) are dropped and recreated freely.
 - Shell style: `set -euo pipefail`, small named functions, definitions
   before use, ASCII only. No Python in this directory (the bench in
-  `bench/` is the one exception and is temporary).
+  `bench/` is the one exception and is temporary; its conventions live in
+  `bench/AGENTS.md`).
