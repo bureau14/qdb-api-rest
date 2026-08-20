@@ -9,7 +9,7 @@ Last updated: 2026-08-20
 
 | Milestone             | State       | Note                                   |
 | --------------------- | ----------- | -------------------------------------- |
-| M0 -- Foundation      | not started | first target; see brief Milestones     |
+| M0 -- Foundation      | in progress | skeleton serves status probes          |
 | M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place  |
 | M2 -- v2 data plane   | not started |                                        |
 | M3 -- Flight SQL      | not started | gated on M0 driver-compat spike        |
@@ -18,7 +18,9 @@ Last updated: 2026-08-20
 
 In flight:
 
-- Nothing.
+- M0. Landed: go module, `cmd/qdb_rest` (status probes, graceful
+  shutdown), root `Makefile`; goldens 20/21 green under the harness
+  (see 2026-08-20 entry).
 
 Next:
 
@@ -26,8 +28,10 @@ Next:
    `make -C tests/e2e package-dataset`; entry already in
    `tests/e2e/datasets.json`, sha256 `175bdb58...`); until then
    `make load DATASETS_LOCAL_DIR=~/datasets`.
-2. M0 entry criteria: define, record here. Remove old-checkout clutter
-   (`apps/`, `etc/`, `.buildkite/tools/__pycache__`, `db/`) by hand.
+2. M0 remaining, roughly in order: `internal/config` (YAML + env + flags),
+   `internal/observe` (slog setup), TLS listener, Buildkite CI skeleton,
+   packaging + Docker, the two de-risk spikes (Flight SQL drivers,
+   go-duckdb + qdb-duck).
 3. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -37,6 +41,32 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-20 -- M0 started: go skeleton + status probes
+
+- Criteria. Entry (met): e2e harness with legacy goldens and the bench in
+  place, dataset loaded, red bar for M1 exists. Exit: the brief's M0 scope
+  -- config, logging, TLS, probes, CI on all platforms with the static
+  `libqdb_api.a` dance, packaging, Docker image, both de-risk spikes.
+- Landed: `go.mod` (`github.com/bureau14/qdb-api-rest`, go 1.26, zero
+  third-party deps), `internal/httpapi` (probe handlers at the legacy
+  paths and `/api/v2` mirrors; 200, empty body, no Content-Type),
+  `cmd/qdb_rest` (`-listen` flag, slog JSON to stdout, SIGTERM drain
+  bounded below the harness's 10 s kill window), root `Makefile`
+  (`make build`). Old-checkout clutter removed (`apps/`, `etc/`,
+  `.buildkite/`, `db/`).
+- Harness: `legacy.sh` fetches its token lazily (first case with
+  `auth != none`) and tolerates non-login responses; `CASES=` selects a
+  golden subset on all capture/replay targets; `REST_ARGS` defaults to the
+  rewrite's `-listen` flag. Verified: selfcheck 21/21;
+  `make -C tests/e2e test-legacy QDB_REST_BIN=bin/qdb_rest
+CASES='20-status-liveness 21-status-readiness'` passes 2/2 with the
+  harness owning start/stop; the full replay fails fast at login -- the
+  M1 red bar, now reachable per case.
+- Lesson: the eager login in `legacy.sh` coupled every replay to
+  `/api/login`, making even unauthenticated goldens unreachable against a
+  partial server; lazy token fetch plus case selection is the general fix
+  and doubles as single-case debugging during M1.
 
 ## 2026-08-20 -- Bench Phase 1 built; native == legacy@old-rest
 
