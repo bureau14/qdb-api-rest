@@ -40,11 +40,13 @@ list_cases() {
     find "$GOLDEN_DIR" -mindepth 2 -maxdepth 2 -name request.json -print | xargs -n1 dirname | xargs -n1 basename | sort
 }
 
-# Anonymous login; prints the token.
+# Anonymous login; prints the token, or nothing when the response is not a
+# login response (connection refused, 404, non-JSON body).
 login() {
-    curl -sS -X POST -H 'Content-Type: application/json' \
-        --data-binary '{"username":"","secret_key":""}' "$BASE_URL/api/login" \
-        | jq -r '.token // empty'
+    local body
+    body=$(curl -sS -X POST -H 'Content-Type: application/json' \
+        --data-binary '{"username":"","secret_key":""}' "$BASE_URL/api/login") || return 0
+    jq -r '.token // empty' <<<"$body" 2>/dev/null || true
 }
 
 # One token per invocation, fetched by the first case whose auth mode needs
@@ -53,7 +55,7 @@ TOKEN=""
 ensure_token() {
     [[ -n "$TOKEN" ]] && return
     TOKEN=$(login)
-    [[ -n "$TOKEN" ]] || die "login failed against $BASE_URL (is the server up?)"
+    [[ -n "$TOKEN" ]] || die "login failed against $BASE_URL (is the server up and serving /api/login?)"
 }
 
 # Keep only the headers that are part of the compatibility contract.
