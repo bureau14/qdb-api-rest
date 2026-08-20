@@ -720,6 +720,203 @@ def run_main(args):
     log(f"wrote {path}")
 
 
+# -------------------------------------------------------------------- report
+#
+# Cross-run comparison happens here, over persisted result files only.
+# Three sections: compatibility (the fingerprint matrix -- the drop-in
+# claim), performance (the wall-clock KPI), gateway leverage (where the
+# qdbd->reducer bytes land vs what the client receives).
+
+
+def load_results(results_dir):
+    runs = {}
+    for name in sorted(os.listdir(results_dir)):
+        if name.endswith(".json"):
+            with open(os.path.join(results_dir, name)) as handle:
+                data = json.load(handle)
+            runs[data["run"]] = data
+    return runs
+
+
+def run_order(runs):
+    """Registry order: the native floor first, then old, then new."""
+    ordered = [f"{p}@{s}" for p, s in REGISTRY]
+    return [r for r in ordered if r in runs]
+
+
+def variants_of(runs, query_id):
+    """(label, means, run_name) per measured (run, mode)."""
+    out = []
+    for run_name in run_order(runs):
+        entry = runs[run_name]["queries"].get(query_id)
+        if not entry:
+            continue
+        for mode, means in sorted(entry["means"].items()):
+            label = f"{run_name}:{mode}" if mode else run_name
+            out.append((label, means, run_name))
+    return out
+
+
+def format_table(headers, rows):
+    table = [headers] + [
+        ["-" if cell is None else str(cell) for cell in row] for row in rows
+    ]
+    widths = [max(len(row[i]) for row in table) for i in range(len(headers))]
+    lines = []
+    for index, row in enumerate(table):
+        padded = [row[0].ljust(widths[0])] + [
+            cell.rjust(widths[i + 1]) for i, cell in enumerate(row[1:])
+        ]
+        lines.append("  " + "  ".join(padded))
+        if index == 0:
+            lines.append("  " + "  ".join("-" * w for w in widths))
+    return "\n".join(lines)
+
+
+def fmt_seconds(value):
+    return None if value is None else f"{value:.3f}"
+
+
+def fmt_size(value):
+    if value is None:
+        return None
+    for unit, scale in (("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
+        if value >= scale:
+            return f"{value / scale:.1f}{unit}"
+    return f"{value:.0f}B"
+
+
+def wart_count_of(run_data, query_id):
+    entry = run_data["queries"].get(query_id)
+    if not entry:
+        return None
+    return sum(r["telemetry"].get("wart_count", 0) for r in entry["reps"])
+
+
+def report_compatibility(runs, query_ids):
+    """Fingerprint matrix; the reference is the first measured run of each
+    query (native@qdbd when present). Returns the number of mismatches."""
+    print("== compatibility (fingerprints after normalization) ==")
+    mismatches = 0
+    for query_id in query_ids:
+        measured = [
+            (name, runs[name]["queries"][query_id]["fingerprint"])
+            for name in run_order(runs)
+            if query_id in runs[name]["queries"]
+        ]
+        if not measured:
+            continue
+        reference_name, reference = measured[0]
+        cells = []
+        for name, fingerprint in measured:
+            diff = fingerprint_diff(reference, fingerprint)
+            verdict = "OK" if not diff else f"DIFFERS({len(diff)})"
+            warts = wart_count_of(runs[name], query_id)
+            if warts:
+                verdict += f" warts={warts}"
+            cells.append(f"{name}={verdict}")
+            if diff:
+                mismatches += 1
+                for line in diff[:10]:
+                    print(f"    {query_id} {name} vs {reference_name}: {line}")
+        print(f"  {query_id}: " + "  ".join(cells))
+    old, new = "legacy@old-rest", "legacy@new-rest"
+    if old in runs and new in runs:
+        equal = all(
+            not fingerprint_diff(
+                runs[old]["queries"][q]["fingerprint"],
+                runs[new]["queries"][q]["fingerprint"],
+            )
+            for q in query_ids
+            if q in runs[old]["queries"] and q in runs[new]["queries"]
+        )
+        print(f"  {old} == {new}: {'YES -- drop-in compatible' if equal else 'NO'}")
+    else:
+        print(f"  {old} == {new}: not comparable yet ({new} not measured)")
+    print()
+    return mismatches
+
+
+def report_performance(runs, query_ids):
+    print("== performance (means; seconds, peak RSS) ==")
+    for query_id in query_ids:
+        variants = variants_of(runs, query_id)
+        if not variants:
+            continue
+        print(f"  -- {query_id}")
+        print(format_table(
+            ["run", "wall", "ttfb", "client_cpu", "client_rss",
+             "server_rss", "server_cpu"],
+            [
+                [label,
+                 fmt_seconds(m["wall_to_dataframe_seconds"]),
+                 fmt_seconds(m["ttfb_seconds"]),
+                 fmt_seconds(m["client_cpu_seconds"]),
+                 fmt_size(m["client_peak_rss_bytes"]),
+                 fmt_size(m["server_peak_rss_bytes"]),
+                 fmt_seconds(m["server_cpu_seconds"])]
+                for label, m, _ in variants
+            ],
+        ))
+    baseline = "legacy@old-rest"
+    for challenger in ("legacy@new-rest", "flightsql@new-rest"):
+        if challenger not in runs or baseline not in runs:
+            continue
+        print(f"  -- {challenger} vs {baseline} (wall-clock speedup)")
+        for query_id in query_ids:
+            entries = [runs[n]["queries"].get(query_id) for n in (baseline, challenger)]
+            if not all(entries):
+                continue
+            old_wall = next(iter(entries[0]["means"].values()))["wall_to_dataframe_seconds"]
+            new_wall = next(iter(entries[1]["means"].values()))["wall_to_dataframe_seconds"]
+            if old_wall and new_wall:
+                print(f"    {query_id}: {old_wall / new_wall:.2f}x "
+                      f"({old_wall:.3f}s -> {new_wall:.3f}s)")
+    print()
+
+
+def report_leverage(runs, query_ids):
+    print("== gateway leverage (qdbd->reducer vs reducer->client) ==")
+    for query_id in query_ids:
+        variants = variants_of(runs, query_id)
+        if not variants:
+            continue
+        rows = []
+        for label, m, _ in variants:
+            out_bytes, client_bytes = m["qdbd_out_bytes"], m["client_bytes"]
+            reduction = (
+                f"{out_bytes / client_bytes:.1f}x"
+                if out_bytes and client_bytes else None
+            )
+            rows.append([label, fmt_size(out_bytes), fmt_size(client_bytes),
+                         reduction, fmt_seconds(m["client_cpu_seconds"])])
+        print(f"  -- {query_id}")
+        print(format_table(
+            ["run", "qdbd_out", "client_bytes", "reduction", "client_cpu"], rows,
+        ))
+    print()
+
+
+def report_main(args):
+    runs = load_results(args.results_dir)
+    if not runs:
+        die(f"no result files under {args.results_dir}; run a bench-* target first")
+    known = [q for q in QUERIES]
+    extras = sorted({
+        q for data in runs.values() for q in data["queries"] if q not in QUERIES
+    })
+    query_ids = known + extras
+    print("runs: " + ", ".join(
+        f"{name} ({runs[name]['environment']['timestamp']})"
+        for name in run_order(runs)
+    ) + "\n")
+    mismatches = report_compatibility(runs, query_ids)
+    report_performance(runs, query_ids)
+    report_leverage(runs, query_ids)
+    if mismatches:
+        die(f"{mismatches} fingerprint mismatch(es)")
+
+
 # ---------------------------------------------------------------- selftest
 #
 # The fingerprint invariants are the only piece of the bench with logic
@@ -818,12 +1015,16 @@ def parse_args(argv):
     child = sub.add_parser("_child")  # internal: one measurement, one process
     child.add_argument("config")
 
+    report = sub.add_parser("report", help="compare persisted result files")
+    report.add_argument("--results-dir", required=True)
+
     sub.add_parser("selftest", help="pin the fingerprint invariants")
     return parser.parse_args(argv)
 
 
 HANDLERS = {
     "run": run_main,
+    "report": report_main,
     "_child": child_main,
     "selftest": selftest_main,
 }
