@@ -266,14 +266,20 @@ Materialization family (the original KPI):
 | `full`  | `SELECT * FROM "reproduce"`             | the headline 5.6M-row KPI run |
 
 Reduce-shape family (the gateway thesis; see "Two volumes"), one query
-per class, exact SQL chosen when the bench is built:
+per class (cardinalities verified 2026-08-20: `accountId` 85 groups,
+`orderStreamId` 105, `id` ~1.5M):
 
-| id           | shape                                                          | class                    |
-| ------------ | -------------------------------------------------------------- | ------------------------ |
-| `limit10`    | `SELECT * ... LIMIT 10`                                        | pushed-down, extra hop   |
-| `agg_coarse` | hourly bucket x low-cardinality key                            | reduced in qdbd, control |
-| `agg_wide`   | high-cardinality key (`id`) or fine bucket, several aggregates | heavy both ways          |
-| `agg_topk`   | `agg_wide` + `ORDER BY <agg> DESC, <key> ASC LIMIT 10`         | heavy in, tiny out       |
+| id           | SQL                                                                                            | class                    |
+| ------------ | ---------------------------------------------------------------------------------------------- | ------------------------ |
+| `limit10`    | `SELECT * FROM "reproduce" LIMIT 10`                                                           | pushed-down, extra hop   |
+| `agg_coarse` | `SELECT $timestamp, accountId, COUNT(id), SUM(amount) FROM "reproduce" GROUP BY 1h, accountId` | reduced in qdbd, control |
+| `agg_wide`   | `SELECT id, COUNT(id), SUM(amount), MIN(rate), MAX(rate) FROM "reproduce" GROUP BY id`         | heavy both ways          |
+| `agg_topk`   | `agg_wide` text + `ORDER BY SUM(amount) DESC, id ASC LIMIT 10`                                 | heavy in, tiny out       |
+
+`COUNT(id)`, never `COUNT(*)`: the wire expands `COUNT(*)` into one count
+per column. Row order of `GROUP BY` results is deterministic across
+protocols (verified by the cross-protocol fingerprints, edge rows
+included), so `agg_wide` needs no ORDER BY of its own.
 
 Rules for the reduce family: every `ORDER BY` carries a full tiebreaker
 (ties at the top-k boundary are real on this dataset and would make the
@@ -363,8 +369,15 @@ whatever result files exist and prints two sections:
 Protocol modules (`protocols/<name>.py`) expose:
 
 ```python
-def fetch(query: str, record_ttfb: Callable[[], None]) -> pandas.DataFrame
+def fetch(cfg, query, record_ttfb, telemetry: dict) -> Iterator[pandas.DataFrame]
 ```
+
+An iterator, so streaming protocols yield batches without a forced concat
+(which would destroy their RSS story); one-shot protocols yield once. The
+harness fingerprints batches through a streaming accumulator whose result
+is invariant to batch boundaries (`selftest` pins that). `telemetry` is
+the protocol's channel for wire-level metrics the harness cannot see:
+`response_bytes`, `body_bytes_decoded`, `gzip`, `wart_count`.
 
 Server modules (`servers/<name>.py`) expose:
 
@@ -373,7 +386,9 @@ def server_cmd(cfg) -> list[str]
 ```
 
 - `record_ttfb` is called once by the protocol at its first-data moment
-  (definitions above).
+  (definitions above). The clock and the client CPU meter cover only the
+  fetch-iterator pulls; fingerprint accumulation between pulls is bench
+  overhead and stays outside both.
 - A protocol module knows nothing about which server answers; it gets a
   base URL / URI from the harness. That is what makes `legacy@old-rest`
   and `legacy@new-rest` run byte-for-byte the same client code.
@@ -382,12 +397,17 @@ def server_cmd(cfg) -> list[str]
   means writing `protocols/flightsql.py` (~30 lines) and enabling the
   registry row -- no harness changes.
 - `legacy.py` internals: anonymous login (`{"username":"","secret_key":""}`
-  -> Bearer token), `POST /api/query`, then columnar JSON to DataFrame:
+  -> Bearer token), `POST /api/query` over stdlib `http.client` (exact
+  first-body-byte TTFB, explicit `Accept-Encoding`), then columnar JSON to
+  DataFrame:
   `pd.DataFrame({col.name: col.data})` plus legacy-wart normalization
   (`"(void)"` -> NaT, `"(undefined)"` -> NA, ISO timestamps parsed),
   counting warts as it goes. Plain `json.loads` on purpose: that parse
   cost is the honest price a real customer pays on this path and belongs
-  in the measurement.
+  in the measurement. HTTP gzip is on by default and the only mode in the
+  standard runs (real clients send `Accept-Encoding: gzip`; the server
+  compresses on any such header); `--no-gzip` exists for one-off probes,
+  and every result records the setting plus both byte counts.
 
 ## Functional equivalence across runs
 
@@ -483,3 +503,15 @@ When new-rest wins on both, the tool has done its job and is removed.
 | High-cardinality / fine-bucket keys for `agg_wide`/`agg_topk` | coarse buckets over low-cardinality keys are already reduced in qdbd and prove nothing                      | hourly x `accountId`-style queries as the headline                   |
 | Bytes + client CPU, no WAN emulation in v1                    | honest, portable, enough to settle the architectural question; seconds can be derived later                 | dummynet/netem throttling as a prerequisite                          |
 | Hard measured numbers stay out of this plan                   | they are subject to debate; the bench produces them, results files hold them                                | recording probe numbers as verified facts here                       |
+
+## Decision log (2026-08-20)
+
+| Decision                                                         | Why                                                                                                  | Rejected                                                           |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Reduce-family SQL as pinned in "Queries"                         | `GROUP BY id` (~1.5M groups) is the only key that loads the reducer; 1h x `accountId` is the control | 1s buckets (qdbd-bound, hides protocol deltas on localhost)        |
+| `fetch` returns an iterator of DataFrames                        | stream mode must not concat; one fingerprint accumulator serves one-shot and streaming alike         | `-> DataFrame` with a stream special case in the harness           |
+| `telemetry` dict parameter on `fetch`                            | wire-level metrics (`response_bytes`, `wart_count`, `gzip`) have no other home                       | parsing them out of protocol return values                         |
+| Legacy HTTP gzip on by default, only mode in standard runs       | customer-realistic (`requests` sends `Accept-Encoding: gzip`); recorded per result, `--no-gzip` flag | gzip off (raw-wire baseline), measuring both (doubles legacy reps) |
+| Native client input buffer = old server's `--max-in-buffer-size` | every run must accept the same result sizes; the binding default (256 MiB) fails `agg_wide`/`full`   | binding defaults per client                                        |
+| Counters read key-by-key on a direct node connection             | `stats.by_node` scans every stat key (~3k requests/read) and drowns small queries                    | `quasardb.stats.by_node` full scan                                 |
+| All-null columns fingerprint type-free                           | no observable wire type: legacy JSON types them `none`, the native client picks a dtype              | per-protocol dtype exceptions in the comparison                    |
