@@ -13,14 +13,21 @@ run for each measurement so RSS and CPU are attributable to one process).
 
 import argparse
 import base64
+import hashlib
+import importlib
 import json
 import math
 import os
-import shlex
+import pathlib
+import platform
+import resource
+import socket
 import subprocess
 import sys
 import time
 from collections import deque
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -291,6 +298,418 @@ def fingerprint_diff(a, b, rel_tol=REL_TOLERANCE):
     return msgs
 
 
+# ---------------------------------------------------------- process sampling
+#
+# `ps` is the portable source of RSS and CPU time on macOS (there is no
+# /proc); one fork samples every pid of interest at once.
+
+
+def rss_bytes(pids):
+    """Current RSS per pid; pids that exited are simply absent."""
+    listed = ",".join(str(p) for p in pids)
+    out = subprocess.run(
+        ["ps", "-o", "pid=,rss=", "-p", listed],
+        capture_output=True, text=True,
+    ).stdout
+    result = {}
+    for line in out.splitlines():
+        pid, rss_kib = line.split()
+        result[int(pid)] = int(rss_kib) * 1024
+    return result
+
+
+def cpu_seconds(pid):
+    """user+system CPU of one process; `ps -o cputime=` prints
+    [dd-]hh:mm:ss.cc with leading fields omitted when zero."""
+    out = subprocess.run(
+        ["ps", "-o", "cputime=", "-p", str(pid)],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if not out:
+        return None
+    days, _, clock = out.rpartition("-")
+    seconds = 0.0
+    for field in clock.split(":"):
+        seconds = seconds * 60 + float(field)
+    return (int(days) * 86400 if days else 0) + seconds
+
+
+# ------------------------------------------------------------- qdbd counters
+#
+# Volume 1 of the gateway thesis: what qdbd pushes to whichever process
+# holds the C API handle (the Python client for native runs, the REST
+# server otherwise). The counters are node-global; attribution works
+# because exactly one (protocol, server) pair runs at a time.
+
+
+def request_counters(conn):
+    """Cumulative (out_bytes, total_count) of the single qdbd node."""
+    import quasardb.stats
+
+    per_node = quasardb.stats.by_node(conn)
+    if len(per_node) != 1:
+        die(f"expected one qdbd node, statistics list {sorted(per_node)}")
+    cumulative = next(iter(per_node.values()))["cumulative"]
+    return (
+        cumulative["requests.out_bytes"]["value"],
+        cumulative["requests.total_count"]["value"],
+    )
+
+
+def counter_baseline(conn):
+    """Cost of one counter read cycle. Every measurement's delta contains
+    exactly one such cycle (the read that closes it pays for the read that
+    opened it), so this is subtracted once per measurement."""
+    before = request_counters(conn)
+    time.sleep(COUNTER_SETTLE_SECONDS)
+    after = request_counters(conn)
+    return (after[0] - before[0], after[1] - before[1])
+
+
+# ---------------------------------------------------------- server lifecycle
+#
+# bench.py owns the REST server of its run: it needs the pid for RSS
+# sampling, and a fresh server per measurement resets the RSS baseline.
+# qdbd is a shared service and is never started or stopped here.
+
+
+def port_open(port):
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def wait_for_port(port, seconds=60):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if port_open(port):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def start_server(cmd, port, log_path, pid_path):
+    if port_open(port):
+        die(f"port {port} is already in use; stop the stray server first")
+    env = dict(os.environ, TZ="UTC")  # legacy JSON renders server-local time
+    with open(log_path, "ab") as log_file:
+        proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file, env=env)
+    pathlib.Path(pid_path).write_text(f"{proc.pid}\n")
+    if not wait_for_port(port):
+        stop_server(proc, pid_path)
+        die(f"server did not answer on port {port}; log: {log_path}")
+    return proc
+
+
+def stop_server(proc, pid_path):
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    pathlib.Path(pid_path).unlink(missing_ok=True)
+
+
+# -------------------------------------------------------------------- child
+#
+# Each measurement runs in a fresh process so RSS and CPU belong to exactly
+# one fetch. The clock and the CPU meter cover only the fetch-iterator
+# pulls: fingerprint accumulation between pulls is bench overhead, outside
+# both -- symmetric with one-shot protocols, where it happens after the
+# final pull.
+
+
+def child_main(args):
+    cfg = json.loads(args.config)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    protocol = importlib.import_module(f"protocols.{cfg['protocol']}")
+
+    started = None
+    ttfb = {"seconds": None}
+
+    def record_ttfb():
+        ttfb["seconds"] = time.perf_counter() - started
+
+    state = fingerprint_begin()
+    telemetry = {}
+    frames = protocol.fetch(SimpleNamespace(**cfg), cfg["query"], record_ttfb, telemetry)
+    rows = batches = 0
+    wall = cpu = 0.0
+    while True:
+        usage_before = resource.getrusage(resource.RUSAGE_SELF)
+        pull_started = time.perf_counter()
+        if started is None:
+            started = pull_started
+        try:
+            frame = next(frames)
+        except StopIteration:
+            frame = None
+        wall += time.perf_counter() - pull_started
+        usage_after = resource.getrusage(resource.RUSAGE_SELF)
+        cpu += (usage_after.ru_utime - usage_before.ru_utime) \
+             + (usage_after.ru_stime - usage_before.ru_stime)
+        if frame is None:
+            break
+        rows += len(frame)
+        batches += 1
+        fingerprint_update(state, frame)
+        del frame
+
+    definition = protocol.TTFB_DEFINITION
+    if isinstance(definition, dict):
+        definition = definition[cfg["mode"]]
+    print(json.dumps({
+        "mode": cfg["mode"],
+        "rows": rows,
+        "batches": batches,
+        "wall_to_dataframe_seconds": wall,
+        "ttfb_seconds": ttfb["seconds"] if ttfb["seconds"] is not None else wall,
+        "ttfb_definition": definition,
+        "client_cpu_seconds": cpu,
+        "telemetry": telemetry,
+        "fingerprint": fingerprint_finish(state),
+    }), flush=True)
+
+
+# ------------------------------------------------------------------- parent
+
+
+def parse_run(args):
+    protocol, _, server = args.run.partition("@")
+    if (protocol, server) not in REGISTRY:
+        valid = ", ".join(f"{p}@{s}" for p, s in REGISTRY)
+        die(f"unknown run '{args.run}'; valid runs: {valid}")
+    gate = REGISTRY[(protocol, server)]
+    if gate:
+        die(f"{args.run}: {gate}", code=2)
+    return protocol, server
+
+
+def connect_qdbd(args):
+    import quasardb
+
+    try:
+        conn = quasardb.Cluster(args.cluster)
+    except Exception as error:
+        die(f"qdbd is not answering on {args.cluster} ({error}); "
+            "run: bash scripts/tests/setup/start-services.sh")
+    rows = conn.query(f'SELECT COUNT(id) FROM "{DATASET_TABLE}"')
+    have = next(iter(rows[0].values())) if rows else 0
+    if have != DATASET_ROWS:
+        die(f"table {DATASET_TABLE} has {have} rows, expected {DATASET_ROWS}; "
+            "run: make -C tests/e2e load")
+    return conn
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def git_head(repo_dir):
+    return subprocess.run(
+        ["git", "-C", repo_dir, "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
+def capi_library(qdb_dir):
+    for name in ("libqdb_api.dylib", "libqdb_api.so"):
+        path = os.path.join(qdb_dir, "lib", name)
+        if os.path.exists(path):
+            return path
+    die(f"no libqdb_api under {qdb_dir}/lib")
+
+
+def environment_block(args):
+    """Everything needed to judge whether two result files are comparable."""
+    import quasardb
+
+    qdbd_version = subprocess.run(
+        [os.path.join(args.qdb_dir, "bin", "qdbd"), "--version"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "machine": platform.platform(),
+        "cpu_count": os.cpu_count(),
+        "python": platform.python_version(),
+        "quasardb": quasardb.version(),
+        "pandas": pd.__version__,
+        "capi_sha256": file_sha256(capi_library(args.qdb_dir)),
+        "capi_compression": CAPI_COMPRESSION,
+        "qdbd_version": qdbd_version,
+        "git": {
+            "qdb-api-rest": git_head(args.repo_root),
+            "old-master": git_head(args.old_master_dir),
+            "qdb-api-python": git_head(args.qdb_api_python_dir),
+        },
+    }
+
+
+def server_spec(args, server):
+    """(cmd, port, log_path, pid_path) for the REST server of the run;
+    None when qdbd itself answers."""
+    if server == "qdbd":
+        return None
+    bench_dir = os.path.dirname(os.path.abspath(__file__))
+    module = importlib.import_module(f"servers.{server.replace('-', '_')}")
+    binary = args.old_rest_bin if server == "old-rest" else args.new_rest_bin
+    port = args.old_rest_port if server == "old-rest" else args.new_rest_port
+    if not binary or not os.access(binary, os.X_OK):
+        die(f"no executable server binary '{binary}'; run: make old-server")
+    cmd = module.server_cmd(SimpleNamespace(
+        binary=binary,
+        cluster_uri=args.cluster,
+        port=port,
+        max_in_buf_size=MAX_IN_BUF_SIZE,
+        log_file=os.path.join(bench_dir, f"{server}-app.log"),
+    ))
+    return cmd, port, os.path.join(bench_dir, f"{server}.log"), \
+        os.path.join(bench_dir, f"{server}.pid")
+
+
+def child_config(args, protocol, server, query_id, mode):
+    port = args.old_rest_port if server == "old-rest" else args.new_rest_port
+    return {
+        "protocol": protocol,
+        "mode": mode,
+        "query": QUERIES[query_id],
+        "cluster_uri": args.cluster,
+        "base_url": f"http://127.0.0.1:{port}",
+        "gzip": not args.no_gzip,
+        "batch_size": STREAM_BATCH_SIZE,
+        "max_in_buf_size": MAX_IN_BUF_SIZE,
+    }
+
+
+def run_measurement(args, conn, baseline, spec, cfg):
+    """One (query, mode, repetition): fresh REST server, fresh child,
+    RSS sampled from outside, counter deltas around the child."""
+    server_proc = None
+    if spec:
+        cmd, port, log_path, pid_path = spec
+        server_proc = start_server(cmd, port, log_path, pid_path)
+    try:
+        time.sleep(COUNTER_SETTLE_SECONDS)
+        counters_before = request_counters(conn)
+        server_cpu_before = cpu_seconds(server_proc.pid) if server_proc else None
+
+        child = subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "_child", json.dumps(cfg)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        pids = [child.pid] + ([server_proc.pid] if server_proc else [])
+        peaks = {pid: 0 for pid in pids}
+        while child.poll() is None:
+            for pid, rss in rss_bytes(pids).items():
+                peaks[pid] = max(peaks[pid], rss)
+            time.sleep(SAMPLE_INTERVAL_SECONDS)
+        out, err = child.communicate()
+        if child.returncode != 0:
+            die(f"measurement child failed ({child.returncode}):\n{err}")
+
+        time.sleep(COUNTER_SETTLE_SECONDS)
+        counters_after = request_counters(conn)
+        server_cpu_after = cpu_seconds(server_proc.pid) if server_proc else None
+    finally:
+        if server_proc:
+            stop_server(server_proc, spec[3])
+
+    record = json.loads(out)
+    record["qdbd_out_bytes"] = max(0, counters_after[0] - counters_before[0] - baseline[0])
+    record["qdbd_request_count"] = max(0, counters_after[1] - counters_before[1] - baseline[1])
+    record["client_peak_rss_bytes"] = peaks[child.pid]
+    if server_proc:
+        record["server_peak_rss_bytes"] = peaks[server_proc.pid]
+        record["server_cpu_seconds"] = server_cpu_after - server_cpu_before
+    # native's client is the reducer: what qdbd sends IS what the client
+    # receives; every other protocol reports its own wire bytes.
+    record["client_bytes"] = (
+        record["qdbd_out_bytes"]
+        if cfg["protocol"] == "native"
+        else record["telemetry"].get("response_bytes")
+    )
+    return record
+
+
+def mean_of(records, key):
+    values = [r[key] for r in records if r.get(key) is not None]
+    return sum(values) / len(values) if values else None
+
+
+MEAN_KEYS = (
+    "wall_to_dataframe_seconds", "ttfb_seconds", "client_cpu_seconds",
+    "client_peak_rss_bytes", "server_peak_rss_bytes", "server_cpu_seconds",
+    "qdbd_out_bytes", "qdbd_request_count", "client_bytes",
+)
+
+
+def summarize_query(reps):
+    """Per-mode means, plus the single fingerprint all repetitions must
+    share (a mismatch is nondeterminism and kills the run)."""
+    reference = reps[0]["fingerprint"]
+    for rep in reps[1:]:
+        diff = fingerprint_diff(reference, rep["fingerprint"])
+        if diff:
+            die("fingerprint differs between repetitions/modes:\n  " + "\n  ".join(diff))
+    for rep in reps:
+        del rep["fingerprint"]
+    modes = sorted({rep["mode"] or "" for rep in reps})
+    means = {
+        mode or "": {
+            key: mean_of([r for r in reps if (r["mode"] or "") == mode], key)
+            for key in MEAN_KEYS
+        }
+        for mode in modes
+    }
+    return {"fingerprint": reference, "reps": reps, "means": means}
+
+
+def run_main(args):
+    protocol, server = parse_run(args)
+    query_ids = args.queries.split(",") if args.queries else list(QUERIES)
+    unknown = [q for q in query_ids if q not in QUERIES]
+    if unknown:
+        die(f"unknown queries {unknown}; known: {', '.join(QUERIES)}")
+
+    conn = connect_qdbd(args)
+    baseline = counter_baseline(conn)
+    spec = server_spec(args, server)
+    modes = ("query", "stream") if protocol == "native" else (None,)
+
+    queries = {}
+    for query_id in query_ids:
+        reps = []
+        for mode in modes:
+            for rep in range(args.reps):
+                label = f" mode={mode}" if mode else ""
+                log(f"{args.run} {query_id}{label} rep {rep + 1}/{args.reps}")
+                cfg = child_config(args, protocol, server, query_id, mode)
+                record = run_measurement(args, conn, baseline, spec, cfg)
+                record["rep"] = rep
+                reps.append(record)
+        queries[query_id] = {"sql": QUERIES[query_id], **summarize_query(reps)}
+
+    os.makedirs(args.results_dir, exist_ok=True)
+    path = os.path.join(args.results_dir, f"{args.run}.json")
+    with open(path, "w") as handle:
+        json.dump({
+            "run": args.run,
+            "protocol": protocol,
+            "server": server,
+            "environment": environment_block(args),
+            "counter_baseline": {"out_bytes": baseline[0], "total_count": baseline[1]},
+            "queries": queries,
+        }, handle, indent=1)
+        handle.write("\n")
+    log(f"wrote {path}")
+
+
 # ---------------------------------------------------------------- selftest
 #
 # The fingerprint invariants are the only piece of the bench with logic
@@ -361,11 +780,35 @@ def parse_args(argv):
         description="Assessment bench: one (protocol, server) pair per invocation.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("run", help="measure one (protocol, server) pair")
+    run.add_argument("--run", required=True, help="<protocol>@<server>, e.g. legacy@old-rest")
+    run.add_argument("--cluster", required=True)
+    run.add_argument("--qdb-dir", required=True)
+    run.add_argument("--old-rest-bin", required=True)
+    run.add_argument("--old-rest-port", type=int, required=True)
+    run.add_argument("--new-rest-bin", default="")
+    run.add_argument("--new-rest-port", type=int, required=True)
+    run.add_argument("--flight-port", type=int, required=True)
+    run.add_argument("--repo-root", required=True)
+    run.add_argument("--old-master-dir", required=True)
+    run.add_argument("--qdb-api-python-dir", required=True)
+    run.add_argument("--reps", type=int, required=True)
+    run.add_argument("--queries", default="", help="comma list; empty = all")
+    run.add_argument("--results-dir", required=True)
+    run.add_argument("--no-gzip", action="store_true",
+                     help="drop Accept-Encoding on legacy requests")
+
+    child = sub.add_parser("_child")  # internal: one measurement, one process
+    child.add_argument("config")
+
     sub.add_parser("selftest", help="pin the fingerprint invariants")
     return parser.parse_args(argv)
 
 
 HANDLERS = {
+    "run": run_main,
+    "_child": child_main,
     "selftest": selftest_main,
 }
 
