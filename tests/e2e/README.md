@@ -27,6 +27,9 @@ make test-legacy QDB_REST_BIN=<new server binary> [REST_ARGS=...]
 make test-legacy REST_URL=http://127.0.0.1:40090     # against an already running server
 ```
 
+All capture/replay targets accept `CASES='<case> ...'` to run a subset of
+the golden cases (default: all).
+
 Until the dataset archive is uploaded to S3, pass
 `DATASETS_LOCAL_DIR=<dir holding reproduce-<date>-5613032.tar.gz>` to
 `make load`. The archive is produced by

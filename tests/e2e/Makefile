@@ -51,6 +51,9 @@ REST_LOG     := $(E2E_DIR)/rest.log
 
 COMMON := source $(E2E_DIR)/common.sh
 LEGACY := $(E2E_DIR)/legacy.sh
+# Golden case selection for capture/replay targets; empty means all cases.
+# Example: make test-legacy CASES='20-status-liveness 21-status-readiness'
+CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
         old-server capture-golden test-legacy test-legacy-selfcheck clean distclean
@@ -147,22 +150,22 @@ endef
 
 capture-golden: services-check load seed
 	@$(start_old_server); trap 'stop_server $(OLD_REST_PID)' EXIT; \
-	$(LEGACY) capture $(OLD_REST_URL); \
+	$(LEGACY) capture $(OLD_REST_URL) $(CASES); \
 	log_info "goldens captured; review with: git -C $(REPO_ROOT) status --short tests/e2e/golden"
 
 test-legacy-selfcheck: services-check load seed
 	@$(start_old_server); trap 'stop_server $(OLD_REST_PID)' EXIT; \
-	$(LEGACY) replay $(OLD_REST_URL)
+	$(LEGACY) replay $(OLD_REST_URL) $(CASES)
 
 # ---------------------------------------------------------- server under test
 
 test-legacy: services-check load seed
 	@$(COMMON); \
-	if [[ -n "$(REST_URL)" ]]; then $(LEGACY) replay "$(REST_URL)"; exit $$?; fi; \
+	if [[ -n "$(REST_URL)" ]]; then $(LEGACY) replay "$(REST_URL)" $(CASES); exit $$?; fi; \
 	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> (M1) or REST_URL=<url>"; \
 	start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
 	trap 'stop_server $(REST_PID)' EXIT; \
-	$(LEGACY) replay http://127.0.0.1:$(REST_PORT)
+	$(LEGACY) replay http://127.0.0.1:$(REST_PORT) $(CASES)
 
 # ------------------------------------------------------------------ cleanup
 
