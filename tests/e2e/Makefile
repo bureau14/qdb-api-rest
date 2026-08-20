@@ -40,12 +40,13 @@ OLD_REST_LOG   := $(E2E_DIR)/old-rest.log
 OLD_REST_ARGS  := --local -c $(QDB_URI) --pool-size 4 --parallelism-count 4 \
                   --max-in-buffer-size 8589934592 --log-file $(E2E_DIR)/old-rest-server.log
 
-# Server under test (M1+): either a URL of a running server, or a binary the
-# harness starts on REST_PORT with REST_ARGS.
+# Server under test: either a URL of a running server, or a binary the
+# harness starts on REST_PORT with REST_ARGS. The default REST_ARGS match
+# the flags of this repo's cmd/qdb_rest.
 REST_URL     ?=
 QDB_REST_BIN ?=
 REST_PORT    ?= 40090
-REST_ARGS    ?=
+REST_ARGS    ?= -listen 127.0.0.1:$(REST_PORT)
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
