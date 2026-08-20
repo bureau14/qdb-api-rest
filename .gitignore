@@ -20,6 +20,9 @@ tests/e2e/actual/
 tests/e2e/*.log
 tests/e2e/*.pid
 tests/e2e/bench/results/
+tests/e2e/bench/*.log
+tests/e2e/bench/*.pid
+tests/e2e/bench/.stamp-wheel
 # Python venvs
 .env/
 .venv/
