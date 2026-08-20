@@ -1,0 +1,36 @@
+# tests/e2e/bench -- assessment bench
+
+Measures wall-clock time until a Python client holds a fully materialized
+pandas DataFrame, per (protocol, server) pair, on the 5.6M-row `reproduce`
+dataset. Specification and metric definitions: `docs/bench-plan.md`.
+Temporary tool, local developer machines only, never CI; retired (one
+`rm -rf tests/e2e/bench`) once the rewrite demonstrably beats the old
+server.
+
+## Prerequisites
+
+- qdbd running: `bash scripts/tests/setup/start-services.sh`
+- dataset loaded: `make -C tests/e2e load`
+- a `~/git/qdb-api-python` checkout whose `qdb/` tree carries the same
+  C API as this repo's (`install-qdb` fans one artifact tree into both;
+  `make check` verifies)
+
+## Usage
+
+```
+make check venv old-server        # parity check, bench venv, old binary
+make bench-native@qdbd            # -> results/native@qdbd.json
+make bench-legacy@old-rest        # -> results/legacy@old-rest.json
+make bench-legacy@new-rest        # available with M1
+make bench-flightsql@new-rest     # available with M3
+make report                       # compare all results/*.json
+```
+
+`REPS=n` overrides the repetition count, `QUERIES=a,b` restricts the query
+set (both belong on the `make` command line). Each `bench-*` invocation
+rewrites its run's result file whole; the final comparison wants one
+invocation per run with the full query set.
+
+The first `make venv` builds the `quasardb` wheel from the qdb-api-python
+checkout (slow C++ build); it is cached on (checkout sha, C API hash) and
+only rebuilt when either changes.
