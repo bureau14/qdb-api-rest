@@ -228,6 +228,12 @@ def fingerprint_finish(state):
     for name in state["columns"] or []:
         acc = state["cols"][name]
         entry = {"kind": acc["kind"], "nulls": acc["nulls"]}
+        if acc["nulls"] == state["rows"]:
+            # An all-null column has no observable type on the wire (the
+            # legacy JSON types it "none", the native client picks a dtype);
+            # fingerprint it type-free so protocols cannot disagree.
+            cols[name] = {"kind": "null", "nulls": acc["nulls"]}
+            continue
         if acc["kind"] == "num":
             entry["sum"] = math.fsum(acc["sums"]) if any(
                 isinstance(s, float) for s in acc["sums"]
@@ -279,7 +285,7 @@ def fingerprint_diff(a, b, rel_tol=REL_TOLERANCE):
                     continue
                 if va is None or vb is None or not numbers_close(va, vb, rel_tol):
                     msgs.append(f"col {name}: {stat} {va} != {vb}")
-        elif ca["hash"] != cb["hash"]:
+        elif ca["kind"] != "null" and ca["hash"] != cb["hash"]:
             msgs.append(f"col {name}: content hash differs")
     for edge in ("head", "tail"):
         ra, rb = a[edge], b[edge]
@@ -342,27 +348,30 @@ def cpu_seconds(pid):
 # because exactly one (protocol, server) pair runs at a time.
 
 
-def request_counters(conn):
-    """Cumulative (out_bytes, total_count) of the single qdbd node."""
-    import quasardb.stats
+def direct_node(conn, cluster_uri):
+    """Direct connection to the single qdbd node behind the cluster URI."""
+    return conn.node(cluster_uri.removeprefix("qdb://"))
 
-    per_node = quasardb.stats.by_node(conn)
-    if len(per_node) != 1:
-        die(f"expected one qdbd node, statistics list {sorted(per_node)}")
-    cumulative = next(iter(per_node.values()))["cumulative"]
+
+def request_counters(dconn):
+    """Cumulative (out_bytes, total_count) of the qdbd node. Read key by
+    key on the direct connection: the read itself then costs a couple of
+    requests, small enough for the baseline subtraction to be exact-ish
+    even for tiny queries."""
     return (
-        cumulative["requests.out_bytes"]["value"],
-        cumulative["requests.total_count"]["value"],
+        dconn.integer("$qdb.statistics.requests.out_bytes").get(),
+        dconn.integer("$qdb.statistics.requests.total_count").get(),
     )
 
 
-def counter_baseline(conn):
-    """Cost of one counter read cycle. Every measurement's delta contains
-    exactly one such cycle (the read that closes it pays for the read that
-    opened it), so this is subtracted once per measurement."""
-    before = request_counters(conn)
+def counter_baseline(dconn):
+    """Cost of one counter read cycle plus a settle interval's connection
+    noise. Every measurement's delta contains exactly one such cycle (the
+    read that closes it pays for the read that opened it), so this is
+    subtracted once per measurement."""
+    before = request_counters(dconn)
     time.sleep(COUNTER_SETTLE_SECONDS)
-    after = request_counters(conn)
+    after = request_counters(dconn)
     return (after[0] - before[0], after[1] - before[1])
 
 
@@ -587,7 +596,7 @@ def child_config(args, protocol, server, query_id, mode):
     }
 
 
-def run_measurement(args, conn, baseline, spec, cfg):
+def run_measurement(args, dconn, baseline, spec, cfg):
     """One (query, mode, repetition): fresh REST server, fresh child,
     RSS sampled from outside, counter deltas around the child."""
     server_proc = None
@@ -596,7 +605,7 @@ def run_measurement(args, conn, baseline, spec, cfg):
         server_proc = start_server(cmd, port, log_path, pid_path)
     try:
         time.sleep(COUNTER_SETTLE_SECONDS)
-        counters_before = request_counters(conn)
+        counters_before = request_counters(dconn)
         server_cpu_before = cpu_seconds(server_proc.pid) if server_proc else None
 
         child = subprocess.Popen(
@@ -614,7 +623,7 @@ def run_measurement(args, conn, baseline, spec, cfg):
             die(f"measurement child failed ({child.returncode}):\n{err}")
 
         time.sleep(COUNTER_SETTLE_SECONDS)
-        counters_after = request_counters(conn)
+        counters_after = request_counters(dconn)
         server_cpu_after = cpu_seconds(server_proc.pid) if server_proc else None
     finally:
         if server_proc:
@@ -678,7 +687,8 @@ def run_main(args):
         die(f"unknown queries {unknown}; known: {', '.join(QUERIES)}")
 
     conn = connect_qdbd(args)
-    baseline = counter_baseline(conn)
+    dconn = direct_node(conn, args.cluster)
+    baseline = counter_baseline(dconn)
     spec = server_spec(args, server)
     modes = ("query", "stream") if protocol == "native" else (None,)
 
@@ -690,7 +700,7 @@ def run_main(args):
                 label = f" mode={mode}" if mode else ""
                 log(f"{args.run} {query_id}{label} rep {rep + 1}/{args.reps}")
                 cfg = child_config(args, protocol, server, query_id, mode)
-                record = run_measurement(args, conn, baseline, spec, cfg)
+                record = run_measurement(args, dconn, baseline, spec, cfg)
                 record["rep"] = rep
                 reps.append(record)
         queries[query_id] = {"sql": QUERIES[query_id], **summarize_query(reps)}
@@ -765,6 +775,12 @@ def selftest_main(_args):
     bumped.loc[50, "d"] *= 1 + 1e-6
     expect(fingerprint_diff(whole, fingerprint_of([bumped])) != [],
            "1e-6 relative drift is out of tolerance")
+
+    as_floats = frame.assign(n=np.full(len(frame), np.nan))
+    as_objects = frame.assign(n=pd.Series([None] * len(frame), dtype=object))
+    expect(fingerprint_diff(fingerprint_of([as_floats]),
+                            fingerprint_of([as_objects])) == [],
+           "all-null columns fingerprint type-free")
 
     roundtrip = json.loads(json.dumps(whole))
     expect(fingerprint_diff(whole, roundtrip) == [],
