@@ -11,7 +11,8 @@
 #   query    optional, pre-encoded query string (no leading ?)
 #   headers  object of request headers
 #   body     optional JSON value, sent compact
-#   auth     none | bearer | urlparam   (token from an anonymous /api/login)
+#   auth     none | bearer | urlparam   (token from an anonymous /api/login,
+#            fetched once by the first case that needs one)
 #   compare  bytes | gunzip | login-shape
 # Captured files: status (3 digits), headers (content-type and
 # content-encoding only, lowercased, sorted; absent means absent), body (raw
@@ -46,23 +47,32 @@ login() {
         | jq -r '.token // empty'
 }
 
+# One token per invocation, fetched by the first case whose auth mode needs
+# it; a selection of auth-free cases never touches /api/login.
+TOKEN=""
+ensure_token() {
+    [[ -n "$TOKEN" ]] && return
+    TOKEN=$(login)
+    [[ -n "$TOKEN" ]] || die "login failed against $BASE_URL (is the server up?)"
+}
+
 # Keep only the headers that are part of the compatibility contract.
 normalize_headers() {
     tr -d '\r' < "$1" | awk -F': ' 'tolower($1) == "content-type" || tolower($1) == "content-encoding" { print tolower($1) ": " $2 }' | sort
 }
 
 # Issue the request of one case; writes status, headers, body into <out_dir>.
-# Usage: run_case <case> <out_dir> <token>
+# Usage: run_case <case> <out_dir>
 run_case() {
-    local case="$1" out="$2" token="$3" req="$GOLDEN_DIR/$1/request.json"
+    local case="$1" out="$2" req="$GOLDEN_DIR/$1/request.json"
     local method path query auth compare url
     local -a args=()
     method=$(jq -r .method "$req"); path=$(jq -r .path "$req")
     query=$(jq -r '.query // empty' "$req"); auth=$(jq -r .auth "$req"); compare=$(jq -r .compare "$req")
     url="$BASE_URL$path"
     case "$auth" in
-        bearer)   args+=(-H "Authorization: Bearer $token") ;;
-        urlparam) query="${query:+$query&}token=$token" ;;
+        bearer)   ensure_token; args+=(-H "Authorization: Bearer $TOKEN") ;;
+        urlparam) ensure_token; query="${query:+$query&}token=$TOKEN" ;;
         none)     ;;
         *)        die "$case: unknown auth mode '$auth'" ;;
     esac
@@ -115,17 +125,15 @@ compare_case() {
 }
 
 main() {
-    local token case failed=0 total=0
-    token=$(login)
-    [[ -n "$token" ]] || die "login failed against $BASE_URL (is the server up?)"
+    local case failed=0 total=0
     while IFS= read -r case; do
         [[ -f "$GOLDEN_DIR/$case/request.json" ]] || die "unknown case: $case"
         total=$((total + 1))
         if [[ "$MODE" == capture ]]; then
-            run_case "$case" "$GOLDEN_DIR/$case" "$token"
+            run_case "$case" "$GOLDEN_DIR/$case"
             log_info "captured $case ($(cat "$GOLDEN_DIR/$case/status"), $(wc -c < "$GOLDEN_DIR/$case/body" | tr -d ' ') bytes)"
         else
-            run_case "$case" "$ACTUAL_DIR/$case" "$token"
+            run_case "$case" "$ACTUAL_DIR/$case"
             compare_case "$case" || failed=$((failed + 1))
         fi
     done < <(list_cases "$@")
