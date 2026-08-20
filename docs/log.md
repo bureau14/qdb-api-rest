@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 | Milestone             | State       | Note                                   |
 | --------------------- | ----------- | -------------------------------------- |
@@ -28,16 +28,46 @@ Next:
    `make load DATASETS_LOCAL_DIR=~/datasets`.
 2. M0 entry criteria: define, record here. Remove old-checkout clutter
    (`apps/`, `etc/`, `.buildkite/tools/__pycache__`, `db/`) by hand.
-3. Bench Phase 1 (`docs/bench-plan.md`, Implementation order, steps 2-4;
-   includes the reduce-shape query family and the two-volume metrics);
-   its `make old-server` delegates to `tests/e2e`.
-4. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green.
+3. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
+   `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
+   waiting; enable the registry row by clearing its gate in `bench.py`).
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-08-20 -- Bench Phase 1 built; native == legacy@old-rest
+
+- `tests/e2e/bench/` built per `docs/bench-plan.md` (Implementation order
+  steps 2-5): Makefile (`check`/`venv`/`old-server`/`bench-*`/`report`),
+  `bench.py` (run/report/selftest + `_child`), `protocols/{native,legacy}`,
+  `servers/old_rest`, stubs for `new_rest`/`flightsql`. Chosen reduce-family
+  SQL and contract decisions recorded in the plan (decision log 2026-08-20).
+- Acceptance gate green: all 7 queries fingerprint-equal across
+  native@qdbd query, native@qdbd stream and legacy@old-rest, 3 reps each;
+  `wart_count` 0 everywhere (sentinels unreachable under the 3.15 C API,
+  as the goldens pin). Numbers live in `tests/e2e/bench/results/`; the
+  legacy `full` TTFB reproduces the 2026-08-14 pre-harness baseline, and
+  `agg_topk` ships 284 MiB to the reducer against 346 B to the client --
+  the gateway thesis is now a measured, repeatable number.
+- Lessons:
+  - `quasardb.stats.by_node` reads every stat key (~3k requests per call)
+    and drowns small queries; the bench reads the two request counters
+    key-by-key over a direct node connection (~5 requests).
+  - All-null columns have no observable wire type (legacy JSON types them
+    `none`, the native client picks a dtype); fingerprints treat them
+    type-free or the protocols disagree on `matchableIdList`.
+  - `GROUP BY` row order is deterministic across protocols on this
+    dataset (edge-row fingerprints match), so `agg_wide` needs no ORDER BY.
+  - The Python binding's default client input buffer (256 MiB) fails
+    `agg_wide`/`full`; the bench pins it to the old server's 8 GiB flag.
+  - The wheel's package version (3.14.3.dev0) is qdb-api-python's own;
+    `quasardb.version()` reports the C API (3.15.0.dev0). Parity is the
+    C API hash, not the package version.
+  - Legacy `full` decoded body is ~28 MB smaller than the 2026-08-14 curl
+    baseline: JSON `null` replaces the longer `"(undefined)"` rendering.
 
 ## 2026-08-19 -- Bench: two-volume measurement and reduce-shape queries
 
