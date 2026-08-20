@@ -17,7 +17,7 @@ Scope: the permanent e2e harness. Specification and verified facts live in
 - Goldens under `golden/legacy/`: `request.json` is written by hand, the
   captured `status`/`headers`/`body` are written only by
   `make capture-golden` and committed as-is. To add a case, add a directory
-  with a `request.json`, run `make capture-golden <case>`, eyeball the
+  with a `request.json`, run `make capture-golden CASES=<case>`, eyeball the
   body, commit. Recapturing everything is an operator decision; diff the
   result before committing.
 - `TZ=UTC` is exported by `common.sh` for every server the harness starts

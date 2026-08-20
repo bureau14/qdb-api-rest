@@ -235,3 +235,9 @@ tags) comes from the Go `rapid` property tests, generated in-process.
 | Seeded fixture plus `reproduce`                 | controllable types/nulls/tags; real data for count/head/aggregate                                                                            | `reproduce` only (no blob, no tags, no null control)  |
 | `sha256` per archive in `datasets.json`         | brief says sha256-pinned; nats relies on dated names only                                                                                    | dated filename alone                                  |
 | Chunked `qdb_export` in the harness             | client input buffer caps single-shot export; chunks are byte-identical                                                                       | raising the buffer (no flag); a different export tool |
+
+## Decision log (2026-08-20)
+
+| Decision                                     | Why                                                                                                 | Rejected                                                 |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Lazy login + `CASES=` selection in legacy.sh | auth-free cases (status probes) replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
