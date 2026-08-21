@@ -19,25 +19,23 @@ Last updated: 2026-08-21
 In flight:
 
 - M0. Landed: go module, `cmd/qdb_rest` (status probes, graceful
-  shutdown), root `Makefile`; goldens 20/21 green under the harness
-  (see 2026-08-20 entry).
+  shutdown, dual HTTP/HTTPS listeners), `internal/config`,
+  `internal/observe`, `internal/tlsconf` (ADR-0001), root `Makefile`;
+  dataset archive on S3 (harness download verified); goldens 20/21
+  green under the harness (see 2026-08-20 and 2026-08-21 entries).
 
 Next:
 
-1. Upload the dataset archive to S3 (`aws s3 cp`, command printed by
-   `make -C tests/e2e package-dataset`; entry already in
-   `tests/e2e/datasets.json`, sha256 `175bdb58...`); until then
-   `make load DATASETS_LOCAL_DIR=~/datasets`.
-2. M0 remaining, roughly in order: `internal/config` (YAML + env + flags),
-   `internal/observe` (slog setup), TLS listener, Buildkite CI skeleton
-   (includes the `VERSION` file and `-ldflags` build metadata per the
-   brief's Versioning section; `make build` has neither yet), packaging +
+1. M0 remaining, roughly in order: Buildkite CI skeleton (includes the
+   `VERSION` file and `-ldflags` build metadata per the brief's
+   Versioning section; `make build` has neither yet, and the
+   golangci-lint v2 + gofumpt pin does not exist yet either), packaging +
    Docker. The two de-risk spikes (Flight SQL drivers, go-duckdb +
    qdb-duck) are independent of all of the above and gate M3/M4: start
    them early and in parallel -- Flight SQL first, since a negative
    result reshapes the brief -- rather than treating them as the last
    M0 item.
-3. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
+2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
 
@@ -46,6 +44,29 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-21 -- M0: config, logging, TLS listener; dataset on S3
+
+- Landed: `internal/config` (YAML + `${VAR}` env interpolation + env
+  overrides + flags; precedence flags > env > file > defaults; unknown
+  YAML keys and unset `${VAR}` are errors), `internal/observe` (slog
+  construction: json | console, level vocabulary), `internal/tlsconf`
+  (PEM pair from config, or an ephemeral self-signed ECDSA P-256
+  certificate generated at startup with a logged sha256 fingerprint;
+  decision in ADR-0001), `cmd/qdb_rest` reworked to serve HTTP `:40080`
+  and HTTPS `:40443` from config with one graceful drain across both.
+  First vendored dependency: `gopkg.in/yaml.v3`.
+- Verified: unit tests (config precedence/interpolation, TLS handshake
+  with the generated certificate); smoke run -- both probes answer on
+  both listeners, ephemeral warning logged, SIGTERM drain clean; status
+  goldens 20/21 replay green with the harness's new default
+  `REST_ARGS` (`-listen-tls=` so a test server never binds 40443).
+- Dataset archive uploaded to S3 by the operator; verified through the
+  harness's own `download-golden` path (fresh download + sha256), so
+  `DATASETS_LOCAL_DIR` is no longer needed anywhere.
+- Deferred by ADR-0001: ACME/Let's Encrypt (inapplicable inside customer
+  networks), ACM (keys not exportable; LB-in-front already works),
+  certificate hot reload (additive later).
 
 ## 2026-08-20 -- M0 started: go skeleton + status probes
 
