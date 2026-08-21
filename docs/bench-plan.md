@@ -165,7 +165,7 @@ query family below exists to cover each class:
 
 | class                                            | qdbd -> reducer    | reducer -> client | what the comparison shows                                          |
 | ------------------------------------------------ | ------------------ | ----------------- | ------------------------------------------------------------------ |
-| `LIMIT n` on a raw select, `COUNT(*)`            | tiny (pushed down) | tiny              | the gateway's extra-hop cost (brief, Open risk 5); no win expected |
+| `LIMIT n` on a raw select, `COUNT(*)`            | tiny (pushed down) | tiny              | the gateway's extra-hop cost (brief, Open risk 3); no win expected |
 | coarse `GROUP BY` (bucket >= shard, low-card)    | small              | small             | already reduced inside qdbd; control case                          |
 | fine `GROUP BY` / high-cardinality key, no LIMIT | large              | large             | reduce cost moves to the gateway, encoding + streaming decide      |
 | same + `ORDER BY agg DESC LIMIT k`               | **large**          | **tiny**          | the gateway thesis: WAN bytes and client CPU collapse to ~k rows   |

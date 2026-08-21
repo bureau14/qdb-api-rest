@@ -344,11 +344,6 @@ table list); prepared statements, transactions, and everything else return
 UNIMPLEMENTED. Ingestion via `DoPut` is a possible later addition, not part
 of the minimal scope.
 
-Risk (tracked in Risks): stock ADBC/JDBC drivers may exercise the
-prepared-statement or catalog surface even for plain queries. An early
-spike must validate the minimal server against the drivers we care about
-before the implementation milestone is committed.
-
 Layering, so nobody re-litigates "Flight SQL vs gRPC": gRPC is the RPC
 framework; Arrow Flight is a specific standardized gRPC service
 (`FlightService`) whose `FlightData` messages envelope raw Arrow IPC
@@ -395,9 +390,7 @@ Authorization matches the native path: qdb-duck binds credentials at
 pool per principal, LRU-evicted like the native pools. User queries never
 run under a shared service credential. qdb-duck is read-only by design
 (`INSERT`/`UPDATE`/`DELETE` are rejected), which is exactly the contract
-this endpoint wants. Risks (platform coverage -- FreeBSD in particular, extension
-loading and distribution, a second heavy cgo dependency, DuckDB version
-management) are tracked in Risks and de-risked by an early spike.
+this endpoint wants.
 
 ### /api/v2 endpoint sketch
 
@@ -728,9 +721,7 @@ entry/exit criteria defined when it starts.
   qdb-nats-connector's pipeline as the reference) with the C-API artifact
   dance
   (static `libqdb_api.a` on Linux), packaging, Docker image, e2e harness
-  and benchmark scaffolding against a live qdbd. Includes the two de-risk
-  spikes: Flight SQL driver compatibility and go-duckdb + quasardb
-  extension embedding.
+  and benchmark scaffolding against a live qdbd.
 - **M1 -- Drop-in compat**: auth core (JWE, key derivation, rolling keys,
   legacy 12h tokens), connection pool core (budget, breaker, retry),
   legacy `/api/login`, `/api/query`, `/api/tags` with golden equivalence
@@ -773,26 +764,12 @@ compatibility story while the new protocol work proceeds.
 
 ## Risks and open explorations
 
-1. **Flight SQL driver expectations**: stock ADBC/JDBC drivers may
-   exercise prepared-statement or catalog surfaces even for plain
-   queries; the M0 spike must validate the minimal server against the
-   drivers we care about and surface any blockers before M3 is committed.
-2. **DuckDB embedding**: platform coverage (qdb-duck's CI builds no
-   FreeBSD today), extension loading and distribution -- go-duckdb bundles
-   its own pinned libduckdb while qdb-duck pins its own DuckDB version and
-   extensions are ABI-pinned per exact version, so embedding means either
-   a custom static DuckDB build linked into go-duckdb or runtime-loading
-   the unsigned extension (`allow_unsigned_extensions=true` in production
-   is a security-posture item, not just a build detail) -- DuckDB version
-   management alongside the 1:1 qdb version pin, memory governance of two
-   engines in one process, and thin read-path test coverage in qdb-duck
-   itself. M0 spike.
-3. **Static `libqdb_api.a` availability** per platform: the server build
+1. **Static `libqdb_api.a` availability** per platform: the server build
    bundles a self-contained `.a` on Linux only, and `qdb-api-go`'s link
    directives are dynamic-only -- static linking needs an upstream
    `qdb-api-go` change (merged upstream per the vendoring rule); dynamic
    fallback where the toolchain forces it (Windows likely).
-4. **qdb-api-go materialization ceiling**: server-side streaming of native
+2. **qdb-api-go materialization ceiling**: server-side streaming of native
    query results requires upstream binding work and possibly C API work
    (no existing C API function delivers one-shot query results
    incrementally; candidates are a cursor-style query API or the Arrow
@@ -801,12 +778,12 @@ compatibility story while the new protocol work proceeds.
    from thin clients materialize in the gateway, making admission control
    the short-term backstop and upstream streaming the long-term relief
    valve.
-5. **Gateway latency shape**: aggregation-heavy queries get dramatically
+3. **Gateway latency shape**: aggregation-heavy queries get dramatically
    faster from thin clients; small point queries pay one extra
    (in-datacenter, sub-millisecond over persistent channels) hop versus a
    direct native connection. Benchmarks must cover both so the trade is
    measured, not assumed.
-6. **Array-typed query results**: the C API defines `array_*` query-result
+4. **Array-typed query results**: the C API defines `array_*` query-result
    value types that `qdb-api-go` currently drops silently; v2 cannot
    return array-valued results correctly until that is fixed upstream.
 
