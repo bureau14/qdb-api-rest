@@ -7,14 +7,14 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-08-21
 
-| Milestone             | State       | Note                                   |
-| --------------------- | ----------- | -------------------------------------- |
-| M0 -- Foundation      | in progress | skeleton serves status probes          |
-| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place  |
-| M2 -- v2 data plane   | not started |                                        |
-| M3 -- Flight SQL      | not started | gated on M0 driver-compat spike        |
-| M4 -- Embedded DuckDB | not started | gated on M0 go-duckdb + qdb-duck spike |
-| M5 -- Release         | not started |                                        |
+| Milestone             | State       | Note                                  |
+| --------------------- | ----------- | ------------------------------------- |
+| M0 -- Foundation      | in progress | skeleton serves status probes         |
+| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place |
+| M2 -- v2 data plane   | not started |                                       |
+| M3 -- Flight SQL      | not started |                                       |
+| M4 -- Embedded DuckDB | not started |                                       |
+| M5 -- Release         | not started |                                       |
 
 In flight:
 
@@ -30,11 +30,7 @@ Next:
    `VERSION` file and `-ldflags` build metadata per the brief's
    Versioning section; `make build` has neither yet, and the
    golangci-lint v2 + gofumpt pin does not exist yet either), packaging +
-   Docker. The two de-risk spikes (Flight SQL drivers, go-duckdb +
-   qdb-duck) are independent of all of the above and gate M3/M4: start
-   them early and in parallel -- Flight SQL first, since a negative
-   result reshapes the brief -- rather than treating them as the last
-   M0 item.
+   Docker.
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -44,6 +40,19 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-21 -- De-risk spikes removed from the roadmap
+
+- Owner decision (Leon): the two M0 de-risk spikes -- Flight SQL driver
+  compatibility and go-duckdb + qdb-duck embedding -- are removed from
+  the roadmap entirely; neither topic is to be considered a risk. The
+  brief's M0 scope, its Flight SQL and Embedded DuckDB sections, and
+  Risks items 1-2 are updated accordingly (remaining risks renumbered;
+  `docs/bench-plan.md`'s "Open risk 5" reference is now "Open risk 3").
+- M3 and M4 are therefore not gated on anything from M0; they start on
+  their dependency order alone. The 2026-08-20 M0-start entry's exit
+  criteria listed "both de-risk spikes"; that entry stays as written
+  (append-only), this one supersedes its spike clause.
 
 ## 2026-08-21 -- Toolchain: go 1.27
 
