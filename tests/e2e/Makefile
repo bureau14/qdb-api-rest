@@ -42,11 +42,12 @@ OLD_REST_ARGS  := --local -c $(QDB_URI) --pool-size 4 --parallelism-count 4 \
 
 # Server under test: either a URL of a running server, or a binary the
 # harness starts on REST_PORT with REST_ARGS. The default REST_ARGS match
-# the flags of this repo's cmd/qdb_rest.
+# the flags of this repo's cmd/qdb_rest; the TLS listener is disabled so a
+# test server never binds the deployment port 40443.
 REST_URL     ?=
 QDB_REST_BIN ?=
 REST_PORT    ?= 40090
-REST_ARGS    ?= -listen 127.0.0.1:$(REST_PORT)
+REST_ARGS    ?= -listen 127.0.0.1:$(REST_PORT) -listen-tls=
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
