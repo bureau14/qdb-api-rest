@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Buildkite dynamic pipeline generator for qdb-api-go.
+"""Buildkite dynamic pipeline generator for qdb-api-rest.
 
 Step templates in steps/*.yml define nearly-complete Buildkite steps with
 {placeholder} variables.  This script loads them, substitutes variables, and
@@ -106,6 +106,12 @@ def generate_pipeline() -> Pipeline:
     """Load templates, expand across platforms × build_types, overlay env and docker."""
     pipeline = Pipeline()
     git_ref = get_git_ref()
+    # This branch pins the quasardb C API (and thus the wire protocol) to
+    # 3.14.2: the GP deployment runs qdbd 3.14.2, and newer clients against
+    # older servers are unsupported.  The v3.14.2 tag has no artifacts in the
+    # store; the 3.14.2-test-runner branch is 3.14.2 + compiler/cmake
+    # backports and has successful CI builds with published artifacts.
+    qdb_git_ref = "refs/heads/3.14.2-test-runner"
     group_steps = {}
 
     variants = []
@@ -131,6 +137,12 @@ def generate_pipeline() -> Pipeline:
                     "download": {
                         "variant": dependency_slug,
                         "git-ref": git_ref,
+                        "by_project": {
+                            "quasardb-build": {
+                                "variant": dependency_slug,
+                                "git-ref": qdb_git_ref,
+                            },
+                        },
                     },
                     "upload": {
                         "variant": slug,
