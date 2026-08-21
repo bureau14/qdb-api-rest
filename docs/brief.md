@@ -613,6 +613,7 @@ preserved so it can be added without rework.
 ```
 cmd/qdb_rest/          entry point (all platforms; Windows service mode included)
 internal/config/       YAML config + flags + env
+internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0001)
 internal/auth/         JWE tokens, key derivation, principals
 internal/qdb/          handle/session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
