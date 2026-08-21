@@ -45,6 +45,17 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-21 -- Toolchain: go 1.27
+
+- `go.mod` bumped to `go 1.27` / `toolchain go1.27.0` (installed at
+  `/opt/local/lib/go-1.27`); build, vet and all tests green, no code
+  changes needed.
+- The brief's Development standards now bless the 1.27 additions worth
+  knowing about: generic methods, the stdlib `uuid` package, and
+  `encoding/json/v2` (relevant to M2's `internal/encoding`; adoption
+  there is an ADR decision). "Template functions" in release chatter =
+  generic methods.
+
 ## 2026-08-21 -- M0: config, logging, TLS listener; dataset on S3
 
 - Landed: `internal/config` (YAML + `${VAR}` env interpolation + env
