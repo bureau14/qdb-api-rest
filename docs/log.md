@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 | Milestone             | State       | Note                                   |
 | --------------------- | ----------- | -------------------------------------- |
@@ -29,9 +29,14 @@ Next:
    `tests/e2e/datasets.json`, sha256 `175bdb58...`); until then
    `make load DATASETS_LOCAL_DIR=~/datasets`.
 2. M0 remaining, roughly in order: `internal/config` (YAML + env + flags),
-   `internal/observe` (slog setup), TLS listener, Buildkite CI skeleton,
-   packaging + Docker, the two de-risk spikes (Flight SQL drivers,
-   go-duckdb + qdb-duck).
+   `internal/observe` (slog setup), TLS listener, Buildkite CI skeleton
+   (includes the `VERSION` file and `-ldflags` build metadata per the
+   brief's Versioning section; `make build` has neither yet), packaging +
+   Docker. The two de-risk spikes (Flight SQL drivers, go-duckdb +
+   qdb-duck) are independent of all of the above and gate M3/M4: start
+   them early and in parallel -- Flight SQL first, since a negative
+   result reshapes the brief -- rather than treating them as the last
+   M0 item.
 3. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
