@@ -633,8 +633,15 @@ readable top to bottom.
 
 ## Development standards
 
-- **Go version**: always the latest release (currently 1.26), tracked via
+- **Go version**: always the latest release (currently 1.27), tracked via
   the `toolchain` directive; upgraded promptly when new versions ship.
+  New-in-1.27 features are explicitly fair game where they fit: generic
+  methods (type parameters on method declarations), the stdlib `uuid`
+  package (RFC 9562 -- use it instead of vendoring a third-party UUID
+  library, e.g. for token `jti` claims), and `encoding/json/v2` /
+  `encoding/json/jsontext` where their streaming or strictness helps an
+  encoder (candidate for `internal/encoding`; adopting them there is an
+  ADR-worthy decision, not a default).
 - **CI**: Buildkite, all platforms; all tests run in Buildkite
   (qdb-nats-connector is the reference for how this should feel). The
   pipeline is authored from scratch for this repo, not carried over from
