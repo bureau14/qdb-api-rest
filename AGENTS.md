@@ -24,7 +24,8 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 | ---------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `docs/`                | project brief, plans, ADRs, project log (current state)         | starting any session; reading or writing any planning or design text      |
 | `tests/e2e/`           | e2e harness: Makefile, helpers, legacy goldens, dataset tooling | touching tests, goldens, the dataset, or starting a REST server for tests |
+| `internal/`            | Go packages: config, observe, tlsconf, httpapi, ...             | writing or reviewing any Go code; logging and test conventions live there |
 | `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd); has no `AGENTS.md`  | never edit here; update by bumping the submodule SHA                      |
 
-Folders introduced by later milestones (`cmd/`, `internal/`, `scripts/cicd/`,
+Folders introduced by later milestones (`cmd/`, `scripts/cicd/`,
 `.buildkite/`) get their own row here when they gain an `AGENTS.md`.

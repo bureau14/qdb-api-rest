@@ -1,0 +1,33 @@
+# internal/ -- Agent Instructions
+
+Scope: every Go package under `internal/`. Package layout and what each
+package owns: `docs/brief.md`, "Project structure". Hard decisions:
+`docs/adr/`.
+
+## Code
+
+- Book order: definitions before use; a reader never scrolls up.
+- No package-level mutable state. `context.Context` is the first
+  parameter of anything that does I/O, logs, or can be cancelled.
+- Small composable functions with descriptive names; explicit over
+  implicit. Comments state why, as facts; never history.
+
+## Logging (ADR-0002)
+
+- Log through the context: `observe.Logger(ctx).InfoContext(ctx, msg,
+attrs...)`. Never `slog.Default()`, `slog.Info`, or a stored logger.
+- Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
+  ctx down; the caller's ctx stays untagged.
+- Keys come from `observe.Key*`; errors go through `observe.Err(err)`.
+  Add a key to `observe` before using it in a second package.
+- Edges enrich, handlers do not: HTTP middleware and gRPC interceptors
+  tag the ctx (request id, principal, session); code below only logs.
+- Any type that holds a secret implements `slog.LogValuer` so it can
+  never print one.
+
+## Tests
+
+- Pin genuine logic only; no tests for glue. White-box, same package,
+  small helpers declared before use, `t.Helper()`.
+- Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
+  wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
