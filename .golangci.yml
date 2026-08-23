@@ -1,0 +1,36 @@
+# golangci-lint v2 configuration. The version is pinned in the Makefile
+# (GOLANGCI_LINT_VERSION); `make lint` installs and runs it.
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - forbidigo
+    - sloglint
+  settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # Logging goes through the context-carried logger (ADR-0002);
+        # the slog globals hide state and bypass request scoping.
+        - pattern: ^slog\.(Debug|Info|Warn|Error|Log|LogAttrs|Default|SetDefault)(Context)?$
+          msg: use observe.Logger(ctx) (ADR-0002)
+        - pattern: ^log\.(Print|Printf|Println|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln)$
+          msg: use observe.Logger(ctx) (ADR-0002)
+    sloglint:
+      # *Context methods only, so trace correlation is a handler swap.
+      context: all
+      key-naming-case: snake
+      static-msg: true
+  exclusions:
+    paths:
+      - vendor
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bureau14/qdb-api-rest
