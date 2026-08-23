@@ -19,8 +19,9 @@ an explicit carrier.
 - The process logger is placed in the root `context.Context` by `main`
   (`observe.WithLogger`) and reached everywhere through
   `observe.Logger(ctx)`. `slog.SetDefault` is never called; a context
-  without a logger falls through to the slog default, which is a bug to
-  fix, not a path to rely on.
+  without a logger is a programming error and `Logger` panics on it --
+  fail fast, the project norm, and it keeps every caller free of
+  fallback logic.
 - Scope is expressed as a child context: `observe.WithAttrs(ctx, ...)`
   returns a ctx whose logger carries the attributes on every record.
   The caller keeps its own ctx, so attributes end with the child's

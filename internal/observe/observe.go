@@ -81,13 +81,15 @@ func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
 }
 
-// Logger returns the logger carried by ctx. A ctx without one gets the
-// slog default -- a visible smell, never a supported path.
+// Logger returns the logger carried by ctx. A ctx without one is a
+// programming error (a context.Background() or TODO() mid-call-chain)
+// and panics: fail fast rather than log somewhere nobody reads.
 func Logger(ctx context.Context) *slog.Logger {
-	if l, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok {
-		return l
+	l, ok := ctx.Value(loggerKey{}).(*slog.Logger)
+	if !ok {
+		panic("observe: no logger in context")
 	}
-	return slog.Default()
+	return l
 }
 
 // WithAttrs returns a child ctx whose logger carries attrs on every
