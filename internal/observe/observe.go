@@ -55,6 +55,22 @@ func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 	return slog.New(handler), nil
 }
 
+// Attribute keys shared across packages, so one field name means one
+// thing in every line.
+const (
+	KeyError     = "error"
+	KeyRequestID = "request_id"
+)
+
+// Err renders err under KeyError; a nil err yields an empty attr, which
+// handlers omit.
+func Err(err error) slog.Attr {
+	if err == nil {
+		return slog.Attr{}
+	}
+	return slog.String(KeyError, err.Error())
+}
+
 // loggerKey is the context key for the logger; unexported so only
 // WithLogger and Logger touch it.
 type loggerKey struct{}
