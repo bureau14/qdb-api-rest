@@ -14,8 +14,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 
 ## Logging (ADR-0002)
 
-- Log through the context: `observe.Logger(ctx).InfoContext(ctx, msg,
-attrs...)`. Never `slog.Default()`, `slog.Info`, or a stored logger.
+- Log through the context, `*Context` methods only:
+  `observe.Logger(ctx).InfoContext(ctx, msg, attrs...)`. Never
+  `slog.Default()`, `slog.Info`, or a stored logger (`make lint` rejects
+  them). `Logger` panics on a ctx without a logger: pass the ctx you were
+  given, never `context.Background()`.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.
