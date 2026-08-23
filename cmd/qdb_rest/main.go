@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,24 +28,29 @@ import (
 const shutdownGrace = 8 * time.Second
 
 // newServer assembles one listener's server; the HTTPS listener carries a
-// tls.Config, plain HTTP passes nil. No global write timeout: responses
-// are streamed, so write deadlines are a per-request concern.
-func newServer(addr string, handler http.Handler, tlsConfig *tls.Config) *http.Server {
+// tls.Config, plain HTTP passes nil. BaseContext hands the process
+// context (and so the logger) to every request; ErrorLog routes net/http's
+// own complaints through the same handler. No global write timeout:
+// responses are streamed, so write deadlines are a per-request concern.
+func newServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ErrorLog:          slog.NewLogLogger(observe.Logger(ctx).Handler(), slog.LevelError),
 	}
 }
 
 // newServers builds the enabled listeners from config and logs what each
 // one serves.
-func newServers(cfg config.Config, handler http.Handler) ([]*http.Server, error) {
+func newServers(ctx context.Context, cfg config.Config, handler http.Handler) ([]*http.Server, error) {
+	log := observe.Logger(ctx)
 	var servers []*http.Server
 	if cfg.Listen.HTTP != "" {
-		servers = append(servers, newServer(cfg.Listen.HTTP, handler, nil))
-		slog.Info("listening", "proto", "http", "addr", cfg.Listen.HTTP)
+		servers = append(servers, newServer(ctx, cfg.Listen.HTTP, handler, nil))
+		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
 	}
 	if cfg.Listen.HTTPS != "" {
 		tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
@@ -52,12 +58,12 @@ func newServers(cfg config.Config, handler http.Handler) ([]*http.Server, error)
 			return nil, err
 		}
 		if info.Source == tlsconf.SourceEphemeral {
-			slog.Warn("no tls certificate configured; generated an ephemeral self-signed certificate",
+			log.WarnContext(ctx, "no tls certificate configured; generated an ephemeral self-signed certificate",
 				"fingerprint_sha256", info.Fingerprint,
 				"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
 		}
-		servers = append(servers, newServer(cfg.Listen.HTTPS, handler, tlsConfig))
-		slog.Info("listening", "proto", "https", "addr", cfg.Listen.HTTPS,
+		servers = append(servers, newServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
+		log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 			"certificate", string(info.Source), "not_after", info.NotAfter)
 	}
 	return servers, nil
@@ -112,20 +118,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
 		os.Exit(2)
 	}
-	slog.SetDefault(logger)
-
-	servers, err := newServers(cfg, httpapi.NewHandler())
-	if err != nil {
-		slog.Error("startup failed", "error", err)
-		os.Exit(1)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(observe.WithLogger(context.Background(), logger), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, servers); err != nil {
-		slog.Error("server failed", "error", err)
+	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
+	if err != nil {
+		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
-	slog.Info("shutdown complete")
+
+	if err := run(ctx, servers); err != nil {
+		logger.ErrorContext(ctx, "server failed", observe.Err(err))
+		os.Exit(1)
+	}
+	logger.InfoContext(ctx, "shutdown complete")
 }
