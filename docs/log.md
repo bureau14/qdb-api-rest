@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-21
+Last updated: 2026-08-23
 
 | Milestone             | State       | Note                                  |
 | --------------------- | ----------- | ------------------------------------- |
@@ -20,7 +20,9 @@ In flight:
 
 - M0. Landed: go module, `cmd/qdb_rest` (status probes, graceful
   shutdown, dual HTTP/HTTPS listeners), `internal/config`,
-  `internal/observe`, `internal/tlsconf` (ADR-0001), root `Makefile`;
+  `internal/observe` (context-carried logger, ADR-0002),
+  `internal/tlsconf` (ADR-0001), request middleware with `X-Request-Id`
+  and access lines, root `Makefile`;
   dataset archive on S3 (harness download verified); goldens 20/21
   green under the harness (see 2026-08-20 and 2026-08-21 entries).
 
@@ -40,6 +42,23 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-23 -- Context-carried logging and request middleware
+
+- Landed: `observe.WithLogger` / `Logger` / `WithAttrs` plus the shared
+  attribute vocabulary (`KeyRequestID`, `KeyError`, `Err`); `cmd/qdb_rest`
+  threads the logger through `http.Server.BaseContext` and routes
+  net/http's `ErrorLog` through the same handler, no `slog.SetDefault`;
+  `httpapi` request middleware (inbound `X-Request-Id` honored when
+  well-formed, minted as a v7 UUID from the stdlib `uuid` package
+  otherwise, always echoed; one access line per request). Decision:
+  ADR-0002. House rules: `internal/AGENTS.md`.
+- Verified: `go test ./...` (attr scoping, id echo/mint, Flush through the
+  recorder); smoke run shows the access line carrying `request_id`;
+  status goldens 20/21 replay green (no header or body change).
+- Lesson: a wrapping `http.ResponseWriter` must implement `Unwrap()` or
+  `http.ResponseController` loses Flush and deadlines -- fatal for a
+  streamed response path, and invisible until the first stream.
 
 ## 2026-08-21 -- De-risk spikes removed from the roadmap
 
