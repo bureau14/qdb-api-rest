@@ -583,6 +583,12 @@ config ships with the package and doubles as documentation.
   console handler for interactive use. The application logs to stdout and
   does not manage its own log files -- journald/systemd owns capture on
   Linux, the container runtime in Docker/k8s.
+- The logger travels in `context.Context` (`internal/observe`), never as
+  a global. The HTTP middleware tags each request context with its id
+  (`X-Request-Id`: honored when well-formed, minted otherwise, always
+  echoed) and writes one access line; auth adds principal and session the
+  same way, and every line logged below inherits those attributes.
+  Decision and rationale: ADR-0002.
 - The one exception is Windows service mode, where there is no console and
   no logrotate convention: service lifecycle and fatal events go to the
   Windows Event Log (the native facility monitoring agents collect from),
@@ -648,7 +654,8 @@ readable top to bottom.
   pin lives in this repository rather than in the builder image.
 - **No package-level mutable state.** `context.Context` flows through
   every call path.
-- **Logging** via `slog` only; no third-party logging framework.
+- **Logging** via `slog` only, through the context-carried logger and its
+  `*Context` methods (ADR-0002); no third-party logging framework.
 - **Style**: small composable functions with descriptive names; files read
   top-to-bottom (book pattern); explicit over implicit.
 
