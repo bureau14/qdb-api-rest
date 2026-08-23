@@ -30,9 +30,8 @@ Next:
 
 1. M0 remaining, roughly in order: Buildkite CI skeleton (includes the
    `VERSION` file and `-ldflags` build metadata per the brief's
-   Versioning section; `make build` has neither yet, and the
-   golangci-lint v2 + gofumpt pin does not exist yet either), packaging +
-   Docker.
+   Versioning section; `make build` has neither yet; `make lint` exists
+   and is the step CI runs), packaging + Docker.
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -56,6 +55,11 @@ Blocked on:
 - Verified: `go test ./...` (attr scoping, id echo/mint, Flush through the
   recorder); smoke run shows the access line carrying `request_id`;
   status goldens 20/21 replay green (no header or body change).
+- `observe.Logger` panics on a context without a logger (fail fast is
+  the norm, production included); `make lint` (golangci-lint v2.13.1,
+  pinned and installed by the target, `.golangci.yml`) rejects the
+  `slog`/`log` globals via forbidigo and non-`*Context` calls via
+  sloglint, with gofumpt + goimports as formatters.
 - Lesson: a wrapping `http.ResponseWriter` must implement `Unwrap()` or
   `http.ResponseController` loses Flush and deadlines -- fatal for a
   streamed response path, and invisible until the first stream.
