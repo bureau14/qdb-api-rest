@@ -23,7 +23,7 @@ import (
 )
 
 // shutdownGrace bounds the drain of in-flight requests on SIGTERM; it stays
-// below the 10 s the e2e harness allows between SIGTERM and SIGKILL.
+// below the 10s the e2e harness allows between SIGTERM and SIGKILL.
 const shutdownGrace = 8 * time.Second
 
 // newServer assembles one listener's server; the HTTPS listener carries a
