@@ -1,8 +1,11 @@
-// Package observe wires the operational surface of the server: logging
-// now; metrics and build info arrive in later milestones.
+// Package observe owns the operational surface of the server: the
+// process logger, how it travels through context, and the attribute
+// vocabulary shared by every log line. Metrics and build info live here
+// as well.
 package observe
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -38,8 +41,8 @@ func newHandler(format string, level slog.Level, w io.Writer) (slog.Handler, err
 	return nil, fmt.Errorf("unknown log format %q", format)
 }
 
-// NewLogger builds the process logger; the caller owns installing it as
-// the slog default.
+// NewLogger builds the process logger. The caller places it in the root
+// context with WithLogger; nothing installs it as a global.
 func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 	level, err := parseLevel(cfg.Level)
 	if err != nil {
@@ -50,4 +53,30 @@ func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 		return nil, err
 	}
 	return slog.New(handler), nil
+}
+
+// loggerKey is the context key for the logger; unexported so only
+// WithLogger and Logger touch it.
+type loggerKey struct{}
+
+// WithLogger returns ctx carrying l. Callees reach it through
+// Logger(ctx): the logger is explicit state of the call, never a global.
+func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, l)
+}
+
+// Logger returns the logger carried by ctx. A ctx without one gets the
+// slog default -- a visible smell, never a supported path.
+func Logger(ctx context.Context) *slog.Logger {
+	if l, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok {
+		return l
+	}
+	return slog.Default()
+}
+
+// WithAttrs returns a child ctx whose logger carries attrs on every
+// record. Scope is lexical: the caller's ctx is untouched, so the attrs
+// end where the child ctx goes out of scope.
+func WithAttrs(ctx context.Context, attrs ...any) context.Context {
+	return WithLogger(ctx, Logger(ctx).With(attrs...))
 }
