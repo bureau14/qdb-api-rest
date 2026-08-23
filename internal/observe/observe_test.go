@@ -42,3 +42,12 @@ func TestWithAttrsScopes(t *testing.T) {
 		t.Errorf("parent scope leaked: %v", rec)
 	}
 }
+
+func TestLoggerMissingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("want panic for a context without a logger")
+		}
+	}()
+	Logger(context.Background())
+}
