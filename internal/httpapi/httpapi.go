@@ -29,9 +29,10 @@ func registerStatusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/status/readiness", handleReadiness)
 }
 
-// NewHandler returns the root handler with every route registered.
+// NewHandler returns the root handler: every route registered, wrapped
+// by the request middleware.
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	registerStatusRoutes(mux)
-	return mux
+	return withRequestLogging(mux)
 }
