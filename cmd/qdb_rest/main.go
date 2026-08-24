@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +24,36 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
+
+// Build metadata, injected at build time via -ldflags -X (Makefile and
+// scripts/cicd/20.build.sh compose the same flags); no version constants
+// live in source. goamd64 stays empty on non-amd64 targets and on builds
+// that do not pin a microarchitecture level.
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+	buildMode = "unknown"
+	goamd64   = ""
+)
+
+// versionText renders the version block in the format shared by all
+// QuasarDB binaries (qdb-nats-connector ADR-011, mirroring the C++
+// daemons). Everything shown is compile-time information.
+func versionText() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "quasardb rest api version: %s\n", version)
+	fmt.Fprintf(&b, "build: %s\n", commit)
+	fmt.Fprintf(&b, "date: %s\n\n", buildTime)
+	fmt.Fprintf(&b, "target: %s-%s\n", runtime.GOARCH, runtime.GOOS)
+	fmt.Fprintf(&b, "compiler: %s\n", runtime.Version())
+	if runtime.GOARCH == "amd64" && goamd64 != "" {
+		fmt.Fprintf(&b, "arch level: %s\n", goamd64)
+	}
+	fmt.Fprintf(&b, "\nbuild type: %s\n\n", buildMode)
+	b.WriteString("Copyright (c) 2009-2026, quasardb SAS. All rights reserved.\n")
+	return b.String()
+}
 
 // shutdownGrace bounds the drain of in-flight requests on SIGTERM; it stays
 // below the 10s the e2e harness allows between SIGTERM and SIGKILL.
@@ -105,6 +137,10 @@ func run(ctx context.Context, servers []*http.Server) error {
 
 func main() {
 	cfg, err := config.Load("qdb_rest", os.Args[1:], os.LookupEnv, os.Stderr)
+	if errors.Is(err, config.ErrVersionRequested) {
+		fmt.Print(versionText())
+		os.Exit(0)
+	}
 	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	}
@@ -120,6 +156,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(observe.WithLogger(context.Background(), logger), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode)
 
 	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {

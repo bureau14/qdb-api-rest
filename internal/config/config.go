@@ -16,6 +16,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ErrVersionRequested is returned by Load when the -version flag is
+// passed; the caller prints its build metadata and exits. The metadata
+// itself lives in package main (injected via -ldflags), which is why the
+// flag surfaces as a sentinel instead of being handled here.
+var ErrVersionRequested = errors.New("version requested")
+
 // Listen holds the listener addresses. An empty address disables that
 // listener.
 type Listen struct {
@@ -119,9 +125,10 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) {
 // actually passed, so only those override the file and the environment
 // (an explicitly empty flag value, e.g. -listen-tls=, is an override too).
 type flagValues struct {
-	configPath string
-	values     Config
-	set        map[string]bool
+	configPath  string
+	showVersion bool
+	values      Config
+	set         map[string]bool
 }
 
 // parseFlags parses args. The flag defaults shown by -h come from
@@ -131,6 +138,7 @@ func parseFlags(name string, args []string, output io.Writer) (flagValues, error
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
 	fs.StringVar(&parsed.configPath, "config", "", "path to YAML config file")
+	fs.BoolVar(&parsed.showVersion, "version", false, "print version information and exit")
 	fs.StringVar(&parsed.values.Listen.HTTP, "listen", parsed.values.Listen.HTTP, "HTTP listen address; empty disables")
 	fs.StringVar(&parsed.values.Listen.HTTPS, "listen-tls", parsed.values.Listen.HTTPS, "HTTPS listen address; empty disables")
 	fs.StringVar(&parsed.values.TLS.Certificate, "tls-cert", "", "PEM certificate file for the HTTPS listener")
@@ -206,6 +214,9 @@ func Load(name string, args []string, lookup func(string) (string, bool), output
 	parsed, err := parseFlags(name, args, output)
 	if err != nil {
 		return Config{}, err
+	}
+	if parsed.showVersion {
+		return Config{}, ErrVersionRequested
 	}
 	cfg := Default()
 	if path := configPath(parsed, lookup); path != "" {
