@@ -28,10 +28,11 @@ In flight:
 
 Next:
 
-1. M0 remaining, roughly in order: Buildkite CI skeleton (includes the
-   `VERSION` file and `-ldflags` build metadata per the brief's
-   Versioning section; `make build` has neither yet; `make lint` exists
-   and is the step CI runs), packaging + Docker.
+1. M0 remaining: Buildkite CI skeleton (includes the `VERSION` file and
+   `-ldflags` build metadata per the brief's Versioning section;
+   `make build` has neither yet; `make lint` exists and is the step CI
+   runs). Packaging + Docker are out of the plan entirely (owner
+   decision, see 2026-08-24 entry).
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -41,6 +42,21 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-24 -- Packaging and Docker removed from the plan
+
+- Owner decision (Leon): deb/rpm packaging and the Docker image are a
+  complete non-concern for now and are removed from milestones and task
+  planning entirely -- dropped from M0's scope and from M5's
+  packaging-finalization clause; the brief's Goals item 7 no longer
+  promises a Docker image and a new Non-goals bullet records the
+  deferral (including the `%config(noreplace)` RPM note, preserved
+  there). They return only as a deliberate re-add when deployment
+  becomes a concern.
+- M0's remaining scope is therefore the Buildkite CI skeleton (with the
+  `VERSION` file and `-ldflags` build metadata). The 2026-08-20 M0-start
+  entry's exit criteria listed packaging and the Docker image; that
+  entry stays as written (append-only), this one supersedes that clause.
 
 ## 2026-08-24 -- Bench: warmup reps and median aggregation
 
