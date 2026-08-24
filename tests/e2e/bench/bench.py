@@ -22,6 +22,7 @@ import pathlib
 import platform
 import resource
 import socket
+import statistics
 import subprocess
 import sys
 import time
@@ -656,12 +657,12 @@ def run_measurement(args, dconn, baseline, spec, cfg):
     return record
 
 
-def mean_of(records, key):
+def median_of(records, key):
     values = [r[key] for r in records if r.get(key) is not None]
-    return sum(values) / len(values) if values else None
+    return statistics.median(values) if values else None
 
 
-MEAN_KEYS = (
+SUMMARY_KEYS = (
     "wall_to_dataframe_seconds", "ttfb_seconds", "client_cpu_seconds",
     "client_peak_rss_bytes", "server_peak_rss_bytes", "server_cpu_seconds",
     "qdbd_out_bytes", "qdbd_request_count", "client_bytes",
@@ -669,10 +670,11 @@ MEAN_KEYS = (
 
 
 def summarize_query(reps):
-    """Means over repetitions, plus the single fingerprint all repetitions
-    must share (a mismatch is nondeterminism and kills the run). The means
-    dict is keyed by variant label ("" -- the pre-2026-08-24 native results
-    carried per-mode keys here, and `report` still reads that shape)."""
+    """Medians over the measured (non-warmup) repetitions -- robust to a
+    single straggler on a developer machine -- plus the single fingerprint
+    every repetition, warmups included, must share (a mismatch is
+    nondeterminism and kills the run). Warmup reps stay in `reps` flagged
+    `warmup: true`, so cold-start walls remain visible in the result file."""
     reference = reps[0]["fingerprint"]
     for rep in reps[1:]:
         diff = fingerprint_diff(reference, rep["fingerprint"])
@@ -680,12 +682,15 @@ def summarize_query(reps):
             die("fingerprint differs between repetitions:\n  " + "\n  ".join(diff))
     for rep in reps:
         del rep["fingerprint"]
-    means = {"": {key: mean_of(reps, key) for key in MEAN_KEYS}}
-    return {"fingerprint": reference, "reps": reps, "means": means}
+    measured = [r for r in reps if not r["warmup"]]
+    medians = {key: median_of(measured, key) for key in SUMMARY_KEYS}
+    return {"fingerprint": reference, "reps": reps, "medians": medians}
 
 
 def run_main(args):
     protocol, server = parse_run(args)
+    if args.reps < 1 or args.warmup < 0:
+        die(f"need reps >= 1 and warmup >= 0 (got reps={args.reps}, warmup={args.warmup})")
     if server == "old-rest" and args.capi_compression != "none":
         die(f"legacy@old-rest cannot honor --capi-compression={args.capi_compression}: "
             "the old server hardcodes the C API default (none); "
@@ -703,11 +708,19 @@ def run_main(args):
     queries = {}
     for query_id in query_ids:
         reps = []
-        for rep in range(args.reps):
-            log(f"{args.run} {query_id} rep {rep + 1}/{args.reps}")
+        # Warmup reps (index < 0) run through the identical measurement
+        # path -- fresh child, fresh REST server, counters -- so there is
+        # only one code path to trust; qdbd is the thing being warmed (it
+        # takes 2-3 executions to reach steady state, verified 2026-08-24).
+        for rep in range(-args.warmup, args.reps):
+            warm = rep < 0
+            label = (f"warmup {rep + args.warmup + 1}/{args.warmup}" if warm
+                     else f"rep {rep + 1}/{args.reps}")
+            log(f"{args.run} {query_id} {label}")
             cfg = child_config(args, protocol, server, query_id)
             record = run_measurement(args, dconn, baseline, spec, cfg)
             record["rep"] = rep
+            record["warmup"] = warm
             reps.append(record)
         queries[query_id] = {"sql": QUERIES[query_id], **summarize_query(reps)}
 
@@ -750,18 +763,13 @@ def run_order(runs):
     return [r for r in ordered if r in runs]
 
 
-def variants_of(runs, query_id):
-    """(label, means, run_name) per measured run; the means dict may carry
-    variant-label keys from older result files (empty for current ones)."""
-    out = []
-    for run_name in run_order(runs):
-        entry = runs[run_name]["queries"].get(query_id)
-        if not entry:
-            continue
-        for mode, means in sorted(entry["means"].items()):
-            label = f"{run_name}:{mode}" if mode else run_name
-            out.append((label, means, run_name))
-    return out
+def medians_of(runs, query_id):
+    """(run_name, medians) per run that measured this query."""
+    return [
+        (name, runs[name]["queries"][query_id]["medians"])
+        for name in run_order(runs)
+        if query_id in runs[name]["queries"]
+    ]
 
 
 def format_table(headers, rows):
@@ -797,7 +805,8 @@ def wart_count_of(run_data, query_id):
     entry = run_data["queries"].get(query_id)
     if not entry:
         return None
-    return sum(r["telemetry"].get("wart_count", 0) for r in entry["reps"])
+    return sum(r["telemetry"].get("wart_count", 0)
+               for r in entry["reps"] if not r.get("warmup"))
 
 
 def report_compatibility(runs, query_ids):
@@ -845,24 +854,24 @@ def report_compatibility(runs, query_ids):
 
 
 def report_performance(runs, query_ids):
-    print("== performance (means; seconds, peak RSS) ==")
+    print("== performance (medians over measured reps; seconds, peak RSS) ==")
     for query_id in query_ids:
-        variants = variants_of(runs, query_id)
-        if not variants:
+        rows = medians_of(runs, query_id)
+        if not rows:
             continue
         print(f"  -- {query_id}")
         print(format_table(
             ["run", "wall", "ttfb", "client_cpu", "client_rss",
              "server_rss", "server_cpu"],
             [
-                [label,
+                [name,
                  fmt_seconds(m["wall_to_dataframe_seconds"]),
                  fmt_seconds(m["ttfb_seconds"]),
                  fmt_seconds(m["client_cpu_seconds"]),
                  fmt_size(m["client_peak_rss_bytes"]),
                  fmt_size(m["server_peak_rss_bytes"]),
                  fmt_seconds(m["server_cpu_seconds"])]
-                for label, m, _ in variants
+                for name, m in rows
             ],
         ))
     baseline = "legacy@old-rest"
@@ -874,8 +883,8 @@ def report_performance(runs, query_ids):
             entries = [runs[n]["queries"].get(query_id) for n in (baseline, challenger)]
             if not all(entries):
                 continue
-            old_wall = next(iter(entries[0]["means"].values()))["wall_to_dataframe_seconds"]
-            new_wall = next(iter(entries[1]["means"].values()))["wall_to_dataframe_seconds"]
+            old_wall = entries[0]["medians"]["wall_to_dataframe_seconds"]
+            new_wall = entries[1]["medians"]["wall_to_dataframe_seconds"]
             if old_wall and new_wall:
                 print(f"    {query_id}: {old_wall / new_wall:.2f}x "
                       f"({old_wall:.3f}s -> {new_wall:.3f}s)")
@@ -885,18 +894,17 @@ def report_performance(runs, query_ids):
 def report_leverage(runs, query_ids):
     print("== gateway leverage (qdbd->reducer vs reducer->client) ==")
     for query_id in query_ids:
-        variants = variants_of(runs, query_id)
-        if not variants:
-            continue
         rows = []
-        for label, m, _ in variants:
+        for name, m in medians_of(runs, query_id):
             out_bytes, client_bytes = m["qdbd_out_bytes"], m["client_bytes"]
             reduction = (
                 f"{out_bytes / client_bytes:.1f}x"
                 if out_bytes and client_bytes else None
             )
-            rows.append([label, fmt_size(out_bytes), fmt_size(client_bytes),
+            rows.append([name, fmt_size(out_bytes), fmt_size(client_bytes),
                          reduction, fmt_seconds(m["client_cpu_seconds"])])
+        if not rows:
+            continue
         print(f"  -- {query_id}")
         print(format_table(
             ["run", "qdbd_out", "client_bytes", "reduction", "client_cpu"], rows,
@@ -1013,7 +1021,11 @@ def parse_args(argv):
     run.add_argument("--repo-root", required=True)
     run.add_argument("--old-master-dir", required=True)
     run.add_argument("--qdb-api-python-dir", required=True)
-    run.add_argument("--reps", type=int, required=True)
+    run.add_argument("--reps", type=int, required=True,
+                     help="measured repetitions per query; the medians cover these")
+    run.add_argument("--warmup", type=int, required=True,
+                     help="discarded warmup repetitions per query, run first "
+                          "through the identical measurement path")
     run.add_argument("--queries", default="", help="comma list; empty = all")
     run.add_argument("--results-dir", required=True)
     run.add_argument("--no-gzip", action="store_true",
