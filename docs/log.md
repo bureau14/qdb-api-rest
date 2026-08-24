@@ -7,14 +7,14 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-08-24
 
-| Milestone             | State       | Note                                  |
-| --------------------- | ----------- | ------------------------------------- |
-| M0 -- Foundation      | in progress | skeleton serves status probes         |
-| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place |
-| M2 -- v2 data plane   | not started |                                       |
-| M3 -- Flight SQL      | not started |                                       |
-| M4 -- Embedded DuckDB | not started |                                       |
-| M5 -- Release         | not started |                                       |
+| Milestone             | State       | Note                                    |
+| --------------------- | ----------- | --------------------------------------- |
+| M0 -- Foundation      | in progress | CI skeleton authored; agent run pending |
+| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place   |
+| M2 -- v2 data plane   | not started |                                         |
+| M3 -- Flight SQL      | not started |                                         |
+| M4 -- Embedded DuckDB | not started |                                         |
+| M5 -- Release         | not started |                                         |
 
 In flight:
 
@@ -24,24 +24,76 @@ In flight:
   `internal/tlsconf` (ADR-0001), request middleware with `X-Request-Id`
   and access lines, root `Makefile`;
   dataset archive on S3 (harness download verified); goldens 20/21
-  green under the harness (see 2026-08-20 and 2026-08-21 entries).
+  green under the harness (see 2026-08-20 and 2026-08-21 entries);
+  `VERSION` file + `-ldflags` build metadata + `-version` flag; Buildkite
+  pipeline skeleton (lint + 8-platform build/unit-test; see 2026-08-24
+  CI entry).
 
 Next:
 
-1. M0 remaining: Buildkite CI skeleton (includes the `VERSION` file and
-   `-ldflags` build metadata per the brief's Versioning section;
-   `make build` has neither yet; `make lint` exists and is the step CI
-   runs). Packaging + Docker are out of the plan entirely (owner
-   decision, see 2026-08-24 entry).
+1. M0 closing: operator wires the Buildkite web pipeline to
+   `.buildkite/pipeline.py` (single upload step; see
+   `.buildkite/AGENTS.md`) and gets a green run on all 8 platforms --
+   the first run shakes out agent env assumptions (GO127/gcc15 vars,
+   artifact fallback).
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
+3. Circle back (no date): the e2e harness is excluded from CI until
+   further notice (owner decision, 2026-08-24 CI entry); what re-adding
+   takes is noted in `.buildkite/AGENTS.md`.
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-08-24 -- VERSION, build metadata, Buildkite CI skeleton
+
+- Landed: `VERSION` file (`3.15.0.dev0`, the single version-string
+  location; the qdb-release registration itself stays in M5); build
+  metadata injected via `-ldflags` per qdb-nats-connector ADR-011
+  (version, commit, build time, build mode, GOAMD64 level as
+  `main`-package vars; a `-version` flag surfaced through
+  `config.ErrVersionRequested` so the metadata stays in `main`; one
+  "starting" log line with version/commit/build_mode); root `Makefile`
+  wiring. `.buildkite/` (dynamic `pipeline.py`, step templates,
+  `qdb-cicd-tools` as the `.buildkite/tools` submodule) and
+  `scripts/cicd/` (`00.common.sh`, `10.lint.sh`, `20.build.sh`,
+  `30.test-unit.sh`). Graph: 1 lint + 8 per-platform build+unit-test
+  steps (same matrix as qdb-nats-connector, mirroring quasardb name for
+  name) + 1 aggregate test report.
+- Owner decision (Leon): the e2e harness is **excluded from CI until
+  further notice** -- no qdbd, no dataset, no `test-legacy` in the
+  pipeline. Tracked as a circle-back item in Current state; the
+  re-adding recipe (server/utils archives, start-services, pre-exit
+  hook) is in `.buildkite/AGENTS.md`.
+- Decisions worth keeping:
+  - Steps download only the c-api archive. Nothing links it yet, but
+    `cicd_assert_qdb_tree` asserts `qdb/lib` + `qdb/include` (plus
+    `libqdb_api.a` on Linux) on every platform, so the artifact dance
+    is proven now, while builds are trivial and failures cheap.
+  - `10.lint.sh` delegates to `make lint` (the lint step is Linux-only,
+    GNU make available): the golangci-lint pin keeps exactly one
+    writer, the root Makefile. The per-platform scripts call `${GO}`
+    directly instead (FreeBSD ships BSD make, Windows agents none).
+  - No `upload`/`promote` plugin blocks anywhere: the pipeline
+    publishes no artifacts (packaging is out of the plan), and an
+    artifact-less promote would poison `LATEST_SUCCESSFUL`.
+- Facts verified while building:
+  - The qdb-artifacts plugin walks [requested ref, master, main] when
+    resolving downloads, so feature-branch builds of this repo resolve
+    quasardb-build's master artifacts without any special-casing.
+  - errcheck flags unchecked `fmt.Fprintf` to an `io.Writer`;
+    `versionText()` renders into a `strings.Builder` and `fmt.Print`s
+    once instead.
+- Verified locally: `make build` + `bin/qdb_rest -version` shows the
+  injected metadata; `make lint` 0 issues; `go test ./...` green;
+  `pipeline.py check` valid (10 steps) and the generated YAML inspected
+  (keys, queues, depends_on, `$$`-escaped agent vars). Not verified: a
+  real Buildkite run -- the web pipeline must be pointed at
+  `.buildkite/pipeline.py` first (operator step, see Next).
 
 ## 2026-08-24 -- Packaging and Docker removed from the plan
 
