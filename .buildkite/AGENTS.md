@@ -20,10 +20,12 @@ all of this should feel.
 
 ## Facts
 
-- The Buildkite web pipeline (operator-managed) is expected to have a
-  single configured step that installs `requirements.txt` and pipes
-  `pipeline.py generate` into `buildkite-agent pipeline upload`;
-  everything else lives in this directory.
+- The Buildkite web pipeline for qdb-api-rest already exists and drives
+  `master`'s `.buildkite/pipeline.py` (the legacy server's pipeline uses
+  the same dynamic-generator convention). This directory keeps that
+  entrypoint -- `python3 pipeline.py [generate|check]`, same
+  `requirements.txt` -- so builds of this branch need no web-side
+  change.
 - The platform matrix mirrors quasardb's pipeline name for name; the
   qdb-artifacts download variant derives from the platform slug, which
   is what wires the C-API dependency up. Only the c-api archive is

@@ -31,11 +31,13 @@ In flight:
 
 Next:
 
-1. M0 closing: operator wires the Buildkite web pipeline to
-   `.buildkite/pipeline.py` (single upload step; see
-   `.buildkite/AGENTS.md`) and gets a green run on all 8 platforms --
-   the first run shakes out agent env assumptions (GO127/gcc15 vars,
-   artifact fallback).
+1. M0 closing: trigger a Buildkite build of this branch and get it green
+   on all 8 platforms. No web-side change needed: the existing
+   qdb-api-rest web pipeline already drives `master`'s
+   `.buildkite/pipeline.py`, and this branch's generator keeps the same
+   entrypoint (`python3 pipeline.py generate|check`, same
+   requirements.txt). The first run shakes out agent env assumptions
+   (GO127/gcc15 vars, artifact fallback).
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -92,8 +94,10 @@ Blocked on:
   injected metadata; `make lint` 0 issues; `go test ./...` green;
   `pipeline.py check` valid (10 steps) and the generated YAML inspected
   (keys, queues, depends_on, `$$`-escaped agent vars). Not verified: a
-  real Buildkite run -- the web pipeline must be pointed at
-  `.buildkite/pipeline.py` first (operator step, see Next).
+  real Buildkite run (see Next). The web pipeline needs no change:
+  `master` already drives its `.buildkite/pipeline.py` through the same
+  `generate|check` entrypoint and requirements.txt, so this branch's
+  generator is a drop-in for the existing upload step.
 
 ## 2026-08-24 -- Packaging and Docker removed from the plan
 
