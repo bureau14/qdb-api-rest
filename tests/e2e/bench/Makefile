@@ -39,7 +39,11 @@ FLIGHT_PORT    := 40493
 VENV  := $(BENCH_DIR)/.env
 STAMP := $(BENCH_DIR)/.stamp-wheel
 
-REPS    ?= 3
+# Per query: WARMUP discarded warmups (qdbd needs 2-3 executions to reach
+# steady state), then REPS measured repetitions; the report shows medians
+# over the measured reps. WARMUP=0 REPS=1 for quick smokes.
+WARMUP  ?= 3
+REPS    ?= 5
 QUERIES ?=
 # qdbd <-> C API compression for every run's C-API holder. `none` is the
 # only value legacy@old-rest can honor (the old server hardcodes the C API
@@ -100,7 +104,7 @@ bench-%: venv
 	    --flight-port $(FLIGHT_PORT) \
 	    --repo-root $(REPO_ROOT) --old-master-dir $(OLD_MASTER_DIR) \
 	    --qdb-api-python-dir $(QDB_API_PYTHON_DIR) \
-	    --reps $(REPS) $(if $(QUERIES),--queries '$(QUERIES)') \
+	    --reps $(REPS) --warmup $(WARMUP) $(if $(QUERIES),--queries '$(QUERIES)') \
 	    --capi-compression $(CAPI_COMPRESSION) \
 	    --results-dir $(BENCH_DIR)/results
 
