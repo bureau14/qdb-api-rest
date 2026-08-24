@@ -465,16 +465,12 @@ def child_main(args):
         fingerprint_update(state, frame)
         del frame
 
-    definition = protocol.TTFB_DEFINITION
-    if isinstance(definition, dict):
-        definition = definition[cfg["mode"]]
     print(json.dumps({
-        "mode": cfg["mode"],
         "rows": rows,
         "batches": batches,
         "wall_to_dataframe_seconds": wall,
         "ttfb_seconds": ttfb["seconds"] if ttfb["seconds"] is not None else wall,
-        "ttfb_definition": definition,
+        "ttfb_definition": protocol.TTFB_DEFINITION,
         "client_cpu_seconds": cpu,
         "telemetry": telemetry,
         "fingerprint": fingerprint_finish(state),
@@ -582,11 +578,10 @@ def server_spec(args, server):
         os.path.join(bench_dir, f"{server}.pid")
 
 
-def child_config(args, protocol, server, query_id, mode):
+def child_config(args, protocol, server, query_id):
     port = args.old_rest_port if server == "old-rest" else args.new_rest_port
     return {
         "protocol": protocol,
-        "mode": mode,
         "query": QUERIES[query_id],
         "cluster_uri": args.cluster,
         "base_url": f"http://127.0.0.1:{port}",
@@ -597,7 +592,7 @@ def child_config(args, protocol, server, query_id, mode):
 
 
 def run_measurement(args, dconn, baseline, spec, cfg):
-    """One (query, mode, repetition): fresh REST server, fresh child,
+    """One (query, repetition): fresh REST server, fresh child,
     RSS sampled from outside, counter deltas around the child."""
     server_proc = None
     if spec:
@@ -659,23 +654,18 @@ MEAN_KEYS = (
 
 
 def summarize_query(reps):
-    """Per-mode means, plus the single fingerprint all repetitions must
-    share (a mismatch is nondeterminism and kills the run)."""
+    """Means over repetitions, plus the single fingerprint all repetitions
+    must share (a mismatch is nondeterminism and kills the run). The means
+    dict is keyed by variant label ("" -- the pre-2026-08-24 native results
+    carried per-mode keys here, and `report` still reads that shape)."""
     reference = reps[0]["fingerprint"]
     for rep in reps[1:]:
         diff = fingerprint_diff(reference, rep["fingerprint"])
         if diff:
-            die("fingerprint differs between repetitions/modes:\n  " + "\n  ".join(diff))
+            die("fingerprint differs between repetitions:\n  " + "\n  ".join(diff))
     for rep in reps:
         del rep["fingerprint"]
-    modes = sorted({rep["mode"] or "" for rep in reps})
-    means = {
-        mode or "": {
-            key: mean_of([r for r in reps if (r["mode"] or "") == mode], key)
-            for key in MEAN_KEYS
-        }
-        for mode in modes
-    }
+    means = {"": {key: mean_of(reps, key) for key in MEAN_KEYS}}
     return {"fingerprint": reference, "reps": reps, "means": means}
 
 
@@ -690,19 +680,16 @@ def run_main(args):
     dconn = direct_node(conn, args.cluster)
     baseline = counter_baseline(dconn)
     spec = server_spec(args, server)
-    modes = ("query", "stream") if protocol == "native" else (None,)
 
     queries = {}
     for query_id in query_ids:
         reps = []
-        for mode in modes:
-            for rep in range(args.reps):
-                label = f" mode={mode}" if mode else ""
-                log(f"{args.run} {query_id}{label} rep {rep + 1}/{args.reps}")
-                cfg = child_config(args, protocol, server, query_id, mode)
-                record = run_measurement(args, dconn, baseline, spec, cfg)
-                record["rep"] = rep
-                reps.append(record)
+        for rep in range(args.reps):
+            log(f"{args.run} {query_id} rep {rep + 1}/{args.reps}")
+            cfg = child_config(args, protocol, server, query_id)
+            record = run_measurement(args, dconn, baseline, spec, cfg)
+            record["rep"] = rep
+            reps.append(record)
         queries[query_id] = {"sql": QUERIES[query_id], **summarize_query(reps)}
 
     os.makedirs(args.results_dir, exist_ok=True)
@@ -745,7 +732,8 @@ def run_order(runs):
 
 
 def variants_of(runs, query_id):
-    """(label, means, run_name) per measured (run, mode)."""
+    """(label, means, run_name) per measured run; the means dict may carry
+    variant-label keys from older result files (empty for current ones)."""
     out = []
     for run_name in run_order(runs):
         entry = runs[run_name]["queries"].get(query_id)
