@@ -41,6 +41,10 @@ STAMP := $(BENCH_DIR)/.stamp-wheel
 
 REPS    ?= 3
 QUERIES ?=
+# qdbd <-> C API compression for every run's C-API holder. `none` is the
+# only value legacy@old-rest can honor (the old server hardcodes the C API
+# default); keep runs consistent or the comparison is polluted.
+CAPI_COMPRESSION ?= none
 
 # The shipped rpath usually suffices; explicit library paths are cheap
 # insurance for the quasardb extension inside the venv.
@@ -97,6 +101,7 @@ bench-%: venv
 	    --repo-root $(REPO_ROOT) --old-master-dir $(OLD_MASTER_DIR) \
 	    --qdb-api-python-dir $(QDB_API_PYTHON_DIR) \
 	    --reps $(REPS) $(if $(QUERIES),--queries '$(QUERIES)') \
+	    --capi-compression $(CAPI_COMPRESSION) \
 	    --results-dir $(BENCH_DIR)/results
 
 report: venv
