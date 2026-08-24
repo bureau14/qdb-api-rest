@@ -42,6 +42,19 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-24 -- Bench: warmup reps and median aggregation
+
+- Owner decision (Leon): every query now runs 3 discarded warmups followed
+  by 5 measured repetitions, and the report shows the median of the 5
+  (previously: mean of 3, no warmup -- the warmth bias diagnosed earlier
+  today). `WARMUP` / `REPS` Makefile variables; `WARMUP=0 REPS=1` for
+  smokes. Warmups use the identical measurement path, are persisted
+  flagged `warmup: true` (cold-start walls stay inspectable) and count for
+  the fingerprint check but never for the medians. Result-file schema:
+  `means` renamed to `medians`.
+- Cost: a full `legacy@old-rest` run grows from ~5 to ~12 minutes,
+  dominated by the `full` query. Accepted for a deliberate local tool.
+
 ## 2026-08-24 -- Bench: compression pinned to none; aggregation gap explained
 
 - Investigated why `legacy@old-rest` beat `native@qdbd` on the aggregation

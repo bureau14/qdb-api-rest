@@ -140,8 +140,16 @@ measurement runs in a **fresh child process**; the parent samples RSS of
 child and server at a fixed interval (`ps -o rss=` -- portable to macOS,
 where `/proc` does not exist) and collects a JSON result line from the
 child's stdout. The REST server is **restarted between runs** so RSS
-baselines reset. Default 3 runs per query; mean and per-run values are
-both persisted.
+baselines reset. Per query: 3 discarded warmup repetitions, then 5
+measured repetitions, summarized by the **median** (robust to a single
+straggler on a developer machine). Warmups run through the identical
+measurement path -- fresh child, fresh REST server, counters -- so only
+one code path exists; what they warm is qdbd, which needs 2-3 executions
+of a query to reach steady state (verified 2026-08-24, cause of the
+warmth bias in the first cross-run comparison). Warmup reps are persisted
+in the result file flagged `warmup: true` and count for the fingerprint
+check, but never for the medians; cold-start walls therefore stay
+inspectable. Counts are the `WARMUP` / `REPS` Makefile variables.
 
 ## Two volumes: qdbd -> reducer, reducer -> client
 
@@ -527,7 +535,8 @@ When new-rest wins on both, the tool has done its job and is removed.
 
 ## Decision log (2026-08-24)
 
-| Decision                                                                                       | Why                                                                                                                                                                                     | Rejected                                                                                   |
-| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `native@qdbd` measures `stream_query()` only                                                   | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run                                                          | keeping the one-shot `qdb_query` sub-mode                                                  |
-| C API compression pinned per run via `CAPI_COMPRESSION`, default `none` (owner decision, Leon) | binding defaults diverge (python balanced, old server none) and polluted the aggregation comparison; the old server is not configurable, so `none` is the only mode every run can share | per-binding defaults (proven inconsistent); balanced everywhere (old-rest cannot honor it) |
+| Decision                                                                                       | Why                                                                                                                                                                                     | Rejected                                                                                                                     |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `native@qdbd` measures `stream_query()` only                                                   | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run                                                          | keeping the one-shot `qdb_query` sub-mode                                                                                    |
+| C API compression pinned per run via `CAPI_COMPRESSION`, default `none` (owner decision, Leon) | binding defaults diverge (python balanced, old server none) and polluted the aggregation comparison; the old server is not configurable, so `none` is the only mode every run can share | per-binding defaults (proven inconsistent); balanced everywhere (old-rest cannot honor it)                                   |
+| 3 warmups + 5 measured reps per query, median reported (owner decision, Leon)                  | qdbd needs 2-3 executions to reach steady state and run ordering leaked into the old means; the median shrugs off one straggler                                                         | mean of 3 with no warmup (the polluted status quo); cheap warmup outside the measurement path (second code path to mistrust) |
