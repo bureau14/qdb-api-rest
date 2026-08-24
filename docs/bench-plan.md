@@ -66,11 +66,11 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 - **server** = the process that answers; owns `server_cmd()`, port,
   pidfile (qdbd is the shared service and has none).
 
-| protocol    | client                                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------------------------- |
-| `native`    | `quasardb` Python package over `qdb://`; sub-modes `query` (one-shot) and `stream` (`stream_query`, sc-19522) |
-| `legacy`    | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                         |
-| `flightsql` | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                              |
+| protocol    | client                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `native`    | `quasardb` Python package over `qdb://`, streaming via `stream_query` (sc-19522); one-shot `qdb_query` mode dropped 2026-08-24 |
+| `legacy`    | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                                          |
+| `flightsql` | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                               |
 
 | server     | what                                          | ports         |
 | ---------- | --------------------------------------------- | ------------- |
@@ -107,9 +107,7 @@ Supporting:
 - `ttfb_seconds` -- per-protocol definition, printed with the number:
   - `legacy`: first response body byte.
   - `flightsql`: arrival of the first Arrow record batch.
-  - `native` stream mode: return of the first batch from `stream_query`.
-  - `native` one-shot mode: equals wall time by construction (the C API
-    delivers nothing incrementally); reported as such, not hidden.
+  - `native`: return of the first batch from `stream_query`.
 - `client_peak_rss_bytes`: sampled from outside the measurement child.
 - `server_peak_rss_bytes`: REST-server process (absent for `native@qdbd`).
 - `server_cpu_seconds`: REST-server CPU time delta (informational only).
@@ -466,7 +464,7 @@ Reference for `native@qdbd` (sc-19522 measurements, same dataset):
    proven).
 3. `bench.py` core: child runner, server lifecycle, RSS sampler,
    fingerprinting, `results/` persistence, `report`.
-4. `protocols/native.py` (query + stream sub-modes),
+4. `protocols/native.py` (`stream_query`),
    `protocols/legacy.py`, `servers/old_rest.py`; run `native@qdbd` and
    `legacy@old-rest` and validate equivalence between them -- this
    cross-checks the legacy parser against the native client before the
@@ -515,3 +513,9 @@ When new-rest wins on both, the tool has done its job and is removed.
 | Native client input buffer = old server's `--max-in-buffer-size` | every run must accept the same result sizes; the binding default (256 MiB) fails `agg_wide`/`full`   | binding defaults per client                                        |
 | Counters read key-by-key on a direct node connection             | `stats.by_node` scans every stat key (~3k requests/read) and drowns small queries                    | `quasardb.stats.by_node` full scan                                 |
 | All-null columns fingerprint type-free                           | no observable wire type: legacy JSON types them `none`, the native client picks a dtype              | per-protocol dtype exceptions in the comparison                    |
+
+## Decision log (2026-08-24)
+
+| Decision                                     | Why                                                                                                                            | Rejected                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `native@qdbd` measures `stream_query()` only | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run | keeping the one-shot `qdb_query` sub-mode |

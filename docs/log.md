@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 | Milestone             | State       | Note                                  |
 | --------------------- | ----------- | ------------------------------------- |
@@ -41,6 +41,19 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-24 -- Bench: native@qdbd is stream_query only
+
+- Owner decision (Leon): the native reference measures `stream_query()`
+  only; the one-shot `qdb_query` sub-mode is removed from the bench
+  (`docs/bench-plan.md`, decision log 2026-08-24). The mode machinery in
+  `bench.py` (per-mode child config, per-mode means, the `("query",
+"stream")` loop) is deleted with it; `report` still reads old result
+  files that carry per-mode means keys.
+- Existing `results/native@qdbd.json` predates the change (contains
+  one-shot repetitions) and must be re-measured before the next `report`
+  that matters. The 2026-08-20 acceptance gate's operative fact stands:
+  native stream and legacy@old-rest fingerprints agree on all 7 queries.
 
 ## 2026-08-23 -- Context-carried logging and request middleware
 
