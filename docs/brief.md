@@ -137,9 +137,9 @@ container deployment first-class without breaking the package path.
    short-lived access tokens.
 7. **Cloud-native by default**: YAML/env/flag configuration, structured
    logs to stdout, Prometheus `/metrics`, k8s-compatible liveness and
-   readiness probes, graceful shutdown draining in-flight streams, a
-   first-class Docker image, and a statically linked Linux binary (new
-   static `libqdb_api.a`) so deployment is copy-one-file.
+   readiness probes, graceful shutdown draining in-flight streams, and a
+   statically linked Linux binary (new static `libqdb_api.a`) so
+   deployment is copy-one-file.
 8. **SRE-first resilience**: elaborate QuasarDB connection pooling
    (connection reuse is non-optional), circuit breakers, admission
    control, honest fast failure under overload. See Architecture.
@@ -150,6 +150,13 @@ container deployment first-class without breaking the package path.
 ## Non-goals
 
 - **No SPA, no frontend framework, no node/npm anywhere.**
+- **No packaging and no Docker image** (owner decision, 2026-08-24):
+  deb/rpm packaging and the standalone Docker image are removed from the
+  milestone plan entirely and return only as a deliberate re-add when
+  deployment becomes a concern. The `qdb-pkg-*` / `qdb-docker`
+  integration moves with them, as does the packaging-finalization note
+  that the RPM must mark the config `%config(noreplace)` (Debian's
+  conffile handling is the reference).
 - **No dashboard in the initial scope.** SSR dashboard is a future
   direction (see Architecture: Dashboard); the routing seam and
   cookie-compatible auth are preserved for it.
@@ -726,9 +733,8 @@ entry/exit criteria defined when it starts.
   probes, Buildkite CI on all supported platforms (Linux, Windows,
   FreeBSD, macOS; the CI matrix defines the exact arch/variant list, with
   qdb-nats-connector's pipeline as the reference) with the C-API artifact
-  dance
-  (static `libqdb_api.a` on Linux), packaging, Docker image, e2e harness
-  and benchmark scaffolding against a live qdbd.
+  dance (static `libqdb_api.a` on Linux), e2e harness and benchmark
+  scaffolding against a live qdbd.
 - **M1 -- Drop-in compat**: auth core (JWE, key derivation, rolling keys,
   legacy 12h tokens), connection pool core (budget, breaker, retry),
   legacy `/api/login`, `/api/query`, `/api/tags` with golden equivalence
@@ -746,10 +752,8 @@ entry/exit criteria defined when it starts.
 - **M5 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections, and fixing the stale `tls_port` sample
-  configs), `qdb-release` version registration, packaging finalization
-  (the RPM must mark the config `%config(noreplace)`; Debian's conffile
-  handling is the reference), migration notes covering the dropped
-  cluster endpoints and Prometheus remote read/write.
+  configs), `qdb-release` version registration, migration notes covering
+  the dropped cluster endpoints and Prometheus remote read/write.
 
 M1 before M2 is deliberate: shipping the drop-in early de-risks the
 compatibility story while the new protocol work proceeds.
