@@ -27,9 +27,14 @@ make report                       # compare all results/*.json
 ```
 
 `REPS=n` overrides the repetition count, `QUERIES=a,b` restricts the query
-set (both belong on the `make` command line). Each `bench-*` invocation
-rewrites its run's result file whole; the final comparison wants one
-invocation per run with the full query set.
+set, and `CAPI_COMPRESSION=none|balanced` sets the qdbd <-> C API
+compression for the run's C-API holder (all belong on the `make` command
+line). The default is `none`: it is the only value the old server can
+honor (its handle setup hardcodes the C API default), and mixing modes
+across runs pollutes the comparison -- `balanced` costs ~13% wall on the
+reduce-heavy queries over loopback. Each `bench-*` invocation rewrites its
+run's result file whole; the final comparison wants one invocation per run
+with the full query set.
 
 The first `make venv` builds the `quasardb` wheel from the qdb-api-python
 checkout (slow C++ build); it is cached on (checkout sha, C API hash) and

@@ -79,10 +79,14 @@ COUNTER_SETTLE_SECONDS = 1.0
 # --max-in-buffer-size so every run accepts the same result sizes.
 MAX_IN_BUF_SIZE = 8_589_934_592
 STREAM_BATCH_SIZE = 65_536
-# qdbd <-> C API compression: every client keeps the binding default so the
-# volume-1 counters are comparable across runs (no getter is exposed; the
-# default is `balanced` in qdb-api-go and qdb-api-python alike).
-CAPI_COMPRESSION = "balanced (binding default)"
+# qdbd <-> C API compression, selectable via --capi-compression. The binding
+# defaults are inconsistent (verified 2026-08-24: qdb-api-python's Cluster
+# sets balanced, the old server's NewHandle leaves the C API default, which
+# is none), so the bench pins the mode explicitly on every run; `none`
+# matches the old server, which is not configurable. The volume-1 counters
+# are pre-compression either way (identical out_bytes measured across
+# balanced and uncompressed runs of the same query).
+COMPRESSION_MODES = ("none", "balanced")
 
 FINGERPRINT_EDGE_ROWS = 5
 REL_TOLERANCE = 1e-9
@@ -530,7 +534,17 @@ def capi_library(qdb_dir):
     die(f"no libqdb_api under {qdb_dir}/lib")
 
 
-def environment_block(args):
+def capi_compression_of(args, server):
+    """Compression the C-API-holding process uses in this run: the
+    measurement child's handle for native, the REST server's otherwise.
+    The old server hardcodes the C API default; the new server's knob is
+    wired up at M1."""
+    if server == "old-rest":
+        return "none (old server hardcodes the C API default)"
+    return args.capi_compression
+
+
+def environment_block(args, server):
     """Everything needed to judge whether two result files are comparable."""
     import quasardb
 
@@ -546,7 +560,7 @@ def environment_block(args):
         "quasardb": quasardb.version(),
         "pandas": pd.__version__,
         "capi_sha256": file_sha256(capi_library(args.qdb_dir)),
-        "capi_compression": CAPI_COMPRESSION,
+        "capi_compression": capi_compression_of(args, server),
         "qdbd_version": qdbd_version,
         "git": {
             "qdb-api-rest": git_head(args.repo_root),
@@ -586,6 +600,7 @@ def child_config(args, protocol, server, query_id):
         "cluster_uri": args.cluster,
         "base_url": f"http://127.0.0.1:{port}",
         "gzip": not args.no_gzip,
+        "compression": args.capi_compression,
         "batch_size": STREAM_BATCH_SIZE,
         "max_in_buf_size": MAX_IN_BUF_SIZE,
     }
@@ -671,6 +686,10 @@ def summarize_query(reps):
 
 def run_main(args):
     protocol, server = parse_run(args)
+    if server == "old-rest" and args.capi_compression != "none":
+        die(f"legacy@old-rest cannot honor --capi-compression={args.capi_compression}: "
+            "the old server hardcodes the C API default (none); "
+            "run with CAPI_COMPRESSION=none")
     query_ids = args.queries.split(",") if args.queries else list(QUERIES)
     unknown = [q for q in query_ids if q not in QUERIES]
     if unknown:
@@ -699,7 +718,7 @@ def run_main(args):
             "run": args.run,
             "protocol": protocol,
             "server": server,
-            "environment": environment_block(args),
+            "environment": environment_block(args, server),
             "counter_baseline": {"out_bytes": baseline[0], "total_count": baseline[1]},
             "queries": queries,
         }, handle, indent=1)
@@ -999,6 +1018,10 @@ def parse_args(argv):
     run.add_argument("--results-dir", required=True)
     run.add_argument("--no-gzip", action="store_true",
                      help="drop Accept-Encoding on legacy requests")
+    run.add_argument("--capi-compression", choices=COMPRESSION_MODES, required=True,
+                     help="qdbd <-> C API compression for the run's C-API holder "
+                          "(the native child's handle; new-rest's server config at M1). "
+                          "old-rest accepts only 'none' (hardcoded in the old server)")
 
     child = sub.add_parser("_child")  # internal: one measurement, one process
     child.add_argument("config")
