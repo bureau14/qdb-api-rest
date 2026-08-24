@@ -208,10 +208,21 @@ Measurement mechanics, verified 2026-08-19:
   requests, measured once per run as a no-op baseline and subtracted.
 - OS-level socket accounting (`nettop`) reports zero for loopback traffic
   on macOS; the qdbd counters are the only portable source for volume 1.
-- Whether the counter is pre- or post-compression is unverified; it is
-  comparable across runs as long as every client uses the same
-  `qdb_compression_t` (both qdb-api-go and qdb-api-python default to
-  balanced); the bench asserts and records the setting.
+- The counter is pre-compression (verified 2026-08-24: byte-identical
+  `out_bytes` across balanced and uncompressed runs of the same query), so
+  volume-1 numbers are comparable regardless of `qdb_compression_t`. The
+  binding defaults are NOT the same (also verified 2026-08-24, contrary to
+  what this bullet previously claimed): qdb-api-python's `Cluster` sets
+  `qdb_comp_balanced` explicitly, while the old server's bare
+  `qdb.NewHandle()` leaves the C API default, which is `qdb_comp_none`
+  ("balanced ... not enabled by default", `qdb/option.h`). Over loopback,
+  balanced is a pure CPU tax: ~13% wall on `agg_topk` (~4.3 s vs ~3.8 s).
+  The bench therefore pins the mode on every run via the
+  `CAPI_COMPRESSION` Makefile variable (default `none`, the only value
+  `old-rest` can honor -- a `balanced` run against it fails fast) and
+  records the effective per-run value in the result file's environment
+  block. The new server must expose an explicit client-compression knob at
+  M1 so `legacy@new-rest` runs under the same pinned mode.
 - No WAN emulation (dummynet/netem) in the first version: bytes stand in
   for bandwidth, client CPU seconds for client compute. A throttled-link
   mode converting bytes into seconds is an opt-in later addition if the
@@ -516,6 +527,7 @@ When new-rest wins on both, the tool has done its job and is removed.
 
 ## Decision log (2026-08-24)
 
-| Decision                                     | Why                                                                                                                            | Rejected                                  |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
-| `native@qdbd` measures `stream_query()` only | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run | keeping the one-shot `qdb_query` sub-mode |
+| Decision                                                                                       | Why                                                                                                                                                                                     | Rejected                                                                                   |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `native@qdbd` measures `stream_query()` only                                                   | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run                                                          | keeping the one-shot `qdb_query` sub-mode                                                  |
+| C API compression pinned per run via `CAPI_COMPRESSION`, default `none` (owner decision, Leon) | binding defaults diverge (python balanced, old server none) and polluted the aggregation comparison; the old server is not configurable, so `none` is the only mode every run can share | per-binding defaults (proven inconsistent); balanced everywhere (old-rest cannot honor it) |
