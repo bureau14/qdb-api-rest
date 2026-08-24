@@ -42,6 +42,37 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-24 -- Bench: compression pinned to none; aggregation gap explained
+
+- Investigated why `legacy@old-rest` beat `native@qdbd` on the aggregation
+  queries (`agg_topk` 3.76 s vs 4.88 s). Two causes, fully decomposed, no
+  architectural component:
+  1. **Compression default mismatch (~0.5 s on `agg_topk`)**:
+     qdb-api-python's `Cluster` defaults to `qdb_comp_balanced`; the old
+     server's bare `qdb.NewHandle()` never sets compression and the C API
+     default is `qdb_comp_none` (`qdb/option.h` says so explicitly). Over
+     loopback, balanced is pure CPU tax. Python with compression disabled
+     hits 3.77-3.80 s -- identical to the old server.
+  2. **Run-ordering warmth bias (~0.6 s)**: native ran first against a
+     colder qdbd; warm native `agg_coarse` (0.27-0.33 s) matches legacy's
+     0.32 s exactly.
+- Ruled out along the way: client parallelism (flat 1..16), buffer sizes
+  (equalized), HTTP/JSON overhead (bare qdb-api-go probe == old server),
+  Python wrapper overhead (binding metrics: wall == raw `qdb_query` time).
+- Owner decision (Leon): every run uses **no compression**; the bench pins
+  it via `CAPI_COMPRESSION` (Makefile, default `none`, passed as a required
+  `--capi-compression` flag), `legacy@old-rest` fails fast on any other
+  value, and the effective per-run mode is recorded in the result file.
+  Facts and decision row in `docs/bench-plan.md` (Two volumes mechanics +
+  decision log 2026-08-24).
+- Also verified: the `$qdb.statistics.requests.out_bytes` counter is
+  pre-compression (byte-identical across balanced/uncompressed runs), so
+  volume-1 comparability was never affected.
+- M1 note: the rewrite must set client compression explicitly (config
+  knob, default none) so `legacy@new-rest` runs under the same pinned mode
+  -- and because compression moves reduce-heavy walls by ~13%, silently
+  inheriting a different default would fake a regression or a win.
+
 ## 2026-08-24 -- Bench: native@qdbd is stream_query only
 
 - Owner decision (Leon): the native reference measures `stream_query()`
