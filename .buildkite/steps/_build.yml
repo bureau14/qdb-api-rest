@@ -1,0 +1,33 @@
+label: ":hammer: build ({slug})"
+key: build-{slug}
+
+# The e2e harness is deliberately not run here (owner decision,
+# docs/log.md 2026-08-24): no start-services.sh, no dataset, and only the
+# C API archive is downloaded (server/utils return when e2e joins CI).
+
+commands:
+  - echo \"+++ Build\"
+  - bash scripts/cicd/20.build.sh
+  - echo \"+++ Tests - unit\"
+  - bash scripts/cicd/30.test-unit.sh
+
+plugins:
+  - bureau14/qdb-artifacts#master:
+      download:
+        clean: true
+        projects:
+        - project_id: "quasardb-build"
+          output-dir: "qdb"
+          extract: true
+          files:
+            - "*-c-api.tar.zst!*"
+  - bureau14/qdb-test-report#master:
+      title: "Test report {slug}"
+      job:
+        variant: {slug}
+        junit_input_path: "test-reports/*.xml"
+
+timeout_in_minutes: 30
+
+agents:
+  queue: "{queue}"

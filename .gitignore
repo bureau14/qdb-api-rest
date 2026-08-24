@@ -13,6 +13,7 @@ users.cfg
 license.key
 # Build outputs
 bin/
+test-reports/
 # e2e harness working files
 tests/e2e/datasets/
 tests/e2e/.old-master/
