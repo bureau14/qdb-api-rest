@@ -5,8 +5,8 @@
 # JUnit XML (go-junit-report, installed by cicd_setup_go_toolchain) for
 # the qdb-test-report plugin.
 #
-# The e2e harness (tests/e2e/) is deliberately not run in CI yet (owner
-# decision, docs/log.md 2026-08-24); this step is unit tests only.
+# The e2e harness (tests/e2e/) is deliberately not run in CI (owner
+# decision, .buildkite/AGENTS.md); this step is unit tests only.
 
 set -euxo pipefail
 

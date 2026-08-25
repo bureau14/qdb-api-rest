@@ -2,7 +2,7 @@ label: ":hammer: build ({slug})"
 key: build-{slug}
 
 # The e2e harness is deliberately not run here (owner decision,
-# docs/log.md 2026-08-24): no start-services.sh, no dataset, and only the
+# .buildkite/AGENTS.md): no start-services.sh, no dataset, and only the
 # C API archive is downloaded (server/utils return when e2e joins CI).
 
 commands:

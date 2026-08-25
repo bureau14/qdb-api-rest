@@ -6,8 +6,8 @@ vars, overlays env, the Docker plugin, and qdb-artifacts options
 step in parallel with eight per-platform combined steps (build + unit
 tests), then an aggregate test-report step.
 
-The e2e harness (tests/e2e/) is deliberately NOT wired into CI yet
-(owner decision, docs/log.md 2026-08-24); the per-platform steps do not
+The e2e harness (tests/e2e/) is deliberately NOT wired into CI
+(owner decision, .buildkite/AGENTS.md); the per-platform steps do not
 start qdbd or download the server/utils archives. Only the C API archive
 is fetched, and the build step asserts its layout -- the artifact dance
 the M1 cgo work will link against.
