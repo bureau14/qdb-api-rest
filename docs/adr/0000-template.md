@@ -15,7 +15,7 @@ The decision, stated as a fact.
 
 ## Consequences
 
-What becomes easier, what becomes harder, what is now off the table.
+What becomes easier, what becomes harder, what is off the table.
 
 ## Alternatives rejected
 
