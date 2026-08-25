@@ -1,9 +1,9 @@
 # tests/e2e -- end-to-end harness
 
 Golden-data equivalence, budgets and stress for the QuasarDB REST API, run
-against a live qdbd. Specification: `docs/e2e-plan.md`. Make + shell + curl
-
-- jq + awk; no Python (the temporary Python bench lives in `bench/`).
+against a live qdbd. Specification: `docs/e2e-plan.md`. Make + shell +
+curl + jq + awk; no Python (the bench in `bench/`, `docs/bench-plan.md`, is
+the one exception).
 
 ## Prerequisites
 
@@ -30,21 +30,15 @@ make test-legacy REST_URL=http://127.0.0.1:40090     # against an already runnin
 All capture/replay targets accept `CASES='<case> ...'` to run a subset of
 the golden cases (default: all).
 
-Until the dataset archive is uploaded to S3, pass
-`DATASETS_LOCAL_DIR=<dir holding reproduce-<date>-5613032.tar.gz>` to
-`make load`. The archive is produced by
+The dataset archive is produced by
 `make package-dataset SRC=<db.tar.zst> OUT=<dir>`, which also prints the
-`datasets.json` entry and the upload command.
+`datasets.json` entry and the upload command (operator step;
+`DATASETS_LOCAL_DIR=<dir>` makes `make load` take the archive from a local
+directory instead of S3).
 
 ## Legacy goldens
 
 `golden/legacy/<NN-slug>/request.json` is hand-written; `status`, `headers`
-and `body` next to it are captured by `legacy.sh capture` and committed,
-never edited by hand. See the header of `legacy.sh` for the request and
-compare modes. Both capture and replay run under `TZ=UTC` (set in
-`common.sh`): the legacy JSON renders timestamps in the server's local zone.
-
-Goldens come from the old server built from `master`, whose legacy wire
-code is byte-identical to the released `v3.14.2` (verified by diff; only a
-version constant differs), linked against the same `qdb/` C API as the
-server under test.
+and `body` next to it are captured from the old server and committed.
+Request and compare modes: the header of `legacy.sh`. Editing rules:
+`AGENTS.md`; provenance and verified facts: `docs/e2e-plan.md`.

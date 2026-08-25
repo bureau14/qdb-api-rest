@@ -55,8 +55,8 @@ qdbsh() {
     "$QDBSH" --log-directory "$QDBSH_LOG_DIR" "$@"
 }
 
-# The shipped tools carry an rpath to ../lib, but a plain env is cheap
-# insurance on platforms where it is not honoured.
+# Set the loader path explicitly: the shipped tools' rpath to ../lib is
+# not honoured on every platform.
 export LD_LIBRARY_PATH="$QDB_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$QDB_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 

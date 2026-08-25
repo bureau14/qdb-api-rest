@@ -31,5 +31,5 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   buffer (125 MiB), exactly as it does for `qdb_export`.
 - Shell style: `set -euo pipefail`, small named functions, definitions
   before use, ASCII only. No Python in this directory (the bench in
-  `bench/` is the one exception and is temporary; its conventions live in
-  `bench/AGENTS.md`).
+  `bench/`, `docs/bench-plan.md`, is the one exception; its conventions
+  live in `bench/AGENTS.md`).
