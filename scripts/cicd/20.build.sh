@@ -38,8 +38,7 @@ if [[ "$(uname)" == MINGW* ]]; then
     SUFFIX=".exe"
 fi
 
-# Same flag composition as the root Makefile's build target (ADR-011
-# pattern; the VERSION file is the single version-string location).
+# Same -ldflags as the root Makefile's build target (scripts/cicd/AGENTS.md).
 VERSION="$(cat VERSION)"
 GIT_SHA="$(git rev-parse HEAD)"
 BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

@@ -3,10 +3,7 @@
 # Invoked by .buildkite/steps/_build.yml after 20.build.sh.
 # Runs the Go test suite with the race detector; output is converted to
 # JUnit XML (go-junit-report, installed by cicd_setup_go_toolchain) for
-# the qdb-test-report plugin.
-#
-# The e2e harness (tests/e2e/) is deliberately not run in CI (owner
-# decision, .buildkite/AGENTS.md); this step is unit tests only.
+# the qdb-test-report plugin. Unit tests only (.buildkite/AGENTS.md).
 
 set -euxo pipefail
 
