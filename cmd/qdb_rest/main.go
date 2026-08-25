@@ -41,7 +41,7 @@ var (
 // versionText renders the version block in the format shared by all
 // QuasarDB binaries (qdb-nats-connector ADR-011, mirroring the C++
 // daemons), plus the version of the linked C API: the one line that is
-// not compile-time information, and the reason `-version` doubles as the
+// not compile-time information, and the reason `--version` doubles as the
 // CI smoke test for the cgo link on every platform.
 func versionText() string {
 	var b strings.Builder
