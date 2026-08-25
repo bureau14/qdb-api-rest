@@ -12,6 +12,15 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Small composable functions with descriptive names; explicit over
   implicit. Comments state why, as facts; never history.
 
+## Building
+
+- `internal/qdb` imports the vendored `qdb-api-go`, so anything that
+  imports it (the binary does) compiles through cgo against `qdb/`.
+  `source .envrc` (or direnv) before a bare `go build` / `go test`; the
+  root Makefile does it for you. Without it the compile fails on missing
+  qdb headers. `qdb-api-go` is never patched in `vendor/`: fix upstream,
+  then bump the version in `go.mod` and re-run `go mod vendor`.
+
 ## Logging (ADR-0002)
 
 - Log through the context, `*Context` methods only:
