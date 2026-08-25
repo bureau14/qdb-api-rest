@@ -26,6 +26,9 @@ sign-off.
 In flight:
 
 - M0: awaiting owner exit sign-off.
+- M1 groundwork: `qdb-api-go` vendored at upstream `4bcb78f`
+  (QDB-19065, static Linux link); `-version` now prints the linked C API
+  version so the CI smoke run proves the link on all eight platforms.
 
 Next:
 
@@ -38,10 +41,6 @@ Next:
 
 Handoff to M1:
 
-- Vendoring qdb-api-go is what turns the Linux static `libqdb_api.a`
-  from asserted-present into linked; the canonical CGO environment lands
-  in `scripts/cicd/00.common.sh` at the same time (`scripts/cicd/AGENTS.md`,
-  `.buildkite/AGENTS.md`).
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
