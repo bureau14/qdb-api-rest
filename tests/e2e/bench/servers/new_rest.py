@@ -2,4 +2,4 @@
 
 
 def server_cmd(cfg):
-    raise NotImplementedError("available with M1")
+    raise NotImplementedError("not enabled (docs/bench-plan.md)")
