@@ -31,9 +31,9 @@ all of this should feel.
   is what wires the C-API dependency up. Only the c-api archive is
   downloaded: nothing links it yet (M1 vendors qdb-api-go), but
   `cicd_assert_qdb_tree` proves the artifact dance on every platform.
-- The e2e harness is deliberately NOT in CI (owner decision, docs/log.md
-  2026-08-24). When it returns: add the server/utils archives to the
-  download blocks, start qdbd via `scripts/tests/setup/`, add a
+- The e2e harness is deliberately NOT in CI (owner decision 2026-08-24,
+  until further notice). When it returns: add the server/utils archives
+  to the download blocks, start qdbd via `scripts/tests/setup/`, add a
   `hooks/pre-exit` that stops services, and budget the step timeouts up.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
