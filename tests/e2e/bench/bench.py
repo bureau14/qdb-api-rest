@@ -35,14 +35,16 @@ import pandas as pd
 
 # --------------------------------------------------------------- constants
 
-# The registry of valid runs is this table, nothing else. A non-empty value
-# names the milestone that enables the run.
-REGISTRY = {
-    ("native", "qdbd"): "",
-    ("legacy", "old-rest"): "",
-    ("legacy", "new-rest"): "available with M1",
-    ("flightsql", "new-rest"): "available with M3",
-}
+# The registry of valid runs is this table, nothing else; report order is
+# table order. ENABLED gates the runs whose server and protocol exist
+# (docs/bench-plan.md, "Protocols, servers, runs").
+REGISTRY = (
+    ("native", "qdbd"),
+    ("legacy", "old-rest"),
+    ("legacy", "new-rest"),
+    ("flightsql", "new-rest"),
+)
+ENABLED = {("native", "qdbd"), ("legacy", "old-rest")}
 
 # The query set is data: adding a query is one line. Reduce-family rules
 # (docs/bench-plan.md, "Queries"): agg_topk is the agg_wide text plus the
@@ -490,9 +492,8 @@ def parse_run(args):
     if (protocol, server) not in REGISTRY:
         valid = ", ".join(f"{p}@{s}" for p, s in REGISTRY)
         die(f"unknown run '{args.run}'; valid runs: {valid}")
-    gate = REGISTRY[(protocol, server)]
-    if gate:
-        die(f"{args.run}: {gate}", code=2)
+    if (protocol, server) not in ENABLED:
+        die(f"{args.run}: run not enabled (docs/bench-plan.md, 'Protocols, servers, runs')", code=2)
     return protocol, server
 
 
