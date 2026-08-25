@@ -38,3 +38,11 @@ all of this should feel.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.
+- The org-wide `branch_configuration` (`master 3.14.x`) gates only
+  webhook-triggered builds. Build a feature branch through the API with
+  `ignore_pipeline_branch_filters: true`; the `bk` CLI does not set it,
+  so its 422 on a feature branch means "filtered", not "blocked".
+- Build creation takes the full 40-character commit SHA
+  (`git rev-parse HEAD`). An abbreviated or hand-expanded SHA fails at
+  checkout as GitHub's `upload-pack: not our ref`, which is not a
+  replication problem.
