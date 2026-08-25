@@ -4,12 +4,10 @@
 #   cicd_setup_cpu_baseline -- QDB_CPU_ARCHITECTURE_CORE2 -> GOAMD64
 #   cicd_assert_qdb_tree    -- fail fast when the C API artifact is absent
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
+#   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #
-# Sourced by 10.lint.sh, 20.build.sh and 30.test-unit.sh; not an
-# executable pipeline step (the leading 00. signals "loaded first, runs
-# nothing").  The CGO environment itself lives in the root .envrc (one
-# writer, shared with developer machines via direnv and the Makefile);
-# cicd_setup_qdb_env only sources it and echoes the result.
+# Sourced by 10.lint.sh, 20.build.sh and 30.test-unit.sh; not a pipeline
+# step (scripts/cicd/AGENTS.md).
 
 set -eu
 
@@ -23,6 +21,13 @@ BASE_DIR="$(dirname "$(dirname "${_CICD_SCRIPT_DIR}")")"
 export BASE_DIR
 export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
 mkdir -p "${TEST_REPORT_DIR}"
+
+# cicd_trust_workspace -- the docker plugin propagates the host UID into the
+# container, and git refuses to operate on a workspace owned by a different
+# user; every step calls this before touching the checkout.
+cicd_trust_workspace() {
+    git config --global --add safe.directory '*'
+}
 
 # cicd_setup_go_toolchain -- derive GO from GOROOT and validate the binary.
 #
