@@ -133,3 +133,13 @@ func TestBadLogVocabulary(t *testing.T) {
 		t.Fatal("want error for unknown log format, got nil")
 	}
 }
+
+func TestExampleIsTheDefaults(t *testing.T) {
+	cfg, err := load(t, []string{"--config", "../../examples/qdb_rest.yaml"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg != Default() {
+		t.Fatalf("examples/qdb_rest.yaml = %+v, want %+v", cfg, Default())
+	}
+}
