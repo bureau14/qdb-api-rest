@@ -1,17 +1,15 @@
 # qdb-api-rest -- build entry point. Test targets live in tests/e2e/Makefile.
 
-# Recipes that compile Go source the .envrc first: it is the single
-# source of truth for the CGO environment (qdb/ headers and library), and
-# needs bash for ${BASH_SOURCE[0]}.
+# Recipes that compile Go source the .envrc first (the CGO environment;
+# needs bash for ${BASH_SOURCE[0]}).
 SHELL := bash
 
 GOLANGCI_LINT_VERSION := v2.13.1
 GOLANGCI_LINT         := bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
-# Build metadata injected via -ldflags (qdb-nats-connector ADR-011); the
-# VERSION file is the single version-string location in this repo.
-# scripts/cicd/20.build.sh composes the same flags for CI, where GNU make
-# is not available on every platform.
+# Build metadata injected via -ldflags; composition rule:
+# scripts/cicd/AGENTS.md. The VERSION file is the single version-string
+# location (docs/brief.md, "Versioning and release").
 VERSION    := $(shell cat VERSION)
 GIT_SHA    := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
