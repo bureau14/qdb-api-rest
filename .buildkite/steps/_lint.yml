@@ -2,8 +2,8 @@ label: ":golangci-lint: lint"
 key: lint
 
 # qdb-artifacts runs first (pre-command hook order) to populate qdb/ with
-# the C API before 10.lint.sh starts; the script asserts the layout even
-# though nothing links it yet (M1's cgo work will).  The docker overlay
+# the C API before 10.lint.sh starts: golangci-lint's typecheck compiles
+# the cgo package and needs the headers.  The docker overlay
 # (bureau14/builder:rhel7) is injected by pipeline.py::_lint_step via
 # apply_docker so that the propagated env and the qdb/ volume are both
 # visible inside the container -- the same container the build steps use.

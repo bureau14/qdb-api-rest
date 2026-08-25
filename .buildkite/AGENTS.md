@@ -29,8 +29,9 @@ all of this should feel.
 - The platform matrix mirrors quasardb's pipeline name for name; the
   qdb-artifacts download variant derives from the platform slug, which
   is what wires the C-API dependency up. Only the c-api archive is
-  downloaded: nothing links it yet (M1 vendors qdb-api-go), but
-  `cicd_assert_qdb_tree` proves the artifact dance on every platform.
+  downloaded; the vendored qdb-api-go links it (static `libqdb_api.a`
+  on Linux, the shared library elsewhere) and `cicd_assert_qdb_tree`
+  fails fast when it is absent.
 - The e2e harness is deliberately NOT in CI (owner decision 2026-08-24,
   until further notice). When it returns: add the server/utils archives
   to the download blocks, start qdbd via `scripts/tests/setup/`, add a
