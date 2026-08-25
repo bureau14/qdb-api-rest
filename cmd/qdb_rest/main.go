@@ -26,10 +26,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
-// Build metadata, injected at build time via -ldflags -X (Makefile and
-// scripts/cicd/20.build.sh compose the same flags); no version constants
-// live in source. goamd64 stays empty on non-amd64 targets and on builds
-// that do not pin a microarchitecture level.
+// Build metadata, injected via -ldflags -X (composition rule:
+// scripts/cicd/AGENTS.md); no version constants live in source. goamd64
+// stays empty on non-amd64 targets and on builds that do not pin a
+// microarchitecture level.
 var (
 	version   = "dev"
 	commit    = "unknown"
@@ -38,11 +38,9 @@ var (
 	goamd64   = ""
 )
 
-// versionText renders the version block in the format shared by all
-// QuasarDB binaries (qdb-nats-connector ADR-011, mirroring the C++
-// daemons), plus the version of the linked C API: the one line that is
-// not compile-time information, and the reason `--version` doubles as the
-// CI smoke test for the cgo link on every platform.
+// versionText renders the version block shared by all QuasarDB binaries
+// (qdb-nats-connector ADR-011) plus the linked C API version, the one
+// line that is not compile-time information.
 func versionText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "quasardb rest api version: %s\n", version)
@@ -59,8 +57,9 @@ func versionText() string {
 	return b.String()
 }
 
-// shutdownGrace bounds the drain of in-flight requests on SIGTERM; it stays
-// below the 10s the e2e harness allows between SIGTERM and SIGKILL.
+// shutdownGrace bounds the drain of in-flight requests on SIGTERM; it must
+// stay below the harness's SIGTERM-to-SIGKILL window
+// (tests/e2e/common.sh::stop_server).
 const shutdownGrace = 8 * time.Second
 
 // newServer assembles one listener's server; the HTTPS listener carries a

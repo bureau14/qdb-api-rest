@@ -1,7 +1,6 @@
 // Package observe owns the operational surface of the server: the
 // process logger, how it travels through context, and the attribute
-// vocabulary shared by every log line. Metrics and build info live here
-// as well.
+// vocabulary shared by every log line.
 package observe
 
 import (

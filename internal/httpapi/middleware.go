@@ -42,8 +42,7 @@ func requestID(r *http.Request) string {
 }
 
 // responseRecorder captures status and size for the access line. Unwrap
-// keeps http.ResponseController (Flush, deadlines) working through it:
-// the streamed data plane depends on Flush.
+// keeps http.ResponseController (Flush, deadlines) working through it.
 type responseRecorder struct {
 	http.ResponseWriter
 	status int
@@ -67,8 +66,7 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 
 // withRequestLogging tags the request context with its id, echoes the id,
 // and emits one access line when the handler returns. Only the id rides
-// on the context: lines join on it, so per-line method/path would be
-// noise on a streaming path that logs per batch.
+// on the context; lines join on it (ADR-0002).
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

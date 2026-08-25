@@ -5,23 +5,21 @@ package httpapi
 
 import "net/http"
 
-// Both probes answer 200 with an empty body and no Content-Type; load
-// balancers at customer sites health-check the legacy paths, and the wire
-// shape is pinned by the legacy status-probe goldens.
-
 // handleLiveness reports that the process is up and serving HTTP.
 func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleReadiness reports whether this instance can serve traffic; it gains
-// a QuasarDB dependency check once the connection pool exists.
+// handleReadiness reports whether this instance can serve traffic;
+// readiness beyond serving HTTP is the QuasarDB connection pool's verdict.
 func handleReadiness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// registerStatusRoutes serves the probes at their legacy paths and their
-// /api/v2 mirrors.
+// registerStatusRoutes serves the probes at their legacy paths, which
+// load balancers at customer sites health-check, and at their /api/v2
+// mirrors. Both answer 200 with an empty body and no Content-Type, the
+// shape pinned by the status-probe goldens.
 func registerStatusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status/liveness", handleLiveness)
 	mux.HandleFunc("GET /api/status/readiness", handleReadiness)
