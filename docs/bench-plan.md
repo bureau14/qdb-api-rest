@@ -3,10 +3,10 @@
 Status: approved. This document specifies the temporary local benchmark
 described in the brief's Testing doctrine (item 4). It is a working
 document: dates and verified facts are recorded here, not in the brief;
-progress is recorded in `docs/log.md`, not here. On retirement, any
-mechanics still worth keeping move to `docs/e2e-plan.md` or the relevant
-`AGENTS.md`, this status becomes `retired`, and `docs/log.md` gets a
-one-line entry.
+progress is recorded in `docs/log.md`, not here. When the bench is
+removed, any mechanics still worth keeping move to `docs/e2e-plan.md` or
+the relevant `AGENTS.md`, this document is deleted with it, and
+`docs/log.md` gets a one-line entry (`docs/AGENTS.md`, Plans).
 
 **This tool is a one-time thing.** It exists to prove that the rewrite
 beats the old REST API on client wall clock, and is retired once that is
