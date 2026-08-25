@@ -2,10 +2,10 @@
 """Assessment bench: one (protocol, server) pair per invocation.
 
 Measures wall clock until a Python client holds a fully materialized
-pandas DataFrame, plus the supporting metrics of docs/bench-plan.md.
-Temporary tool: deletable with `rm -rf tests/e2e/bench` once the rewrite
-beats the old server. The Makefile is the only configuration source;
-every path and port arrives as an explicit flag.
+pandas DataFrame, plus the supporting metrics of docs/bench-plan.md,
+which also owns the tool's lifetime and retirement condition. The
+Makefile is the only configuration source; every path and port arrives
+as an explicit flag.
 
 Subcommands: run, report, selftest (and the internal _child, spawned by
 run for each measurement so RSS and CPU are attributable to one process).
@@ -539,8 +539,7 @@ def capi_library(qdb_dir):
 def capi_compression_of(args, server):
     """Compression the C-API-holding process uses in this run: the
     measurement child's handle for native, the REST server's otherwise.
-    The old server hardcodes the C API default; the new server's knob is
-    wired up at M1."""
+    old-rest is not configurable and holds the C API default."""
     if server == "old-rest":
         return "none (old server hardcodes the C API default)"
     return args.capi_compression
@@ -1033,7 +1032,7 @@ def parse_args(argv):
                      help="drop Accept-Encoding on legacy requests")
     run.add_argument("--capi-compression", choices=COMPRESSION_MODES, required=True,
                      help="qdbd <-> C API compression for the run's C-API holder "
-                          "(the native child's handle; new-rest's server config at M1). "
+                          "(the native child's handle, or the REST server's config); "
                           "old-rest accepts only 'none' (hardcoded in the old server)")
 
     child = sub.add_parser("_child")  # internal: one measurement, one process

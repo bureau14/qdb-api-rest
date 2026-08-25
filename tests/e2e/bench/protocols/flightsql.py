@@ -4,4 +4,4 @@ TTFB_DEFINITION = "arrival of the first Arrow record batch"
 
 
 def fetch(cfg, query, record_ttfb, telemetry):
-    raise NotImplementedError("available with M3")
+    raise NotImplementedError("not enabled (docs/bench-plan.md)")

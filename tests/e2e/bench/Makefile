@@ -8,8 +8,8 @@
 #   make old-server                build the old REST server (delegates to tests/e2e)
 #   make bench-native@qdbd         -> results/native@qdbd.json
 #   make bench-legacy@old-rest     -> results/legacy@old-rest.json
-#   make bench-legacy@new-rest     available with M1
-#   make bench-flightsql@new-rest  available with M3
+#   make bench-legacy@new-rest     not enabled (docs/bench-plan.md)
+#   make bench-flightsql@new-rest  not enabled (docs/bench-plan.md)
 #   make report                    merge and print results/*.json
 #
 # qdbd and the dataset are the e2e harness's business:

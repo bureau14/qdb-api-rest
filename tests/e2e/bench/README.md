@@ -2,10 +2,8 @@
 
 Measures wall-clock time until a Python client holds a fully materialized
 pandas DataFrame, per (protocol, server) pair, on the 5.6M-row `reproduce`
-dataset. Specification and metric definitions: `docs/bench-plan.md`.
-Temporary tool, local developer machines only, never CI; retired (one
-`rm -rf tests/e2e/bench`) once the rewrite demonstrably beats the old
-server.
+dataset. Specification, metric definitions, lifetime and retirement condition:
+`docs/bench-plan.md`. Local developer machines only, never CI.
 
 ## Prerequisites
 
@@ -21,8 +19,8 @@ server.
 make check venv old-server        # parity check, bench venv, old binary
 make bench-native@qdbd            # -> results/native@qdbd.json
 make bench-legacy@old-rest        # -> results/legacy@old-rest.json
-make bench-legacy@new-rest        # available with M1
-make bench-flightsql@new-rest     # available with M3
+make bench-legacy@new-rest        # not enabled (docs/bench-plan.md)
+make bench-flightsql@new-rest     # not enabled (docs/bench-plan.md)
 make report                       # compare all results/*.json
 ```
 
