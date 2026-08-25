@@ -78,26 +78,18 @@ PLATFORMS: list[Platform] = [
 ]
 
 # Environment variable layering: global -> step -> os -> os+step -> cpu.
-# Empty dicts are kept on purpose so future env knobs land in the right
-# slot without refactoring the merge call.
+# Empty dicts keep the merge slots explicit.
 GLOBAL_ENV: dict[str, str] = {
     "AWS_DEFAULT_REGION": "eu-west-1",
 }
 
 STEP_ENV: dict[str, dict[str, str]] = {}
 
-# Linux builds run inside bureau14/builder:rhel7, whose default /usr/bin/gcc
-# is 7.3.1 -- too old to provide the aarch64 outline-atomic libgcc helpers
-# (__aarch64_*_sync) that Go 1.25+ emits from its prebuilt -race (TSan)
-# runtime, so linking the race-enabled test binaries fails on linux-aarch64.
-# Pin CC/CXX to gcc15 (the compiler all QuasarDB artifacts are built with;
-# its libgcc has the helpers) for both linux arches -- amd64 never references
-# those symbols, so this is a harmless consistency win there.  The doubled $$
-# escapes Buildkite's upload-time interpolation so the literal
-# $QDB_CICD_AGENT_GCC15_* reaches the agent shell, which substitutes the
-# concrete path (written by qdb-cloud-deployments 36-write-agent-env.sh);
-# the docker plugin then propagates the resolved CC/CXX into the container.
-# Same idiom as _go_env_for_agent() below.
+# Linux builds pin CC/CXX to gcc15 on both arches (the compiler every
+# QuasarDB artifact is built with): the rhel7 builder's gcc 7 lacks the
+# aarch64 outline-atomic libgcc helpers (__aarch64_*_sync) that Go's
+# prebuilt -race runtime links. Doubled $$: see AGENTS.md; same idiom as
+# _go_env_for_agent() below.
 OS_ENV: dict[str, dict[str, str]] = {
     "linux": {
         "CC": "$$QDB_CICD_AGENT_GCC15_CC",

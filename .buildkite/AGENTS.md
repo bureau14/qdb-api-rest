@@ -20,22 +20,19 @@ all of this should feel.
 
 ## Facts
 
-- The Buildkite web pipeline for qdb-api-rest already exists and drives
-  `master`'s `.buildkite/pipeline.py` (the legacy server's pipeline uses
-  the same dynamic-generator convention). This directory keeps that
-  entrypoint -- `python3 pipeline.py [generate|check]`, same
-  `requirements.txt` -- so builds of this branch need no web-side
-  change.
+- The web pipeline's entrypoint is `python3 pipeline.py [generate|check]`
+  with this directory's `requirements.txt`, the same convention as
+  `master`; keep it, so no branch ever needs a web-side pipeline change.
 - The platform matrix mirrors quasardb's pipeline name for name; the
   qdb-artifacts download variant derives from the platform slug, which
   is what wires the C-API dependency up. Only the c-api archive is
   downloaded; the vendored qdb-api-go links it (static `libqdb_api.a`
   on Linux, the shared library elsewhere) and `cicd_assert_qdb_tree`
   fails fast when it is absent.
-- The e2e harness is deliberately NOT in CI (owner decision 2026-08-24,
-  until further notice). When it returns: add the server/utils archives
-  to the download blocks, start qdbd via `scripts/tests/setup/`, add a
-  `hooks/pre-exit` that stops services, and budget the step timeouts up.
+- The e2e harness is not in CI (owner decision 2026-08-24). Re-adding
+  recipe: add the server/utils archives to the download blocks, start
+  qdbd via `scripts/tests/setup/`, add a `hooks/pre-exit` that stops
+  services, and budget the step timeouts up.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.
