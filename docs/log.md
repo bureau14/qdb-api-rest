@@ -7,14 +7,14 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-08-24
 
-| Milestone             | State       | Note                                    |
-| --------------------- | ----------- | --------------------------------------- |
-| M0 -- Foundation      | in progress | CI skeleton authored; agent run pending |
-| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place   |
-| M2 -- v2 data plane   | not started |                                         |
-| M3 -- Flight SQL      | not started |                                         |
-| M4 -- Embedded DuckDB | not started |                                         |
-| M5 -- Release         | not started |                                         |
+| Milestone             | State       | Note                                                                |
+| --------------------- | ----------- | ------------------------------------------------------------------- |
+| M0 -- Foundation      | in progress | CI green on all 8 platforms (build 43); exit pending owner sign-off |
+| M1 -- Drop-in compat  | not started | e2e legacy goldens + red bar in place                               |
+| M2 -- v2 data plane   | not started |                                                                     |
+| M3 -- Flight SQL      | not started |                                                                     |
+| M4 -- Embedded DuckDB | not started |                                                                     |
+| M5 -- Release         | not started |                                                                     |
 
 In flight:
 
@@ -27,17 +27,14 @@ In flight:
   green under the harness (see 2026-08-20 and 2026-08-21 entries);
   `VERSION` file + `-ldflags` build metadata + `-version` flag; Buildkite
   pipeline skeleton (lint + 8-platform build/unit-test; see 2026-08-24
-  CI entry).
+  CI entry) verified green end-to-end on Buildkite, `-race` on all
+  platforms including Windows (build 43; see 2026-08-25 entry).
 
 Next:
 
-1. M0 closing: trigger a Buildkite build of this branch and get it green
-   on all 8 platforms. No web-side change needed: the existing
-   qdb-api-rest web pipeline already drives `master`'s
-   `.buildkite/pipeline.py`, and this branch's generator keeps the same
-   entrypoint (`python3 pipeline.py generate|check`, same
-   requirements.txt). The first run shakes out agent env assumptions
-   (GO127/gcc15 vars, artifact fallback).
+1. M0 exit sign-off (owner): everything in the amended M0 scope is
+   landed and CI-verified; the static `libqdb_api.a` is asserted present
+   on Linux but actually linked only when M1 vendors qdb-api-go.
 2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=...` green, then
    `make -C tests/e2e/bench bench-legacy@new-rest` (the bench is built and
    waiting; enable the registry row by clearing its gate in `bench.py`).
@@ -50,6 +47,35 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-25 -- First Buildkite runs green; Windows -race wiring
+
+- Builds 41-43 on `sc-19567/rest-rewrite` (created via API with
+  `ignore_pipeline_branch_filters: true`; no web-side changes). Build 43
+  is the keeper: 10/10 passed -- lint, all 8 platform build+unit-test
+  steps with `-race`, aggregate report. The artifact dance held on every
+  platform (c-api resolved from quasardb-build `master` via the plugin's
+  ref fallback), the GO127/gcc15 agent vars exist everywhere including
+  macOS, and the `-version` smoke printed injected metadata on all 8.
+- Build 41 failed both Windows legs: `go: -race requires cgo`. Wrong
+  first fix (dropping `-race` on Windows) was reverted on owner
+  instruction; the real cause is PATH: gcc.exe lives in native
+  `C:\mingw64\bin` (`/c/mingw64/bin` under MSYS) and the MSYS-internal
+  `/mingw64/bin` on the job PATH does not resolve there, so go silently
+  disables cgo. Fix mirrors qdb-nats-connector: `cicd_setup_c_toolchain`
+  (the prepend, `00.common.sh`) plus `windows-go-test-exec.sh` as the
+  `go test -exec` wrapper (PATH converted to Windows form so test
+  binaries resolve MinGW runtime DLLs under the service context).
+- Lessons:
+  - The org-wide `branch_configuration: "master 3.14.x"` gates only
+    automatic webhook builds. Manual/API builds on any branch are
+    normal and pass `ignore_pipeline_branch_filters: true`; the `bk`
+    CLI (3.46) does not set it, so its 422 on a feature branch is not
+    "builds blocked".
+  - Buildkite build creation wants a full 40-char SHA; resolve it with
+    `git rev-parse`, never expand an abbreviation by hand -- a wrong
+    SHA fails checkout as GitHub's `upload-pack: not our ref`, which
+    reads like a replication problem and is not.
 
 ## 2026-08-24 -- VERSION, build metadata, Buildkite CI skeleton
 
