@@ -345,7 +345,8 @@ Server binaries are built by `make old-server` (delegates to
 `go build` against the repo's `qdb/`) and `make new-server` (this branch);
 `bench.py` receives the binary paths as flags. Old-server launch flags that matter (verified):
 `--local -c qdb://127.0.0.1:2836 --pool-size 4 --parallelism-count 4
---max-in-buffer-size 8589934592 --log-file <path>`. The deployed binary
+--max-in-buffer-size 8589934592 --log-file <path>`. `--local` overrides
+`--port`, so the old server always answers on 40080. The deployed binary
 has no HTTP timeouts (server flag group never parsed), so no timeout
 equalization is needed.
 
