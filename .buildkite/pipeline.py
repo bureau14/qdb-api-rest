@@ -9,8 +9,9 @@ tests), then an aggregate test-report step.
 The e2e harness (tests/e2e/) is deliberately NOT wired into CI
 (owner decision, .buildkite/AGENTS.md); the per-platform steps do not
 start qdbd or download the server/utils archives. Only the C API archive
-is fetched, and the build step asserts its layout -- the artifact dance
-the M1 cgo work will link against.
+is fetched; the vendored qdb-api-go links it (static libqdb_api.a on
+Linux), with the locations supplied by the root .envrc through
+cicd_setup_qdb_env.
 
 Usage:
     python3 pipeline.py [generate|check]
@@ -43,7 +44,9 @@ STEPS_DIR = Path(__file__).parent / "steps"
 
 # Repo-specific Platform overlays. Linux platforms run inside the rhel7
 # builder container; other OSes run on bare agents (docker_image="").
-# No toolchain fields are set -- Go does not need c_compiler / cxx_compiler /
+# No toolchain fields are set: cgo finds the C compiler through CC/CXX
+# (OS_ENV below, Linux) or natively (FreeBSD, macOS) or via the PATH
+# prepend in .envrc (Windows), not through c_compiler / cxx_compiler /
 # asm_compiler / ccache.
 _LINUX = dict(docker_image="bureau14/builder:rhel7")
 _OS_OVERLAY: dict[str, dict] = {"linux": _LINUX}

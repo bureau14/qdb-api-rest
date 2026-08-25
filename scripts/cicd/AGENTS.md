@@ -21,6 +21,9 @@ in `.buildkite/` (see its `AGENTS.md`).
   when one changes, change the other.
 - Builds and tests run `-mod=vendor` and `-buildvcs=false`; the reasons
   are commented where they are used.
-- No CGO env helper exists yet; when M1 vendors qdb-api-go, the
-  canonical CGO environment lands in `00.common.sh` (qdb-nats-connector
-  `.envrc` + `cicd_setup_qdb_env` is the reference).
+- The CGO environment has one writer, the root `.envrc` (direnv on
+  developer machines, sourced by the root Makefile and by
+  `cicd_setup_qdb_env` in CI). Every step that compiles Go calls
+  `cicd_assert_qdb_tree` then `cicd_setup_qdb_env` -- lint included,
+  since golangci-lint's typecheck compiles the cgo package. Never export
+  `CGO_*` from a step script.
