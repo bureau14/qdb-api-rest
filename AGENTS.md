@@ -22,12 +22,10 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 
 | Folder                 | Contains                                                        | Open its `AGENTS.md` when                                                 |
 | ---------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `cmd/qdb_rest/`        | the binary: entry point, command line, build metadata           | touching flags, startup, shutdown, or the version block                   |
 | `docs/`                | project brief, plans, ADRs, project log (current state)         | starting any session; reading or writing any planning or design text      |
 | `tests/e2e/`           | e2e harness: Makefile, helpers, legacy goldens, dataset tooling | touching tests, goldens, the dataset, or starting a REST server for tests |
 | `internal/`            | Go packages: config, observe, tlsconf, httpapi, ...             | writing or reviewing any Go code; logging and test conventions live there |
 | `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd); has no `AGENTS.md`  | never edit here; update by bumping the submodule SHA                      |
 | `scripts/cicd/`        | Buildkite step scripts (lint, build, unit tests)                | touching CI step scripts or the shared `00.common.sh` helpers             |
 | `.buildkite/`          | pipeline generator, step templates, qdb-cicd-tools submodule    | touching the CI pipeline or platform matrix                               |
-
-Folders introduced by later milestones (`cmd/`) get their own row here
-when they gain an `AGENTS.md`.
