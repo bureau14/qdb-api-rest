@@ -776,10 +776,10 @@ compatibility story while the new protocol work proceeds.
 ## Risks and open explorations
 
 1. **Static `libqdb_api.a` availability** per platform: the server build
-   bundles a self-contained `.a` on Linux only, and `qdb-api-go`'s link
-   directives are dynamic-only -- static linking needs an upstream
-   `qdb-api-go` change (merged upstream per the vendoring rule); dynamic
-   fallback where the toolchain forces it (Windows likely).
+   bundles a self-contained `.a` on Linux only, and `qdb-api-go` links it
+   statically there since QDB-19065 (the upstream change the vendoring
+   rule required); every other platform links the shared library and
+   relies on rpath or loader-path setup (`.envrc`).
 2. **qdb-api-go materialization ceiling**: server-side streaming of native
    query results requires upstream binding work and possibly C API work
    (no existing C API function delivers one-shot query results
