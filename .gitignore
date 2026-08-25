@@ -29,3 +29,5 @@ tests/e2e/bench/.stamp-wheel
 .venv/
 __pycache__/
 qdbsh.log*
+# bk CLI local state
+.bk.yaml
