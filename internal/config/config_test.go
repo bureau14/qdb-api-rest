@@ -50,7 +50,7 @@ func TestPrecedenceFileEnvFlag(t *testing.T) {
 		"QDB_REST_LISTEN_HTTPS": ":3333",
 		"QDB_REST_LOG_LEVEL":    "warn",
 	}
-	cfg, err := load(t, []string{"-config", path, "-log-level", "error"}, vars)
+	cfg, err := load(t, []string{"--config", path, "--log-level", "error"}, vars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestPrecedenceFileEnvFlag(t *testing.T) {
 func TestEnvInterpolation(t *testing.T) {
 	path := writeConfig(t, "tls:\n  certificate: \"${CERT_PATH}\"\n  private_key: \"${KEY_PATH}\"\n")
 	vars := map[string]string{"CERT_PATH": "/etc/cert.pem", "KEY_PATH": "/etc/key.pem"}
-	cfg, err := load(t, []string{"-config", path}, vars)
+	cfg, err := load(t, []string{"--config", path}, vars)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestEnvInterpolation(t *testing.T) {
 
 func TestEnvInterpolationUnsetIsError(t *testing.T) {
 	path := writeConfig(t, "tls:\n  certificate: \"${MISSING_VAR}\"\n")
-	_, err := load(t, []string{"-config", path}, nil)
+	_, err := load(t, []string{"--config", path}, nil)
 	if err == nil || !strings.Contains(err.Error(), "MISSING_VAR") {
 		t.Fatalf("want unset-variable error naming MISSING_VAR, got %v", err)
 	}
@@ -87,7 +87,7 @@ func TestEnvInterpolationUnsetIsError(t *testing.T) {
 
 func TestUnknownKeyRejected(t *testing.T) {
 	path := writeConfig(t, "listne:\n  http: \":1111\"\n")
-	if _, err := load(t, []string{"-config", path}, nil); err == nil {
+	if _, err := load(t, []string{"--config", path}, nil); err == nil {
 		t.Fatal("want error for unknown key, got nil")
 	}
 }
@@ -104,7 +104,7 @@ func TestConfigPathFromEnv(t *testing.T) {
 }
 
 func TestEmptyFlagValueDisablesListener(t *testing.T) {
-	cfg, err := load(t, []string{"-listen-tls="}, nil)
+	cfg, err := load(t, []string{"--listen-tls="}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,22 +114,22 @@ func TestEmptyFlagValueDisablesListener(t *testing.T) {
 }
 
 func TestBothListenersDisabledIsError(t *testing.T) {
-	if _, err := load(t, []string{"-listen=", "-listen-tls="}, nil); err == nil {
+	if _, err := load(t, []string{"--listen=", "--listen-tls="}, nil); err == nil {
 		t.Fatal("want error with both listeners disabled, got nil")
 	}
 }
 
 func TestTLSPairMustBeComplete(t *testing.T) {
-	if _, err := load(t, []string{"-tls-cert", "/etc/cert.pem"}, nil); err == nil {
+	if _, err := load(t, []string{"--tls-cert", "/etc/cert.pem"}, nil); err == nil {
 		t.Fatal("want error for certificate without key, got nil")
 	}
 }
 
 func TestBadLogVocabulary(t *testing.T) {
-	if _, err := load(t, []string{"-log-level", "verbose"}, nil); err == nil {
+	if _, err := load(t, []string{"--log-level", "verbose"}, nil); err == nil {
 		t.Fatal("want error for unknown log level, got nil")
 	}
-	if _, err := load(t, []string{"-log-format", "xml"}, nil); err == nil {
+	if _, err := load(t, []string{"--log-format", "xml"}, nil); err == nil {
 		t.Fatal("want error for unknown log format, got nil")
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ErrVersionRequested is returned by Load when the -version flag is
+// ErrVersionRequested is returned by Load when the --version flag is
 // passed; the caller prints its build metadata and exits. The metadata
 // itself lives in package main (injected via -ldflags), which is why the
 // flag surfaces as a sentinel instead of being handled here.
@@ -123,7 +123,7 @@ func applyEnv(cfg *Config, lookup func(string) (string, bool)) {
 
 // flagValues holds one parsed command line; set records which flags were
 // actually passed, so only those override the file and the environment
-// (an explicitly empty flag value, e.g. -listen-tls=, is an override too).
+// (an explicitly empty flag value, e.g. --listen-tls=, is an override too).
 type flagValues struct {
 	configPath  string
 	showVersion bool
@@ -131,20 +131,41 @@ type flagValues struct {
 	set         map[string]bool
 }
 
-// parseFlags parses args. The flag defaults shown by -h come from
+// usageText renders the options GNU-style (--name VALUE), the spelling
+// every QuasarDB binary uses; the flag package parses one or two dashes
+// alike. Value placeholders come from backquoted words in the usage
+// strings (flag.UnquoteUsage); a default is shown only when it is set.
+func usageText(fs *flag.FlagSet) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Usage: %s [--config FILE] [options]\n\n", fs.Name())
+	b.WriteString("Every option also has a config-file key and a QDB_REST_* environment\n")
+	b.WriteString("variable; precedence: defaults < file < environment < flags.\n\nOptions:\n")
+	fs.VisitAll(func(f *flag.Flag) {
+		placeholder, usage := flag.UnquoteUsage(f)
+		fmt.Fprintf(&b, "  %-22s %s", strings.TrimSpace("--"+f.Name+" "+placeholder), usage)
+		if f.DefValue != "" && f.DefValue != "false" {
+			fmt.Fprintf(&b, " (default %q)", f.DefValue)
+		}
+		b.WriteString("\n")
+	})
+	return b.String()
+}
+
+// parseFlags parses args. The defaults shown by --help come from
 // Default().
 func parseFlags(name string, args []string, output io.Writer) (flagValues, error) {
 	parsed := flagValues{values: Default(), set: map[string]bool{}}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
-	fs.StringVar(&parsed.configPath, "config", "", "path to YAML config file")
+	fs.Usage = func() { _, _ = io.WriteString(output, usageText(fs)) }
+	fs.StringVar(&parsed.configPath, "config", "", "read configuration from `FILE`")
 	fs.BoolVar(&parsed.showVersion, "version", false, "print version information and exit")
-	fs.StringVar(&parsed.values.Listen.HTTP, "listen", parsed.values.Listen.HTTP, "HTTP listen address; empty disables")
-	fs.StringVar(&parsed.values.Listen.HTTPS, "listen-tls", parsed.values.Listen.HTTPS, "HTTPS listen address; empty disables")
-	fs.StringVar(&parsed.values.TLS.Certificate, "tls-cert", "", "PEM certificate file for the HTTPS listener")
-	fs.StringVar(&parsed.values.TLS.PrivateKey, "tls-key", "", "PEM private key file for the HTTPS listener")
-	fs.StringVar(&parsed.values.Log.Level, "log-level", parsed.values.Log.Level, "debug | info | warn | error")
-	fs.StringVar(&parsed.values.Log.Format, "log-format", parsed.values.Log.Format, "json | console")
+	fs.StringVar(&parsed.values.Listen.HTTP, "listen", parsed.values.Listen.HTTP, "HTTP listen `ADDR`; empty disables")
+	fs.StringVar(&parsed.values.Listen.HTTPS, "listen-tls", parsed.values.Listen.HTTPS, "HTTPS listen `ADDR`; empty disables")
+	fs.StringVar(&parsed.values.TLS.Certificate, "tls-cert", "", "PEM certificate `FILE` for the HTTPS listener")
+	fs.StringVar(&parsed.values.TLS.PrivateKey, "tls-key", "", "PEM private key `FILE` for the HTTPS listener")
+	fs.StringVar(&parsed.values.Log.Level, "log-level", parsed.values.Log.Level, "log `LEVEL`: debug | info | warn | error")
+	fs.StringVar(&parsed.values.Log.Format, "log-format", parsed.values.Log.Format, "log `FORMAT`: json | console")
 	if err := fs.Parse(args); err != nil {
 		return flagValues{}, err
 	}
@@ -174,7 +195,7 @@ func applyFlags(cfg *Config, parsed flagValues) {
 	}
 }
 
-// configPath resolves the YAML file location: the -config flag, else the
+// configPath resolves the YAML file location: the --config flag, else the
 // QDB_REST_CONFIG environment variable, else none.
 func configPath(parsed flagValues, lookup func(string) (string, bool)) string {
 	if parsed.configPath != "" {
