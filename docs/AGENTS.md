@@ -15,9 +15,9 @@ describe what is true and what comes next, not how we got here.
 2. `log.md` -- the **Current state** block at the top: which milestone,
    what is in flight, what is next, what the next milestone must honor,
    what is blocked.
-3. The plan document for whatever you are about to touch (`*-plan.md`),
-   the `AGENTS.md` of the folder you are about to work in, and any ADR
-   either references.
+3. Any plan document covering what you are about to touch
+   (`docs/*-plan.md`, see Plans), the `AGENTS.md` of the folder you are
+   about to work in, and any ADR either references.
 4. `log.md` dated entries and `adr/` only as needed.
 
 ## What lives where (one writer per fact)
@@ -26,8 +26,8 @@ describe what is true and what comes next, not how we got here.
 | -------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------- |
 | Scope, goals, non-goals, architecture                                            | `docs/brief.md`                | Rarely; only when scope or intent changes       |
 | Hard design decisions; anything that constrains code, build or CI until reversed | `docs/adr/NNNN-<slug>.md`      | Append-only; supersede, never rewrite           |
-| Per-topic specification, verified facts, measurement mechanics                   | `docs/<topic>-plan.md`         | Edit in place; date verified facts              |
-| Micro-decisions local to a topic                                                 | decision-log table in the plan | Append rows                                     |
+| Working plan for work in flight: approach, open questions, verified facts        | `docs/<name>-plan.md`          | Ephemeral; edit freely; deleted when work lands |
+| Micro-decisions taken while a plan is alive                                      | decision-log table in the plan | Append rows; hard ones become ADRs              |
 | How to work in a folder; what not to try there; gotchas                          | that folder's `AGENTS.md`      | Edit in place; state as rules, never as history |
 | Lifecycle of a document                                                          | `Status:` line in that doc     | Vocabulary below                                |
 | Progress, milestone criteria, handoff notes for the next milestone               | `docs/log.md` Current state    | Rewrite in place; the only place progress goes  |
@@ -37,6 +37,8 @@ Recorded nowhere, because something else already records it:
 
 - What landed: `git log`. Commit messages are the record; do not
   transcribe them into a document.
+- How a plan evolved: the plan is deleted with the work it planned;
+  nothing cites a plan as a permanent reference.
 - Test, lint and CI results: CI and the test suite.
 - Measured numbers: result files (`tests/e2e/bench/results/`), never a
   document.
@@ -47,7 +49,8 @@ The rule that keeps this from rotting: a fact has exactly one home.
 Before writing a sentence into any document, name its row in the table
 above. If the row is not the document you are editing, write it there
 and leave at most a link behind. Progress never goes into the brief or
-the plans; verified facts and lessons never go into the log.
+the plans; verified facts and lessons never go into the log. A fact
+whose only home is a plan has no permanent home yet (see Plans).
 
 ## Status vocabulary
 
@@ -58,16 +61,41 @@ progress:
 - `approved` -- direction agreed; implementation may or may not have
   started. Progress is in `docs/log.md`, not here.
 - `implemented` -- the thing the document describes exists and matches
-  the document.
-- `retired` -- the thing no longer exists (e.g. the temporary bench).
-  Keep the document; before retiring it, move any mechanics still worth
-  keeping to the plan or `AGENTS.md` that outlives it, then add a
-  one-line log entry.
+  the document. For a plan this is the signal to delete it (see Plans).
 - ADRs use `proposed | accepted | superseded by NNNN`.
 
 Do not add checkboxes, "TODO", or "done" markers to the brief or the plans.
 If you need to record that a plan step is finished, update the Current
 state block in `docs/log.md`.
+
+## Plans
+
+A plan (`docs/<name>-plan.md`) is scaffolding: a document the owner and
+the agents iterate on while a piece of work is being shaped and built.
+One plan per unit of work, cut however the work is cut -- a milestone
+(`m1-plan.md`), a subsystem (`e2e-plan.md`), a spike -- there is no
+required granularity. A plan may sit in git for as long as its work is
+in flight and not one day longer.
+
+Rules:
+
+- **Nothing in a plan is permanent.** A plan is deleted, not archived,
+  once its work has landed (`Status: implemented`) or been abandoned.
+  Anything that must outlive it moves to its permanent home first:
+  scope or intent changes to `brief.md`; hard decisions and their
+  rejected alternatives to an ADR; rules, gotchas and verified
+  mechanics to the `AGENTS.md` (or README) of the folder that owns the
+  code; measured numbers nowhere (result files). Then one log entry:
+  `<name>-plan.md deleted; facts moved to <where>`.
+- A plan is where verified facts land _first_ (dated), because that is
+  where the work is happening. Moving them out is part of finishing the
+  work, not a separate cleanup.
+- While a plan is alive, anything may link to it (code comments,
+  READMEs, `AGENTS.md`, the log's Current state); a link is a pointer,
+  not a permanent reference. Deleting the plan includes moving whatever
+  each link needed and repointing the link, so no dangling
+  `docs/<name>-plan.md` survives.
+- Plans carry no progress: the Current state block in `log.md` does.
 
 ## The log
 
@@ -110,7 +138,7 @@ Goes in an entry:
 - an ADR accepted or superseded (link it);
 - an owner decision that changes direction (one line, plus the plan
   section or ADR that records it);
-- a document retired.
+- a plan deleted (one line naming where its surviving facts went).
 
 Does not go in an entry:
 
