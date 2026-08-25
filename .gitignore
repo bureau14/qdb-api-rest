@@ -1,5 +1,5 @@
 # Extracted QuasarDB distribution (C API, server, utils); fetched, never committed
-qdb/
+/qdb/
 # Local qdbd data dirs and test-setup residue
 db/
 insecure/
