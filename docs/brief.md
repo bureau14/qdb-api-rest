@@ -581,8 +581,9 @@ keyed by (cluster, session) even while the cluster count is one).
 
 YAML file (plays well with helm/cloud-init), overridable by environment
 variables and flags; env-var interpolation inside the YAML for secret
-injection. No compatibility with the old JSON config. A commented sample
-config ships with the package and doubles as documentation.
+injection. No compatibility with the old JSON config.
+`examples/qdb_rest.yaml` is the commented reference config, pinned to the
+defaults by test.
 
 ### Observability and logging
 
