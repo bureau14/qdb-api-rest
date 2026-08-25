@@ -85,7 +85,7 @@ Valid runs (the registry is this table, nothing else):
 | run                  | answers                                                                         | available |
 | -------------------- | ------------------------------------------------------------------------------- | --------- |
 | `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | Phase 1   |
-| `legacy@old-rest`    | today's baseline                                                                | Phase 1   |
+| `legacy@old-rest`    | the production server's baseline                                                | Phase 1   |
 | `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | with M1   |
 | `flightsql@new-rest` | the gateway thesis                                                              | with M3   |
 
@@ -221,8 +221,8 @@ Measurement mechanics, verified 2026-08-19:
 - The counter is pre-compression (verified 2026-08-24: byte-identical
   `out_bytes` across balanced and uncompressed runs of the same query), so
   volume-1 numbers are comparable regardless of `qdb_compression_t`. The
-  binding defaults are NOT the same (also verified 2026-08-24, contrary to
-  what this bullet previously claimed): qdb-api-python's `Cluster` sets
+  binding defaults are NOT the same (verified 2026-08-24):
+  qdb-api-python's `Cluster` sets
   `qdb_comp_balanced` explicitly, while the old server's bare
   `qdb.NewHandle()` leaves the C API default, which is `qdb_comp_none`
   ("balanced ... not enabled by default", `qdb/option.h`). Over loopback,
@@ -496,7 +496,7 @@ Reference for `native@qdbd` (sc-19522 measurements, same dataset):
    with M3) raise "not implemented" until then.
 
 Steps 1-4 are Phase 1 and make the tool immediately useful: native vs
-legacy@old-rest numbers quantify today's REST tax, and the equivalence
+legacy@old-rest numbers quantify the old server's REST tax, and the equivalence
 check hardens the harness itself. The rewrite drops in at step 5's
 seams: `legacy@new-rest` the moment M1 serves the legacy endpoints (the
 first real drop-in compatibility signal), `flightsql@new-rest` with M3.
