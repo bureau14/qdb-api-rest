@@ -15,8 +15,8 @@ live in `docs/bench-plan.md`; progress in `docs/log.md`; usage in
 - The tests are the `selftest` subcommand (fingerprint invariants) and the
   cross-protocol fingerprint match in `report`; do not add a unit-test
   suite.
-- `results/` is never committed; measured numbers live in result files and
-  `docs/log.md` lessons, never in the plan.
+- `results/` is never committed; measured numbers live in result files
+  only, never in the plan or the log.
 - Python style: functional, small composable functions, book order
   (definitions before use), ASCII only. This is the only Python in
   `tests/e2e`.
