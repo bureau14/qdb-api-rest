@@ -23,7 +23,8 @@ cd "${BASE_DIR}"
 
 cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
-cicd_setup_c_toolchain
+cicd_assert_qdb_tree
+cicd_setup_qdb_env
 
 # On Windows the generated test binaries run through the -exec wrapper,
 # which converts PATH to Windows format so the loader resolves the MinGW
