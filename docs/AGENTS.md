@@ -146,3 +146,9 @@ brief, or a plan section -- never a log entry.
 ASCII only, no emojis, `--` for dashes; `npx prettier --write` after
 touching any Markdown file. Documents read top to bottom; definitions
 before use.
+
+## Maintenance
+
+The rules above are enforced after the fact by the `doc-cleanup` skill
+(`.claude/skills/doc-cleanup/SKILL.md`): run it at every milestone
+boundary and whenever the log has grown by more than a few entries.
