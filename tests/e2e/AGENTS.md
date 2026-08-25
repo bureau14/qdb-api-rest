@@ -24,6 +24,11 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   and every capture; keep it that way (legacy timestamps are local-time).
 - The dataset table `reproduce` is read-only for tests; fixture tables
   (`seed.sql`) are dropped and recreated freely.
+- Ad-hoc probing: `qdbsh --output-format csv` is a plain C client. Its
+  `-c` flag cannot be repeated, so a multi-statement session (e.g.
+  `direct_set_node` followed by `direct_int_get`) goes in via stdin. A
+  single-shot `SELECT *` of `reproduce` overflows qdbsh's client input
+  buffer (125 MiB), exactly as it does for `qdb_export`.
 - Shell style: `set -euo pipefail`, small named functions, definitions
   before use, ASCII only. No Python in this directory (the bench in
   `bench/` is the one exception and is temporary; its conventions live in
