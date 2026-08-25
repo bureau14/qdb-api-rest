@@ -1,5 +1,10 @@
 # qdb-api-rest -- build entry point. Test targets live in tests/e2e/Makefile.
 
+# Recipes that compile Go source the .envrc first: it is the single
+# source of truth for the CGO environment (qdb/ headers and library), and
+# needs bash for ${BASH_SOURCE[0]}.
+SHELL := bash
+
 GOLANGCI_LINT_VERSION := v2.13.1
 GOLANGCI_LINT         := bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
@@ -22,7 +27,7 @@ LDFLAGS := -X main.version=$(VERSION) \
 .PHONY: build lint
 
 build:
-	GOAMD64=$(GOAMD64) go build -trimpath -mod=vendor -ldflags "$(LDFLAGS)" -o bin/qdb_rest ./cmd/qdb_rest
+	. ./.envrc && GOAMD64=$(GOAMD64) go build -trimpath -mod=vendor -ldflags "$(LDFLAGS)" -o bin/qdb_rest ./cmd/qdb_rest
 
 # The linter is pinned here and installed by this target, so the pin
 # lives in the repository rather than in a builder image.
@@ -31,4 +36,4 @@ $(GOLANGCI_LINT):
 	mv bin/golangci-lint $@
 
 lint: $(GOLANGCI_LINT)
-	$(GOLANGCI_LINT) run ./...
+	. ./.envrc && $(GOLANGCI_LINT) run ./...
