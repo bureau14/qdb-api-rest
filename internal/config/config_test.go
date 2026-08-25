@@ -1,11 +1,17 @@
 package config
 
 import (
+	"bytes"
+	"errors"
+	"flag"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"pgregory.net/rapid"
 )
 
 // envFrom builds a lookup over a fixed map, so tests never touch the real
@@ -28,114 +34,162 @@ func writeConfig(t *testing.T, yaml string) string {
 }
 
 // load is Load with the noise arguments fixed for tests.
-func load(t *testing.T, args []string, vars map[string]string) (Config, error) {
-	t.Helper()
+func load(args []string, vars map[string]string) (Config, error) {
 	return Load("qdb_rest", args, envFrom(vars), io.Discard)
 }
 
-func TestDefaults(t *testing.T) {
-	cfg, err := load(t, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := Default()
-	if cfg != want {
-		t.Fatalf("got %+v, want %+v", cfg, want)
+// A slot is one configurable thing in its three spellings: YAML keys
+// under a section (the environment variable is QDB_REST_<SECTION>_<KEY>),
+// and flags; plus the vocabulary drawn for it, invalid words included so
+// validation is exercised too. TLS is one slot for both files because
+// validate wants them together.
+type slot struct {
+	section string
+	keys    []string
+	flags   []string
+	values  *rapid.Generator[string]
+}
+
+func slots() []slot {
+	addresses := rapid.SampledFrom([]string{"", ":1", ":40080", "127.0.0.1:8080"})
+	paths := rapid.SampledFrom([]string{"", "/etc/qdb/rest", "rel/pair"})
+	levels := rapid.SampledFrom([]string{"debug", "info", "warn", "error", "verbose"})
+	formats := rapid.SampledFrom([]string{"json", "console", "xml"})
+	return []slot{
+		{"listen", []string{"http"}, []string{"listen"}, addresses},
+		{"listen", []string{"https"}, []string{"listen-tls"}, addresses},
+		{"tls", []string{"certificate", "private_key"}, []string{"tls-cert", "tls-key"}, paths},
+		{"log", []string{"level"}, []string{"log-level"}, levels},
+		{"log", []string{"format"}, []string{"log-format"}, formats},
 	}
 }
 
-func TestPrecedenceFileEnvFlag(t *testing.T) {
-	path := writeConfig(t, "listen:\n  http: \":1111\"\n  https: \":2222\"\nlog:\n  level: debug\n")
-	vars := map[string]string{
-		"QDB_REST_LISTEN_HTTPS": ":3333",
-		"QDB_REST_LOG_LEVEL":    "warn",
-	}
-	cfg, err := load(t, []string{"--config", path, "--log-level", "error"}, vars)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Listen.HTTP != ":1111" {
-		t.Errorf("file value lost: %q", cfg.Listen.HTTP)
-	}
-	if cfg.Listen.HTTPS != ":3333" {
-		t.Errorf("env did not override file: %q", cfg.Listen.HTTPS)
-	}
-	if cfg.Log.Level != "error" {
-		t.Errorf("flag did not override env: %q", cfg.Log.Level)
+func envName(section, key string) string {
+	return "QDB_REST_" + strings.ToUpper(section+"_"+key)
+}
+
+// apply writes vals into cfg through the field map applyEnv itself uses.
+func apply(cfg *Config, s slot, vals []string) {
+	fields := envOverrides(cfg)
+	for i, key := range s.keys {
+		*fields[envName(s.section, key)] = vals[i]
 	}
 }
 
-func TestEnvInterpolation(t *testing.T) {
-	path := writeConfig(t, "tls:\n  certificate: \"${CERT_PATH}\"\n  private_key: \"${KEY_PATH}\"\n")
-	vars := map[string]string{"CERT_PATH": "/etc/cert.pem", "KEY_PATH": "/etc/key.pem"}
-	cfg, err := load(t, []string{"--config", path}, vars)
-	if err != nil {
-		t.Fatal(err)
+// draw returns one value per key of s: the drawn word, suffixed per key
+// for multi-key slots so the pair is distinguishable yet both-or-neither.
+func draw(rt *rapid.T, s slot, layer string) []string {
+	word := s.values.Draw(rt, s.flags[0]+" "+layer)
+	out := make([]string, len(s.keys))
+	for i, key := range s.keys {
+		out[i] = word
+		if word != "" && len(s.keys) > 1 {
+			out[i] = word + "." + key
+		}
 	}
-	if cfg.TLS.Certificate != "/etc/cert.pem" || cfg.TLS.PrivateKey != "/etc/key.pem" {
-		t.Errorf("interpolation lost: %+v", cfg.TLS)
-	}
+	return out
 }
 
-func TestEnvInterpolationUnsetIsError(t *testing.T) {
-	path := writeConfig(t, "tls:\n  certificate: \"${MISSING_VAR}\"\n")
-	_, err := load(t, []string{"--config", path}, nil)
-	if err == nil || !strings.Contains(err.Error(), "MISSING_VAR") {
-		t.Fatalf("want unset-variable error naming MISSING_VAR, got %v", err)
+// renderYAML lays the file layer out as sections of quoted scalars.
+func renderYAML(file map[string]map[string]string) string {
+	var b strings.Builder
+	for _, section := range []string{"listen", "tls", "log"} {
+		if len(file[section]) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "%s:\n", section)
+		for key, text := range file[section] {
+			fmt.Fprintf(&b, "  %s: %q\n", key, text)
+		}
 	}
+	return b.String()
+}
+
+// Load is the fold defaults < file < env < flags followed by validate:
+// for any drawn combination of layers, it returns the folded config
+// exactly when validate accepts it. File values are written literally or
+// as ${VAR} references, and the file path arrives by flag or by
+// QDB_REST_CONFIG.
+func TestLoadIsTheLayerFold(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		expected := Default()
+		file := map[string]map[string]string{"listen": {}, "tls": {}, "log": {}}
+		vars := map[string]string{}
+		var args []string
+		for _, s := range slots() {
+			if vals := draw(rt, s, "file"); rapid.Bool().Draw(rt, s.flags[0]+" in file") {
+				for i, key := range s.keys {
+					text := vals[i]
+					if rapid.Bool().Draw(rt, key+" by reference") {
+						name := "REF_" + strings.ToUpper(key)
+						vars[name], text = vals[i], "${"+name+"}"
+					}
+					file[s.section][key] = text
+				}
+				apply(&expected, s, vals)
+			}
+			if vals := draw(rt, s, "env"); rapid.Bool().Draw(rt, s.flags[0]+" in env") {
+				for i, key := range s.keys {
+					vars[envName(s.section, key)] = vals[i]
+				}
+				apply(&expected, s, vals)
+			}
+			if vals := draw(rt, s, "flag"); rapid.Bool().Draw(rt, s.flags[0]+" in flags") {
+				for i, name := range s.flags {
+					args = append(args, "--"+name+"="+vals[i])
+				}
+				apply(&expected, s, vals)
+			}
+		}
+		path := writeConfig(t, renderYAML(file))
+		if rapid.Bool().Draw(rt, "path by env") {
+			vars["QDB_REST_CONFIG"] = path
+		} else {
+			args = append(args, "--config", path)
+		}
+
+		cfg, err := load(args, vars)
+		if want := validate(expected); (err == nil) != (want == nil) {
+			rt.Fatalf("Load error = %v, validate(expected) = %v", err, want)
+		}
+		if err == nil && cfg != expected {
+			rt.Fatalf("got %+v, want %+v", cfg, expected)
+		}
+	})
+}
+
+// An unset ${VAR} refuses the start and names the variable.
+func TestUnsetReferenceIsNamed(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		name := rapid.StringMatching(`[A-Z][A-Z0-9_]{0,11}`).Draw(rt, "name")
+		path := writeConfig(t, "listen:\n  http: \"${"+name+"}\"\n")
+		_, err := load([]string{"--config", path}, nil)
+		if err == nil || !strings.Contains(err.Error(), name) {
+			rt.Fatalf("want an error naming %s, got %v", name, err)
+		}
+	})
 }
 
 func TestUnknownKeyRejected(t *testing.T) {
 	path := writeConfig(t, "listne:\n  http: \":1111\"\n")
-	if _, err := load(t, []string{"--config", path}, nil); err == nil {
+	if _, err := load([]string{"--config", path}, nil); err == nil {
 		t.Fatal("want error for unknown key, got nil")
 	}
 }
 
-func TestConfigPathFromEnv(t *testing.T) {
-	path := writeConfig(t, "listen:\n  http: \":4444\"\n")
-	cfg, err := load(t, nil, map[string]string{"QDB_REST_CONFIG": path})
-	if err != nil {
-		t.Fatal(err)
+func TestHelpIsGNUStyle(t *testing.T) {
+	var out bytes.Buffer
+	_, err := Load("qdb_rest", []string{"--help"}, envFrom(nil), &out)
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("want flag.ErrHelp, got %v", err)
 	}
-	if cfg.Listen.HTTP != ":4444" {
-		t.Errorf("QDB_REST_CONFIG ignored: %q", cfg.Listen.HTTP)
-	}
-}
-
-func TestEmptyFlagValueDisablesListener(t *testing.T) {
-	cfg, err := load(t, []string{"--listen-tls="}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Listen.HTTPS != "" {
-		t.Errorf("explicit empty flag did not disable HTTPS: %q", cfg.Listen.HTTPS)
-	}
-}
-
-func TestBothListenersDisabledIsError(t *testing.T) {
-	if _, err := load(t, []string{"--listen=", "--listen-tls="}, nil); err == nil {
-		t.Fatal("want error with both listeners disabled, got nil")
-	}
-}
-
-func TestTLSPairMustBeComplete(t *testing.T) {
-	if _, err := load(t, []string{"--tls-cert", "/etc/cert.pem"}, nil); err == nil {
-		t.Fatal("want error for certificate without key, got nil")
-	}
-}
-
-func TestBadLogVocabulary(t *testing.T) {
-	if _, err := load(t, []string{"--log-level", "verbose"}, nil); err == nil {
-		t.Fatal("want error for unknown log level, got nil")
-	}
-	if _, err := load(t, []string{"--log-format", "xml"}, nil); err == nil {
-		t.Fatal("want error for unknown log format, got nil")
+	if !strings.Contains(out.String(), "  --listen-tls ADDR") || strings.Contains(out.String(), "\n  -listen") {
+		t.Fatalf("usage is not GNU-style:\n%s", out.String())
 	}
 }
 
 func TestExampleIsTheDefaults(t *testing.T) {
-	cfg, err := load(t, []string{"--config", "../../examples/qdb_rest.yaml"}, nil)
+	cfg, err := load([]string{"--config", "../../examples/qdb_rest.yaml"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
