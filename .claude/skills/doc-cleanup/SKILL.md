@@ -95,11 +95,18 @@ Resolution, per sentence, using the routing table in `docs/AGENTS.md`:
 
 ## Pass 2 -- brief and plans
 
-For `docs/brief.md`, `docs/e2e-plan.md`, `docs/bench-plan.md`:
+For `docs/brief.md` and every `docs/*-plan.md`:
 
 - `Status:` line uses the lifecycle vocabulary and is true (a plan whose
-  subject is fully built and matching says `implemented`; a bench that
-  has been deleted says `retired`).
+  subject is fully built and matching says `implemented`).
+- Plans are ephemeral (`docs/AGENTS.md`, Plans). A plan whose work has
+  landed or been abandoned is a finding: list every fact in it that
+  lacks a permanent home (brief, ADR, folder `AGENTS.md`/README), the
+  home each should move to, and propose deleting the plan once moved.
+  Never delete a plan alone; the owner confirms.
+- When a plan's deletion is proposed, every link to it outside `docs/`
+  (`grep -rn '<name>-plan.md'`) is part of the finding: each needs a
+  new target or the fact moved next to it.
 - No progress markers: checkboxes, "TODO", "done", "pending", "once M1
   lands" phrased as status rather than as a dependency.
 - Temporal contamination -- rewrite as the present-tense fact, keeping
@@ -252,4 +259,4 @@ those need a decision and are never applied silently.
 
 At every milestone boundary (before the exit sign-off entry is written),
 whenever `docs/log.md` has gained more than three entries since the last
-cleanup, when a document is retired, and on request.
+cleanup, before a plan is deleted, and on request.
