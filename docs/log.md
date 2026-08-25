@@ -7,36 +7,46 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-08-25
 
-| Milestone             | State       | Note                                              |
-| --------------------- | ----------- | ------------------------------------------------- |
-| M0 -- Foundation      | in progress | scope complete; owner exit sign-off pending       |
-| M1 -- Drop-in compat  | not started | red bar in place: `make -C tests/e2e test-legacy` |
-| M2 -- v2 data plane   | not started |                                                   |
-| M3 -- Flight SQL      | not started |                                                   |
-| M4 -- Embedded DuckDB | not started |                                                   |
-| M5 -- Release         | not started |                                                   |
+| Milestone             | State       | Note                                     |
+| --------------------- | ----------- | ---------------------------------------- |
+| M0 -- Foundation      | done        | exit signed off 2026-08-25               |
+| M1 -- Drop-in compat  | in progress | red bar: `make -C tests/e2e test-legacy` |
+| M2 -- v2 data plane   | not started |                                          |
+| M3 -- Flight SQL      | not started |                                          |
+| M4 -- Embedded DuckDB | not started |                                          |
+| M5 -- Release         | not started |                                          |
 
-M0 criteria. Entry (met): e2e harness with legacy goldens, the bench,
-the dataset loaded, a red bar for M1. Exit: the brief's M0 scope --
-config, logging, TLS, status probes, Buildkite CI on all supported
-platforms with the C-API artifact dance, e2e harness and bench
-scaffolding against a live qdbd -- landed and verified in CI, then owner
-sign-off.
+M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
+upstream that links `libqdb_api.a` statically on Linux; the 21 legacy
+goldens replay against a server under test; the bench's
+`legacy@new-rest` row awaits enabling. Exit: every legacy golden green
+against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
+`legacy@old-rest` on every query under `CAPI_COMPRESSION=none`; the
+readiness probe answers from a pooled handle under the service user; the
+auth ADR (JWE library, AEAD, key derivation) accepted; property tests for
+auth and the pool green on all eight platforms.
 
 In flight:
 
-- M0: awaiting owner exit sign-off.
-- M1 groundwork: `qdb-api-go` vendored at upstream `4bcb78f`
-  (QDB-19065, static Linux link); `-version` now prints the linked C API
-  version so the CI smoke run proves the link on all eight platforms.
+- M1: nothing started.
 
 Next:
 
-1. M0 exit sign-off (owner).
-2. M1: make `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` green,
-   then run `make -C tests/e2e/bench bench-legacy@new-rest` (the
-   registry row is gated in `bench.py`; clear the gate).
-3. Circle back, no date: return the e2e harness to CI
+1. `cluster:` config block (URI, cluster public key, service user, client
+   C API compression, timeouts) and the `internal/qdb` handle pool, with
+   the readiness probe on it.
+2. Auth ADR, then `internal/auth`.
+3. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
+   golden by golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>`
+   is green.
+4. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
+   and run `make -C tests/e2e/bench bench-legacy@new-rest`.
+5. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+   `APIBuild` release the static string from `qdb_version()` /
+   `qdb_build()` through `qdb_release` with a nil handle, which
+   `client.h` documents as API-managed and not to be freed. No local
+   patch (`docs/brief.md`, Vendoring).
+6. Circle back, no date: return the e2e harness to CI
    (`.buildkite/AGENTS.md` holds the decision and the recipe).
 
 Handoff to M1:
@@ -44,20 +54,31 @@ Handoff to M1:
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- The readiness probe uses a pooled handle under the service user; the
-  old server opened a fresh handle per probe and never closed it
+- The readiness probe uses a pooled handle under the service user
   (`docs/brief.md`, "Resilience and connection management").
-- Legacy goldens pin JSON `null` for null cells because the
-  `"(void)"` / `"(undefined)"` sentinels are unreachable under the 3.15
-  C API; keeping the brief's sentinel mapping for typed undefined values
-  is compatible with the goldens either way (`docs/e2e-plan.md`, "The
-  CSV is the expected output").
+- Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
+  `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
+  keeping the brief's sentinel mapping for typed undefined values is
+  compatible either way (`docs/e2e-plan.md`, "The CSV is the expected
+  output").
+
+Deferred to M5, tracked nowhere else:
+
+- Windows service mode: Event Log for lifecycle events, `log.file` with
+  rotation (`docs/brief.md`, "Observability and logging").
+- `qdb-release` version registration for the `VERSION` file
+  (`docs/brief.md`, "Versioning and release").
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-08-25 -- M0 complete, M1 started
+
+- Owner exit sign-off for M0; M1 criteria in Current state; scope:
+  `docs/brief.md`, Milestones.
 
 ## 2026-08-25 -- M0 scope complete
 
