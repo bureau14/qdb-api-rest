@@ -22,6 +22,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
@@ -39,7 +40,9 @@ var (
 
 // versionText renders the version block in the format shared by all
 // QuasarDB binaries (qdb-nats-connector ADR-011, mirroring the C++
-// daemons). Everything shown is compile-time information.
+// daemons), plus the version of the linked C API: the one line that is
+// not compile-time information, and the reason `-version` doubles as the
+// CI smoke test for the cgo link on every platform.
 func versionText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "quasardb rest api version: %s\n", version)
@@ -47,6 +50,7 @@ func versionText() string {
 	fmt.Fprintf(&b, "date: %s\n\n", buildTime)
 	fmt.Fprintf(&b, "target: %s-%s\n", runtime.GOARCH, runtime.GOOS)
 	fmt.Fprintf(&b, "compiler: %s\n", runtime.Version())
+	fmt.Fprintf(&b, "c api: %s (%s)\n", qdb.APIVersion(), qdb.APIBuild())
 	if runtime.GOARCH == "amd64" && goamd64 != "" {
 		fmt.Fprintf(&b, "arch level: %s\n", goamd64)
 	}
@@ -156,7 +160,8 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(observe.WithLogger(context.Background(), logger), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode)
+	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode,
+		"qdb_api_version", qdb.APIVersion())
 
 	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
