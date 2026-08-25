@@ -24,8 +24,18 @@ cd "${BASE_DIR}"
 cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
 
+# -race requires cgo, and the Windows agents get CGO wiring (mingw PATH,
+# CGO env) only with M1's qdb-api-go work -- go refuses with "go: -race
+# requires cgo" there until then. Windows runs unraced; the other seven
+# platforms keep the race detector. Re-enable when the CGO env lands
+# (qdb-nats-connector runs -race on Windows, so it is only the wiring).
+GO_TEST_FLAGS=(-mod=vendor -buildvcs=false -short -v)
+if [[ "$(uname)" != MINGW* ]]; then
+    GO_TEST_FLAGS+=(-race)
+fi
+
 # -mod=vendor: resolve strictly from vendor/; fail loudly instead of fetching.
 # -buildvcs=false: same rhel7 uid/no-passwd VCS-stamping failure as 20.build.sh.
 GOAMD64="${GOAMD64:-}" \
-    "${GO}" test -mod=vendor -buildvcs=false -short -v -race ./... \
+    "${GO}" test "${GO_TEST_FLAGS[@]}" ./... \
     | "${GO_JUNIT_REPORT}" -out "${TEST_REPORT_DIR}/unit-junit-report.xml" -iocopy
