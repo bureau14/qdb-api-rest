@@ -3,8 +3,7 @@
 #
 # Converts PATH to Windows format and execs the generated test binary in
 # that environment, so the Windows loader can resolve the MinGW runtime
-# DLLs (and later the qdb DLLs) under the Buildkite/WinSW service
-# context. Changes PATH only for the test binary execution, never for
+# and qdb DLLs under the Buildkite/WinSW service context. Changes PATH only for the test binary execution, never for
 # the parent scripts. Copied from qdb-nats-connector.
 
 set -euo pipefail

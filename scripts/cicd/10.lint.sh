@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # Buildkite lint step for qdb-api-rest.
 # Invoked by .buildkite/steps/_lint.yml inside bureau14/builder:rhel7.
-# Delegates to the root Makefile's lint target, which owns the
-# golangci-lint version pin and installs the linter into bin/ -- one
-# writer for the pin, shared between CI and developer machines.  This
-# step is Linux-only, so GNU make is available (the per-platform build
-# steps avoid make because FreeBSD ships BSD make and the Windows agents
-# have none).
+# Delegates to `make lint` (scripts/cicd/AGENTS.md: the pin has one
+# writer, and only this Linux-only step may use make).
 #
 # The Go toolchain is wired by cicd_setup_go_toolchain (00.common.sh)
 # from GOROOT injected by pipeline.py::_go_env_for_agent(); the Makefile
