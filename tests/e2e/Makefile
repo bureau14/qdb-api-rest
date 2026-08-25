@@ -47,7 +47,7 @@ OLD_REST_ARGS  := --local -c $(QDB_URI) --pool-size 4 --parallelism-count 4 \
 REST_URL     ?=
 QDB_REST_BIN ?=
 REST_PORT    ?= 40090
-REST_ARGS    ?= -listen 127.0.0.1:$(REST_PORT) -listen-tls=
+REST_ARGS    ?= --listen 127.0.0.1:$(REST_PORT) --listen-tls=
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
