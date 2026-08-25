@@ -21,9 +21,7 @@ BASE_DIR="$(dirname "$(dirname "${SCRIPT_DIR}")")"
 
 source "${SCRIPT_DIR}/00.common.sh"
 
-# Required when the docker plugin propagates the host UID into the container:
-# git refuses to operate on a workspace owned by a different user without this.
-git config --global --add safe.directory '*'
+cicd_trust_workspace
 
 cd "${BASE_DIR}"
 
