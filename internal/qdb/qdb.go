@@ -1,8 +1,7 @@
-// Package qdb wraps qdb-api-go for the rest of the server: handle and
-// session pools, the circuit breaker, query execution and ingestion land
-// here. Today it exposes only the identity of the linked C API, which is
-// what proves the cgo link -- static libqdb_api.a on Linux, the shared
-// library elsewhere -- on every platform the binary is built for.
+// Package qdb wraps qdb-api-go for the rest of the server. APIVersion and
+// APIBuild expose the identity of the linked libqdb_api -- static
+// libqdb_api.a on Linux, the shared library elsewhere -- without opening
+// a handle, which is what proves the cgo link on every platform.
 package qdb
 
 import qdbapi "github.com/bureau14/qdb-api-go/v3"

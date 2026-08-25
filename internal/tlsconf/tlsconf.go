@@ -1,8 +1,7 @@
 // Package tlsconf builds the tls.Config for the HTTPS listener: a PEM
 // certificate/key pair from disk when configured, an ephemeral
-// self-signed certificate otherwise -- so TLS works with zero
-// configuration, at the documented cost of a new identity per start.
-// See docs/adr/0001-tls-certificates.md.
+// self-signed certificate otherwise, so TLS works with zero
+// configuration (docs/adr/0001-tls-certificates.md).
 package tlsconf
 
 import (
@@ -65,8 +64,7 @@ func selfSignedNames() (dns []string, ips []net.IP) {
 }
 
 // generateSelfSigned mints an ECDSA P-256 self-signed certificate. Ten
-// years of validity: the certificate is ephemeral (regenerated on every
-// start), so expiry must never be the reason a long-running process stops
+// years of validity: expiry must never stop a long-running process from
 // handshaking.
 func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
