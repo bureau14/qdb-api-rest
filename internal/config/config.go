@@ -1,6 +1,6 @@
 // Package config loads the server configuration. Precedence, lowest to
 // highest: built-in defaults, the YAML file, environment variables,
-// command-line flags. The YAML file supports ${VAR} environment
+// command-line flags. Values in the YAML file support ${VAR} environment
 // interpolation so secrets can be injected without living on disk.
 package config
 
@@ -58,7 +58,7 @@ func Default() Config {
 	}
 }
 
-// envReference matches a ${VAR} reference inside the YAML text.
+// envReference matches a ${VAR} reference inside a value.
 var envReference = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // interpolateEnv replaces every ${VAR} in text via lookup. An unset
@@ -80,27 +80,8 @@ func interpolateEnv(text string, lookup func(string) (string, bool)) (string, er
 	return expanded, nil
 }
 
-// loadFile decodes the YAML file at path over cfg, after environment
-// interpolation. Unknown keys are an error so a typo cannot silently fall
-// back to a default.
-func loadFile(path string, lookup func(string) (string, bool), cfg *Config) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	text, err := interpolateEnv(string(raw), lookup)
-	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	decoder := yaml.NewDecoder(strings.NewReader(text))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return nil
-}
-
-// envOverrides maps environment variables onto the fields they override.
+// envOverrides maps environment variables onto the fields they override;
+// it doubles as the walk over every string field of a Config.
 func envOverrides(cfg *Config) map[string]*string {
 	return map[string]*string{
 		"QDB_REST_LISTEN_HTTP":     &cfg.Listen.HTTP,
@@ -110,6 +91,38 @@ func envOverrides(cfg *Config) map[string]*string {
 		"QDB_REST_LOG_LEVEL":       &cfg.Log.Level,
 		"QDB_REST_LOG_FORMAT":      &cfg.Log.Format,
 	}
+}
+
+// interpolateValues expands ${VAR} in every string field of cfg. Values
+// only, never the raw file: comments may mention the syntax freely.
+func interpolateValues(cfg *Config, lookup func(string) (string, bool)) error {
+	for _, field := range envOverrides(cfg) {
+		expanded, err := interpolateEnv(*field, lookup)
+		if err != nil {
+			return err
+		}
+		*field = expanded
+	}
+	return nil
+}
+
+// loadFile decodes the YAML file at path over cfg, then interpolates the
+// environment into its values. Unknown keys are an error so a typo cannot
+// silently fall back to a default.
+func loadFile(path string, lookup func(string) (string, bool), cfg *Config) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	decoder := yaml.NewDecoder(strings.NewReader(string(raw)))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := interpolateValues(cfg, lookup); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
 }
 
 // applyEnv writes every set environment variable over its field.
