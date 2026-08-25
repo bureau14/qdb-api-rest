@@ -3,7 +3,7 @@
 # Invoked by .buildkite/steps/_build.yml.
 # Compiles bin/qdb_rest via ${GO} build directly (no make: FreeBSD ships
 # BSD make, the Windows MSYS2 agents none), composing the same -ldflags
-# the root Makefile uses, then smoke-runs `qdb_rest -version`: it prints
+# the root Makefile uses, then smoke-runs `qdb_rest --version`: it prints
 # the injected metadata and the linked C API's version, so the smoke run
 # also proves the link (static libqdb_api.a on Linux) and, on the other
 # platforms, that the shared library is found at load time.
@@ -68,4 +68,4 @@ GOFLAGS="${GOFLAGS}" GOAMD64="${GOAMD64:-}" \
 
 # --- smoke ---
 
-"${BASE_DIR}/bin/qdb_rest${SUFFIX}" -version
+"${BASE_DIR}/bin/qdb_rest${SUFFIX}" --version
