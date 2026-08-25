@@ -3,13 +3,13 @@
 #   cicd_setup_go_toolchain -- GOROOT/GOPATH/GO resolution + go-junit-report
 #   cicd_setup_cpu_baseline -- QDB_CPU_ARCHITECTURE_CORE2 -> GOAMD64
 #   cicd_assert_qdb_tree    -- fail fast when the C API artifact is absent
+#   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #
 # Sourced by 10.lint.sh, 20.build.sh and 30.test-unit.sh; not an
 # executable pipeline step (the leading 00. signals "loaded first, runs
-# nothing").  There is no CGO env helper yet: nothing in this repo links
-# the C API until M1 vendors qdb-api-go; when that lands, the canonical
-# CGO environment moves here (qdb-nats-connector's .envrc pattern is the
-# reference).
+# nothing").  The CGO environment itself lives in the root .envrc (one
+# writer, shared with developer machines via direnv and the Makefile);
+# cicd_setup_qdb_env only sources it and echoes the result.
 
 set -eu
 
@@ -113,34 +113,14 @@ cicd_setup_cpu_baseline() {
 
 export -f cicd_setup_cpu_baseline
 
-# cicd_setup_c_toolchain -- make the platform C compiler visible to go.
-#
-# `go test -race` needs cgo, and cgo needs a C compiler go can find. On
-# the Buildkite Windows agents gcc.exe lives in native C:\mingw64\bin,
-# which is /c/mingw64/bin under MSYS -- the MSYS-internal /mingw64/bin
-# does NOT resolve there, and without this prepend go.exe finds no gcc
-# and silently disables cgo ("go: -race requires cgo"). Reference:
-# qdb-nats-connector's .envrc, MINGW branch. On Linux, CC/CXX arrive as
-# gcc15 paths via pipeline env; FreeBSD and macOS find cc natively, so
-# only Windows needs help.
-cicd_setup_c_toolchain() {
-    if [[ "$(uname)" == MINGW* ]]; then
-        export PATH="/c/mingw64/bin:${PATH}"
-        echo "cicd_setup_c_toolchain: prepended /c/mingw64/bin to PATH"
-    fi
-}
-
-export -f cicd_setup_c_toolchain
-
 # cicd_assert_qdb_tree -- fail fast when the extracted C API is absent.
 #
-# Nothing in this repo links the C API yet (that starts when M1 vendors
-# qdb-api-go); the assertion exists so the qdb-artifacts download -- the
-# artifact dance every later milestone builds on -- is proven on every
-# platform now, while the build is trivial and failures are cheap to debug.
-# On Linux the static archive is additionally required: the rewrite links
-# libqdb_api.a statically there, and a c-api package without it means a
-# quasardb build that predates QDB-19063.
+# The vendored qdb-api-go compiles through cgo against qdb/ (locations
+# from .envrc); without the tree the failure would surface as a cgo
+# compiler trace deep inside the build, so this turns it into one clear
+# error first.  On Linux the static archive is additionally required: the
+# binary links libqdb_api.a statically there, and a c-api package without
+# it means a quasardb build that predates QDB-19063.
 cicd_assert_qdb_tree() {
     if [[ ! -d "${BASE_DIR}/qdb/lib" || ! -d "${BASE_DIR}/qdb/include" ]]; then
         echo "ERROR: expected qdb/lib and qdb/include to be present." >&2
@@ -155,3 +135,27 @@ cicd_assert_qdb_tree() {
 }
 
 export -f cicd_assert_qdb_tree
+
+# cicd_setup_qdb_env -- load the CGO environment from the root .envrc.
+#
+# bash functions share the parent shell's environment, so every `export`
+# in .envrc propagates to the calling step script.  Call it after
+# cicd_assert_qdb_tree (the paths must exist) and before any ${GO}
+# invocation that compiles a package importing internal/qdb -- which
+# includes golangci-lint's typecheck and `go test`.  On Windows .envrc
+# also prepends the MinGW gcc to PATH, which cgo (and `go test -race`)
+# needs to find.
+#
+# Outputs: CGO_CFLAGS, CGO_LDFLAGS and the per-OS loader path, exported.
+cicd_setup_qdb_env() {
+    source "${BASE_DIR}/.envrc"
+    echo "cicd_setup_qdb_env: CGO_CFLAGS=${CGO_CFLAGS}"
+    echo "cicd_setup_qdb_env: CGO_LDFLAGS=${CGO_LDFLAGS}"
+    case "$(uname)" in
+        FreeBSD) echo "cicd_setup_qdb_env: LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" ;;
+        Darwin) echo "cicd_setup_qdb_env: DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}" ;;
+        MINGW*) echo "cicd_setup_qdb_env: PATH=${PATH}" ;;
+    esac
+}
+
+export -f cicd_setup_qdb_env

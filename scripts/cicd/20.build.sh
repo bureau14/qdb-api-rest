@@ -3,14 +3,16 @@
 # Invoked by .buildkite/steps/_build.yml.
 # Compiles bin/qdb_rest via ${GO} build directly (no make: FreeBSD ships
 # BSD make, the Windows MSYS2 agents none), composing the same -ldflags
-# the root Makefile uses, then smoke-runs `qdb_rest -version` to prove
-# the injected metadata on every platform.
+# the root Makefile uses, then smoke-runs `qdb_rest -version`: it prints
+# the injected metadata and the linked C API's version, so the smoke run
+# also proves the link (static libqdb_api.a on Linux) and, on the other
+# platforms, that the shared library is found at load time.
 #
 # The Go toolchain is wired by cicd_setup_go_toolchain (00.common.sh)
 # from GOROOT injected by pipeline.py::_go_env_for_agent().  The qdb/
-# tree is populated by the qdb-artifacts plugin; nothing links it yet
-# (M1 vendors qdb-api-go), but cicd_assert_qdb_tree proves the artifact
-# dance -- including the static libqdb_api.a on Linux -- ahead of time.
+# tree is populated by the qdb-artifacts plugin; cicd_assert_qdb_tree
+# checks it is there and cicd_setup_qdb_env (the root .envrc) tells cgo
+# where it is.
 
 set -euxo pipefail
 
@@ -28,6 +30,7 @@ cd "${BASE_DIR}"
 cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
 cicd_assert_qdb_tree
+cicd_setup_qdb_env
 
 # --- build ---
 

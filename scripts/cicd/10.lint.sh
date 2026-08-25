@@ -11,6 +11,9 @@
 # The Go toolchain is wired by cicd_setup_go_toolchain (00.common.sh)
 # from GOROOT injected by pipeline.py::_go_env_for_agent(); the Makefile
 # invokes `go` from PATH, which that function prepends with ${GOROOT}/bin.
+# golangci-lint's typecheck compiles the cgo package, so the qdb/ tree
+# (qdb-artifacts plugin) and the CGO environment (cicd_setup_qdb_env) are
+# needed here exactly as in the build step.
 
 set -euxo pipefail
 
@@ -27,5 +30,6 @@ cd "${BASE_DIR}"
 
 cicd_setup_go_toolchain
 cicd_assert_qdb_tree
+cicd_setup_qdb_env
 
 make lint
