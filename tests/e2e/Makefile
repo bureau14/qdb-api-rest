@@ -164,7 +164,7 @@ test-legacy-selfcheck: services-check load seed
 test-legacy: services-check load seed
 	@$(COMMON); \
 	if [[ -n "$(REST_URL)" ]]; then $(LEGACY) replay "$(REST_URL)" $(CASES); exit $$?; fi; \
-	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> (M1) or REST_URL=<url>"; \
+	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL=<url>"; \
 	start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
 	trap 'stop_server $(REST_PID)' EXIT; \
 	$(LEGACY) replay http://127.0.0.1:$(REST_PORT) $(CASES)
