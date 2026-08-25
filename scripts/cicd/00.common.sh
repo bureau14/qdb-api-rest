@@ -113,6 +113,25 @@ cicd_setup_cpu_baseline() {
 
 export -f cicd_setup_cpu_baseline
 
+# cicd_setup_c_toolchain -- make the platform C compiler visible to go.
+#
+# `go test -race` needs cgo, and cgo needs a C compiler go can find. On
+# the Buildkite Windows agents gcc.exe lives in native C:\mingw64\bin,
+# which is /c/mingw64/bin under MSYS -- the MSYS-internal /mingw64/bin
+# does NOT resolve there, and without this prepend go.exe finds no gcc
+# and silently disables cgo ("go: -race requires cgo"). Reference:
+# qdb-nats-connector's .envrc, MINGW branch. On Linux, CC/CXX arrive as
+# gcc15 paths via pipeline env; FreeBSD and macOS find cc natively, so
+# only Windows needs help.
+cicd_setup_c_toolchain() {
+    if [[ "$(uname)" == MINGW* ]]; then
+        export PATH="/c/mingw64/bin:${PATH}"
+        echo "cicd_setup_c_toolchain: prepended /c/mingw64/bin to PATH"
+    fi
+}
+
+export -f cicd_setup_c_toolchain
+
 # cicd_assert_qdb_tree -- fail fast when the extracted C API is absent.
 #
 # Nothing in this repo links the C API yet (that starts when M1 vendors

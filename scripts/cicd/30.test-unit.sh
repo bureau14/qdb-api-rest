@@ -23,9 +23,18 @@ cd "${BASE_DIR}"
 
 cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
+cicd_setup_c_toolchain
+
+# On Windows the generated test binaries run through the -exec wrapper,
+# which converts PATH to Windows format so the loader resolves the MinGW
+# runtime DLLs under the Buildkite service context (see the wrapper).
+GO_EXTRA_FLAGS=()
+if [[ "$(uname)" == MINGW* ]]; then
+    GO_EXTRA_FLAGS+=(-exec "bash ${SCRIPT_DIR}/windows-go-test-exec.sh")
+fi
 
 # -mod=vendor: resolve strictly from vendor/; fail loudly instead of fetching.
 # -buildvcs=false: same rhel7 uid/no-passwd VCS-stamping failure as 20.build.sh.
 GOAMD64="${GOAMD64:-}" \
-    "${GO}" test -mod=vendor -buildvcs=false -short -v -race ./... \
+    "${GO}" test "${GO_EXTRA_FLAGS[@]+"${GO_EXTRA_FLAGS[@]}"}" -mod=vendor -buildvcs=false -short -v -race ./... \
     | "${GO_JUNIT_REPORT}" -out "${TEST_REPORT_DIR}/unit-junit-report.xml" -iocopy
