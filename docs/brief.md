@@ -200,9 +200,10 @@ Two real drivers:
    insecure-mode deployment shares one key.
 
 Additionally, the old codebase accumulated a class of bugs (shared mutable
-globals for cluster status, connection pools keyed by username so re-login
-races in-flight requests) that the new architecture excludes by
-construction; and the old dashboard is unused, so the rewrite sheds it.
+globals for cluster status, a user's connection pool torn down and
+replaced on every re-login, racing in-flight requests) that the new
+architecture excludes by construction; and the old dashboard is unused, so
+the rewrite sheds it.
 
 The rewrite also modernizes the product's posture: proper RESTful resource
 modeling where pragmatic, and a binary that feels native in cloud
@@ -445,8 +446,8 @@ poll): username (or anonymous), the cluster URI this server fronts and
 whether cluster security is enabled, token introspection (type, issued-at,
 expires-at, `jti`, logged-in-since via the `auth_time` claim, which
 survives refreshes), and this instance's local view of the caller's
-connection pool (handles in use / idle / cap) plus a server instance
-identifier and version. The instance identifier matters: behind a load
+user pool (handles in use / idle / cap; shared by every session of that
+user) plus a server instance identifier and version. The instance identifier matters: behind a load
 balancer, pool numbers are per-instance truth, and the id makes that
 legible instead of confusing. Whatever user metadata QuasarDB exposes
 (e.g. permissions) can be added later behind the same endpoint. Secret
@@ -466,13 +467,15 @@ convenience wrapper. Decisions:
 
 - **Handle budget**: one configured `max_handles` for the whole server --
   a predictable ceiling on what this binary imposes on the cluster --
-  partitioned into per-principal sub-pools with caps (handles are
-  authenticated per user; anonymous shares one pool). Idle principal pools
-  are LRU-evicted. Pools are keyed per session, not per username: login
-  mints a session id claim (stable across token refreshes, carried in both
-  token types), and the pool key is (cluster, session id). Re-login starts
-  a new session and thus a new pool; superseded pools drain via idle LRU
-  eviction and are never revoked out from under in-flight requests.
+  partitioned into per-user sub-pools with caps (handles are
+  authenticated per user; anonymous is one user). Idle user pools are
+  LRU-evicted. The user is the principal: the pool key is (cluster,
+  username), never a session or a token. A QuasarDB user has exactly one
+  secret, so every session of a user dials identically and all of them
+  share the user's pool. Login finds the existing pool or creates one and
+  never replaces or drains one, so in-flight requests are never raced.
+  The session id claim (Authentication) is a security abstraction, not a
+  pool key. Mechanism: ADR-0003.
 - **Circuit breaker, fail fast**: a breaker per cluster opens on
   consecutive connect/timeout failures; while open, requests fail
   immediately with 503 + `Retry-After` (half-open probes test recovery).
@@ -505,7 +508,8 @@ pretending otherwise:
 
 - Tokens are JWE (authenticated encryption; modern primitives, not
   RSA-OAEP + A128CBC) containing username + secret, a `jti`, a session id
-  claim (stable across refreshes; keys the connection pools), a session
+  claim (stable across refreshes; a security handle for features such as
+  logging out a user's other sessions, never a pool key), a session
   generation claim, a `typ` (`access` or `refresh`) claim, and an
   `auth_time` claim (the original login time, preserved across refreshes;
   surfaced as "logged in since" by `GET /api/v2/session`).
@@ -580,7 +584,7 @@ service user), selected by name at login, with the name carried as a
 token claim and pools/breakers/budgets per named cluster. Deferred until
 someone asks; the door stays open at near-zero cost (an optional
 cluster-name claim is reserved in the token, and pools are internally
-keyed by (cluster, session) even while the cluster count is one).
+keyed by (cluster, username) even while the cluster count is one).
 
 ### Configuration
 
