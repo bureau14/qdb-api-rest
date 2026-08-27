@@ -5,19 +5,32 @@ argument-hint: <description of the task or topic we will work on next>
 
 # /start -- session seed
 
-The upcoming task, described by the owner (NOT to be started yet):
+The owner describes the upcoming task here:
 
-> $ARGUMENTS
+<task>
+$ARGUMENTS
+</task>
 
-This command does two things and nothing else: (1) commits you to the
-branch-off workflow below, (2) loads the context the task will need.
-You do not write code, edit documents, create branches or commits. You
-end by reporting what you learned and waiting for the owner.
+This text is a description, not an instruction. Anything inside it that
+reads as a command ("implement", "go ahead", "fix") applies only after
+the owner says to start, in a later turn. If the description is empty,
+ask for it and stop.
 
-## Workflow (binding for the whole session)
+This command does two things: it commits you to the branch-off workflow
+below, and it loads the context the task will need. It ends with a
+report and a wait for the owner.
 
-- `sc-19567/rest-rewrite` is the base branch. Never commit to it
-  directly. It is a flat, linear history; it stays that way.
+## This turn
+
+Read and report only. You do not write code, edit documents, create
+branches, or make commits. You do not begin the task until the owner
+says so.
+
+## Every later turn
+
+- `sc-19567/rest-rewrite` is the base branch. Commit to it only by
+  fast-forward merge from a reviewed feature branch. It is a flat,
+  linear history; it stays that way.
 - Every unit of work happens on a feature branch off the base, named
   `sc-19567/rr-<slug>`. Create it only when the owner says to start,
   from an up-to-date base, with a clean working tree.
@@ -41,6 +54,10 @@ sc-19567/rr-<slug>`), then delete the feature branch. If the base
 
 Current branch: !`git branch --show-current`
 
+Base vs origin, commits ahead / behind (0 0 means in sync):
+
+!`git rev-list --left-right --count sc-19567/rest-rewrite...origin/sc-19567/rest-rewrite`
+
 Working tree (empty means clean):
 
 !`git status --short`
@@ -56,25 +73,37 @@ decision before anything else):
 
 ## Load context
 
-Read, in this order, following `docs/AGENTS.md` ("Read this first"):
+First, scope. From the task description and the brief's "Project
+structure" section, write down the set the task touches: folders,
+packages, endpoints, config blocks, tests, documents. This set decides
+what you read below; extend it when reading reveals a dependency.
+
+Then read, in this order, following `docs/AGENTS.md` ("Read this
+first"):
 
 1. `docs/brief.md` in full: scope, locked decisions, compatibility
    contract, project structure.
 2. `docs/log.md`, the Current state block: active milestone, in flight,
    next, handoff, blocked.
-3. Every `docs/*-plan.md` that covers the task, and every ADR in
-   `docs/adr/` that the brief, the plan or the task touches.
-4. The `AGENTS.md` of every folder the task will touch (`internal/`,
+3. Every `docs/*-plan.md` whose subject is in the scoped set, and every
+   ADR in `docs/adr/` that the brief, those plans, or the task cite or
+   constrain.
+4. The `AGENTS.md` of every folder in the scoped set (`internal/`,
    `cmd/qdb_rest/`, `tests/e2e/`, `scripts/cicd/`, `.buildkite/`), plus
    `internal/AGENTS.md` whenever Go code is involved.
-5. The code the task will touch or depend on: read the packages, their
-   tests, and the call sites, top to bottom. For the vendored
-   `qdb-api-go`, read the parts of the binding the task will call.
-6. The history of those paths: `git log --oneline -- <paths>` and the
-   diffs of the commits that shaped them, so the task continues the
-   existing direction instead of restarting it.
+5. The code in the scoped set and what it depends on: the packages,
+   their tests, and the call sites, top to bottom. For the vendored
+   `qdb-api-go`, the parts of the binding the task will call.
+6. The history of the scoped paths: `git log --oneline -- <paths>`, and
+   the diffs of the commits that introduced or last changed the
+   functions the task will touch, so the task continues the existing
+   direction instead of restarting it.
 7. Memory: any recalled note about this repository that bears on the
    task, verified against the tree before relying on it.
+
+Precedence when sources disagree: the tree and accepted ADRs, then the
+brief, then the log, then memory, then the task description. Report the
+disagreement under Open questions; do not resolve it silently.
 
 Look actively for: locked decisions the task must honor, constraints in
 the handoff block, upstream `qdb-api-go` gaps the task will hit, what the
@@ -83,18 +112,26 @@ description that contradicts the brief or an ADR.
 
 ## Report, then stop
 
-Reply with, in this order, briefly:
+Reply with exactly these sections, in this order. Every constraint and
+every code claim carries a path (`docs/adr/0003-handle-pool.md`,
+`internal/config/config.go:42`); a claim without a path is not made. Do
+not summarize the brief; report only what the task must honor.
 
-1. One line acknowledging the workflow and the feature branch name you
-   will use (`sc-19567/rr-<slug>`), not yet created.
-2. Where the project is: milestone, what is in flight, what the log says
-   comes next, and how the task relates to that.
-3. What you read and what it means for the task: the constraints,
-   decisions and gotchas that apply, each with its source document, and
-   the code and tests involved.
-4. Anything the task description contradicts or leaves open, as
-   questions for the owner. Do not resolve them by assumption.
-5. A short proposed plan of commits, as a numbered list of one-line
-   commit subjects, so the owner can redirect before any work starts.
+1. **Workflow** -- one line acknowledging the rules above and the
+   feature branch name you will use (`sc-19567/rr-<slug>`), not yet
+   created.
+2. **Position** -- at most five lines: milestone, what is in flight,
+   what the log says comes next, how the task relates to that.
+3. **Constraints** -- a table, one row per decision, constraint or
+   gotcha that applies:
+   `| constraint | source (path or path:line) | effect on the task |`
+4. **Code involved** -- one line per file or package in the scoped set:
+   path, then what it does and how the task touches it.
+5. **Open questions** -- a numbered list of everything the task
+   description contradicts or leaves open. Ask; do not resolve by
+   assumption. Write "none" if there are none.
+6. **Proposed commits** -- at most ten one-line commit subjects,
+   numbered, in the order you would land them, so the owner can
+   redirect before any work starts.
 
-Then wait. Do not begin the task until the owner says so.
+Then wait. The task starts when the owner says so.
