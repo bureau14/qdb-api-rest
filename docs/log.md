@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -22,19 +22,21 @@ goldens replay against a server under test; the bench's
 `legacy@new-rest` row awaits enabling. Exit: every legacy golden green
 against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
 `legacy@old-rest` on every query under `CAPI_COMPRESSION=none`; the
-readiness probe answers from a pooled handle under the service user; the
-auth ADR (JWE library, AEAD, key derivation) accepted; property tests for
-auth and the pool green on all eight platforms.
+readiness probe dials the cluster as the service user and answers
+`200`/`503`; the auth ADR (JWE library, AEAD, key derivation) accepted;
+property tests for auth and the pool green on all eight platforms.
 
 In flight:
 
-- M1: nothing started.
+- M1, cluster config + handle pool + readiness: planned in
+  `docs/pool-plan.md` (owner decisions taken 2026-08-26) with ADR-0003
+  proposed. No code yet.
 
 Next:
 
-1. `cluster:` config block (URI, cluster public key, service user, client
-   C API compression, timeouts) and the `internal/qdb` handle pool, with
-   the readiness probe on it.
+1. `cluster:`, `pool:` and `status:` config blocks, the `internal/qdb`
+   handle pool, and the readiness probe on its own dial
+   (`docs/pool-plan.md`, Implementation order).
 2. Auth ADR, then `internal/auth`.
 3. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
    golden by golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>`
@@ -54,8 +56,12 @@ Handoff to M1:
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- The readiness probe uses a pooled handle under the service user
-  (`docs/brief.md`, "Resilience and connection management").
+- The readiness probe dials its own handle as the service user, outside
+  the pool, and fails with `503` (ADR-0003; `docs/brief.md`,
+  Compatibility contract).
+- `cluster.max_in_buffer_size` must be raised for the bench's full-table
+  query, as the old server's e2e flags do (`docs/pool-plan.md`, Handoff
+  notes).
 - Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
   `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
   keeping the brief's sentinel mapping for typed undefined values is
@@ -74,6 +80,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-26 -- Pool plan decisions
+
+- Owner decisions: readiness dials its own handle and fails with `503`
+  (brief contract amended); `IsRetryable` classifies errors; nothing
+  dials at startup. `docs/pool-plan.md`, Owner decisions; ADR-0003.
 
 ## 2026-08-25 -- M0 complete, M1 started
 
