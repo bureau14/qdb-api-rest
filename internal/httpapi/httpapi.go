@@ -10,8 +10,8 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleReadiness reports whether this instance can serve traffic;
-// readiness beyond serving HTTP is the QuasarDB connection pool's verdict.
+// handleReadiness reports whether this instance can serve traffic: the
+// cluster is dialed as the service user on every probe (ADR-0004).
 func handleReadiness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
