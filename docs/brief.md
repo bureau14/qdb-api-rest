@@ -266,8 +266,13 @@ test suite; this section is the specification.
 
 ### GET /api/status/liveness, GET /api/status/readiness
 
-- Unauthenticated, 200/500. Load balancers at customer sites health-check
-  these paths; keep them verbatim (also mirrored under `/api/v2/status/*`).
+- Unauthenticated, empty body. Load balancers at customer sites
+  health-check these paths; keep them verbatim (also mirrored under
+  `/api/v2/status/*`). Success is `200`; readiness failure is `503`
+  (the old server answered `500` with a JSON message; that shape is
+  deliberately not preserved, `503` being what probes and load
+  balancers understand as "not ready"). Readiness dials the cluster as
+  the service user on every probe (ADR-0004).
 
 ### Explicitly dropped
 
