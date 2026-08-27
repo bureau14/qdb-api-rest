@@ -3,7 +3,7 @@ description: Seed a session -- acknowledge the branch-off workflow and load cont
 argument-hint: <description of the task or topic we will work on next>
 ---
 
-# /start -- session seed
+# /rr-start -- session seed
 
 The owner describes the upcoming task here:
 
