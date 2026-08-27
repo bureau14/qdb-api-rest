@@ -73,49 +73,56 @@ decision before anything else):
 
 ## Load context
 
-First, scope. From the task description and the brief's "Project
-structure" section, write down the set the task touches: folders,
-packages, endpoints, config blocks, tests, documents. This set decides
-what you read below; extend it when reading reveals a dependency.
+The `AGENTS.md` hierarchy is the map. The root file says what each
+folder holds and when to open that folder's own `AGENTS.md`; the
+documentation folder's `AGENTS.md` prescribes the reading order for
+planning and design text and which document is the source of truth.
+Follow that map rather than a list kept here, so this command stays
+correct as the repository changes.
 
-Then read, in this order, following `docs/AGENTS.md` ("Read this
-first"):
+First, scope. From the task description and the project structure as
+the documentation describes it, write down the set the task touches:
+folders, packages, endpoints, config blocks, tests, documents. This set
+decides what you read below; extend it when reading reveals a
+dependency.
 
-1. `docs/brief.md` in full: scope, locked decisions, compatibility
-   contract, project structure.
-2. `docs/log.md`, the Current state block: active milestone, in flight,
-   next, handoff, blocked.
-3. Every `docs/*-plan.md` whose subject is in the scoped set, and every
-   ADR in `docs/adr/` that the brief, those plans, or the task cite or
-   constrain.
-4. The `AGENTS.md` of every folder in the scoped set (`internal/`,
-   `cmd/qdb_rest/`, `tests/e2e/`, `scripts/cicd/`, `.buildkite/`), plus
-   `internal/AGENTS.md` whenever Go code is involved.
-5. The code in the scoped set and what it depends on: the packages,
-   their tests, and the call sites, top to bottom. For the vendored
-   `qdb-api-go`, the parts of the binding the task will call.
-6. The history of the scoped paths: `git log --oneline -- <paths>`, and
+Then read, in this order:
+
+1. The planning and design documents, in the order their folder's
+   `AGENTS.md` prescribes: the source-of-truth document in full, the
+   current-state section of the project log, the plans whose subject is
+   in the scoped set, and the decision records those plans or the task
+   cite or constrain.
+2. The `AGENTS.md` of every folder in the scoped set, and of each
+   parent folder on the way there.
+3. The code in the scoped set and what it depends on: the packages,
+   their tests, and the call sites, top to bottom. For vendored
+   dependencies, the parts the task will call.
+4. The history of the scoped paths: `git log --oneline -- <paths>`, and
    the diffs of the commits that introduced or last changed the
    functions the task will touch, so the task continues the existing
    direction instead of restarting it.
-7. Memory: any recalled note about this repository that bears on the
+5. Memory: any recalled note about this repository that bears on the
    task, verified against the tree before relying on it.
 
-Precedence when sources disagree: the tree and accepted ADRs, then the
-brief, then the log, then memory, then the task description. Report the
-disagreement under Open questions; do not resolve it silently.
+Precedence when sources disagree: the tree and accepted decision
+records, then the source-of-truth document, then the project log, then
+memory, then the task description. Report the disagreement under Open
+questions; do not resolve it silently.
 
-Look actively for: locked decisions the task must honor, constraints in
-the handoff block, upstream `qdb-api-go` gaps the task will hit, what the
-e2e goldens and the bench already pin, and anything in the task
-description that contradicts the brief or an ADR.
+Look actively for: locked decisions the task must honor, handoff
+constraints recorded for the active milestone, known gaps in the
+dependencies the task will call, what the existing fixtures, goldens and
+benchmarks already pin, and anything in the task description that
+contradicts a locked decision.
 
 ## Report, then stop
 
 Reply with exactly these sections, in this order. Every constraint and
-every code claim carries a path (`docs/adr/0003-handle-pool.md`,
-`internal/config/config.go:42`); a claim without a path is not made. Do
-not summarize the brief; report only what the task must honor.
+every code claim carries a path, for example `path/to/document.md` or
+`path/to/file.go:42-46`; a claim without a path is not made. Do not
+summarize the source-of-truth document; report only what the task must
+honor.
 
 1. **Workflow** -- one line acknowledging the rules above and the
    feature branch name you will use (`sc-19567/rr-<slug>`), not yet
