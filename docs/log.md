@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -29,8 +29,8 @@ property tests for auth and the pool green on all eight platforms.
 In flight:
 
 - M1, cluster config + handle pool + readiness: planned in
-  `docs/pool-plan.md` (owner decisions taken 2026-08-26) with ADR-0003
-  proposed. No code yet.
+  `docs/pool-plan.md` (owner decisions taken 2026-08-26 and 2026-08-27)
+  with ADR-0003 (pool) and ADR-0004 (probes) proposed. No code yet.
 
 Next:
 
@@ -57,7 +57,7 @@ Handoff to M1:
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
 - The readiness probe dials its own handle as the service user, outside
-  the pool, and fails with `503` (ADR-0003; `docs/brief.md`,
+  the pool, and fails with `503` (ADR-0004; `docs/brief.md`,
   Compatibility contract).
 - `cluster.max_in_buffer_size` must be raised for the bench's full-table
   query, as the old server's e2e flags do (`docs/pool-plan.md`, Handoff
@@ -80,6 +80,13 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-27 -- Pool plan review decisions
+
+- Owner decisions: pools keyed per user, not per session (brief amended,
+  "Resilience and connection management"); C calls reach code only
+  through a narrow `Handle` wrapper; probes get their own ADR-0004
+  (proposed). `docs/pool-plan.md`, Owner decisions; ADR-0003.
 
 ## 2026-08-26 -- Pool plan decisions
 
