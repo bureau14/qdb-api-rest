@@ -5,7 +5,7 @@ go 1.27
 toolchain go1.27.0
 
 require (
-	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260817084603-4bcb78f1d9a6
+	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260827083742-b64493c05526
 	gopkg.in/yaml.v3 v3.0.1
 	pgregory.net/rapid v1.3.0
 )
