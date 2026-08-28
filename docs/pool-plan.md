@@ -149,6 +149,17 @@ facts the failsafe is built on):
   fixed at 256 MiB (`api/src/handle.hpp`). `client_max_parallelism`
   must be set before connect.
 
+qdbd, verified against the test cluster on 2026-08-28:
+
+- **The session pool is finite and exhaustion is punished.** With the
+  test configuration qdbd accepted about 640 concurrent sessions, then
+  logged `out of free sessions, trying again in 900000ms` and stopped
+  accepting for fifteen minutes, sessions freed in the meantime or not.
+  A handle holds its sessions until `qdb_close` returns, so closes in
+  flight count: that is why the budget is released when a close
+  completes (ADR-0003), and why every test bounds the handles it holds
+  open, closes included, at every step.
+
 The old server opened a fresh handle on every readiness probe and ran
 `Statistics()` unless `readiness_query` was set; it pooled handles with
 `silenceper/pool` keyed by username. The per-probe handle survives; the
