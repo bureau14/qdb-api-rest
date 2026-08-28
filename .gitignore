@@ -31,3 +31,5 @@ __pycache__/
 qdbsh.log*
 # bk CLI local state
 .bk.yaml
+# qdb-test-setup log archives, written at the repo root by stop-services.sh
+logs/
