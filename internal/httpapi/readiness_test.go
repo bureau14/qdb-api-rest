@@ -10,12 +10,10 @@ import (
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
-
-// The readiness handler dials the cluster on every probe, so these tests
-// need the live qdbd of scripts/tests/setup/start-services.sh.
-const insecureURI = "qdb://127.0.0.1:2836"
 
 // probe runs one GET against the readiness route of a handler built for
 // cfg, and returns the response.
@@ -38,15 +36,15 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 // observeContext carries a discarding logger so handlers can log.
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
-	return withLoggerForTest(logger)
+	return observe.WithLogger(context.Background(), logger)
 }
 
 // TestReadinessOKAgainstLiveCluster: a reachable cluster answers 200 with
 // no Retry-After and an empty body.
 func TestReadinessOKAgainstLiveCluster(t *testing.T) {
-	requireQdbd(t)
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	cfg := config.Default()
-	cfg.Cluster.URI = insecureURI
+	cfg.Cluster.URI = qdbtest.InsecureURI
 	resp := probe(t, cfg)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("readiness = %d, want 200", resp.Code)

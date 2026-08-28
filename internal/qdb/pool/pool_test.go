@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"net"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -13,13 +12,13 @@ import (
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
+
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
-// The tests dial real handles to the insecure cluster of
-// scripts/tests/setup/start-services.sh; nothing is skipped or faked.
-// Every handle a test opens is closed before the next step, so the
-// cluster never sees more than a handful of sessions at once.
-const insecureURI = "qdb://127.0.0.1:2836"
+// The tests dial real handles to the insecure cluster; nothing is skipped
+// or faked. Every handle a test opens is closed before the next step, so
+// the cluster never sees more than a handful of qdbd sessions at once.
 
 // The property tests dial and close a real handle per step, so the
 // example count is held down unless -rapid.checks says otherwise.
@@ -36,16 +35,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// requireQdbd fails fast with the recipe when the cluster is down.
-func requireQdbd(t testing.TB) {
-	t.Helper()
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:2836", time.Second)
-	if err != nil {
-		t.Fatalf("qdbd not answering on %s; run: bash scripts/tests/setup/start-services.sh", insecureURI)
-	}
-	_ = conn.Close()
-}
-
 // handle is a real handle with an identity that survives close: the C
 // API reuses addresses, so the pointer alone cannot tell conns apart.
 type handle struct {
@@ -59,7 +48,7 @@ var handleIDs atomic.Uint64
 // handle the C API makes.
 func dialHandle(context.Context) (handle, error) {
 	opts := qdbapi.NewHandleOptions().
-		WithClusterUri(insecureURI).
+		WithClusterUri(qdbtest.InsecureURI).
 		WithCompression(qdbapi.CompNone).
 		WithClientMaxParallelism(1).
 		WithTimeout(5 * time.Second)
@@ -240,7 +229,7 @@ func (m *model) check(t *rapid.T) {
 // handed out, a conn past MaxLifetime is closed on release, Acquire at
 // capacity returns when its context ends, and Close drains everything.
 func TestPoolInvariants(t *testing.T) {
-	requireQdbd(t)
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	rapid.Check(t, func(rt *rapid.T) {
 		m := newModel(rt)
 		rt.Repeat(map[string]func(*rapid.T){
@@ -267,7 +256,7 @@ func TestPoolInvariants(t *testing.T) {
 
 // Concurrent acquirers never exceed Max between them.
 func TestConcurrentAcquireHonorsMax(t *testing.T) {
-	requireQdbd(t)
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	const max, workers, rounds = 3, 12, 5
 	p := New(dialHandle, Options{Max: max})
 	var wg sync.WaitGroup
@@ -296,7 +285,7 @@ func TestConcurrentAcquireHonorsMax(t *testing.T) {
 
 // A failed dial consumes no slot: the pool stays fully usable.
 func TestFailedDialConsumesNoSlot(t *testing.T) {
-	requireQdbd(t)
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	fail := errors.New("dial refused")
 	calls := 0
 	dial := func(ctx context.Context) (handle, error) {
@@ -329,7 +318,7 @@ func TestFailedDialConsumesNoSlot(t *testing.T) {
 // Close with a lease outstanding waits until ctx ends and says so; the
 // leased conn is never closed underneath its holder.
 func TestCloseWaitsForLeases(t *testing.T) {
-	requireQdbd(t)
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	p := New(dialHandle, Options{Max: 1})
 	l, err := p.Acquire(context.Background())
 	if err != nil {

@@ -63,6 +63,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   the binding.
 - `internal/qdb` and `internal/httpapi` tests dial a live qdbd (the pair
   from `scripts/tests/setup/start-services.sh`, insecure `2836` / secure
-  `2838`), so a bare `go test ./...` needs those services up; the tests
-  fail fast with the start hint when a port does not answer, and nothing
-  is skipped under `-short`.
+  `2838`), so a bare `go test ./...` needs those services up. The fixture
+  has one home, `internal/qdbtest`: the URIs, the key files, and
+  `Require`, which fails fast with the start hint when a port does not
+  answer. Nothing is skipped under `-short`.

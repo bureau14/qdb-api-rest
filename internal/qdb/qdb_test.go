@@ -3,9 +3,6 @@ package qdb
 import (
 	"context"
 	"errors"
-	"net"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -13,44 +10,16 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
-)
-
-// The tests run against the live qdbd pair of
-// scripts/tests/setup/start-services.sh: insecure on 2836, secure on 2838
-// with cluster_public.key / user_private.key at the repo root. Nothing is
-// skipped; a down cluster fails fast with the recipe.
-const (
-	insecureURI = "qdb://127.0.0.1:2836"
-	secureURI   = "qdb://127.0.0.1:2838"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
-
-// requireQdbd fails fast with the recipe when a port does not answer.
-func requireQdbd(t *testing.T, port string) {
-	t.Helper()
-	conn, err := net.DialTimeout("tcp", port, time.Second)
-	if err != nil {
-		t.Fatalf("qdbd not answering on %s; run: bash scripts/tests/setup/start-services.sh", port)
-	}
-	_ = conn.Close()
-}
-
-// repoRoot is two levels up from this package.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate the test file")
-	}
-	return filepath.Join(filepath.Dir(file), "..", "..")
-}
 
 // insecureConfig is the default config pointed at the insecure cluster,
 // with the pool sizes overridden per test.
 func insecureConfig(mutate func(*config.Config)) config.Config {
 	cfg := config.Default()
-	cfg.Cluster.URI = insecureURI
+	cfg.Cluster.URI = qdbtest.InsecureURI
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -73,7 +42,7 @@ var anonymous = User{}
 // TestFatalErrorReusesSession: a bad query is fatal (the cluster answered),
 // so the session is returned to the pool, not discarded.
 func TestFatalErrorReusesSession(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
 
@@ -92,7 +61,7 @@ func TestFatalErrorReusesSession(t *testing.T) {
 // TestPerUserCapAndSharing: one user's concurrent calls never exceed the
 // per-user cap, and two User values with the same name share one pool.
 func TestPerUserCapAndSharing(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(func(cfg *config.Config) {
 		cfg.Pool.PerUserMax = 2
 		cfg.Pool.MaxSessions = 8
@@ -149,7 +118,7 @@ func TestBreakerOpensOnUnreachable(t *testing.T) {
 // TestRetryOnceReturnsAfterRetryableFailure: a call that always fails
 // retryably is attempted exactly twice with WithReadRetry.
 func TestRetryOnceOnRetryableFailure(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
 
@@ -169,12 +138,11 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 // TestSecureDialAsOwnUser: the readiness probe dials the secure cluster
 // as the REST API's own user and runs the query.
 func TestSecureDialAsOwnUser(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2838")
-	root := repoRoot(t)
+	qdbtest.Require(t, qdbtest.SecureURI)
 	cfg := config.Default()
-	cfg.Cluster.URI = secureURI
-	cfg.Cluster.PublicKeyFile = filepath.Join(root, "cluster_public.key")
-	cfg.Cluster.UserSecurityFile = filepath.Join(root, "user_private.key")
+	cfg.Cluster.URI = qdbtest.SecureURI
+	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
+	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
 	c := New(cfg, nil)
 	defer closeCluster(t, c)
 
@@ -205,7 +173,7 @@ func (c *fakeClock) advance(d time.Duration) {
 // idle_timeout is reaped away, so the map is bounded by distinct users,
 // not by logins.
 func TestIdleUserPoolEvicted(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
+	qdbtest.Require(t, qdbtest.InsecureURI)
 	clk := &fakeClock{now: time.Unix(1_700_000_000, 0)}
 	c := New(insecureConfig(func(cfg *config.Config) {
 		cfg.Pool.IdleTimeout = time.Minute
