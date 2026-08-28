@@ -240,3 +240,61 @@ func TestProbeFailsOnUnreachable(t *testing.T) {
 		t.Fatal("want a probe failure against an unreachable cluster")
 	}
 }
+
+// fakeClock is a manually advanced clock for eviction and lifetime tests.
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// TestIdleUserPoolEvicted: a user pool that has held no handle for
+// idle_timeout is reaped away, so the map is bounded by distinct users,
+// not by logins.
+func TestIdleUserPoolEvicted(t *testing.T) {
+	requireQdbd(t, "127.0.0.1:2836")
+	clk := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	c := New(insecureConfig(func(cfg *config.Config) {
+		cfg.Pool.IdleTimeout = time.Minute
+		cfg.Pool.MaxLifetime = time.Hour
+	}), clk.Now)
+	defer closeCluster(t, c)
+
+	if err := c.Query(context.Background(), anonymous, "SELECT 1", func(*qdbapi.QueryResult) error { return nil }); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if s := c.Stats(); s.Users != 1 {
+		t.Fatalf("want one user pool after a query, got %d", s.Users)
+	}
+
+	// Past idle_timeout the idle handle is closed; the pool is now empty.
+	clk.advance(2 * time.Minute)
+	c.Reap()
+	up := c.poolFor(anonymous)
+	deadline := time.Now().Add(10 * time.Second)
+	for s := up.Stats(); s.Idle != 0 || s.Closing != 0; s = up.Stats() {
+		if time.Now().After(deadline) {
+			t.Fatalf("idle handle never closed: %+v", s)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// One reap marks it empty, the next past idle_timeout evicts it.
+	c.Reap()
+	clk.advance(2 * time.Minute)
+	c.Reap()
+	if s := c.Stats(); s.Users != 0 {
+		t.Fatalf("idle user pool was not evicted: %d users remain", s.Users)
+	}
+}
