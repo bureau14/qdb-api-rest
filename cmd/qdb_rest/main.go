@@ -175,7 +175,7 @@ func main() {
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)
 
-	servers, err := newServers(ctx, cfg, httpapi.NewHandler(cluster, cfg))
+	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)

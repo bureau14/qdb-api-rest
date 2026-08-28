@@ -15,8 +15,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
-// probe runs one GET against the readiness route of a handler built for
-// cfg, and returns the response.
+// probe runs one GET against the readiness route with a cluster built
+// for cfg on the request context, and returns the response.
 func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 	t.Helper()
 	c := qdb.New(cfg, nil)
@@ -25,11 +25,10 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 		defer cancel()
 		_ = c.Close(ctx)
 	})
-	handler := NewHandler(c, cfg)
-	ctx := observeContext()
+	ctx := qdb.WithCluster(observeContext(), c)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/status/readiness", nil)
 	resp := httptest.NewRecorder()
-	handler.ServeHTTP(resp, req)
+	NewHandler().ServeHTTP(resp, req)
 	return resp
 }
 

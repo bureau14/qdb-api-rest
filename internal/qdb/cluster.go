@@ -32,9 +32,10 @@ type userPool struct {
 // only door to a session (Call) and answers readiness on its own dial
 // (Probe). Nothing dials at startup; every session is dialed on demand.
 type Cluster struct {
-	cfg     config.Cluster
-	poolCfg config.Pool
-	now     func() time.Time
+	cfg            config.Cluster
+	poolCfg        config.Pool
+	readinessQuery string // status.readiness_query, run by Probe
+	now            func() time.Time
 
 	// budget caps the live sessions of the whole process at max_sessions:
 	// a unit is held from before a dial until the session's close returns.
@@ -62,14 +63,15 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		now = time.Now
 	}
 	c := &Cluster{
-		cfg:        cfg.Cluster,
-		poolCfg:    cfg.Pool,
-		now:        now,
-		budget:     newBudget(cfg.Pool.MaxSessions),
-		breaker:    newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
-		users:      map[string]*userPool{},
-		reaperStop: make(chan struct{}),
-		reaperDone: make(chan struct{}),
+		cfg:            cfg.Cluster,
+		poolCfg:        cfg.Pool,
+		readinessQuery: cfg.Status.ReadinessQuery,
+		now:            now,
+		budget:         newBudget(cfg.Pool.MaxSessions),
+		breaker:        newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
+		users:          map[string]*userPool{},
+		reaperStop:     make(chan struct{}),
+		reaperDone:     make(chan struct{}),
 	}
 	go c.reap()
 	return c
@@ -284,16 +286,16 @@ func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, err
 }
 
 // Probe answers readiness. It dials a fresh session as the REST API's own
-// user (outside the pool, the budget and the breaker), runs the readiness
-// query, and closes the session on its own goroutine. The dial proves the
-// cluster is reachable and the REST API's own user authenticates; the query
-// proves the session serves one (ADR-0004).
-func (c *Cluster) Probe(ctx context.Context, readinessQuery string) error {
+// user (outside the pool, the budget and the breaker), runs
+// status.readiness_query, and closes the session on its own goroutine. The
+// dial proves the cluster is reachable and the REST API's own user
+// authenticates; the query proves the session serves one (ADR-0004).
+func (c *Cluster) Probe(ctx context.Context) error {
 	s, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
 		return err
 	}
-	qerr := s.query(ctx, readinessQuery, func(*qdbapi.QueryResult) error { return nil })
+	qerr := s.query(ctx, c.readinessQuery, func(*qdbapi.QueryResult) error { return nil })
 	if !s.abandoned() {
 		s.closeAsync()
 	}

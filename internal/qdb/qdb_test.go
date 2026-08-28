@@ -146,7 +146,7 @@ func TestSecureDialAsOwnUser(t *testing.T) {
 	c := New(cfg, nil)
 	defer closeCluster(t, c)
 
-	if err := c.Probe(context.Background(), cfg.Status.ReadinessQuery); err != nil {
+	if err := c.Probe(context.Background()); err != nil {
 		t.Fatalf("probe against the secure cluster: %v", err)
 	}
 }

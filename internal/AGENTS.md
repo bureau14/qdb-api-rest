@@ -37,9 +37,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   given, never `context.Background()`.
 - The context is where request-scoped and process-scoped values travel:
   the logger (`observe`) and the cluster (`qdb.WithCluster` /
-  `qdb.ClusterFrom`). Handlers read them from the request context;
-  nothing is injected through constructors that the context already
-  carries.
+  `qdb.ClusterFrom`, which panics without one, like `Logger`). Handlers
+  read them from the request context; nothing is injected through
+  constructors that the context already carries, and `NewHandler` takes
+  no arguments.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.
