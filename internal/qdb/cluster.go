@@ -36,12 +36,21 @@ type Cluster struct {
 	poolCfg config.Pool
 	now     func() time.Time
 
-	budget  *budget
+	// budget caps the live sessions of the whole process at max_sessions:
+	// a unit is held from before a dial until the session's close returns.
+	budget *budget
+	// breaker is the per-cluster circuit breaker Call gates on; dials and
+	// calls feed it, the readiness probe never does (ADR-0004).
 	breaker *breaker
-	wedged  atomic.Int64
+	// wedged counts dials and calls abandoned on their deadline whose C
+	// call has not returned yet. Each still holds its budget unit; the
+	// abandoned goroutine decrements wedged once its close has completed.
+	wedged atomic.Int64
 
-	mu         sync.Mutex
-	users      map[string]*userPool
+	mu    sync.Mutex           // guards users
+	users map[string]*userPool // one session pool per user, keyed by username
+	// reaperStop ends the reaper goroutine and reaperDone closes once it
+	// has ended; Close uses both so no reap pass races the drain.
 	reaperStop chan struct{}
 	reaperDone chan struct{}
 }
@@ -307,6 +316,10 @@ func (c *Cluster) reap() {
 	}
 }
 
+// reapOnce closes the idle sessions of every user pool, then evicts the
+// pools that have held nothing for idle_timeout: the first pass that
+// finds a pool empty stamps emptySince, a later pass past idle_timeout
+// deletes the pool, and a pool that holds anything again loses the stamp.
 func (c *Cluster) reapOnce() {
 	now := c.now()
 	c.mu.Lock()
@@ -353,8 +366,10 @@ func (c *Cluster) Stats() Stats {
 	}
 }
 
-// Close stops the reaper and drains every user pool within ctx, returning
-// ctx.Err() for whatever is still wedged. The process exits regardless.
+// Close first stops the reaper (and waits for its goroutine to end, so no
+// eviction pass runs during the drain), then takes every user pool out of
+// the map and drains each within ctx, returning ctx.Err() for whatever is
+// still wedged. The process exits regardless.
 func (c *Cluster) Close(ctx context.Context) error {
 	close(c.reaperStop)
 	<-c.reaperDone

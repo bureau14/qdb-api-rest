@@ -34,8 +34,13 @@ func newBreaker(threshold int, openFor time.Duration, now func() time.Time) *bre
 	return &breaker{state: breakerClosed, threshold: threshold, openFor: openFor, now: now}
 }
 
-// allow reports whether a call may proceed, and if not, how long until the
-// breaker next admits one.
+// allow reports whether a call may proceed and, when it may not, how long
+// until the breaker next admits one. Closed: every call proceeds. Open:
+// calls fail fast until openUntil; the first call to arrive after that
+// moment flips the breaker to half-open and is admitted as the probe.
+// Half-open: the probe is in flight and every other call fails fast; the
+// hint is what is left of the open window, zero or less by then, so the
+// caller may retry at once.
 func (b *breaker) allow() (time.Duration, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -53,6 +58,9 @@ func (b *breaker) allow() (time.Duration, bool) {
 	}
 }
 
+// recordSuccess closes the breaker whatever its state and forgets the
+// failure streak: a call the cluster answered -- the half-open probe, or
+// any call while closed -- proves the cluster is healthy.
 func (b *breaker) recordSuccess() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -60,6 +68,12 @@ func (b *breaker) recordSuccess() {
 	b.failures = 0
 }
 
+// recordFailure counts one retryable failure. A failed half-open probe
+// reopens the breaker for another openFor and leaves the streak alone.
+// Otherwise the streak grows by one and, at threshold, opens the breaker
+// for openFor; a failure that lands while already open (a call admitted
+// before the breaker opened) only lengthens the streak, which the next
+// success resets.
 func (b *breaker) recordFailure() {
 	b.mu.Lock()
 	defer b.mu.Unlock()

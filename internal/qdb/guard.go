@@ -6,7 +6,8 @@ import (
 )
 
 // guard runs one blocking cgo call on its own goroutine and races it
-// against a deadline. The C API has no cancellation path, so a call past
+// against a deadline. It sits directly above the C call: Session.call
+// wraps one C API operation in it, Cluster.connect wraps the dial. The C API has no cancellation path, so a call past
 // its deadline cannot be stopped; the guard abandons its goroutine
 // instead, and the goroutine, when the C call finally returns, owns the
 // cleanup (freeing any result and closing the session). The caller never
