@@ -26,11 +26,11 @@ path and no dependency on its state.
 
 1. **Liveness** is the canonical k8s definition: the process serves
    HTTP. It is never cluster-aware.
-2. **Readiness** dials a fresh handle as the service user under
+2. **Readiness** dials a fresh handle as the REST API's own user under
    `pool.call_timeout` (the abandon-on-deadline mechanism of ADR-0003),
    runs one query -- `status.readiness_query`, default `SELECT 1` --
    and closes the handle on its own goroutine. The dial proves the
-   cluster is reachable and the service user authenticates; the query
+   cluster is reachable and the REST API's own user authenticates; the query
    proves the handle serves one. Success is `200`, failure `503`, both with an empty body
    and no `Retry-After`; the cause goes to the log line, not the wire.
    The probe never touches the pool, the budget or the breaker, neither
@@ -44,7 +44,7 @@ path and no dependency on its state.
 ## Consequences
 
 - A readiness `200` proves the cluster is reachable from this instance,
-  now, and that the service user authenticates. It says nothing about
+  now, and that the REST API's own user authenticates. It says nothing about
   pool capacity; capacity is reported on real requests (`429`/`503`)
   and, from M2, on `/metrics`.
 - Each concurrent prober costs one transient handle outside

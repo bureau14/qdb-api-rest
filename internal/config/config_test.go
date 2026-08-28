@@ -69,9 +69,9 @@ func slots() []slot {
 		{key("cluster.uri"), []string{"cluster"}, false, words("qdb://127.0.0.1:2836", "qdb://a:1,b:2", "", "http://x")},
 		{key("cluster.public_key"), nil, false, words("", "PK")},
 		{key("cluster.public_key_file"), []string{"cluster-public-key-file"}, false, words("", "/etc/qdb/cluster_public.key")},
-		{key("cluster.service_user.name"), nil, false, words("", "qdb_rest")},
-		{key("cluster.service_user.secret"), nil, false, words("", "S3CRET")},
-		{key("cluster.service_user.file"), nil, false, words("", "/etc/qdb/user_private.key")},
+		{key("cluster.username"), nil, false, words("", "qdb_rest")},
+		{key("cluster.secret_key"), nil, false, words("", "S3CRET")},
+		{key("cluster.user_security_file"), nil, false, words("", "/etc/qdb/user_private.key")},
 		{key("cluster.compression"), nil, false, words("none", "balanced", "lz4")},
 		{key("cluster.encryption"), nil, false, words("none", "aes", "rot13")},
 		{key("cluster.timeout"), nil, true, words("1s", "60s", "0s", "500ms", "1500ms", "-1s")},
@@ -261,7 +261,7 @@ func TestExampleIsTheDefaults(t *testing.T) {
 
 // Secret-bearing config types never render their secret.
 func TestSecretsNeverLogged(t *testing.T) {
-	c := Cluster{PublicKey: "PUBKEY", ServiceUser: ServiceUser{Name: "u", Secret: "S3CRET"}}
+	c := Cluster{PublicKey: "PUBKEY", Username: "u", SecretKey: "S3CRET"}
 	rendered := fmt.Sprint(c.LogValue())
 	for _, leak := range []string{"S3CRET", "PUBKEY"} {
 		if strings.Contains(rendered, leak) {

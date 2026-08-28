@@ -14,7 +14,7 @@ probes).
 After this unit lands, `qdb_rest` binds to one configured cluster, owns
 a bounded set of authenticated C API handles with a failsafe around
 every call, and answers `GET /api/status/readiness` by dialing the
-cluster as the service user and running one check. The later units
+cluster as its own user and running one check. The later units
 (auth, `/api/login`, `/api/query`) only add principals to a pool that
 already exists.
 
@@ -30,11 +30,11 @@ already exists.
 | Every call runs under a Go-side deadline; a timed-out call discards its handle                                                                                                                                        | the C API has no cancellation path and is sometimes messy; a handle that timed out once is never trusted                                                | trusting the C API's own timeouts                                                 |
 | Error classification is `qdb-api-go`'s `IsRetryable`: retryable discards the handle, feeds the breaker and permits one read retry                                                                                     | one matrix, maintained upstream, already covering the whole vocabulary; unknown errors default to retryable                                             | a keep-list of request-caused errors maintained here; discarding on every error   |
 | Start when the cluster is unreachable; report not-ready                                                                                                                                                               | k8s pattern; the breaker absorbs the outage; only config errors refuse to start                                                                         | fail the start (systemd restart loop)                                             |
-| Nothing dials at startup; every handle is dialed on demand                                                                                                                                                            | a pre-dialed handle needs a retry mechanism of its own and buys milliseconds on the first request                                                       | a warm-up handle for the service user; a reserved budget slot for it              |
+| Nothing dials at startup; every handle is dialed on demand                                                                                                                                                            | a pre-dialed handle needs a retry mechanism of its own and buys milliseconds on the first request                                                       | a warm-up handle for the REST API's own user; a reserved budget slot for it       |
 | Defaults: `max_handles` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                                                                                           | short lifetime bounds the blast radius of a degraded handle                                                                                             | 1h lifetime, 5 failures                                                           |
 | `max_lifetime` is checked on release only; the reaper ticks every 10 s, a constant                                                                                                                                    | a dialed handle is always used at least once more; the tick only needs to sit well under `idle_timeout`                                                 | a lifetime check on checkout; a `pool.reap_interval` key                          |
 | Liveness, readiness and `/metrics` are pure probes                                                                                                                                                                    | ADR-0004 holds the decision, its consequences and the rejected alternatives                                                                             | see ADR-0004                                                                      |
-| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the service user; the query proves the handle serves one; nothing heavier                                              | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`        |
+| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the REST API's own user; the query proves the handle serves one; nothing heavier                                       | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`        |
 | The cluster travels in `context.Context` next to the logger; handlers take it from the request context through package-level `qdb` entry points, and `ClusterFrom` panics without one, like `observe.Logger`          | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern                                            | constructor injection into `httpapi.NewHandler`; a nil-returning lookup           |
 | `/metrics` is out of scope for this unit                                                                                                                                                                              | M2 owns the exposition endpoint; the pool exposes counters in-process only                                                                              | a minimal `/metrics` now                                                          |
 | Tests run against the live qdbd of `scripts/tests/setup/` wherever a real database is the cheapest fixture; a mechanism that would need the C API stalled or mocked is left untested beyond its pure part             | we are not testing the C API, which has no way to mock an error or a stall; a listener that never answers exercises the C API's blocking, not this code | stalling `connect` behind a silent listener; a fake dialer injected into the pool |
@@ -182,14 +182,13 @@ cluster:
   # cluster. At most one of the two.
   public_key: ""
   public_key_file: ""
-  # The REST API's own QuasarDB user, used by the readiness probe: name
-  # and secret inline, or the user's security file (the JSON QuasarDB
-  # generates, carrying both). Required when the cluster has a public
-  # key; all empty means anonymous.
-  service_user:
-    name: ""
-    secret: ""
-    file: ""
+  # The REST API's own user, the one it authenticates as on its own
+  # behalf (the readiness probe): username and secret key inline, or the
+  # user security file that carries both. Required when the cluster has a
+  # public key; all empty means anonymous.
+  username: ""
+  secret_key: ""
+  user_security_file: ""
   # Client-side C API compression: none | balanced (the binding exposes
   # only these two).
   compression: "none"
@@ -230,8 +229,8 @@ pool:
     # How long the breaker stays open before one call is let through.
     open_for: "10s"
 status:
-  # Query executed by the readiness probe under the service user after
-  # the dial, result discarded.
+  # Query executed by the readiness probe, as the REST API's own user,
+  # after the dial; result discarded.
   readiness_query: "SELECT 1"
 ```
 
@@ -240,7 +239,7 @@ Mechanics:
 - Precedence and `${VAR}` interpolation as today (`internal/config`).
   `envOverrides` becomes typed: string, int, size and duration setters
   keyed by the key path upper-cased with dots as underscores
-  (`QDB_REST_CLUSTER_SERVICE_USER_NAME`, `QDB_REST_POOL_BREAKER_FAILURES`),
+  (`QDB_REST_CLUSTER_USER_SECURITY_FILE`, `QDB_REST_POOL_BREAKER_FAILURES`),
   so the environment can set every key and interpolation still walks
   every string field (inline secrets are the point). `Config` stays
   comparable with `==` (the tests depend on it): `uri` is one string,
@@ -248,11 +247,11 @@ Mechanics:
   learn nested sections. Flags are exactly the three `qdbsh` accepts,
   spelled the same: `--cluster` (`cluster.uri`),
   `--cluster-public-key-file` (`cluster.public_key_file`),
-  `--user-security-file` (`cluster.service_user.file`); the rest is
+  `--user-security-file` (`cluster.user_security_file`); the rest is
   YAML/env.
 - Validation: `public_key` and `public_key_file` mutually exclusive;
-  `service_user.file` exclusive with `name`/`secret`, which are set
-  together; a cluster public key requires a service user;
+  `user_security_file` exclusive with `username`/`secret_key`, which
+  are set together; a cluster public key requires a user;
   `per_user_max <= max_handles`; `connections_per_address` is 0 or
   in 2..100000; `cluster.timeout` is a whole number of seconds, at
   least 1 (the C API rejects less and truncates the rest); no ordering
@@ -321,7 +320,7 @@ returns an error has consumed no slot.
 - **Principal**: `{Name, Secret string}`, the user; the pool key is
   `(cluster, username)` (ADR-0003). Sessions and tokens are auth's
   concern and never reach this layer: every session of a user shares
-  the user's pool. Until auth exists, the service user is the only
+  the user's pool. Until auth exists, the REST API's own user is the only
   principal; anonymous is `{"", ""}`.
 - **Cluster**: the `cluster:` block turned into a dial function per
   principal (`HandleOptions` + the per-handle knobs + `Connect`), the
@@ -418,12 +417,12 @@ The contract is ADR-0004; the mechanics here. `GET /api/status/readiness`
 (and the `/api/v2` mirror) calls `Cluster.Probe(ctx)`, which never
 touches the pool, the budget or the breaker:
 
-1. Dial a fresh handle as the service user under `pool.call_timeout`,
+1. Dial a fresh handle as the REST API's own user under `pool.call_timeout`,
    through the same abandon-on-deadline mechanism as `Call`, wrapped in
    the same `Handle`.
 2. Run `status.readiness_query` (default `SELECT 1`) and release its
    result at once. The dial proves the cluster is reachable and the
-   service user authenticates; the query proves the handle serves one.
+   REST API's own user authenticates; the query proves the handle serves one.
 3. Close the handle on its own goroutine, whatever the outcome.
 4. Success: `200`, empty body, no `Content-Type` (golden 21). Failure:
    `503`, empty body, no `Retry-After`; the cause goes to the log line,
@@ -455,8 +454,8 @@ does not answer; nothing is skipped under `-short`.
   (fake clock, as above); breaker transitions against an unreachable
   URI; retry-once on a discarded handle; `IsRetryable` deciding
   release versus discard, both sides; a poisoned `Handle` refusing
-  every later method without a C call; secure-cluster dial with the
-  service user; shutdown drains.
+  every later method without a C call; secure-cluster dial as the REST
+  API's own user; shutdown drains.
 - `internal/qdb`, the failsafe: a TCP listener that accepts and never
   answers, so `connect` blocks inside cgo past the TCP connect. This is
   the one test that has to wait, because the thing under test is a

@@ -45,32 +45,17 @@ type Log struct {
 	Format string `yaml:"format"` // json | console
 }
 
-// ServiceUser is the REST API's own QuasarDB user, used by the readiness
-// probe: name and secret inline, or the security file QuasarDB generates
-// (which carries both). All empty means anonymous.
-type ServiceUser struct {
-	Name   string `yaml:"name"`
-	Secret string `yaml:"secret"`
-	File   string `yaml:"file"`
-}
-
-// LogValue renders the user without its secret, so a logged config can
-// never leak it.
-func (u ServiceUser) LogValue() slog.Value {
-	return slog.GroupValue(
-		slog.String("name", u.Name),
-		slog.String("file", u.File),
-		slog.Bool("secret_set", u.Secret != ""))
-}
-
-// Cluster binds the process to one cluster: where it is, how to trust it,
-// who the server itself is, and the per-handle C API knobs. A zero knob
-// means the C API default.
+// Cluster binds the process to one cluster: where it is, its public key,
+// the REST API's own user (username and secret key inline, or the user
+// security file that carries both; all empty means anonymous), and the
+// per-handle C API knobs. A zero knob means the C API default.
 type Cluster struct {
 	URI                   string        `yaml:"uri"`
 	PublicKey             string        `yaml:"public_key"`
 	PublicKeyFile         string        `yaml:"public_key_file"`
-	ServiceUser           ServiceUser   `yaml:"service_user"`
+	Username              string        `yaml:"username"`
+	SecretKey             string        `yaml:"secret_key"`
+	UserSecurityFile      string        `yaml:"user_security_file"`
 	Compression           string        `yaml:"compression"` // none | balanced
 	Encryption            string        `yaml:"encryption"`  // none | aes
 	Timeout               time.Duration `yaml:"timeout"`     // socket timeout per handle, whole seconds
@@ -85,7 +70,9 @@ func (c Cluster) LogValue() slog.Value {
 		slog.String("uri", c.URI),
 		slog.String("public_key_file", c.PublicKeyFile),
 		slog.Bool("public_key_set", c.PublicKey != ""),
-		slog.Attr{Key: "service_user", Value: c.ServiceUser.LogValue()},
+		slog.String("username", c.Username),
+		slog.String("user_security_file", c.UserSecurityFile),
+		slog.Bool("secret_key_set", c.SecretKey != ""),
 		slog.String("compression", c.Compression),
 		slog.String("encryption", c.Encryption),
 		slog.Duration("timeout", c.Timeout))
@@ -174,8 +161,8 @@ func interpolateEnv(text string, lookup func(string) (string, bool)) (string, er
 }
 
 // Environment variables are named after the key path, upper-cased, with
-// dots as underscores: cluster.service_user.name is
-// QDB_REST_CLUSTER_SERVICE_USER_NAME.
+// dots as underscores: cluster.user_security_file is
+// QDB_REST_CLUSTER_USER_SECURITY_FILE.
 const envPrefix = "QDB_REST_"
 
 // stringFields maps environment variables onto the string fields of cfg;
@@ -183,21 +170,21 @@ const envPrefix = "QDB_REST_"
 // a ${VAR} candidate.
 func stringFields(cfg *Config) map[string]*string {
 	return map[string]*string{
-		envPrefix + "LISTEN_HTTP":                 &cfg.Listen.HTTP,
-		envPrefix + "LISTEN_HTTPS":                &cfg.Listen.HTTPS,
-		envPrefix + "TLS_CERTIFICATE":             &cfg.TLS.Certificate,
-		envPrefix + "TLS_PRIVATE_KEY":             &cfg.TLS.PrivateKey,
-		envPrefix + "LOG_LEVEL":                   &cfg.Log.Level,
-		envPrefix + "LOG_FORMAT":                  &cfg.Log.Format,
-		envPrefix + "CLUSTER_URI":                 &cfg.Cluster.URI,
-		envPrefix + "CLUSTER_PUBLIC_KEY":          &cfg.Cluster.PublicKey,
-		envPrefix + "CLUSTER_PUBLIC_KEY_FILE":     &cfg.Cluster.PublicKeyFile,
-		envPrefix + "CLUSTER_SERVICE_USER_NAME":   &cfg.Cluster.ServiceUser.Name,
-		envPrefix + "CLUSTER_SERVICE_USER_SECRET": &cfg.Cluster.ServiceUser.Secret,
-		envPrefix + "CLUSTER_SERVICE_USER_FILE":   &cfg.Cluster.ServiceUser.File,
-		envPrefix + "CLUSTER_COMPRESSION":         &cfg.Cluster.Compression,
-		envPrefix + "CLUSTER_ENCRYPTION":          &cfg.Cluster.Encryption,
-		envPrefix + "STATUS_READINESS_QUERY":      &cfg.Status.ReadinessQuery,
+		envPrefix + "LISTEN_HTTP":                &cfg.Listen.HTTP,
+		envPrefix + "LISTEN_HTTPS":               &cfg.Listen.HTTPS,
+		envPrefix + "TLS_CERTIFICATE":            &cfg.TLS.Certificate,
+		envPrefix + "TLS_PRIVATE_KEY":            &cfg.TLS.PrivateKey,
+		envPrefix + "LOG_LEVEL":                  &cfg.Log.Level,
+		envPrefix + "LOG_FORMAT":                 &cfg.Log.Format,
+		envPrefix + "CLUSTER_URI":                &cfg.Cluster.URI,
+		envPrefix + "CLUSTER_PUBLIC_KEY":         &cfg.Cluster.PublicKey,
+		envPrefix + "CLUSTER_PUBLIC_KEY_FILE":    &cfg.Cluster.PublicKeyFile,
+		envPrefix + "CLUSTER_USERNAME":           &cfg.Cluster.Username,
+		envPrefix + "CLUSTER_SECRET_KEY":         &cfg.Cluster.SecretKey,
+		envPrefix + "CLUSTER_USER_SECURITY_FILE": &cfg.Cluster.UserSecurityFile,
+		envPrefix + "CLUSTER_COMPRESSION":        &cfg.Cluster.Compression,
+		envPrefix + "CLUSTER_ENCRYPTION":         &cfg.Cluster.Encryption,
+		envPrefix + "STATUS_READINESS_QUERY":     &cfg.Status.ReadinessQuery,
 	}
 }
 
@@ -356,7 +343,7 @@ func flagFields(cfg *Config) map[string]*string {
 		"log-format":              &cfg.Log.Format,
 		"cluster":                 &cfg.Cluster.URI,
 		"cluster-public-key-file": &cfg.Cluster.PublicKeyFile,
-		"user-security-file":      &cfg.Cluster.ServiceUser.File,
+		"user-security-file":      &cfg.Cluster.UserSecurityFile,
 	}
 }
 
@@ -378,7 +365,7 @@ func parseFlags(name string, args []string, output io.Writer) (flagValues, error
 	fs.StringVar(fields["log-format"], "log-format", *fields["log-format"], "log `FORMAT`: json | console")
 	fs.StringVar(fields["cluster"], "cluster", *fields["cluster"], "cluster `URI`, comma-separated for several nodes")
 	fs.StringVar(fields["cluster-public-key-file"], "cluster-public-key-file", "", "cluster public key `FILE`")
-	fs.StringVar(fields["user-security-file"], "user-security-file", "", "service user security `FILE`")
+	fs.StringVar(fields["user-security-file"], "user-security-file", "", "user security `FILE` of the REST API's own user")
 	if err := fs.Parse(args); err != nil {
 		return flagValues{}, err
 	}
@@ -426,9 +413,9 @@ func positive(key string, d time.Duration) error {
 	return nil
 }
 
-// validateCluster: the trust material is inline or a file, never both;
-// a cluster key needs a user to authenticate; the C API knobs are within
-// what the C API accepts.
+// validateCluster: the cluster public key is inline or a file, never
+// both; a cluster public key needs a user to authenticate; the C API
+// knobs are within what the C API accepts.
 func validateCluster(c Cluster) error {
 	if !strings.HasPrefix(c.URI, "qdb://") {
 		return fmt.Errorf("cluster.uri must start with qdb://, got %q", c.URI)
@@ -436,15 +423,14 @@ func validateCluster(c Cluster) error {
 	if c.PublicKey != "" && c.PublicKeyFile != "" {
 		return errors.New("cluster.public_key and cluster.public_key_file are mutually exclusive")
 	}
-	u := c.ServiceUser
-	if u.File != "" && (u.Name != "" || u.Secret != "") {
-		return errors.New("cluster.service_user.file is exclusive with name and secret")
+	if c.UserSecurityFile != "" && (c.Username != "" || c.SecretKey != "") {
+		return errors.New("cluster.user_security_file is exclusive with cluster.username and cluster.secret_key")
 	}
-	if (u.Name == "") != (u.Secret == "") {
-		return errors.New("cluster.service_user.name and secret must be set together")
+	if (c.Username == "") != (c.SecretKey == "") {
+		return errors.New("cluster.username and cluster.secret_key must be set together")
 	}
-	if (c.PublicKey != "" || c.PublicKeyFile != "") && u.File == "" && u.Name == "" {
-		return errors.New("a cluster public key requires cluster.service_user")
+	if (c.PublicKey != "" || c.PublicKeyFile != "") && c.UserSecurityFile == "" && c.Username == "" {
+		return errors.New("a cluster public key requires a user: cluster.username or cluster.user_security_file")
 	}
 	if err := oneOf("cluster.compression", c.Compression, "none", "balanced"); err != nil {
 		return err

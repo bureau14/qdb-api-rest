@@ -22,7 +22,7 @@ goldens replay against a server under test; the bench's
 `legacy@new-rest` row awaits enabling. Exit: every legacy golden green
 against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
 `legacy@old-rest` on every query under `CAPI_COMPRESSION=none`; the
-readiness probe dials the cluster as the service user and answers
+readiness probe dials the cluster as the REST API's own user and answers
 `200`/`503`; the auth ADR (JWE library, AEAD, key derivation) accepted;
 property tests for auth and the pool green on all eight platforms.
 
@@ -56,7 +56,7 @@ Handoff to M1:
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- The readiness probe dials its own handle as the service user, outside
+- The readiness probe dials its own handle as the REST API's own user, outside
   the pool, and fails with `503` (ADR-0004; `docs/brief.md`,
   Compatibility contract).
 - `cluster.max_in_buffer_size` must be raised for the bench's full-table

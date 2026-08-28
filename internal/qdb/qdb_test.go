@@ -212,15 +212,15 @@ func TestPoisonedHandleShortCircuits(t *testing.T) {
 	_ = h.Close()
 }
 
-// TestSecureDialWithServiceUser: the readiness probe dials the secure
-// cluster as its service user and runs the query.
-func TestSecureDialWithServiceUser(t *testing.T) {
+// TestSecureDialAsOwnUser: the readiness probe dials the secure cluster
+// as the REST API's own user and runs the query.
+func TestSecureDialAsOwnUser(t *testing.T) {
 	requireQdbd(t, "127.0.0.1:2838")
 	root := repoRoot(t)
 	cfg := config.Default()
 	cfg.Cluster.URI = secureURI
 	cfg.Cluster.PublicKeyFile = filepath.Join(root, "cluster_public.key")
-	cfg.Cluster.ServiceUser.File = filepath.Join(root, "user_private.key")
+	cfg.Cluster.UserSecurityFile = filepath.Join(root, "user_private.key")
 	c := New(cfg, nil)
 	defer closeCluster(t, c)
 

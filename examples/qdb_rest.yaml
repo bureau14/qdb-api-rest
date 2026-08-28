@@ -34,14 +34,13 @@ cluster:
   # cluster. At most one of the two.
   public_key: ""
   public_key_file: ""
-  # The REST API's own QuasarDB user, used by the readiness probe: name
-  # and secret inline, or the user's security file (the JSON QuasarDB
-  # generates, carrying both). Required when the cluster has a public
-  # key; all empty means anonymous.
-  service_user:
-    name: ""
-    secret: ""
-    file: ""
+  # The REST API's own user, the one it authenticates as on its own
+  # behalf (the readiness probe): username and secret key inline, or the
+  # user security file that carries both. Required when the cluster has a
+  # public key; all empty means anonymous.
+  username: ""
+  secret_key: ""
+  user_security_file: ""
   # Client-side C API compression: none | balanced (the C binding exposes
   # only these two; the C API's "best" level is not wrapped).
   compression: "none"
@@ -84,6 +83,6 @@ pool:
     open_for: "10s"
 
 status:
-  # Query executed by the readiness probe under the service user after
-  # the dial, result discarded.
+  # Query executed by the readiness probe, as the REST API's own user,
+  # after the dial; result discarded.
   readiness_query: "SELECT 1"

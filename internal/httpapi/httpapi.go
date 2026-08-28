@@ -18,7 +18,7 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 }
 
 // readiness answers whether this instance can serve traffic. It dials the
-// cluster as the service user on every probe, with no cached verdict and
+// cluster as the REST API's own user on every probe, with no cached verdict and
 // no effect on the pool, the budget or the breaker (ADR-0004): 200 when
 // the probe succeeds, 503 when it fails, both with an empty body. The
 // cause goes to the log line, not the wire.

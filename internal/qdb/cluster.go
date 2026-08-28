@@ -190,18 +190,19 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 	return c
 }
 
-// credentials build the handle options for one user against this cluster.
+// credentials identify one user to the cluster: username and secret key,
+// or the user security file that carries both.
 type credentials struct {
-	name, secret, file string
+	username, secretKey, userSecurityFile string
 }
 
 func (p Principal) credentials() credentials {
-	return credentials{name: p.Name, secret: p.Secret}
+	return credentials{username: p.Name, secretKey: p.Secret}
 }
 
-func (c *Cluster) serviceCredentials() credentials {
-	u := c.cfg.ServiceUser
-	return credentials{name: u.Name, secret: u.Secret, file: u.File}
+// ownCredentials are the REST API's own user, from config.
+func (c *Cluster) ownCredentials() credentials {
+	return credentials{username: c.cfg.Username, secretKey: c.cfg.SecretKey, userSecurityFile: c.cfg.UserSecurityFile}
 }
 
 // compressionOf and encryptionOf map the config vocabulary onto the
@@ -236,10 +237,10 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 		o = o.WithClusterPublicKeyFile(c.cfg.PublicKeyFile)
 	}
 	switch {
-	case u.file != "":
-		o = o.WithUserSecurityFile(u.file)
-	case u.name != "":
-		o = o.WithUserName(u.name).WithUserSecret(u.secret)
+	case u.userSecurityFile != "":
+		o = o.WithUserSecurityFile(u.userSecurityFile)
+	case u.username != "":
+		o = o.WithUserName(u.username).WithUserSecret(u.secretKey)
 	}
 	if c.cfg.MaxInBufferSize > 0 {
 		o = o.WithClientMaxInBufSize(uint(c.cfg.MaxInBufferSize))
@@ -407,13 +408,13 @@ func (c *Cluster) Tagged(ctx context.Context, p Principal, tag string) ([]string
 	return aliases, err
 }
 
-// Probe answers readiness. It dials a fresh handle as the service user
-// (outside the pool, the budget and the breaker), runs the readiness
+// Probe answers readiness. It dials a fresh handle as the REST API's own
+// user (outside the pool, the budget and the breaker), runs the readiness
 // query, and closes the handle on its own goroutine. The dial proves the
-// cluster is reachable and the service user authenticates; the query
+// cluster is reachable and the REST API's own user authenticates; the query
 // proves the handle serves one (ADR-0004).
 func (c *Cluster) Probe(ctx context.Context, readinessQuery string) error {
-	h, err := c.connect(ctx, c.serviceCredentials(), false)
+	h, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
 		return err
 	}

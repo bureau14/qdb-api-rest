@@ -300,7 +300,7 @@ test suite; this section is the specification.
   (the old server answered `500` with a JSON message; that shape is
   deliberately not preserved, `503` being what probes and load
   balancers understand as "not ready"). Readiness dials the cluster as
-  the service user on every probe (ADR-0004).
+  the REST API's own user on every probe (ADR-0004).
 
 ### Explicitly dropped
 
@@ -463,7 +463,7 @@ GET    /api/v2/tags/{tag}          entries carrying the tag
 GET    /api/v2/cluster             cluster status (nodes, disk, memory)
 GET    /api/v2/cluster/nodes/{id}  node detail
 GET    /api/v2/status/liveness     unauthenticated probe
-GET    /api/v2/status/readiness    unauthenticated probe (uses the service user)
+GET    /api/v2/status/readiness    unauthenticated probe (dials as the REST API's own user)
 GET    /metrics                    Prometheus exposition (config-gatable)
 ```
 
@@ -570,8 +570,10 @@ pretending otherwise:
   instances behind a load balancer (each instance derives its own
   ephemeral key). Secured clusters require an explicit secret. No default
   keys, ever.
-- The REST API has its **own QuasarDB service user**, used for readiness
-  checks and available for future central coordination.
+- The REST API has its **own QuasarDB user** (`cluster.username` and
+  `cluster.secret_key`, or `cluster.user_security_file`), the one it
+  authenticates as on its own behalf: readiness checks, and future
+  central coordination.
 - **Revocation is deliberately deferred.** The `jti` + generation claims
   make a later QuasarDB-k/v-backed revocation layer (bump generation on
   logout, verify with a ~30s in-memory cache) purely additive.
@@ -607,7 +609,7 @@ public key is fixed with it. Decided deliberately, for three reasons:
 
 Escape hatch if multi-cluster demand ever materializes: a **named
 cluster registry** in the server config (name -> URI + public key +
-service user), selected by name at login, with the name carried as a
+own user), selected by name at login, with the name carried as a
 token claim and pools/breakers/budgets per named cluster. Deferred until
 someone asks; the door stays open at near-zero cost (an optional
 cluster-name claim is reserved in the token, and pools are internally
