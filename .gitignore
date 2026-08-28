@@ -33,3 +33,5 @@ qdbsh.log*
 .bk.yaml
 # qdb-test-setup log archives, written at the repo root by stop-services.sh
 logs/
+# pgregory.net/rapid failure-repro artifacts
+**/testdata/rapid/
