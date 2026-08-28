@@ -1,7 +1,11 @@
-// Package config loads the server configuration. Precedence, lowest to
-// highest: built-in defaults, the YAML file, environment variables,
-// command-line flags. Values in the YAML file support ${VAR} environment
-// interpolation so secrets can be injected without living on disk.
+// Package config loads the server configuration. Every key is defined
+// once, as a field of Config with its yaml tag, and reaches the process
+// through three layers named after that key path: the YAML file
+// (listen.http), the environment (QDB_REST_LISTEN_HTTP) and the command
+// line (--listen-http). Precedence, lowest to highest: built-in defaults,
+// the file, the environment, explicitly passed flags. Values in the file
+// support ${VAR} environment interpolation so secrets can be injected
+// without living on disk.
 package config
 
 import (
@@ -11,12 +15,18 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/rawbytes"
+	"github.com/knadh/koanf/v2"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
 // ErrVersionRequested is returned by Load when the --version flag is
@@ -28,21 +38,21 @@ var ErrVersionRequested = errors.New("version requested")
 // Listen holds the listener addresses. An empty address disables that
 // listener.
 type Listen struct {
-	HTTP  string `yaml:"http"`
-	HTTPS string `yaml:"https"`
+	HTTP  string `yaml:"http" help:"HTTP listener address; empty disables the listener"`
+	HTTPS string `yaml:"https" help:"HTTPS listener address; empty disables the listener"`
 }
 
 // TLS points the HTTPS listener at a PEM certificate/key pair. Both empty
 // means an ephemeral self-signed certificate is generated at startup.
 type TLS struct {
-	Certificate string `yaml:"certificate"`
-	PrivateKey  string `yaml:"private_key"`
+	Certificate string `yaml:"certificate" help:"PEM certificate for the HTTPS listener, set together with tls.private_key"`
+	PrivateKey  string `yaml:"private_key" help:"PEM private key for the HTTPS listener"`
 }
 
 // Log selects the log output shape.
 type Log struct {
-	Level  string `yaml:"level"`  // debug | info | warn | error
-	Format string `yaml:"format"` // json | console
+	Level  string `yaml:"level" help:"debug | info | warn | error"`
+	Format string `yaml:"format" help:"json | console"`
 }
 
 // Cluster binds the process to one cluster: where it is, its public key,
@@ -50,18 +60,18 @@ type Log struct {
 // security file that carries both; all empty means anonymous), and the
 // per-session C API knobs. A zero knob means the C API default.
 type Cluster struct {
-	URI                   string        `yaml:"uri"`
-	PublicKey             string        `yaml:"public_key"`
-	PublicKeyFile         string        `yaml:"public_key_file"`
-	Username              string        `yaml:"username"`
-	SecretKey             string        `yaml:"secret_key"`
-	UserSecurityFile      string        `yaml:"user_security_file"`
-	Compression           string        `yaml:"compression"` // none | balanced
-	Encryption            string        `yaml:"encryption"`  // none | aes
-	Timeout               time.Duration `yaml:"timeout"`     // socket timeout per session, whole seconds
-	MaxInBufferSize       int64         `yaml:"max_in_buffer_size"`
-	Parallelism           int           `yaml:"parallelism"`
-	ConnectionsPerAddress int           `yaml:"connections_per_address"`
+	URI                   string        `yaml:"uri" help:"cluster URI, comma-separated for several nodes"`
+	PublicKey             string        `yaml:"public_key" help:"cluster public key, inline; empty means an insecure cluster"`
+	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file"`
+	Username              string        `yaml:"username" help:"the REST API's own user, set together with cluster.secret_key"`
+	SecretKey             string        `yaml:"secret_key" help:"secret key of the REST API's own user"`
+	UserSecurityFile      string        `yaml:"user_security_file" help:"user security file of the REST API's own user"`
+	Compression           string        `yaml:"compression" help:"client-side C API compression: none | balanced"`
+	Encryption            string        `yaml:"encryption" help:"client-cluster traffic encryption: none | aes"`
+	Timeout               time.Duration `yaml:"timeout" help:"C API socket timeout per session, whole seconds"`
+	MaxInBufferSize       int64         `yaml:"max_in_buffer_size" help:"client input buffer cap per session, in bytes; 0 means the C API default"`
+	Parallelism           int           `yaml:"parallelism" help:"C API worker threads per session; 0 means the C API default"`
+	ConnectionsPerAddress int           `yaml:"connections_per_address" help:"soft limit on connections per node address, per session; 0 means the C API default"`
 }
 
 // LogValue renders the binding without key material.
@@ -80,25 +90,25 @@ func (c Cluster) LogValue() slog.Value {
 
 // Breaker sizes the per-cluster circuit breaker.
 type Breaker struct {
-	Failures int           `yaml:"failures"`
-	OpenFor  time.Duration `yaml:"open_for"`
+	Failures int           `yaml:"failures" help:"consecutive retryable failures that open the breaker"`
+	OpenFor  time.Duration `yaml:"open_for" help:"how long the breaker stays open before one call is let through"`
 }
 
 // Pool sizes the session pool: the process-wide budget, the per-user cap,
 // the ages at which sessions are closed, and the deadline of one C API
 // call.
 type Pool struct {
-	MaxSessions int           `yaml:"max_sessions"`
-	PerUserMax  int           `yaml:"per_user_max"`
-	IdleTimeout time.Duration `yaml:"idle_timeout"`
-	MaxLifetime time.Duration `yaml:"max_lifetime"`
-	CallTimeout time.Duration `yaml:"call_timeout"`
+	MaxSessions int           `yaml:"max_sessions" help:"sessions this process may hold across all users"`
+	PerUserMax  int           `yaml:"per_user_max" help:"sessions one user may hold"`
+	IdleTimeout time.Duration `yaml:"idle_timeout" help:"a session unused this long is closed; a user pool empty this long is evicted"`
+	MaxLifetime time.Duration `yaml:"max_lifetime" help:"a session older than this is closed on return"`
+	CallTimeout time.Duration `yaml:"call_timeout" help:"deadline for one C API call, dial included"`
 	Breaker     Breaker       `yaml:"breaker"`
 }
 
 // Status configures the readiness probe.
 type Status struct {
-	ReadinessQuery string `yaml:"readiness_query"`
+	ReadinessQuery string `yaml:"readiness_query" help:"query the readiness probe runs after its dial"`
 }
 
 // Config is the full server configuration. It stays comparable with ==:
@@ -138,6 +148,105 @@ func Default() Config {
 	}
 }
 
+// vocab lists the words each enumerated key accepts; validate checks
+// against it and the tests draw from it.
+var vocab = map[string][]string{
+	"log.level":           {"debug", "info", "warn", "error"},
+	"log.format":          {"json", "console"},
+	"cluster.compression": {"none", "balanced"},
+	"cluster.encryption":  {"none", "aes"},
+}
+
+// A key is one leaf of Config: its dotted path (from the yaml tags), the
+// Go type its value parses as, and the help line the command line shows.
+type key struct {
+	path string
+	typ  reflect.Type
+	help string
+}
+
+// keys walks Config in declaration order and returns one key per leaf.
+// The struct is the single definition of every key; the environment
+// variable and the flag names derive from the path (envName, flagName).
+func keys() []key {
+	var out []key
+	var walk func(t reflect.Type, prefix string)
+	walk = func(t reflect.Type, prefix string) {
+		for i := range t.NumField() {
+			f := t.Field(i)
+			path := prefix + strings.Split(f.Tag.Get("yaml"), ",")[0]
+			if f.Type.Kind() == reflect.Struct {
+				walk(f.Type, path+".")
+				continue
+			}
+			out = append(out, key{path: path, typ: f.Type, help: f.Tag.Get("help")})
+		}
+	}
+	walk(reflect.TypeFor[Config](), "")
+	return out
+}
+
+// envPrefix and the naming rules: the environment variable is the path
+// upper-cased with dots as underscores (cluster.user_security_file is
+// QDB_REST_CLUSTER_USER_SECURITY_FILE); the flag is the path with dots
+// and underscores as hyphens (--cluster-user-security-file).
+const envPrefix = "QDB_REST_"
+
+func envName(path string) string {
+	return envPrefix + strings.ToUpper(strings.ReplaceAll(path, ".", "_"))
+}
+
+func flagName(path string) string {
+	return strings.NewReplacer(".", "-", "_", "-").Replace(path)
+}
+
+// aliases are the flag spellings shared with qdbsh, kept next to the
+// derived names so every QuasarDB binary reads the same on a command line.
+var aliases = map[string]string{
+	"cluster":            "cluster.uri",
+	"user-security-file": "cluster.user_security_file",
+}
+
+// parseValue parses text, as the environment and the command line carry
+// it, into the key's Go type, so a malformed value is refused with the
+// name of the variable or flag that carried it.
+func parseValue(k key, text string) (any, error) {
+	switch k.typ {
+	case reflect.TypeFor[string]():
+		return text, nil
+	case reflect.TypeFor[time.Duration]():
+		d, err := time.ParseDuration(text)
+		if err != nil {
+			return nil, fmt.Errorf("want a duration such as 30s or 5m, got %q", text)
+		}
+		return d, nil
+	case reflect.TypeFor[int]():
+		n, err := strconv.Atoi(text)
+		if err != nil {
+			return nil, fmt.Errorf("want an integer, got %q", text)
+		}
+		return n, nil
+	case reflect.TypeFor[int64]():
+		n, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("want a size in bytes, got %q", text)
+		}
+		return n, nil
+	}
+	panic("config: unsupported key type " + k.typ.String())
+}
+
+// placeholder names a key's value in the usage text.
+func placeholder(k key) string {
+	switch k.typ {
+	case reflect.TypeFor[time.Duration]():
+		return "DURATION"
+	case reflect.TypeFor[int](), reflect.TypeFor[int64]():
+		return "N"
+	}
+	return "VALUE"
+}
+
 // envReference matches a ${VAR} reference inside a value.
 var envReference = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -160,227 +269,169 @@ func interpolateEnv(text string, lookup func(string) (string, bool)) (string, er
 	return expanded, nil
 }
 
-// Environment variables are named after the key path, upper-cased, with
-// dots as underscores: cluster.user_security_file is
-// QDB_REST_CLUSTER_USER_SECURITY_FILE.
-const envPrefix = "QDB_REST_"
-
-// stringFields maps environment variables onto the string fields of cfg;
-// it doubles as the walk interpolation takes, so every inline secret is
-// a ${VAR} candidate.
-func stringFields(cfg *Config) map[string]*string {
-	return map[string]*string{
-		envPrefix + "LISTEN_HTTP":                &cfg.Listen.HTTP,
-		envPrefix + "LISTEN_HTTPS":               &cfg.Listen.HTTPS,
-		envPrefix + "TLS_CERTIFICATE":            &cfg.TLS.Certificate,
-		envPrefix + "TLS_PRIVATE_KEY":            &cfg.TLS.PrivateKey,
-		envPrefix + "LOG_LEVEL":                  &cfg.Log.Level,
-		envPrefix + "LOG_FORMAT":                 &cfg.Log.Format,
-		envPrefix + "CLUSTER_URI":                &cfg.Cluster.URI,
-		envPrefix + "CLUSTER_PUBLIC_KEY":         &cfg.Cluster.PublicKey,
-		envPrefix + "CLUSTER_PUBLIC_KEY_FILE":    &cfg.Cluster.PublicKeyFile,
-		envPrefix + "CLUSTER_USERNAME":           &cfg.Cluster.Username,
-		envPrefix + "CLUSTER_SECRET_KEY":         &cfg.Cluster.SecretKey,
-		envPrefix + "CLUSTER_USER_SECURITY_FILE": &cfg.Cluster.UserSecurityFile,
-		envPrefix + "CLUSTER_COMPRESSION":        &cfg.Cluster.Compression,
-		envPrefix + "CLUSTER_ENCRYPTION":         &cfg.Cluster.Encryption,
-		envPrefix + "STATUS_READINESS_QUERY":     &cfg.Status.ReadinessQuery,
-	}
-}
-
-// A setter writes one environment value into its field, parsing it as
-// the field's type.
-type setter func(text string) error
-
-func setString(field *string) setter {
-	return func(text string) error {
-		*field = text
-		return nil
-	}
-}
-
-func setInt(field *int) setter {
-	return func(text string) error {
-		n, err := strconv.Atoi(text)
-		if err != nil {
-			return fmt.Errorf("want an integer, got %q", text)
-		}
-		*field = n
-		return nil
-	}
-}
-
-// setSize parses a byte count; sizes are plain integers, no suffixes.
-func setSize(field *int64) setter {
-	return func(text string) error {
-		n, err := strconv.ParseInt(text, 10, 64)
-		if err != nil {
-			return fmt.Errorf("want a size in bytes, got %q", text)
-		}
-		*field = n
-		return nil
-	}
-}
-
-func setDuration(field *time.Duration) setter {
-	return func(text string) error {
-		d, err := time.ParseDuration(text)
-		if err != nil {
-			return fmt.Errorf("want a duration such as 30s or 5m, got %q", text)
-		}
-		*field = d
-		return nil
-	}
-}
-
-// envOverrides maps every environment variable onto the setter of its
-// field: the string fields verbatim, the typed fields through a parser.
-func envOverrides(cfg *Config) map[string]setter {
-	overrides := map[string]setter{
-		envPrefix + "CLUSTER_TIMEOUT":                 setDuration(&cfg.Cluster.Timeout),
-		envPrefix + "CLUSTER_MAX_IN_BUFFER_SIZE":      setSize(&cfg.Cluster.MaxInBufferSize),
-		envPrefix + "CLUSTER_PARALLELISM":             setInt(&cfg.Cluster.Parallelism),
-		envPrefix + "CLUSTER_CONNECTIONS_PER_ADDRESS": setInt(&cfg.Cluster.ConnectionsPerAddress),
-		envPrefix + "POOL_MAX_SESSIONS":               setInt(&cfg.Pool.MaxSessions),
-		envPrefix + "POOL_PER_USER_MAX":               setInt(&cfg.Pool.PerUserMax),
-		envPrefix + "POOL_IDLE_TIMEOUT":               setDuration(&cfg.Pool.IdleTimeout),
-		envPrefix + "POOL_MAX_LIFETIME":               setDuration(&cfg.Pool.MaxLifetime),
-		envPrefix + "POOL_CALL_TIMEOUT":               setDuration(&cfg.Pool.CallTimeout),
-		envPrefix + "POOL_BREAKER_FAILURES":           setInt(&cfg.Pool.Breaker.Failures),
-		envPrefix + "POOL_BREAKER_OPEN_FOR":           setDuration(&cfg.Pool.Breaker.OpenFor),
-	}
-	for name, field := range stringFields(cfg) {
-		overrides[name] = setString(field)
-	}
-	return overrides
-}
-
-// interpolateValues expands ${VAR} in every string field of cfg. Values
-// only, never the raw file: comments may mention the syntax freely.
-func interpolateValues(cfg *Config, lookup func(string) (string, bool)) error {
-	for _, field := range stringFields(cfg) {
-		expanded, err := interpolateEnv(*field, lookup)
-		if err != nil {
-			return err
-		}
-		*field = expanded
-	}
-	return nil
-}
-
-// loadFile decodes the YAML file at path over cfg, then interpolates the
-// environment into its values. Unknown keys are an error so a typo cannot
-// silently fall back to a default.
-func loadFile(path string, lookup func(string) (string, bool), cfg *Config) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	decoder := yaml.NewDecoder(strings.NewReader(string(raw)))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(cfg); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if err := interpolateValues(cfg, lookup); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return nil
-}
-
-// applyEnv writes every set environment variable over its field; a value
-// that does not parse as the field's type refuses the start.
-func applyEnv(cfg *Config, lookup func(string) (string, bool)) error {
-	for name, set := range envOverrides(cfg) {
-		if value, ok := lookup(name); ok {
-			if err := set(value); err != nil {
-				return fmt.Errorf("%s: %w", name, err)
-			}
-		}
-	}
-	return nil
-}
-
-// flagValues holds one parsed command line; set records which flags were
-// actually passed, so only those override the file and the environment
-// (an explicitly empty flag value, e.g. --listen-tls=, is an override too).
+// flagValues holds one parsed command line: the meta flags, and the
+// value of every key flag that was actually passed, by key path, so only
+// those override the file and the environment (an explicitly empty flag
+// value, e.g. --listen-https=, is an override too).
 type flagValues struct {
 	configPath  string
 	showVersion bool
-	values      Config
-	set         map[string]bool
+	passed      map[string]string
 }
 
 // usageText renders the options GNU-style (--name VALUE), the spelling
 // every QuasarDB binary uses; the flag package parses one or two dashes
-// alike. Value placeholders come from backquoted words in the usage
-// strings (flag.UnquoteUsage); a default is shown only when it is set.
-func usageText(fs *flag.FlagSet) string {
+// alike. Keys come in declaration order, with their default when it is
+// not empty; an alias is listed under its target.
+func usageText(name string, defaults *koanf.Koanf) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Usage: %s [--config FILE] [options]\n\n", fs.Name())
-	b.WriteString("Every option also has a config-file key and a QDB_REST_* environment\n")
-	b.WriteString("variable; precedence: defaults < file < environment < flags.\n\nOptions:\n")
-	fs.VisitAll(func(f *flag.Flag) {
-		placeholder, usage := flag.UnquoteUsage(f)
-		fmt.Fprintf(&b, "  %-26s %s", strings.TrimSpace("--"+f.Name+" "+placeholder), usage)
-		if f.DefValue != "" && f.DefValue != "false" {
-			fmt.Fprintf(&b, " (default %q)", f.DefValue)
+	fmt.Fprintf(&b, "Usage: %s [--config FILE] [options]\n\n", name)
+	b.WriteString("Every option is also a config-file key (listen.http) and a QDB_REST_*\n")
+	b.WriteString("environment variable (QDB_REST_LISTEN_HTTP); precedence: defaults < file <\n")
+	b.WriteString("environment < flags.\n\nOptions:\n")
+	fmt.Fprintf(&b, "  %-36s %s\n", "--config FILE", "read configuration from FILE")
+	fmt.Fprintf(&b, "  %-36s %s\n", "--version", "print version information and exit")
+	byTarget := map[string][]string{}
+	for alias, path := range aliases {
+		byTarget[path] = append(byTarget[path], alias)
+	}
+	for _, k := range keys() {
+		line := k.help
+		if d := fmt.Sprint(defaults.Get(k.path)); d != "" && d != "0" {
+			line += fmt.Sprintf(" (default %q)", d)
 		}
-		b.WriteString("\n")
-	})
+		fmt.Fprintf(&b, "  %-36s %s\n", "--"+flagName(k.path)+" "+placeholder(k), line)
+		for _, alias := range byTarget[k.path] {
+			fmt.Fprintf(&b, "  %-36s %s\n", "--"+alias+" "+placeholder(k), "alias of --"+flagName(k.path))
+		}
+	}
 	return b.String()
 }
 
-// flagFields maps each flag onto the field it overrides. The cluster
-// flags are the three qdbsh accepts, spelled the same; every other
-// cluster and pool key is file or environment only.
-func flagFields(cfg *Config) map[string]*string {
-	return map[string]*string{
-		"listen":                  &cfg.Listen.HTTP,
-		"listen-tls":              &cfg.Listen.HTTPS,
-		"tls-cert":                &cfg.TLS.Certificate,
-		"tls-key":                 &cfg.TLS.PrivateKey,
-		"log-level":               &cfg.Log.Level,
-		"log-format":              &cfg.Log.Format,
-		"cluster":                 &cfg.Cluster.URI,
-		"cluster-public-key-file": &cfg.Cluster.PublicKeyFile,
-		"user-security-file":      &cfg.Cluster.UserSecurityFile,
-	}
-}
-
-// parseFlags parses args. The defaults shown by --help come from
-// Default().
-func parseFlags(name string, args []string, output io.Writer) (flagValues, error) {
-	parsed := flagValues{values: Default(), set: map[string]bool{}}
-	fields := flagFields(&parsed.values)
+// parseFlags parses args: one string flag per key, the qdbsh aliases, and
+// the two meta flags. Every flag starts empty; what the user passed is
+// what fs.Visit reports.
+func parseFlags(name string, args []string, defaults *koanf.Koanf, output io.Writer) (flagValues, error) {
+	parsed := flagValues{passed: map[string]string{}}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
-	fs.Usage = func() { _, _ = io.WriteString(output, usageText(fs)) }
-	fs.StringVar(&parsed.configPath, "config", "", "read configuration from `FILE`")
-	fs.BoolVar(&parsed.showVersion, "version", false, "print version information and exit")
-	fs.StringVar(fields["listen"], "listen", *fields["listen"], "HTTP listen `ADDR`; empty disables")
-	fs.StringVar(fields["listen-tls"], "listen-tls", *fields["listen-tls"], "HTTPS listen `ADDR`; empty disables")
-	fs.StringVar(fields["tls-cert"], "tls-cert", "", "PEM certificate `FILE` for the HTTPS listener")
-	fs.StringVar(fields["tls-key"], "tls-key", "", "PEM private key `FILE` for the HTTPS listener")
-	fs.StringVar(fields["log-level"], "log-level", *fields["log-level"], "log `LEVEL`: debug | info | warn | error")
-	fs.StringVar(fields["log-format"], "log-format", *fields["log-format"], "log `FORMAT`: json | console")
-	fs.StringVar(fields["cluster"], "cluster", *fields["cluster"], "cluster `URI`, comma-separated for several nodes")
-	fs.StringVar(fields["cluster-public-key-file"], "cluster-public-key-file", "", "cluster public key `FILE`")
-	fs.StringVar(fields["user-security-file"], "user-security-file", "", "user security `FILE` of the REST API's own user")
+	fs.Usage = func() { _, _ = io.WriteString(output, usageText(name, defaults)) }
+	fs.StringVar(&parsed.configPath, "config", "", "")
+	fs.BoolVar(&parsed.showVersion, "version", false, "")
+	byFlag := map[string]string{}
+	for _, k := range keys() {
+		byFlag[flagName(k.path)] = k.path
+	}
+	for alias, path := range aliases {
+		byFlag[alias] = path
+	}
+	for name := range byFlag {
+		fs.String(name, "", "")
+	}
 	if err := fs.Parse(args); err != nil {
 		return flagValues{}, err
 	}
-	fs.Visit(func(f *flag.Flag) { parsed.set[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) {
+		if path, ok := byFlag[f.Name]; ok {
+			parsed.passed[path] = f.Value.String()
+		}
+	})
 	return parsed, nil
 }
 
-// applyFlags copies every explicitly passed flag over its field.
-func applyFlags(cfg *Config, parsed flagValues) {
-	from := flagFields(&parsed.values)
-	for name, field := range flagFields(cfg) {
-		if parsed.set[name] {
-			*field = *from[name]
+// layer turns the values one source carries -- text keyed by path, as the
+// environment and the command line deliver them -- into a typed map for
+// the loader; label names the source in errors.
+func layer(values map[string]string, label func(path string) string) (map[string]any, error) {
+	out := map[string]any{}
+	for _, k := range keys() {
+		text, ok := values[k.path]
+		if !ok {
+			continue
+		}
+		value, err := parseValue(k, text)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", label(k.path), err)
+		}
+		out[k.path] = value
+	}
+	return out, nil
+}
+
+// envLayer reads every key's environment variable through lookup.
+func envLayer(lookup func(string) (string, bool)) (map[string]any, error) {
+	values := map[string]string{}
+	for _, k := range keys() {
+		if text, ok := lookup(envName(k.path)); ok {
+			values[k.path] = text
 		}
 	}
+	return layer(values, envName)
+}
+
+// interpolate expands ${VAR} in every string value the file loaded.
+// Values only, never the raw file: comments may mention the syntax freely.
+func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
+	for path, value := range k.All() {
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		expanded, err := interpolateEnv(text, lookup)
+		if err != nil {
+			return err
+		}
+		if err := k.Set(path, expanded); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadFile decodes the YAML file at path over k, then interpolates the
+// environment into its values.
+func loadFile(k *koanf.Koanf, path string, lookup func(string) (string, bool)) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if err := k.Load(rawbytes.Provider(raw), yaml.Parser()); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := interpolate(k, lookup); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+// decode turns the folded layers into a Config. Unknown keys are an
+// error so a typo cannot silently fall back to a default; durations
+// arrive as strings from every layer and parse here.
+func decode(k *koanf.Koanf) (Config, error) {
+	var cfg Config
+	err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
+		Tag: "yaml",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			ErrorUnused:      true,
+			WeaklyTypedInput: true,
+			Result:           &cfg,
+		},
+	})
+	if err != nil {
+		return Config{}, fmt.Errorf("configuration: %w", err)
+	}
+	return cfg, nil
+}
+
+// defaults loads Default() as the bottom layer.
+func defaults() (*koanf.Koanf, error) {
+	raw, err := yamlv3.Marshal(Default())
+	if err != nil {
+		return nil, err
+	}
+	k := koanf.New(".")
+	return k, k.Load(rawbytes.Provider(raw), yaml.Parser())
 }
 
 // configPath resolves the YAML file location: the --config flag, else the
@@ -395,14 +446,15 @@ func configPath(parsed flagValues, lookup func(string) (string, bool)) string {
 	return ""
 }
 
-// oneOf rejects a value outside its vocabulary.
-func oneOf(key, value string, words ...string) error {
+// oneOf rejects a value outside its key's vocabulary.
+func oneOf(path, value string) error {
+	words := vocab[path]
 	for _, w := range words {
 		if value == w {
 			return nil
 		}
 	}
-	return fmt.Errorf("unknown %s %q (%s)", key, value, strings.Join(words, " | "))
+	return fmt.Errorf("unknown %s %q (%s)", path, value, strings.Join(words, " | "))
 }
 
 // positive rejects a duration that is not strictly positive.
@@ -420,10 +472,10 @@ func positive(key string, d time.Duration) error {
 // URI scheme, the key and user exclusivity rules and the C API knob ranges
 // are validated by the binding when a session is dialed.
 func validateCluster(c Cluster) error {
-	if err := oneOf("cluster.compression", c.Compression, "none", "balanced"); err != nil {
+	if err := oneOf("cluster.compression", c.Compression); err != nil {
 		return err
 	}
-	if err := oneOf("cluster.encryption", c.Encryption, "none", "aes"); err != nil {
+	if err := oneOf("cluster.encryption", c.Encryption); err != nil {
 		return err
 	}
 	if c.Timeout < time.Second || c.Timeout%time.Second != 0 {
@@ -467,10 +519,10 @@ func validate(cfg Config) error {
 	if (cfg.TLS.Certificate == "") != (cfg.TLS.PrivateKey == "") {
 		return errors.New("tls.certificate and tls.private_key must be set together")
 	}
-	if err := oneOf("log.level", cfg.Log.Level, "debug", "info", "warn", "error"); err != nil {
+	if err := oneOf("log.level", cfg.Log.Level); err != nil {
 		return err
 	}
-	if err := oneOf("log.format", cfg.Log.Format, "json", "console"); err != nil {
+	if err := oneOf("log.format", cfg.Log.Format); err != nil {
 		return err
 	}
 	if err := validateCluster(cfg.Cluster); err != nil {
@@ -489,23 +541,39 @@ func validate(cfg Config) error {
 // YAML file (if any), then environment variables, then explicitly passed
 // flags. Usage and flag errors are written to output.
 func Load(name string, args []string, lookup func(string) (string, bool), output io.Writer) (Config, error) {
-	parsed, err := parseFlags(name, args, output)
+	k, err := defaults()
+	if err != nil {
+		return Config{}, err
+	}
+	parsed, err := parseFlags(name, args, k, output)
 	if err != nil {
 		return Config{}, err
 	}
 	if parsed.showVersion {
 		return Config{}, ErrVersionRequested
 	}
-	cfg := Default()
 	if path := configPath(parsed, lookup); path != "" {
-		if err := loadFile(path, lookup, &cfg); err != nil {
+		if err := loadFile(k, path, lookup); err != nil {
 			return Config{}, err
 		}
 	}
-	if err := applyEnv(&cfg, lookup); err != nil {
+	env, err := envLayer(lookup)
+	if err != nil {
 		return Config{}, err
 	}
-	applyFlags(&cfg, parsed)
+	flags, err := layer(parsed.passed, func(path string) string { return "--" + flagName(path) })
+	if err != nil {
+		return Config{}, err
+	}
+	for _, m := range []map[string]any{env, flags} {
+		if err := k.Load(confmap.Provider(m, "."), nil); err != nil {
+			return Config{}, err
+		}
+	}
+	cfg, err := decode(k)
+	if err != nil {
+		return Config{}, err
+	}
 	if err := validate(cfg); err != nil {
 		return Config{}, err
 	}

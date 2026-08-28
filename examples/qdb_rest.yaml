@@ -1,10 +1,12 @@
 # qdb_rest reference configuration: every key, at its built-in default.
 # Pinned to those defaults by internal/config's tests.
 #
-# Load with `qdb_rest --config /etc/qdb/qdb_rest.yaml`. Precedence, lowest
-# to highest: these defaults, this file, QDB_REST_* environment variables,
-# command-line flags. `${VAR}` references are expanded from the environment
-# at load time; an unset variable refuses the start.
+# Load with `qdb_rest --config /etc/qdb/qdb_rest.yaml`. Every key is also
+# an environment variable and a flag named after its path (pool.max_sessions
+# is QDB_REST_POOL_MAX_SESSIONS and --pool-max-sessions). Precedence, lowest
+# to highest: these defaults, this file, the environment, flags. `${VAR}`
+# references are expanded from the environment at load time; an unset
+# variable refuses the start.
 
 listen:
   # HTTP listener address; empty disables the listener.

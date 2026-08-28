@@ -40,7 +40,7 @@ Two certificate sources, nothing else in the initial scope:
 
 Both listeners are on by default (`:40080` HTTP, `:40443` HTTPS,
 matching the deployed shape); an empty address disables a listener
-(`--listen-tls=` / `listen.https: ""`). Minimum TLS version is 1.2,
+(`--listen-https=` / `listen.https: ""`). Minimum TLS version is 1.2,
 set explicitly. Certificates are loaded once at startup; rotation is
 restart-based for now.
 

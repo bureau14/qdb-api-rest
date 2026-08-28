@@ -8,8 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 	"pgregory.net/rapid"
@@ -39,91 +42,53 @@ func load(args []string, vars map[string]string) (Config, error) {
 	return Load("qdb_rest", args, envFrom(vars), io.Discard)
 }
 
-// A slot is one configurable thing in its spellings: YAML key paths (the
-// environment variable is QDB_REST_ plus the path upper-cased with
-// underscores) and, when it has them, flags; plus the vocabulary drawn
-// for it, invalid words included so validation is exercised too. TLS is
-// one slot for both files because validate wants them together. Typed
-// slots (ints, durations) draw parseable words only: a word that does
-// not parse is a load error regardless of the layer, pinned separately.
-type slot struct {
-	paths  [][]string
-	flags  []string
-	typed  bool // written into the file unquoted, as the literal it is
-	values *rapid.Generator[string]
-}
-
-func words(w ...string) *rapid.Generator[string] { return rapid.SampledFrom(w) }
-
-func key(path string) [][]string { return [][]string{strings.Split(path, ".")} }
-
-func slots() []slot {
-	addresses := words("", ":1", ":40080", "127.0.0.1:8080")
-	paths := words("", "/etc/qdb/rest", "rel/pair")
-	return []slot{
-		{key("listen.http"), []string{"listen"}, false, addresses},
-		{key("listen.https"), []string{"listen-tls"}, false, addresses},
-		{[][]string{{"tls", "certificate"}, {"tls", "private_key"}}, []string{"tls-cert", "tls-key"}, false, paths},
-		{key("log.level"), []string{"log-level"}, false, words("debug", "info", "warn", "error", "verbose")},
-		{key("log.format"), []string{"log-format"}, false, words("json", "console", "xml")},
-		{key("cluster.uri"), []string{"cluster"}, false, words("qdb://127.0.0.1:2836", "qdb://a:1,b:2", "", "http://x")},
-		{key("cluster.public_key"), nil, false, words("", "PK")},
-		{key("cluster.public_key_file"), []string{"cluster-public-key-file"}, false, words("", "/etc/qdb/cluster_public.key")},
-		{key("cluster.username"), nil, false, words("", "qdb_rest")},
-		{key("cluster.secret_key"), nil, false, words("", "S3CRET")},
-		{key("cluster.user_security_file"), nil, false, words("", "/etc/qdb/user_private.key")},
-		{key("cluster.compression"), nil, false, words("none", "balanced", "lz4")},
-		{key("cluster.encryption"), nil, false, words("none", "aes", "rot13")},
-		{key("cluster.timeout"), nil, true, words("1s", "60s", "0s", "500ms", "1500ms", "-1s")},
-		{key("cluster.max_in_buffer_size"), nil, true, words("0", "8589934592", "-1")},
-		{key("cluster.parallelism"), nil, true, words("0", "4", "-1")},
-		{key("cluster.connections_per_address"), nil, true, words("0", "1", "2", "100000", "100001")},
-		{key("pool.max_sessions"), nil, true, words("0", "1", "64")},
-		{key("pool.per_user_max"), nil, true, words("0", "1", "8", "65")},
-		{key("pool.idle_timeout"), nil, true, words("5m", "0s", "-1s")},
-		{key("pool.max_lifetime"), nil, true, words("15m", "0s")},
-		{key("pool.call_timeout"), nil, true, words("60s", "100ms", "0s")},
-		{key("pool.breaker.failures"), nil, true, words("0", "1", "3")},
-		{key("pool.breaker.open_for"), nil, true, words("10s", "0s")},
-		{key("status.readiness_query"), nil, false, words("SELECT 1", "")},
+// values returns the generator for one key: its vocabulary plus one word
+// outside it for the enumerated keys, and a spread of parseable words per
+// type otherwise. Values that fail validation are drawn on purpose, so
+// the fold is checked on the reject side as well.
+func values(k key) *rapid.Generator[string] {
+	if words, ok := vocab[k.path]; ok {
+		return rapid.SampledFrom(append(append([]string{}, words...), "bogus"))
 	}
+	switch k.typ {
+	case reflect.TypeFor[time.Duration]():
+		return rapid.SampledFrom([]string{"0s", "1s", "60s", "500ms", "1500ms", "5m", "15m", "-1s"})
+	case reflect.TypeFor[int]():
+		return rapid.Map(rapid.IntRange(-1, 100001), strconv.Itoa)
+	case reflect.TypeFor[int64]():
+		return rapid.SampledFrom([]string{"0", "8589934592", "-1"})
+	}
+	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }
 
-func envName(path []string) string {
-	return envPrefix + strings.ToUpper(strings.Join(path, "_"))
-}
-
-// apply writes vals into cfg through the setters applyEnv itself uses.
-func apply(t *rapid.T, cfg *Config, s slot, vals []string) {
-	setters := envOverrides(cfg)
-	for i, path := range s.paths {
-		if err := setters[envName(path)](vals[i]); err != nil {
-			t.Fatalf("%s: %v", envName(path), err)
+// set writes text into cfg at path through the same parser the layers
+// use, following the yaml tags; the expected side of the fold.
+func set(t *rapid.T, cfg *Config, k key, text string) {
+	t.Helper()
+	value, err := parseValue(k, text)
+	if err != nil {
+		t.Fatalf("%s: %v", k.path, err)
+	}
+	v := reflect.ValueOf(cfg).Elem()
+	for _, name := range strings.Split(k.path, ".") {
+		for i := range v.NumField() {
+			if strings.Split(v.Type().Field(i).Tag.Get("yaml"), ",")[0] == name {
+				v = v.Field(i)
+				break
+			}
 		}
 	}
-}
-
-// draw returns one value per path of s: the drawn word, suffixed per key
-// for multi-key slots so the pair is distinguishable yet both-or-neither.
-func draw(rt *rapid.T, s slot, layer string) []string {
-	word := s.values.Draw(rt, strings.Join(s.paths[0], ".")+" "+layer)
-	out := make([]string, len(s.paths))
-	for i, path := range s.paths {
-		out[i] = word
-		if word != "" && len(s.paths) > 1 {
-			out[i] = word + "." + path[len(path)-1]
-		}
-	}
-	return out
+	v.Set(reflect.ValueOf(value))
 }
 
 // fileLayer is the YAML document under construction, as nested maps.
 type fileLayer map[string]any
 
 // put writes value at path, creating sections on the way.
-func (f fileLayer) put(path []string, value any) {
+func (f fileLayer) put(path string, value any) {
+	parts := strings.Split(path, ".")
 	section := f
-	for _, name := range path[:len(path)-1] {
+	for _, name := range parts[:len(parts)-1] {
 		child, ok := section[name].(fileLayer)
 		if !ok {
 			child = fileLayer{}
@@ -131,57 +96,47 @@ func (f fileLayer) put(path []string, value any) {
 		}
 		section = child
 	}
-	section[path[len(path)-1]] = value
-}
-
-// literal is the YAML value for text: typed slots carry their literal
-// (ints unquoted, durations as plain words), strings are quoted.
-func literal(s slot, text string) any {
-	if !s.typed {
-		return text
-	}
-	var n int64
-	if _, err := fmt.Sscan(text, &n); err == nil && !strings.ContainsAny(text, "smh") {
-		return n
-	}
-	return text
+	section[parts[len(parts)-1]] = value
 }
 
 // Load is the fold defaults < file < env < flags followed by validate:
-// for any drawn combination of layers, it returns the folded config
-// exactly when validate accepts it. String values in the file are
-// written literally or as ${VAR} references, and the file path arrives
-// by flag or by QDB_REST_CONFIG.
+// for any drawn combination of layers over every key, it returns the
+// folded config exactly when validate accepts it. File values are written
+// literally or as ${VAR} references, flags by their derived name or a
+// qdbsh alias, and the file path arrives by flag or by QDB_REST_CONFIG.
 func TestLoadIsTheLayerFold(t *testing.T) {
+	byTarget := map[string]string{}
+	for alias, path := range aliases {
+		byTarget[path] = alias
+	}
 	rapid.Check(t, func(rt *rapid.T) {
 		expected := Default()
 		file := fileLayer{}
 		vars := map[string]string{}
 		var args []string
-		for _, s := range slots() {
-			name := strings.Join(s.paths[0], ".")
-			if vals := draw(rt, s, "file"); rapid.Bool().Draw(rt, name+" in file") {
-				for i, path := range s.paths {
-					text := vals[i]
-					if !s.typed && rapid.Bool().Draw(rt, name+" by reference") {
-						ref := "REF_" + strings.ToUpper(strings.Join(path, "_"))
-						vars[ref], text = vals[i], "${"+ref+"}"
-					}
-					file.put(path, literal(s, text))
+		for _, k := range keys() {
+			if rapid.Bool().Draw(rt, k.path+" in file") {
+				text := values(k).Draw(rt, k.path+" file")
+				set(rt, &expected, k, text)
+				if k.typ == reflect.TypeFor[string]() && rapid.Bool().Draw(rt, k.path+" by reference") {
+					ref := "REF_" + strings.ToUpper(strings.ReplaceAll(k.path, ".", "_"))
+					vars[ref], text = text, "${"+ref+"}"
 				}
-				apply(rt, &expected, s, vals)
+				file.put(k.path, text)
 			}
-			if vals := draw(rt, s, "env"); rapid.Bool().Draw(rt, name+" in env") {
-				for i, path := range s.paths {
-					vars[envName(path)] = vals[i]
-				}
-				apply(rt, &expected, s, vals)
+			if rapid.Bool().Draw(rt, k.path+" in env") {
+				text := values(k).Draw(rt, k.path+" env")
+				set(rt, &expected, k, text)
+				vars[envName(k.path)] = text
 			}
-			if vals := draw(rt, s, "flag"); len(s.flags) > 0 && rapid.Bool().Draw(rt, name+" in flags") {
-				for i, flag := range s.flags {
-					args = append(args, "--"+flag+"="+vals[i])
+			if rapid.Bool().Draw(rt, k.path+" in flags") {
+				text := values(k).Draw(rt, k.path+" flag")
+				set(rt, &expected, k, text)
+				name := flagName(k.path)
+				if alias, ok := byTarget[k.path]; ok && rapid.Bool().Draw(rt, k.path+" by alias") {
+					name = alias
 				}
-				apply(rt, &expected, s, vals)
+				args = append(args, "--"+name+"="+text)
 			}
 		}
 		raw, err := yaml.Marshal(file)
@@ -217,9 +172,9 @@ func TestUnsetReferenceIsNamed(t *testing.T) {
 	})
 }
 
-// A typed environment value that does not parse refuses the start and
-// names the variable.
-func TestMalformedEnvValueIsNamed(t *testing.T) {
+// A typed value that does not parse refuses the start and names the
+// variable or the flag that carried it.
+func TestMalformedValueIsNamed(t *testing.T) {
 	for name, value := range map[string]string{
 		envPrefix + "POOL_MAX_SESSIONS": "many",
 		envPrefix + "POOL_IDLE_TIMEOUT": "soon",
@@ -228,6 +183,10 @@ func TestMalformedEnvValueIsNamed(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), name) {
 			t.Errorf("%s=%s: want an error naming it, got %v", name, value, err)
 		}
+	}
+	_, err := load([]string{"--pool-max-sessions=many"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "--pool-max-sessions") {
+		t.Errorf("--pool-max-sessions=many: want an error naming the flag, got %v", err)
 	}
 }
 
@@ -238,13 +197,19 @@ func TestUnknownKeyRejected(t *testing.T) {
 	}
 }
 
+// Every key is a GNU-style long option, the two qdbsh aliases included.
 func TestHelpIsGNUStyle(t *testing.T) {
 	var out bytes.Buffer
 	_, err := Load("qdb_rest", []string{"--help"}, envFrom(nil), &out)
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("want flag.ErrHelp, got %v", err)
 	}
-	if !strings.Contains(out.String(), "  --listen-tls ADDR") || strings.Contains(out.String(), "\n  -listen") {
+	for _, want := range []string{"  --listen-https VALUE", "  --pool-max-sessions N", "  --cluster VALUE", "alias of --cluster-uri"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("usage lacks %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "\n  -listen") {
 		t.Fatalf("usage is not GNU-style:\n%s", out.String())
 	}
 }

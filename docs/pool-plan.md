@@ -237,18 +237,19 @@ status:
 Mechanics:
 
 - Precedence and `${VAR}` interpolation as today (`internal/config`).
-  `envOverrides` becomes typed: string, int, size and duration setters
-  keyed by the key path upper-cased with dots as underscores
-  (`QDB_REST_CLUSTER_USER_SECURITY_FILE`, `QDB_REST_POOL_BREAKER_FAILURES`),
-  so the environment can set every key and interpolation still walks
-  every string field (inline secrets are the point). `Config` stays
-  comparable with `==` (the tests depend on it): `uri` is one string,
-  never a slice. The layer-fold property test and its YAML renderer
-  learn nested sections. Flags are exactly the three `qdbsh` accepts,
-  spelled the same: `--cluster` (`cluster.uri`),
-  `--cluster-public-key-file` (`cluster.public_key_file`),
-  `--user-security-file` (`cluster.user_security_file`); the rest is
-  YAML/env.
+  The loader is koanf over stdlib `flag`: `Default()` marshalled to YAML
+  is the bottom layer, then the file, then the environment, then the
+  flags actually passed; every key path comes from one reflection walk
+  over the config struct's `yaml` tags, which also carry the `help` text
+  the usage prints. The environment variable is the path upper-cased
+  with dots as underscores (`QDB_REST_CLUSTER_USER_SECURITY_FILE`); the
+  flag is the path with dots and underscores as hyphens
+  (`--cluster-user-security-file`); `--cluster` and
+  `--user-security-file` are the `qdbsh` aliases. Typed values are
+  parsed at the layer that carries them, so an error names the variable
+  or the flag. `Config` stays comparable with `==` (the tests depend on
+  it): `uri` is one string, never a slice. The layer-fold property test
+  draws every key in every layer from the same walk.
 - Validation, only what the binding does not check when a session is
   dialed: vocabulary checks on `compression`/`encryption`;
   `cluster.timeout` a whole number of seconds, at least 1 (the C API
