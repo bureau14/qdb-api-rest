@@ -112,30 +112,39 @@ func serve(server *http.Server) error {
 	return server.ListenAndServe()
 }
 
-// run serves all listeners until ctx is cancelled or one fails, then
-// drains in-flight requests within shutdownGrace. A nil return means a
-// clean shutdown.
-func run(ctx context.Context, servers []*http.Server) error {
+// serveUntilDone serves all listeners until ctx is cancelled or one fails,
+// and returns the first terminal error (nil on a clean cancel). It does
+// not drain; the caller owns shutdown so the server drain and the cluster
+// drain share one grace budget.
+func serveUntilDone(ctx context.Context, servers []*http.Server) error {
 	errs := make(chan error, len(servers))
 	for _, server := range servers {
 		go func() { errs <- serve(server) }()
 	}
-	var failure error
 	select {
-	case failure = <-errs:
+	case failure := <-errs:
+		if errors.Is(failure, http.ErrServerClosed) {
+			return nil
+		}
+		return failure
 	case <-ctx.Done():
+		return nil
 	}
+}
+
+// shutdown drains in-flight requests, then the cluster, within one shared
+// grace: server.Shutdown waits for in-flight requests (which use the
+// cluster) to finish, so by the time it returns the cluster has no callers
+// left and closing it is quick.
+func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster) {
 	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	for _, server := range servers {
-		if err := server.Shutdown(drain); err != nil && failure == nil {
-			failure = err
-		}
+		_ = server.Shutdown(drain)
 	}
-	if errors.Is(failure, http.ErrServerClosed) {
-		return nil
+	if err := cluster.Close(drain); err != nil {
+		observe.Logger(ctx).WarnContext(ctx, "cluster did not drain within the shutdown grace", observe.Err(err))
 	}
-	return failure
 }
 
 func main() {
@@ -162,14 +171,20 @@ func main() {
 	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode,
 		"qdb_api_version", qdb.APIVersion())
 
-	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
+	qdb.InstallLogger(logger)
+	cluster := qdb.New(cfg, time.Now)
+	ctx = qdb.WithCluster(ctx, cluster)
+
+	servers, err := newServers(ctx, cfg, httpapi.NewHandler(cluster, cfg))
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 
-	if err := run(ctx, servers); err != nil {
-		logger.ErrorContext(ctx, "server failed", observe.Err(err))
+	runErr := serveUntilDone(ctx, servers)
+	shutdown(ctx, servers, cluster)
+	if runErr != nil {
+		logger.ErrorContext(ctx, "server failed", observe.Err(runErr))
 		os.Exit(1)
 	}
 	logger.InfoContext(ctx, "shutdown complete")
