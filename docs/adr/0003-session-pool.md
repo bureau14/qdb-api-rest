@@ -1,4 +1,4 @@
-# ADR-0003: QuasarDB handle pool: checkout model, budget, failsafe
+# ADR-0003: QuasarDB session pool: checkout model, budget, failsafe
 
 Status: proposed
 Date: 2026-08-25
@@ -8,7 +8,7 @@ Milestone: M1
 
 Every request the server serves runs one or more C API calls on a
 `qdb_handle_t` authenticated as the calling user. The brief makes
-connection reuse non-optional, sets a global handle budget partitioned
+connection reuse non-optional, sets a global session budget partitioned
 per user, and wants honest fast failure (brief: "Resilience and
 connection management"). The C API constrains the mechanism harder than
 the brief assumes (verified in `~/git/quasardb`; details in
@@ -33,46 +33,46 @@ the brief assumes (verified in `~/git/quasardb`; details in
 
 ## Decision
 
-1. **The pool key is the user.** Handles are pooled per user, keyed by
-   `(cluster, username)`, under one process-wide `max_handles` budget
-   and a per-user cap; idle user pools are LRU-evicted. Every session
+1. **The pool key is the user.** Sessions are pooled per user, keyed by
+   `(cluster, username)`, under one process-wide `max_sessions` budget
+   and a per-user cap; idle user pools are LRU-evicted. Every REST session
    and every token of one user share that user's pool. Login finds the
    existing pool or creates one; it never replaces or drains one, so
-   in-flight requests are never raced. The session id claim in tokens is
+   in-flight requests are never raced. The REST session id claim in tokens is
    a security abstraction (for example, logging out a user's other
-   sessions), never a pool key. Nothing dials at startup; every handle
+   sessions), never a pool key. Nothing dials at startup; every session
    is dialed on demand, and the process starts with the cluster
    unreachable (only configuration errors refuse a start).
-2. **Checkout through a narrow wrapper.** A handle is used by exactly
+2. **Checkout through a narrow wrapper.** A session is used by exactly
    one goroutine at a time, obtained only through
-   `Cluster.Call(ctx, user, op)`. `op` receives a `Handle` type
+   `Cluster.Call(ctx, user, op)`. `op` receives a `Session` type
    owned by `internal/qdb` that exposes one method per C API operation
    the server uses; each method runs its C call under the deadline and
    the error classification below, and owns the release of any result.
    The binding's `HandleType` never leaves `internal/qdb`. Adding an
    operation means adding a wrapped method, never exposing the raw
-   handle.
+   session.
 3. **Deadline over cgo, abandon-and-close.** Every `Call` runs under
    `pool.call_timeout`. When it fires with a C call in flight, the
-   wrapped method returns an error at once and poisons the `Handle`
+   wrapped method returns an error at once and poisons the `Session`
    (every later method on it fails without touching cgo); the goroutine
    blocked in cgo is abandoned and closes the handle itself when the C
-   call returns. A handle is never closed from another goroutine, never
+   call returns. A session is never closed from another goroutine, never
    cancelled, and never reused after a timeout or a cancelled context.
    Dial runs under the same mechanism.
-4. **`IsRetryable` decides the handle's fate.** A call that fails with
+4. **`IsRetryable` decides the session's fate.** A call that fails with
    an error `qdb-api-go` classifies as retryable -- every C API error
    it does not call fatal, plus anything that is not a C API error at
-   all, deadline expiry included -- discards the handle and counts
+   all, deadline expiry included -- discards the session and counts
    toward the breaker; a fatal error (the binding's list: not
    implemented, incompatible type, uninitialized, out of bounds,
    invalid query, alias not found, alias already exists, invalid
-   argument) says nothing about the handle, which is reused.
-   Idempotent reads may retry once on a fresh handle after a retryable
+   argument) says nothing about the session, which is reused.
+   Idempotent reads may retry once on a fresh session after a retryable
    error; ingestion never retries.
 5. **Closing never blocks the pool.** Every close runs on its own
    goroutine; the budget slot is released when the close completes, so
-   wedged handles keep counting against `max_handles` and are reported
+   wedged sessions keep counting against `max_sessions` and are reported
    separately.
 6. **Breaker per cluster**, fed by retryable failures from dials and
    calls: opens after `breaker.failures` consecutive failures for
@@ -85,7 +85,7 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
 
 - No request can hang on a dead cluster: the deadline bounds it, the
   breaker shortens everything after the first few.
-- Degraded handles are contained: at worst a wedged handle pins one
+- Degraded sessions are contained: at worst a wedged session pins one
   budget slot and one C API thread set until the C call returns, which
   the C API's own socket timeouts eventually force -- except for the
   TCP connect to a black-holed address, which the OS releases after
@@ -101,7 +101,7 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
 - The number of pools is bounded by the number of distinct users, not
   by the number of logins; a user with many clients behind one gateway
   holds at most the per-user cap.
-- Every C API operation the server uses is a method on `Handle`, so the
+- Every C API operation the server uses is a method on `Session`, so the
   failsafe and the error classification cannot be bypassed and the
   surface the server depends on is enumerable in one file.
 - Operations cannot be cancelled early; the only lever is the size of
@@ -109,18 +109,18 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
 
 ## Alternatives rejected
 
-| Alternative                                            | Why not                                                                             |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Pools keyed per session, as the brief first had it     | N tokens of one user would hold N pools of identical handles; no isolation gained   |
-| Replace the user's pool on re-login                    | the old server's race against in-flight requests                                    |
-| One handle per user shared by concurrent goroutines    | thread-safety undocumented, configuration racy, last-error per handle; owner rule   |
-| `op` receives the binding's `HandleType`               | nothing stops `op` from stashing it; the deadline would cover `op`, not each C call |
-| `HandleType` plus a lint rule confining the import     | catches the import, not the misuse; the failsafe still would not wrap each call     |
-| Close the handle from the timing-out goroutine         | use-after-free in the C API                                                         |
-| A keep-list of request-caused errors maintained here   | duplicates upstream's matrix and drifts from it                                     |
-| Discard on every error                                 | a reconnect per user mistake                                                        |
-| Free the budget slot when a call times out             | the handle still holds cluster connections and threads; the budget would lie        |
-| Per-checkout health ping                               | a cluster round trip per request (brief)                                            |
-| A warm-up handle dialed at startup                     | needs a retry mechanism of its own; buys milliseconds on the first request          |
-| Fail the start when the cluster is unreachable         | systemd restart loop; k8s expects not-ready                                         |
-| Capping concurrent dials against a black-holed address | complexity for a case the breaker already bounds; the connect timeout is upstream's |
+| Alternative                                             | Why not                                                                             |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Pools keyed per REST session, as the brief first had it | N tokens of one user would hold N pools of identical sessions; no isolation gained  |
+| Replace the user's pool on re-login                     | the old server's race against in-flight requests                                    |
+| One handle per user shared by concurrent goroutines     | thread-safety undocumented, configuration racy, last-error per handle; owner rule   |
+| `op` receives the binding's `HandleType`                | nothing stops `op` from stashing it; the deadline would cover `op`, not each C call |
+| `HandleType` plus a lint rule confining the import      | catches the import, not the misuse; the failsafe still would not wrap each call     |
+| Close the handle from the timing-out goroutine          | use-after-free in the C API                                                         |
+| A keep-list of request-caused errors maintained here    | duplicates upstream's matrix and drifts from it                                     |
+| Discard on every error                                  | a reconnect per user mistake                                                        |
+| Free the budget slot when a call times out              | the session still holds cluster connections and threads; the budget would lie       |
+| Per-checkout health ping                                | a cluster round trip per request (brief)                                            |
+| A warm-up session dialed at startup                     | needs a retry mechanism of its own; buys milliseconds on the first request          |
+| Fail the start when the cluster is unreachable          | systemd restart loop; k8s expects not-ready                                         |
+| Capping concurrent dials against a black-holed address  | complexity for a case the breaker already bounds; the connect timeout is upstream's |

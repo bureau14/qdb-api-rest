@@ -16,16 +16,16 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb/pool"
 )
 
-// reapInterval is how often idle handles are closed and empty user pools
+// reapInterval is how often idle sessions are closed and empty user pools
 // evicted. It is a constant, well under any sensible idle_timeout, not a
-// config knob: a dialed handle is always used at least once more, so the
+// config knob: a dialed session is always used at least once more, so the
 // tick only has to sit below idle_timeout.
 const reapInterval = 10 * time.Second
 
-// User is the QuasarDB user a pool of handles authenticates as: the pool
-// key is the user, never a session or a token (ADR-0003). A user has one
-// secret key, so every session of a user dials identically and shares
-// the user's pool. Anonymous is the zero User.
+// User is the QuasarDB user a pool of sessions authenticates as: the pool
+// key is the user, never a REST session or a token (ADR-0003). A user has
+// one secret key, so every REST session of a user dials identically and
+// shares the user's pool. Anonymous is the zero User.
 type User struct {
 	Username  string
 	SecretKey string
@@ -39,9 +39,9 @@ func (u User) LogValue() slog.Value {
 	return slog.StringValue(u.Username)
 }
 
-// budget is the process-wide ceiling on live handles: a unit is taken
-// before a user pool dials and released when the handle is actually
-// closed, so a handle wedged in cgo keeps counting until its close returns.
+// budget is the process-wide ceiling on live sessions: a unit is taken
+// before a user pool dials and released when the session is actually
+// closed, so a session wedged in cgo keeps counting until its close returns.
 type budget struct {
 	tokens chan struct{}
 }
@@ -143,17 +143,17 @@ func (e *BreakerOpenError) Error() string {
 	return fmt.Sprintf("qdb: circuit breaker open, retry after %s", e.RetryAfter)
 }
 
-// userPool is one user's bounded set of handles plus when it last held
+// userPool is one user's bounded set of sessions plus when it last held
 // none, for LRU eviction.
 type userPool struct {
-	pool       *pool.Pool[*Handle]
-	emptySince time.Time // zero while the pool holds a handle
+	pool       *pool.Pool[*Session]
+	emptySince time.Time // zero while the pool holds a session
 }
 
 // Cluster binds this process to one configured cluster: the dial options,
-// the global budget, the breaker, and the per-user handle pools. It is the
-// only door to a handle (Call) and answers readiness on its own dial
-// (Probe). Nothing dials at startup; every handle is dialed on demand.
+// the global budget, the breaker, and the per-user session pools. It is the
+// only door to a session (Call) and answers readiness on its own dial
+// (Probe). Nothing dials at startup; every session is dialed on demand.
 type Cluster struct {
 	cfg     config.Cluster
 	poolCfg config.Pool
@@ -179,7 +179,7 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		cfg:     cfg.Cluster,
 		poolCfg: cfg.Pool,
 		now:     now,
-		budget:  newBudget(cfg.Pool.MaxHandles),
+		budget:  newBudget(cfg.Pool.MaxSessions),
 		breaker: newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
 		users:   map[string]*userPool{},
 		stop:    make(chan struct{}),
@@ -221,7 +221,7 @@ func encryptionOf(s string) qdbapi.Encryption {
 }
 
 // handleOptions turns the cluster config plus one user's credentials into
-// a dial specification. A zero per-handle knob is left at the C API
+// a dial specification. A zero per-session knob is left at the C API
 // default (the binding applies a knob only when non-zero).
 func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 	o := qdbapi.NewHandleOptions().
@@ -253,13 +253,13 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 	return o
 }
 
-// connect dials one handle for u under the call deadline, through the same
+// connect dials one session for u under the call deadline, through the same
 // abandon-on-deadline failsafe as a call: a dial to a black-holed address
 // blocks in cgo past its deadline, so the goroutine is abandoned and
-// closes the handle itself when connect finally returns. budgeted dials
-// take a budget unit first and release it when the handle closes (or, when
+// closes the session itself when connect finally returns. budgeted dials
+// take a budget unit first and release it when the session closes (or, when
 // abandoned or failed, as soon as the dial resolves).
-func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*Handle, error) {
+func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*Session, error) {
 	if budgeted {
 		if err := c.budget.acquire(ctx); err != nil {
 			return nil, err
@@ -295,19 +295,19 @@ func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*H
 		}
 		return nil, dialErr
 	}
-	return newHandle(c, hdl, budgeted), nil
+	return newSession(c, hdl, budgeted), nil
 }
 
 // dial is the pool's dial function for one user: a budgeted connect.
-func (c *Cluster) dial(u credentials) pool.Dial[*Handle] {
-	return func(ctx context.Context) (*Handle, error) {
+func (c *Cluster) dial(u credentials) pool.Dial[*Session] {
+	return func(ctx context.Context) (*Session, error) {
 		return c.connect(ctx, u, true)
 	}
 }
 
 // poolFor finds or creates the user's pool; it never replaces one that
 // exists, so in-flight requests are never raced.
-func (c *Cluster) poolFor(u User) *pool.Pool[*Handle] {
+func (c *Cluster) poolFor(u User) *pool.Pool[*Session] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	up, ok := c.users[u.Username]
@@ -332,22 +332,22 @@ type callConfig struct {
 // CallOption tunes one Call.
 type CallOption func(*callConfig)
 
-// WithReadRetry permits one transparent retry on a fresh handle after a
+// WithReadRetry permits one transparent retry on a fresh session after a
 // retryable failure. Only idempotent reads may ask for it; ingestion never
 // does (a batch push offers no way to prove non-application).
 func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }
 
-// Call runs op against a handle authenticated as u. It gates on the
-// breaker, checks a handle out of u's pool (dialing one on demand), runs
-// op, and decides the handle's fate: a success or a fatal error (the
-// cluster answered) releases the handle and closes the breaker; a
+// Call runs op against a session authenticated as u. It gates on the
+// breaker, checks a session out of u's pool (dialing one on demand), runs
+// op, and decides the session's fate: a success or a fatal error (the
+// cluster answered) releases the session and closes the breaker; a
 // retryable error or a deadline discards it and feeds the breaker. A
-// deadline leaves the handle to its abandoned goroutine; Call never
-// touches it. WithReadRetry runs op once more on a fresh handle after a
+// deadline leaves the session to its abandoned goroutine; Call never
+// touches it. WithReadRetry runs op once more on a fresh session after a
 // retryable failure.
-func (c *Cluster) Call(ctx context.Context, u User, op func(*Handle) error, opts ...CallOption) error {
+func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -365,11 +365,11 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Handle) error, opts
 			}
 			return aerr
 		}
-		h := lease.Conn()
-		h.bind(lease)
-		err = op(h)
+		s := lease.Conn()
+		s.bind(lease)
+		err = op(s)
 		switch {
-		case h.abandoned():
+		case s.abandoned():
 			c.breaker.recordFailure() // the abandoned goroutine owns the lease
 		case err == nil:
 			lease.Release()
@@ -393,38 +393,38 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Handle) error, opts
 
 // Query runs a native query as u and hands each result to use.
 func (c *Cluster) Query(ctx context.Context, u User, text string, use func(*qdbapi.QueryResult) error, opts ...CallOption) error {
-	return c.Call(ctx, u, func(h *Handle) error { return h.query(ctx, text, use) }, opts...)
+	return c.Call(ctx, u, func(s *Session) error { return s.query(ctx, text, use) }, opts...)
 }
 
 // Tagged returns the aliases carrying tag, read as u.
 func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, error) {
 	var aliases []string
-	err := c.Call(ctx, u, func(h *Handle) error {
+	err := c.Call(ctx, u, func(s *Session) error {
 		var e error
-		aliases, e = h.tagged(ctx, tag)
+		aliases, e = s.tagged(ctx, tag)
 		return e
 	}, WithReadRetry())
 	return aliases, err
 }
 
-// Probe answers readiness. It dials a fresh handle as the REST API's own
+// Probe answers readiness. It dials a fresh session as the REST API's own
 // user (outside the pool, the budget and the breaker), runs the readiness
-// query, and closes the handle on its own goroutine. The dial proves the
+// query, and closes the session on its own goroutine. The dial proves the
 // cluster is reachable and the REST API's own user authenticates; the query
-// proves the handle serves one (ADR-0004).
+// proves the session serves one (ADR-0004).
 func (c *Cluster) Probe(ctx context.Context, readinessQuery string) error {
-	h, err := c.connect(ctx, c.ownCredentials(), false)
+	s, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
 		return err
 	}
-	qerr := h.query(ctx, readinessQuery, func(*qdbapi.QueryResult) error { return nil })
-	if !h.abandoned() {
-		h.closeAsync()
+	qerr := s.query(ctx, readinessQuery, func(*qdbapi.QueryResult) error { return nil })
+	if !s.abandoned() {
+		s.closeAsync()
 	}
 	return qerr
 }
 
-// reap closes idle handles and evicts user pools that have held none for
+// reap closes idle sessions and evicts user pools that have held none for
 // idle_timeout, on a fixed tick until Close.
 func (c *Cluster) reap() {
 	defer close(c.done)
@@ -465,7 +465,7 @@ func (c *Cluster) reapOnce() {
 // instead of waiting for the ticker.
 func (c *Cluster) Reap() { c.reapOnce() }
 
-// Stats is a snapshot of the whole cluster's handle usage.
+// Stats is a snapshot of the whole cluster's session usage.
 type Stats struct {
 	BudgetInUse int
 	BudgetMax   int

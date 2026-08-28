@@ -94,9 +94,9 @@ func TestQueryRoundTrips(t *testing.T) {
 	}
 }
 
-// TestFatalErrorReusesHandle: a bad query is fatal (the cluster answered),
-// so the handle is returned to the pool, not discarded.
-func TestFatalErrorReusesHandle(t *testing.T) {
+// TestFatalErrorReusesSession: a bad query is fatal (the cluster answered),
+// so the session is returned to the pool, not discarded.
+func TestFatalErrorReusesSession(t *testing.T) {
 	requireQdbd(t, "127.0.0.1:2836")
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
@@ -109,7 +109,7 @@ func TestFatalErrorReusesHandle(t *testing.T) {
 		t.Fatalf("a malformed query should be fatal, got retryable: %v", err)
 	}
 	if s := c.poolFor(anonymous).Stats(); s.Idle != 1 {
-		t.Fatalf("fatal error did not return the handle: %+v", s)
+		t.Fatalf("fatal error did not return the session: %+v", s)
 	}
 }
 
@@ -119,7 +119,7 @@ func TestPerUserCapAndSharing(t *testing.T) {
 	requireQdbd(t, "127.0.0.1:2836")
 	c := New(insecureConfig(func(cfg *config.Config) {
 		cfg.Pool.PerUserMax = 2
-		cfg.Pool.MaxHandles = 8
+		cfg.Pool.MaxSessions = 8
 	}), nil)
 	defer closeCluster(t, c)
 
@@ -154,7 +154,7 @@ func TestBreakerOpensOnUnreachable(t *testing.T) {
 	defer closeCluster(t, c)
 
 	ctx := context.Background()
-	noop := func(*Handle) error { return nil }
+	noop := func(*Session) error { return nil }
 	for range cfg.Pool.Breaker.Failures {
 		if err := c.Call(ctx, anonymous, noop); err == nil {
 			t.Fatal("want a dial error against an unreachable cluster")
@@ -178,7 +178,7 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 	defer closeCluster(t, c)
 
 	attempts := 0
-	err := c.Call(context.Background(), anonymous, func(*Handle) error {
+	err := c.Call(context.Background(), anonymous, func(*Session) error {
 		attempts++
 		return qdbapi.ErrConnectionReset // retryable
 	}, WithReadRetry())
@@ -190,9 +190,9 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 	}
 }
 
-// TestPoisonedHandleShortCircuits: once a handle has timed out, later
+// TestPoisonedSessionShortCircuits: once a session has timed out, later
 // calls on it return ErrCallTimeout without a C call.
-func TestPoisonedHandleShortCircuits(t *testing.T) {
+func TestPoisonedSessionShortCircuits(t *testing.T) {
 	requireQdbd(t, "127.0.0.1:2836")
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
@@ -207,7 +207,7 @@ func TestPoisonedHandleShortCircuits(t *testing.T) {
 	done, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := h.query(done, "SELECT 1", func(*qdbapi.QueryResult) error { return nil }); !errors.Is(err, ErrCallTimeout) {
-		t.Fatalf("poisoned handle ran a call: %v", err)
+		t.Fatalf("poisoned session ran a call: %v", err)
 	}
 	_ = h.Close()
 }
@@ -259,7 +259,7 @@ func (c *fakeClock) advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-// TestIdleUserPoolEvicted: a user pool that has held no handle for
+// TestIdleUserPoolEvicted: a user pool that has held no session for
 // idle_timeout is reaped away, so the map is bounded by distinct users,
 // not by logins.
 func TestIdleUserPoolEvicted(t *testing.T) {
@@ -278,14 +278,14 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		t.Fatalf("want one user pool after a query, got %d", s.Users)
 	}
 
-	// Past idle_timeout the idle handle is closed; the pool is now empty.
+	// Past idle_timeout the idle session is closed; the pool is now empty.
 	clk.advance(2 * time.Minute)
 	c.Reap()
 	up := c.poolFor(anonymous)
 	deadline := time.Now().Add(10 * time.Second)
 	for s := up.Stats(); s.Idle != 0 || s.Closing != 0; s = up.Stats() {
 		if time.Now().After(deadline) {
-			t.Fatalf("idle handle never closed: %+v", s)
+			t.Fatalf("idle session never closed: %+v", s)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}

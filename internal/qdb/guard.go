@@ -9,7 +9,7 @@ import (
 // against a deadline. The C API has no cancellation path, so a call past
 // its deadline cannot be stopped; the guard abandons its goroutine
 // instead, and the goroutine, when the C call finally returns, owns the
-// cleanup (freeing any result and closing the handle). The caller never
+// cleanup (freeing any result and closing the session). The caller never
 // touches what an abandoned call produced.
 type guard struct {
 	mu        sync.Mutex

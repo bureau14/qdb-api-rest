@@ -48,7 +48,7 @@ type Log struct {
 // Cluster binds the process to one cluster: where it is, its public key,
 // the REST API's own user (username and secret key inline, or the user
 // security file that carries both; all empty means anonymous), and the
-// per-handle C API knobs. A zero knob means the C API default.
+// per-session C API knobs. A zero knob means the C API default.
 type Cluster struct {
 	URI                   string        `yaml:"uri"`
 	PublicKey             string        `yaml:"public_key"`
@@ -58,7 +58,7 @@ type Cluster struct {
 	UserSecurityFile      string        `yaml:"user_security_file"`
 	Compression           string        `yaml:"compression"` // none | balanced
 	Encryption            string        `yaml:"encryption"`  // none | aes
-	Timeout               time.Duration `yaml:"timeout"`     // socket timeout per handle, whole seconds
+	Timeout               time.Duration `yaml:"timeout"`     // socket timeout per session, whole seconds
 	MaxInBufferSize       int64         `yaml:"max_in_buffer_size"`
 	Parallelism           int           `yaml:"parallelism"`
 	ConnectionsPerAddress int           `yaml:"connections_per_address"`
@@ -84,11 +84,11 @@ type Breaker struct {
 	OpenFor  time.Duration `yaml:"open_for"`
 }
 
-// Pool sizes the handle pool: the process-wide budget, the per-user cap,
-// the ages at which handles are closed, and the deadline of one C API
+// Pool sizes the session pool: the process-wide budget, the per-user cap,
+// the ages at which sessions are closed, and the deadline of one C API
 // call.
 type Pool struct {
-	MaxHandles  int           `yaml:"max_handles"`
+	MaxSessions int           `yaml:"max_sessions"`
 	PerUserMax  int           `yaml:"per_user_max"`
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
 	MaxLifetime time.Duration `yaml:"max_lifetime"`
@@ -127,7 +127,7 @@ func Default() Config {
 			Timeout:     60 * time.Second,
 		},
 		Pool: Pool{
-			MaxHandles:  64,
+			MaxSessions: 64,
 			PerUserMax:  8,
 			IdleTimeout: 5 * time.Minute,
 			MaxLifetime: 15 * time.Minute,
@@ -241,7 +241,7 @@ func envOverrides(cfg *Config) map[string]setter {
 		envPrefix + "CLUSTER_MAX_IN_BUFFER_SIZE":      setSize(&cfg.Cluster.MaxInBufferSize),
 		envPrefix + "CLUSTER_PARALLELISM":             setInt(&cfg.Cluster.Parallelism),
 		envPrefix + "CLUSTER_CONNECTIONS_PER_ADDRESS": setInt(&cfg.Cluster.ConnectionsPerAddress),
-		envPrefix + "POOL_MAX_HANDLES":                setInt(&cfg.Pool.MaxHandles),
+		envPrefix + "POOL_MAX_SESSIONS":               setInt(&cfg.Pool.MaxSessions),
 		envPrefix + "POOL_PER_USER_MAX":               setInt(&cfg.Pool.PerUserMax),
 		envPrefix + "POOL_IDLE_TIMEOUT":               setDuration(&cfg.Pool.IdleTimeout),
 		envPrefix + "POOL_MAX_LIFETIME":               setDuration(&cfg.Pool.MaxLifetime),
@@ -456,11 +456,11 @@ func validateCluster(c Cluster) error {
 // validatePool: every count at least one, the per-user cap within the
 // budget, every age and deadline positive.
 func validatePool(p Pool) error {
-	if p.MaxHandles < 1 {
-		return fmt.Errorf("pool.max_handles must be at least 1, got %d", p.MaxHandles)
+	if p.MaxSessions < 1 {
+		return fmt.Errorf("pool.max_sessions must be at least 1, got %d", p.MaxSessions)
 	}
-	if p.PerUserMax < 1 || p.PerUserMax > p.MaxHandles {
-		return fmt.Errorf("pool.per_user_max must be within 1..pool.max_handles (%d), got %d", p.MaxHandles, p.PerUserMax)
+	if p.PerUserMax < 1 || p.PerUserMax > p.MaxSessions {
+		return fmt.Errorf("pool.per_user_max must be within 1..pool.max_sessions (%d), got %d", p.MaxSessions, p.PerUserMax)
 	}
 	if err := positive("pool.idle_timeout", p.IdleTimeout); err != nil {
 		return err

@@ -46,34 +46,34 @@ cluster:
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"
-  # C API socket timeout per handle, whole seconds, at least 1s (per
+  # C API socket timeout per session, whole seconds, at least 1s (per
   # send/receive, retried inside the C API); the operation-level bound
   # is pool.call_timeout.
   timeout: "60s"
-  # Per handle, 0 = C API default: client input buffer cap (bytes) and
+  # Per session, 0 = C API default: client input buffer cap (bytes) and
   # C API worker threads (the C API default is half the logical cores,
-  # per handle).
+  # per session).
   max_in_buffer_size: 0
   parallelism: 0
-  # Per handle: soft limit on connections to any one node address
+  # Per session: soft limit on connections to any one node address
   # (0 = C API default; otherwise 2..100000).
   connections_per_address: 0
 
 pool:
-  # Handles this process may hold across all users; readiness probes
+  # Sessions this process may hold across all users; readiness probes
   # dial outside this budget.
-  max_handles: 64
-  # Handles one user may hold, across all of that user's sessions; the
-  # anonymous user is one user.
+  max_sessions: 64
+  # Sessions one user may hold, across all of that user's REST sessions;
+  # the anonymous user is one user.
   per_user_max: 8
-  # A handle unused this long is closed; a user pool that has held no
-  # handle for this long is evicted (so at most twice this after the
+  # A session unused this long is closed; a user pool that has held no
+  # session for this long is evicted (so at most twice this after the
   # last request).
   idle_timeout: "5m"
-  # A handle older than this is closed on return, never on checkout.
+  # A session older than this is closed on return, never on checkout.
   max_lifetime: "15m"
   # Deadline for one C API call, dial included; on expiry the caller
-  # gets an error and the handle is discarded.
+  # gets an error and the session is discarded.
   call_timeout: "60s"
   breaker:
     # Consecutive retryable failures (dial errors, deadline expiries,

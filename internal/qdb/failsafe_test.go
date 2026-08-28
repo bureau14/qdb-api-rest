@@ -53,12 +53,12 @@ func silentListener(t *testing.T) (uri string, stop func()) {
 // deadlines the C API allows: call_timeout is a Go-side number, free to be
 // 100ms; cluster.timeout is at its 1s floor, so the socket timeout cannot
 // rescue the dial before the Go deadline fires.
-func failsafeConfig(uri string, maxHandles int) config.Config {
+func failsafeConfig(uri string, maxSessions int) config.Config {
 	cfg := config.Default()
 	cfg.Cluster.URI = uri
 	cfg.Cluster.Timeout = time.Second
-	cfg.Pool.MaxHandles = maxHandles
-	cfg.Pool.PerUserMax = maxHandles
+	cfg.Pool.MaxSessions = maxSessions
+	cfg.Pool.PerUserMax = maxSessions
 	cfg.Pool.CallTimeout = 100 * time.Millisecond
 	cfg.Pool.Breaker.Failures = 1000 // out of the way of this test
 	return cfg
@@ -79,7 +79,7 @@ func pollStats(t *testing.T, c *Cluster, want func(Stats) bool) {
 // TestCallTimeoutAbandonsAndRecovers: a dial that blocks in cgo returns
 // ErrCallTimeout within ~call_timeout, is reported as wedged with its
 // budget unit still held, and the unit comes back once the abandoned
-// goroutine has closed the handle.
+// goroutine has closed the session.
 func TestCallTimeoutAbandonsAndRecovers(t *testing.T) {
 	uri, stop := silentListener(t)
 	defer stop()
@@ -87,7 +87,7 @@ func TestCallTimeoutAbandonsAndRecovers(t *testing.T) {
 	defer closeCluster(t, c)
 
 	start := time.Now()
-	err := c.Call(context.Background(), anonymous, func(*Handle) error { return nil })
+	err := c.Call(context.Background(), anonymous, func(*Session) error { return nil })
 	elapsed := time.Since(start)
 	if !errors.Is(err, ErrCallTimeout) {
 		t.Fatalf("want ErrCallTimeout, got %v", err)
@@ -99,10 +99,10 @@ func TestCallTimeoutAbandonsAndRecovers(t *testing.T) {
 	pollStats(t, c, func(s Stats) bool { return s.Wedged == 0 && s.BudgetInUse == 0 })
 }
 
-// TestWedgedHandleDoesNotBlockThePool: two concurrent dials to the silent
-// listener both wedge and both return promptly, so a wedged handle never
+// TestWedgedSessionDoesNotBlockThePool: two concurrent dials to the silent
+// listener both wedge and both return promptly, so a wedged session never
 // serializes the pool behind it.
-func TestWedgedHandleDoesNotBlockThePool(t *testing.T) {
+func TestWedgedSessionDoesNotBlockThePool(t *testing.T) {
 	uri, stop := silentListener(t)
 	defer stop()
 	c := New(failsafeConfig(uri, 2), nil)
@@ -112,7 +112,7 @@ func TestWedgedHandleDoesNotBlockThePool(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 2 {
 		wg.Go(func() {
-			if err := c.Call(context.Background(), anonymous, func(*Handle) error { return nil }); !errors.Is(err, ErrCallTimeout) {
+			if err := c.Call(context.Background(), anonymous, func(*Session) error { return nil }); !errors.Is(err, ErrCallTimeout) {
 				t.Errorf("want ErrCallTimeout, got %v", err)
 			}
 		})

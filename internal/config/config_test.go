@@ -78,7 +78,7 @@ func slots() []slot {
 		{key("cluster.max_in_buffer_size"), nil, true, words("0", "8589934592", "-1")},
 		{key("cluster.parallelism"), nil, true, words("0", "4", "-1")},
 		{key("cluster.connections_per_address"), nil, true, words("0", "1", "2", "100000", "100001")},
-		{key("pool.max_handles"), nil, true, words("0", "1", "64")},
+		{key("pool.max_sessions"), nil, true, words("0", "1", "64")},
 		{key("pool.per_user_max"), nil, true, words("0", "1", "8", "65")},
 		{key("pool.idle_timeout"), nil, true, words("5m", "0s", "-1s")},
 		{key("pool.max_lifetime"), nil, true, words("15m", "0s")},
@@ -221,7 +221,7 @@ func TestUnsetReferenceIsNamed(t *testing.T) {
 // names the variable.
 func TestMalformedEnvValueIsNamed(t *testing.T) {
 	for name, value := range map[string]string{
-		envPrefix + "POOL_MAX_HANDLES":  "many",
+		envPrefix + "POOL_MAX_SESSIONS": "many",
 		envPrefix + "POOL_IDLE_TIMEOUT": "soon",
 	} {
 		_, err := load(nil, map[string]string{name: value})

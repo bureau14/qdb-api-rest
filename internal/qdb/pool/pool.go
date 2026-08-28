@@ -86,7 +86,7 @@ func (p *Pool[C]) notifyLocked() {
 	p.changed = make(chan struct{})
 }
 
-// closeLocked closes conn on its own goroutine: closing a handle can
+// closeLocked closes conn on its own goroutine: closing a conn can
 // block for a long time, and the pool must never wait on it.
 func (p *Pool[C]) closeLocked(conn C) {
 	p.closing++

@@ -35,7 +35,7 @@ In flight:
 Next:
 
 1. `cluster:`, `pool:` and `status:` config blocks, the `internal/qdb`
-   handle pool, and the readiness probe on its own dial
+   session pool, and the readiness probe on its own dial
    (`docs/pool-plan.md`, Implementation order).
 2. Auth ADR, then `internal/auth`.
 3. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
@@ -56,7 +56,7 @@ Handoff to M1:
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- The readiness probe dials its own handle as the REST API's own user, outside
+- The readiness probe dials its own session as the REST API's own user, outside
   the pool, and fails with `503` (ADR-0004; `docs/brief.md`,
   Compatibility contract).
 - `cluster.max_in_buffer_size` must be raised for the bench's full-table

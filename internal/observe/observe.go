@@ -61,7 +61,6 @@ const (
 	KeyRequestID = "request_id"
 	KeyCluster   = "cluster"
 	KeyUsername  = "username"
-	KeyHandle    = "handle"
 )
 
 // Err renders err under KeyError; a nil err yields an empty attr, which

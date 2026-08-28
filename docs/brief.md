@@ -426,7 +426,7 @@ explicitly), failure of the DuckDB subsystem must never degrade the native
 query path.
 
 Authorization matches the native path: qdb-duck binds credentials at
-`ATTACH` time, so the server maintains one attached catalog and handle
+`ATTACH` time, so the server maintains one attached catalog and session
 pool per user, LRU-evicted like the native pools. User queries never
 run under a shared service credential. qdb-duck is read-only by design
 (`INSERT`/`UPDATE`/`DELETE` are rejected), which is exactly the contract
@@ -473,7 +473,7 @@ poll): username (or anonymous), the cluster URI this server fronts and
 whether cluster security is enabled, token introspection (type, issued-at,
 expires-at, `jti`, logged-in-since via the `auth_time` claim, which
 survives refreshes), and this instance's local view of the caller's
-user pool (handles in use / idle / cap; shared by every session of that
+user pool (sessions in use / idle / cap; shared by every session of that
 user) plus a server instance identifier and version. The instance identifier matters: behind a load
 balancer, pool numbers are per-instance truth, and the id makes that
 legible instead of confusing. Whatever user metadata QuasarDB exposes
@@ -492,13 +492,13 @@ Operational/SRE concerns are primary. QuasarDB connection reuse is
 non-optional; the pool is an explicit, elaborate mechanism, not a
 convenience wrapper. Decisions:
 
-- **Handle budget**: one configured `max_handles` for the whole server --
+- **Session budget**: one configured `max_sessions` for the whole server --
   a predictable ceiling on what this binary imposes on the cluster --
-  partitioned into per-user sub-pools with caps (handles are
+  partitioned into per-user sub-pools with caps (sessions are
   authenticated per user; anonymous is one user). Idle user pools are
   LRU-evicted. The pool key is (cluster,
-  username), never a session or a token. A QuasarDB user has exactly one
-  secret, so every session of a user dials identically and all of them
+  username), never a REST session or a token. A QuasarDB user has exactly
+  one secret key, so every REST session of a user dials identically and all of them
   share the user's pool. Login finds the existing pool or creates one and
   never replaces or drains one, so in-flight requests are never raced.
   The session id claim (Authentication) is a security abstraction, not a
@@ -507,12 +507,12 @@ convenience wrapper. Decisions:
   consecutive connect/timeout failures; while open, requests fail
   immediately with 503 + `Retry-After` (half-open probes test recovery).
   No hanging, no queueing onto a dead cluster, no goodput collapse.
-- **Handle health**: no per-checkout ping (a cluster round-trip per
+- **Session health**: no per-checkout ping (a cluster round-trip per
   request contradicts the performance goal). Connection-class errors
-  discard the handle and transparently retry once on a fresh one -- for
+  discard the session and transparently retry once on a fresh one -- for
   idempotent reads only. Ingestion is never auto-retried (batch push
   offers no way to prove non-application); the error is surfaced to the
-  client. Handles additionally carry a max lifetime.
+  client. Sessions additionally carry a max lifetime.
 - **Admission control**: a configured global limit on concurrent query
   execution with per-user fair share, so one noisy user cannot starve
   others; excess receives a fast 429 + `Retry-After`. Bounded memory,
@@ -660,7 +660,7 @@ cmd/qdb_rest/          entry point (all platforms; Windows service mode included
 internal/config/       YAML config + flags + env
 internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0001)
 internal/auth/         JWE tokens, key derivation, the caller's user
-internal/qdb/          handle/session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
+internal/qdb/          session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
 internal/httpapi/      /api/v2 handlers + legacy compat handlers + middleware
 internal/flightsql/    Arrow Flight SQL server

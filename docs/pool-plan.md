@@ -2,7 +2,7 @@
 
 Status: draft. This document is the working plan for the first unit of
 M1: the `cluster:` / `pool:` / `status:` configuration, the QuasarDB
-handle pool in `internal/qdb`, and the readiness probe. Auth, the legacy
+session pool in `internal/qdb`, and the readiness probe. Auth, the legacy
 endpoints and `/metrics` are separate units of M1 and are not planned
 here. Scope and standing constraints: `docs/brief.md`, "Resilience and
 connection management" and "Cluster binding"; progress: `docs/log.md`.
@@ -12,7 +12,7 @@ probes).
 ## Purpose
 
 After this unit lands, `qdb_rest` binds to one configured cluster, owns
-a bounded set of authenticated C API handles with a failsafe around
+a bounded set of authenticated C API sessions with a failsafe around
 every call, and answers `GET /api/status/readiness` by dialing the
 cluster as its own user and running one check. The later units
 (auth, `/api/login`, `/api/query`) only add users to a pool that
@@ -23,18 +23,18 @@ already exists.
 | Decision                                                                                                                                                                                                              | Why                                                                                                                                                     | Rejected                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Pool lives in this repo, split so the core could be upstreamed to `qdb-api-go` later                                                                                                                                  | no upstream release cycle on M1's critical path; the core stays REST-agnostic                                                                           | landing it upstream first                                                         |
-| Pools are keyed by `(cluster, username)`; sessions are a token-level security abstraction, never a pool key                                                                                                           | a user has one secret, so every session of a user dials identically; login never replaces an existing pool                                              | `(cluster, session id)` as the brief first had it (brief amended 2026-08-27)      |
+| Pools are keyed by `(cluster, username)`; REST sessions are a token-level security abstraction, never a pool key                                                                                                      | a user has one secret, so every session of a user dials identically; login never replaces an existing pool                                              | `(cluster, session id)` as the brief first had it (brief amended 2026-08-27)      |
 | One handle per goroutine at a time; never share a checked-out handle                                                                                                                                                  | `qdb_handle_t` is treated as non-thread-safe throughout (Verified facts)                                                                                | one handle per user plus a semaphore                                              |
 | Code reaches a handle only through the narrow `Handle` wrapper inside `Cluster.Call`; the binding's `HandleType` never leaves `internal/qdb`                                                                          | the failsafe and the error classification wrap every C call by construction; nothing can stash a raw handle                                             | `op(h qdbapi.HandleType)` plus a lint rule confining the import; convention only  |
-| Per-handle knobs (`parallelism`, `max_in_buffer_size`, connections per address), all at the C API default unless configured                                                                                           | matches the C API's own granularity and the old server's flags                                                                                          | a global budget the pool divides; a server-specific `parallelism` default         |
-| Every call runs under a Go-side deadline; a timed-out call discards its handle                                                                                                                                        | the C API has no cancellation path and is sometimes messy; a handle that timed out once is never trusted                                                | trusting the C API's own timeouts                                                 |
-| Error classification is `qdb-api-go`'s `IsRetryable`: retryable discards the handle, feeds the breaker and permits one read retry                                                                                     | one matrix, maintained upstream, already covering the whole vocabulary; unknown errors default to retryable                                             | a keep-list of request-caused errors maintained here; discarding on every error   |
+| Per-session knobs (`parallelism`, `max_in_buffer_size`, connections per address), all at the C API default unless configured                                                                                          | matches the C API's own granularity and the old server's flags                                                                                          | a global budget the pool divides; a server-specific `parallelism` default         |
+| Every call runs under a Go-side deadline; a timed-out call discards its session                                                                                                                                       | the C API has no cancellation path and is sometimes messy; a session that timed out once is never trusted                                               | trusting the C API's own timeouts                                                 |
+| Error classification is `qdb-api-go`'s `IsRetryable`: retryable discards the session, feeds the breaker and permits one read retry                                                                                    | one matrix, maintained upstream, already covering the whole vocabulary; unknown errors default to retryable                                             | a keep-list of request-caused errors maintained here; discarding on every error   |
 | Start when the cluster is unreachable; report not-ready                                                                                                                                                               | k8s pattern; the breaker absorbs the outage; only config errors refuse to start                                                                         | fail the start (systemd restart loop)                                             |
-| Nothing dials at startup; every handle is dialed on demand                                                                                                                                                            | a pre-dialed handle needs a retry mechanism of its own and buys milliseconds on the first request                                                       | a warm-up handle for the REST API's own user; a reserved budget slot for it       |
-| Defaults: `max_handles` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                                                                                           | short lifetime bounds the blast radius of a degraded handle                                                                                             | 1h lifetime, 5 failures                                                           |
-| `max_lifetime` is checked on release only; the reaper ticks every 10 s, a constant                                                                                                                                    | a dialed handle is always used at least once more; the tick only needs to sit well under `idle_timeout`                                                 | a lifetime check on checkout; a `pool.reap_interval` key                          |
+| Nothing dials at startup; every session is dialed on demand                                                                                                                                                           | a pre-dialed session needs a retry mechanism of its own and buys milliseconds on the first request                                                      | a warm-up session for the REST API's own user; a reserved budget slot for it      |
+| Defaults: `max_sessions` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                                                                                          | short lifetime bounds the blast radius of a degraded session                                                                                            | 1h lifetime, 5 failures                                                           |
+| `max_lifetime` is checked on release only; the reaper ticks every 10 s, a constant                                                                                                                                    | a dialed session is always used at least once more; the tick only needs to sit well under `idle_timeout`                                                | a lifetime check on checkout; a `pool.reap_interval` key                          |
 | Liveness, readiness and `/metrics` are pure probes                                                                                                                                                                    | ADR-0004 holds the decision, its consequences and the rejected alternatives                                                                             | see ADR-0004                                                                      |
-| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the REST API's own user; the query proves the handle serves one; nothing heavier                                       | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`        |
+| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the REST API's own user; the query proves the session serves one; nothing heavier                                      | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`        |
 | The cluster travels in `context.Context` next to the logger; handlers take it from the request context through package-level `qdb` entry points, and `ClusterFrom` panics without one, like `observe.Logger`          | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern                                            | constructor injection into `httpapi.NewHandler`; a nil-returning lookup           |
 | `/metrics` is out of scope for this unit                                                                                                                                                                              | M2 owns the exposition endpoint; the pool exposes counters in-process only                                                                              | a minimal `/metrics` now                                                          |
 | Tests run against the live qdbd of `scripts/tests/setup/` wherever a real database is the cheapest fixture; a mechanism that would need the C API stalled or mocked is left untested beyond its pure part             | we are not testing the C API, which has no way to mock an error or a stall; a listener that never answers exercises the C API's blocking, not this code | stalling `connect` behind a silent listener; a fake dialer injected into the pool |
@@ -141,9 +141,9 @@ facts the failsafe is built on):
   half the logical cores), created before connect, and per node address
   a pool of TCP connections bounded by the soft limit below. Those are
   the C API's pools, inside one handle, sized by the per-handle knobs.
-  The pool this plan builds is a pool _of handles_ above them: N
-  handles, each carrying its own threads and connections. Sixty four
-  handles at the default on a 32-core host is about a thousand
+  The pool this plan builds is a pool of sessions above them: N
+  sessions, each owning one handle with its own threads and connections.
+  Sixty four sessions at the default on a 32-core host is about a thousand
   threads. `max_in_buffer_size` is a per-handle cap as well.
 - `qdb_option_set_connection_per_address_soft_limit` exists ("maximum
   number of connections for a given IP address that this handle should
@@ -161,12 +161,12 @@ qdbd, verified against the test cluster on 2026-08-28:
   accepting for fifteen minutes, sessions freed in the meantime or not.
   A handle holds its sessions until `qdb_close` returns, so closes in
   flight count: that is why the budget is released when a close
-  completes (ADR-0003), and why every test bounds the handles it holds
+  completes (ADR-0003), and why every test bounds the sessions it holds
   open, closes included, at every step.
 
-The old server opened a fresh handle on every readiness probe and ran
-`Statistics()` unless `readiness_query` was set; it pooled handles with
-`silenceper/pool` keyed by username. The per-probe handle survives; the
+The old server opened a fresh session on every readiness probe and ran
+`Statistics()` unless `readiness_query` was set; it pooled sessions with
+`silenceper/pool` keyed by username. The per-probe session survives; the
 rest does not.
 
 ## Configuration
@@ -194,33 +194,33 @@ cluster:
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"
-  # C API socket timeout per handle, whole seconds, at least 1s (per
+  # C API socket timeout per session, whole seconds, at least 1s (per
   # send/receive, retried inside the C API); the operation-level bound
   # is pool.call_timeout.
   timeout: "60s"
-  # Per handle, 0 = C API default: client input buffer cap (bytes) and
+  # Per session, 0 = C API default: client input buffer cap (bytes) and
   # C API worker threads (the C API default is half the logical cores,
-  # per handle).
+  # per session).
   max_in_buffer_size: 0
   parallelism: 0
-  # Per handle: soft limit on connections to any one node address
+  # Per session: soft limit on connections to any one node address
   # (0 = C API default; otherwise 2..100000).
   connections_per_address: 0
 pool:
-  # Handles this process may hold across all users; readiness probes
+  # Sessions this process may hold across all users; readiness probes
   # dial outside this budget.
-  max_handles: 64
-  # Handles one user may hold, across all of that user's sessions; the
-  # anonymous user is one user.
+  max_sessions: 64
+  # Sessions one user may hold, across all of that user's REST sessions;
+  # the anonymous user is one user.
   per_user_max: 8
-  # A handle unused this long is closed; a user pool that has held no
-  # handle for this long is evicted (so at most twice this after the
+  # A session unused this long is closed; a user pool that has held no
+  # session for this long is evicted (so at most twice this after the
   # last request).
   idle_timeout: "5m"
-  # A handle older than this is closed on return, never on checkout.
+  # A session older than this is closed on return, never on checkout.
   max_lifetime: "15m"
   # Deadline for one C API call, dial included; on expiry the caller
-  # gets an error and the handle is discarded.
+  # gets an error and the session is discarded.
   call_timeout: "60s"
   breaker:
     # Consecutive retryable failures (dial errors, deadline expiries,
@@ -252,7 +252,7 @@ Mechanics:
 - Validation: `public_key` and `public_key_file` mutually exclusive;
   `user_security_file` exclusive with `username`/`secret_key`, which
   are set together; a cluster public key requires a user;
-  `per_user_max <= max_handles`; `connections_per_address` is 0 or
+  `per_user_max <= max_sessions`; `connections_per_address` is 0 or
   in 2..100000; `cluster.timeout` is a whole number of seconds, at
   least 1 (the C API rejects less and truncates the rest); no ordering
   between `call_timeout` and `cluster.timeout` is required (one bounds
@@ -301,7 +301,7 @@ is therefore fully deterministic, which is what lets the property tests
 advance time without waiting.
 
 Every `Close()` of a conn -- discard, lifetime expiry, idle reap,
-shutdown -- runs on its own goroutine, because closing a handle can
+shutdown -- runs on its own goroutine, because closing a session can
 block (Verified facts); `Stats.Closing` counts closes in flight. A
 leased conn belongs to its lease until `Release` or `Discard`; the core
 never closes a leased conn, not even in `Pool.Close`, which waits for
@@ -318,23 +318,23 @@ returns an error has consumed no slot.
 ### `internal/qdb` -- the REST layer
 
 - **User**: `{Username, SecretKey string}`; the pool key is
-  `(cluster, username)` (ADR-0003). Sessions and tokens are auth's
-  concern and never reach this layer: every session of a user shares
-  the user's pool. Until auth exists, the REST API's own user is the only
+  `(cluster, username)` (ADR-0003). REST sessions and tokens are auth's
+  concern and never reach this layer: every REST session of a user
+  shares the user's pool. Until auth exists, the REST API's own user is the only
   user; anonymous is `{"", ""}`.
 - **Cluster**: the `cluster:` block turned into a dial function per
   user (`HandleOptions` + the per-handle knobs + `Connect`), the
   breaker, the global budget, and the map of user pools. Looking up a
   user finds its pool or creates one; nothing ever replaces a pool
   that exists.
-- **Budget**: one weighted semaphore of `max_handles` taken before a
-  user pool dials, released when the handle is actually closed --
-  including a handle whose dial or call was abandoned on deadline,
+- **Budget**: one weighted semaphore of `max_sessions` taken before a
+  user pool dials, released when the session is actually closed --
+  including a session whose dial or call was abandoned on deadline,
   which still holds cluster connections and threads until the C call
   returns. Per-user cap is the user pool's `Max`.
 - **Eviction**: a user pool that has held no conns for `idle_timeout`
   is closed and removed (LRU by last release); in-flight leases are
-  never revoked. The map is reaped on the same ticker as the handles:
+  never revoked. The map is reaped on the same ticker as the sessions:
   a fixed 10 s (`reapInterval`, a constant, not a config key). The map
   is bounded by the number of distinct users, not logins.
 - **Breaker**: per cluster; counts consecutive retryable failures from
@@ -346,13 +346,13 @@ returns an error has consumed no slot.
   accepted: `breaker.failures` consecutive calls slower than
   `call_timeout` open the breaker for everyone for `open_for`, healthy
   cluster or not.
-- **Call** is the only way code touches a handle:
+- **Call** is the only way code touches a session:
 
   ```go
-  func (c *Cluster) Call(ctx context.Context, u User, op func(h *Handle) error) error
+  func (c *Cluster) Call(ctx context.Context, u User, op func(h *Session) error) error
   ```
 
-  `Handle` is this package's narrow wrapper around the leased
+  `Session` is this package's narrow wrapper around the leased
   `qdbapi.HandleType`, which is unexported and never returned. It has
   one method per C API operation the server uses -- this unit needs
   query execution and tag lookup; later units add table creation,
@@ -364,21 +364,21 @@ returns an error has consumed no slot.
   returns, so `handle.Release` never leaves the package either.
   `Call` itself: acquire (breaker, budget, user pool, ctx wait) -> run
   `op` on the calling goroutine -> on return, `qdbapi.IsRetryable(err)`
-  decides: false (the request caused it) releases the handle for
+  decides: false (the request caused it) releases the session for
   reuse; true, or any non-`ErrorType` error, discards it and counts
   toward the breaker. A ctx that ends while a C call runs -- client
-  gone, server draining -- is a deadline for the handle's fate: the
-  call cannot be stopped, so the handle is discarded. Idempotent reads
-  may ask for one transparent retry on a fresh handle after a
+  gone, server draining -- is a deadline for the session's fate: the
+  call cannot be stopped, so the session is discarded. Idempotent reads
+  may ask for one transparent retry on a fresh session after a
   retryable error (`Retry: true` option); ingestion never does (brief).
 
 - **The failsafe**: when the deadline fires with a method's C call
   still blocked in cgo, the method returns `ErrCallTimeout` at once
-  and poisons the `Handle`: every later method on it returns
+  and poisons the `Session`: every later method on it returns
   `ErrCallTimeout` without touching cgo, so `op` unwinds quickly. The
   goroutine running the C call is abandoned and, when the call finally
   returns, releases any result and discards the lease itself, which
-  closes the handle. Nothing else ever touches that handle again:
+  closes the session. Nothing else ever touches that session again:
   closing it from another thread is use-after-free (Verified facts),
   and there is no cancellation path. To the core the lease is simply
   still in use; the REST layer counts such leases as `wedged` in its
@@ -397,9 +397,8 @@ returns an error has consumed no slot.
   the `shutdownGrace` already in `cmd/qdb_rest` (8 s, under the
   harness's 10 s SIGTERM-to-SIGKILL window) and returns `ctx.Err()` for
   whatever is still wedged; the process exits regardless.
-- Logging: `observe.KeyCluster`, `KeyUsername`, `KeyHandle` (a
-  per-process handle counter) added to `observe` (`KeySession` is
-  auth's, not the pool's); the
+- Logging: `observe.KeyCluster` and `KeyUsername` added to `observe`
+  (`KeySession` is auth's, not the pool's); the
   pool logs dial, discard and eviction at debug, breaker transitions at
   warn, with `Err` for the cause. `cmd/qdb_rest` installs the adapter
   over the process logger with `qdbapi.SetLogger` before the first
@@ -417,13 +416,13 @@ The contract is ADR-0004; the mechanics here. `GET /api/status/readiness`
 (and the `/api/v2` mirror) calls `Cluster.Probe(ctx)`, which never
 touches the pool, the budget or the breaker:
 
-1. Dial a fresh handle as the REST API's own user under `pool.call_timeout`,
+1. Dial a fresh session as the REST API's own user under `pool.call_timeout`,
    through the same abandon-on-deadline mechanism as `Call`, wrapped in
-   the same `Handle`.
+   the same `Session`.
 2. Run `status.readiness_query` (default `SELECT 1`) and release its
    result at once. The dial proves the cluster is reachable and the
-   REST API's own user authenticates; the query proves the handle serves one.
-3. Close the handle on its own goroutine, whatever the outcome.
+   REST API's own user authenticates; the query proves the session serves one.
+3. Close the session on its own goroutine, whatever the outcome.
 4. Success: `200`, empty body, no `Content-Type` (golden 21). Failure:
    `503`, empty body, no `Retry-After`; the cause goes to the log line,
    not the wire.
@@ -441,19 +440,19 @@ use). They fail fast with the `start-services.sh` hint when the port
 does not answer; nothing is skipped under `-short`.
 
 - `internal/qdb/pool`: `rapid` property tests over random sequences of
-  acquire / release / discard / advance-clock / reap with real handles
+  acquire / release / discard / advance-clock / reap with real sessions
   to the insecure cluster, asserting the invariants above. The clock is
   a fake behind `Options.Now`; "advance" moves it and nothing sleeps,
   so idle and lifetime expiry are exercised at arbitrary ages in
-  microseconds. Only the dial and close of a real handle cost wall
+  microseconds. Only the dial and close of a real session cost wall
   time; `rapid`'s example count is set explicitly (overridable with
   `-rapid.checks`) so the suite stays within seconds under `-race` on
   every platform.
 - `internal/qdb`: budget and per-user caps under concurrent
   users, two logins of one user sharing one pool; LRU eviction
   (fake clock, as above); breaker transitions against an unreachable
-  URI; retry-once on a discarded handle; `IsRetryable` deciding
-  release versus discard, both sides; a poisoned `Handle` refusing
+  URI; retry-once on a discarded session; `IsRetryable` deciding
+  release versus discard, both sides; a poisoned `Session` refusing
   every later method without a C call; secure-cluster dial as the REST
   API's own user; shutdown drains.
 - `internal/qdb`, the failsafe: a TCP listener that accepts and never
@@ -465,13 +464,13 @@ does not answer; nothing is skipped under `-short`.
   `cluster.timeout` at its 1 s floor, so the socket timeout cannot
   rescue the call before the Go deadline fires. The test asserts that
   `Call` returns `ErrCallTimeout` within ~100 ms, that the REST-layer
-  stats report the handle as `wedged` at that moment (the budget unit
+  stats report the session as `wedged` at that moment (the budget unit
   is still held), and then polls the stats -- bounded by 10 s, never
   sleeping a fixed amount -- until the abandoned goroutine has closed
-  the handle and the unit is back. The C API performs a few round
+  the session and the unit is back. The C API performs a few round
   trips during connect, so the wall time is a few seconds, spent inside
   the C API, not in the test. A second call on the same pool during the
-  wedged window must dial a fresh handle and succeed, proving the pool
+  wedged window must dial a fresh session and succeed, proving the pool
   is not wedged.
 - `internal/httpapi`: readiness `200` against the live cluster, `503`
   against an unreachable cluster, no `Retry-After` either way.
@@ -503,7 +502,7 @@ Small commits, each green on its own:
 2. `internal/config`: typed env machinery; `cluster:`, `pool:`,
    `status:` blocks; validation; example config and its pinned test.
 3. `internal/qdb/pool`: core plus property tests.
-4. `internal/qdb`: the user, the `Handle` wrapper, dial, budget,
+4. `internal/qdb`: the user, the `Session` wrapper, dial, budget,
    breaker, `Call`, `Probe`; integration tests.
 5. `internal/httpapi`: readiness on `Probe`; `503` shape; tests.
 6. `cmd/qdb_rest`: install the logger adapter, construct the cluster
