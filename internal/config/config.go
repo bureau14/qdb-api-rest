@@ -71,7 +71,7 @@ type Cluster struct {
 	PublicKey             string        `yaml:"public_key"`
 	PublicKeyFile         string        `yaml:"public_key_file"`
 	ServiceUser           ServiceUser   `yaml:"service_user"`
-	Compression           string        `yaml:"compression"` // none | balanced | best
+	Compression           string        `yaml:"compression"` // none | balanced
 	Encryption            string        `yaml:"encryption"`  // none | aes
 	Timeout               time.Duration `yaml:"timeout"`     // socket timeout per handle, whole seconds
 	MaxInBufferSize       int64         `yaml:"max_in_buffer_size"`
@@ -446,7 +446,7 @@ func validateCluster(c Cluster) error {
 	if (c.PublicKey != "" || c.PublicKeyFile != "") && u.File == "" && u.Name == "" {
 		return errors.New("a cluster public key requires cluster.service_user")
 	}
-	if err := oneOf("cluster.compression", c.Compression, "none", "balanced", "best"); err != nil {
+	if err := oneOf("cluster.compression", c.Compression, "none", "balanced"); err != nil {
 		return err
 	}
 	if err := oneOf("cluster.encryption", c.Encryption, "none", "aes"); err != nil {

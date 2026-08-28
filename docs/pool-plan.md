@@ -186,7 +186,8 @@ cluster:
     name: ""
     secret: ""
     file: ""
-  # Client-side C API compression: none | balanced | best.
+  # Client-side C API compression: none | balanced (the binding exposes
+  # only these two).
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"

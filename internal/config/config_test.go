@@ -72,7 +72,7 @@ func slots() []slot {
 		{key("cluster.service_user.name"), nil, false, words("", "qdb_rest")},
 		{key("cluster.service_user.secret"), nil, false, words("", "S3CRET")},
 		{key("cluster.service_user.file"), nil, false, words("", "/etc/qdb/user_private.key")},
-		{key("cluster.compression"), nil, false, words("none", "balanced", "best", "lz4")},
+		{key("cluster.compression"), nil, false, words("none", "balanced", "lz4")},
 		{key("cluster.encryption"), nil, false, words("none", "aes", "rot13")},
 		{key("cluster.timeout"), nil, true, words("1s", "60s", "0s", "500ms", "1500ms", "-1s")},
 		{key("cluster.max_in_buffer_size"), nil, true, words("0", "8589934592", "-1")},
