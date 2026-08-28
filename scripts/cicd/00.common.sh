@@ -6,7 +6,7 @@
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #
-# Sourced by 10.lint.sh, 20.build.sh and 30.test-unit.sh; not a pipeline
+# Sourced by 10.lint.sh, 20.build.sh and 30.test.sh; not a pipeline
 # step (scripts/cicd/AGENTS.md).
 
 set -eu
@@ -39,7 +39,7 @@ cicd_trust_workspace() {
 #
 # Outputs: GO      -- absolute path to the go binary (${GOROOT}/bin/go[.exe]).
 #          GOROOT, GOPATH, PATH -- re-exported (PATH prepended with ${GOROOT}/bin).
-#          GO_JUNIT_REPORT -- converter used by 30.test-unit.sh to turn
+#          GO_JUNIT_REPORT -- converter used by 30.test.sh to turn
 #                     `go test` output into the JUnit XML Buildkite reports on.
 cicd_setup_go_toolchain() {
     if [[ -z "${GOROOT:-}" ]]; then

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Stop the qdbd services the build step started, whatever the outcome, so
+# a failed step never leaves a cluster running on the agent. stop-services.sh
+# is idempotent: a no-op when nothing was started (scripts/tests/setup, the
+# qdb-test-setup submodule; never edited here). The e2e harness is not in CI,
+# so there is nothing else to stop (unlike qdb-nats-connector's hook).
+set -uo pipefail
+
+SCRIPT="scripts/tests/setup/stop-services.sh"
+if [ -f "$SCRIPT" ]; then
+    bash "$SCRIPT" || true
+fi
+
+exit 0

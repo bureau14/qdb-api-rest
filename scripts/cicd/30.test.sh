@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Buildkite unit-test step for qdb-api-rest.
-# Invoked by .buildkite/steps/_build.yml after 20.build.sh.
-# Runs the Go test suite with the race detector; output is converted to
-# JUnit XML (go-junit-report, installed by cicd_setup_go_toolchain) for
-# the qdb-test-report plugin. Unit tests only (.buildkite/AGENTS.md).
+# Buildkite test step for qdb-api-rest.
+# Invoked by .buildkite/steps/_build.yml after 20.build.sh, once
+# start-services.sh has qdbd running: the suite talks to a live cluster
+# (internal/qdb, internal/httpapi), so nothing is skipped. Output is
+# converted to JUnit XML (go-junit-report, installed by
+# cicd_setup_go_toolchain) for the qdb-test-report plugin. The e2e harness
+# in tests/e2e/ stays out of CI (.buildkite/AGENTS.md).
 
 set -euxo pipefail
 
@@ -31,6 +33,7 @@ fi
 
 # -mod=vendor: resolve strictly from vendor/; fail loudly instead of fetching.
 # -buildvcs=false: same rhel7 uid/no-passwd VCS-stamping failure as 20.build.sh.
+# No -short: every test assumes qdbd is up (started in the build step).
 GOAMD64="${GOAMD64:-}" \
-    "${GO}" test "${GO_EXTRA_FLAGS[@]+"${GO_EXTRA_FLAGS[@]}"}" -mod=vendor -buildvcs=false -short -v -race ./... \
+    "${GO}" test "${GO_EXTRA_FLAGS[@]+"${GO_EXTRA_FLAGS[@]}"}" -mod=vendor -buildvcs=false -v -race ./... \
     | "${GO_JUNIT_REPORT}" -out "${TEST_REPORT_DIR}/unit-junit-report.xml" -iocopy

@@ -51,3 +51,8 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   small helpers declared before use, `t.Helper()`.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
   wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
+- `internal/qdb` and `internal/httpapi` tests dial a live qdbd (the pair
+  from `scripts/tests/setup/start-services.sh`, insecure `2836` / secure
+  `2838`), so a bare `go test ./...` needs those services up; the tests
+  fail fast with the start hint when a port does not answer, and nothing
+  is skipped under `-short`.

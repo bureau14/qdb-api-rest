@@ -6,12 +6,13 @@ vars, overlays env, the Docker plugin, and qdb-artifacts options
 step in parallel with eight per-platform combined steps (build + unit
 tests), then an aggregate test-report step.
 
-The e2e harness (tests/e2e/) is deliberately NOT wired into CI
-(owner decision, .buildkite/AGENTS.md); the per-platform steps do not
-start qdbd or download the server/utils archives. Only the C API archive
-is fetched; the vendored qdb-api-go links it (static libqdb_api.a on
-Linux), with the locations supplied by the root .envrc through
-cicd_setup_qdb_env.
+The Go test suite talks to a live qdbd (internal/qdb, internal/httpapi),
+so each per-platform step starts qdbd via the shared test-setup submodule
+and downloads the server and utils archives next to the C API; a pre-exit
+hook stops the services. The e2e harness (tests/e2e/) is still deliberately
+NOT wired into CI (owner decision, .buildkite/AGENTS.md). The vendored
+qdb-api-go links the C API (static libqdb_api.a on Linux), with the
+locations supplied by the root .envrc through cicd_setup_qdb_env.
 
 Usage:
     python3 pipeline.py [generate|check]
@@ -181,7 +182,7 @@ def _per_platform_step(p: Platform) -> dict:
     this function handles env composition, docker overlay, and
     template-var substitution.  The Go-toolchain env (GOROOT, GOPATH) is
     injected via _go_env_for_agent() so that cicd_setup_go_toolchain in
-    20.build.sh and 30.test-unit.sh can derive the correct go binary
+    20.build.sh and 30.test.sh can derive the correct go binary
     without relying on PATH or make.  The queue template var is
     `"{queue_os}-{arch}"` (no prefix) on macOS; the template spells
     `default-{queue}` elsewhere.  `apply_docker` is a no-op when
