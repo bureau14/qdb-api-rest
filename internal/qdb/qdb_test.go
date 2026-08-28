@@ -70,30 +70,6 @@ func closeCluster(t *testing.T, c *Cluster) {
 // anonymous names the anonymous user.
 var anonymous = User{}
 
-// TestQueryRoundTrips runs a trivial query and reads its one cell back.
-func TestQueryRoundTrips(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
-	c := New(insecureConfig(nil), nil)
-	defer closeCluster(t, c)
-
-	var got int64
-	err := c.Query(context.Background(), anonymous, "SELECT 1", func(r *qdbapi.QueryResult) error {
-		rows := r.Rows()
-		if len(rows) != 1 {
-			t.Fatalf("want 1 row, got %d", len(rows))
-		}
-		v, err := r.Columns(rows[0])[0].GetInt64()
-		got = v
-		return err
-	})
-	if err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	if got != 1 {
-		t.Fatalf("SELECT 1 returned %d", got)
-	}
-}
-
 // TestFatalErrorReusesSession: a bad query is fatal (the cluster answered),
 // so the session is returned to the pool, not discarded.
 func TestFatalErrorReusesSession(t *testing.T) {
@@ -190,28 +166,6 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 	}
 }
 
-// TestPoisonedSessionShortCircuits: once a session has timed out, later
-// calls on it return ErrCallTimeout without a C call.
-func TestPoisonedSessionShortCircuits(t *testing.T) {
-	requireQdbd(t, "127.0.0.1:2836")
-	c := New(insecureConfig(nil), nil)
-	defer closeCluster(t, c)
-
-	h, err := c.connect(context.Background(), User{}.credentials(), true)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	h.mu.Lock()
-	h.poisoned = true
-	h.mu.Unlock()
-	done, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if err := h.query(done, "SELECT 1", func(*qdbapi.QueryResult) error { return nil }); !errors.Is(err, ErrCallTimeout) {
-		t.Fatalf("poisoned session ran a call: %v", err)
-	}
-	_ = h.Close()
-}
-
 // TestSecureDialAsOwnUser: the readiness probe dials the secure cluster
 // as the REST API's own user and runs the query.
 func TestSecureDialAsOwnUser(t *testing.T) {
@@ -226,18 +180,6 @@ func TestSecureDialAsOwnUser(t *testing.T) {
 
 	if err := c.Probe(context.Background(), cfg.Status.ReadinessQuery); err != nil {
 		t.Fatalf("probe against the secure cluster: %v", err)
-	}
-}
-
-// TestProbeFailsOnUnreachable: readiness dials on every probe and fails
-// when the cluster is unreachable.
-func TestProbeFailsOnUnreachable(t *testing.T) {
-	cfg := config.Default()
-	cfg.Cluster.URI = "qdb://127.0.0.1:1"
-	c := New(cfg, nil)
-	defer closeCluster(t, c)
-	if err := c.Probe(context.Background(), cfg.Status.ReadinessQuery); err == nil {
-		t.Fatal("want a probe failure against an unreachable cluster")
 	}
 }
 

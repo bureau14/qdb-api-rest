@@ -106,6 +106,10 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
   surface the server depends on is enumerable in one file.
 - Operations cannot be cancelled early; the only lever is the size of
   `call_timeout` per call class, which later units set per endpoint.
+- The abandon path is not exercised against the C API: doing so means
+  stalling a real C call, which tests the C API rather than this code.
+  The guard's ownership rules are pinned on their own; the C-side facts
+  they rely on are the ones in Context. Accepted.
 
 ## Alternatives rejected
 

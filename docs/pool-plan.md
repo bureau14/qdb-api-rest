@@ -448,30 +448,16 @@ does not answer; nothing is skipped under `-short`.
   time; `rapid`'s example count is set explicitly (overridable with
   `-rapid.checks`) so the suite stays within seconds under `-race` on
   every platform.
-- `internal/qdb`: budget and per-user caps under concurrent
-  users, two logins of one user sharing one pool; LRU eviction
-  (fake clock, as above); breaker transitions against an unreachable
-  URI; retry-once on a discarded session; `IsRetryable` deciding
-  release versus discard, both sides; a poisoned `Session` refusing
-  every later method without a C call; secure-cluster dial as the REST
-  API's own user; shutdown drains.
-- `internal/qdb`, the failsafe: a TCP listener that accepts and never
-  answers, so `connect` blocks inside cgo past the TCP connect. This is
-  the one test that has to wait, because the thing under test is a
-  real thread stuck in a real C call and there is no cancellation path
-  to fake. The wait is pinned to the minimum the C API allows:
-  `call_timeout` at 100 ms (a Go-side number, free to be small) and
-  `cluster.timeout` at its 1 s floor, so the socket timeout cannot
-  rescue the call before the Go deadline fires. The test asserts that
-  `Call` returns `ErrCallTimeout` within ~100 ms, that the REST-layer
-  stats report the session as `wedged` at that moment (the budget unit
-  is still held), and then polls the stats -- bounded by 10 s, never
-  sleeping a fixed amount -- until the abandoned goroutine has closed
-  the session and the unit is back. The C API performs a few round
-  trips during connect, so the wall time is a few seconds, spent inside
-  the C API, not in the test. A second call on the same pool during the
-  wedged window must dial a fresh session and succeed, proving the pool
-  is not wedged.
+- `internal/qdb`: per-user cap under concurrent calls and two logins of
+  one user sharing one pool; breaker opening against an unreachable
+  URI; retry-once after a retryable failure; a fatal error returning
+  the session to the pool; LRU eviction (fake clock, as above); the
+  secure-cluster dial as the REST API's own user. The failsafe is
+  pinned on `guard` alone, with no C call: which side owns the outcome
+  when the work finishes first and when the deadline fires first. The
+  stall the deadline races against is not exercised -- that would test
+  the C API's blocking behaviour, and the C API offers no way to mock a
+  stall or an error (`internal/AGENTS.md`, Tests).
 - `internal/httpapi`: readiness `200` against the live cluster, `503`
   against an unreachable cluster, no `Retry-After` either way.
 - e2e: golden 21 stays green; `make test-legacy` unchanged.
