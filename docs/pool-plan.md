@@ -249,15 +249,18 @@ Mechanics:
   `--cluster-public-key-file` (`cluster.public_key_file`),
   `--user-security-file` (`cluster.user_security_file`); the rest is
   YAML/env.
-- Validation: `public_key` and `public_key_file` mutually exclusive;
-  `user_security_file` exclusive with `username`/`secret_key`, which
-  are set together; a cluster public key requires a user;
-  `per_user_max <= max_sessions`; `connections_per_address` is 0 or
-  in 2..100000; `cluster.timeout` is a whole number of seconds, at
-  least 1 (the C API rejects less and truncates the rest); no ordering
-  between `call_timeout` and `cluster.timeout` is required (one bounds
-  a syscall, the other an operation); vocabulary checks on
-  `compression`/`encryption`; `readiness_query` non-empty.
+- Validation, only what the binding does not check when a session is
+  dialed: vocabulary checks on `compression`/`encryption`;
+  `cluster.timeout` a whole number of seconds, at least 1 (the C API
+  rejects less and truncates the rest; the binding only requires a
+  positive value); `max_in_buffer_size` not negative;
+  `per_user_max <= max_sessions`; `readiness_query` non-empty. No
+  ordering between `call_timeout` and `cluster.timeout` is required (one
+  bounds a syscall, the other an operation). The URI scheme, the key and
+  user exclusivity rules and the knob ranges are the binding's
+  (`HandleOptions` validation), so a mistake there surfaces on the first
+  dial, not at startup, until the upstream session factory validates at
+  construction.
 - `examples/qdb_rest.yaml` gains the blocks verbatim, pinned to the
   defaults by the existing test.
 - Types holding the user secret and the cluster key implement

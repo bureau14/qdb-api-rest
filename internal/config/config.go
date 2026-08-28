@@ -413,25 +413,13 @@ func positive(key string, d time.Duration) error {
 	return nil
 }
 
-// validateCluster: the cluster public key is inline or a file, never
-// both; a cluster public key needs a user to authenticate; the C API
-// knobs are within what the C API accepts.
+// validateCluster checks only what the binding does not: the vocabulary
+// this config maps onto the binding's enums, the socket timeout (the C API
+// takes whole seconds, at least one, and the binding only checks for a
+// positive value), and the buffer size (an int64 here, a uint there). The
+// URI scheme, the key and user exclusivity rules and the C API knob ranges
+// are validated by the binding when a session is dialed.
 func validateCluster(c Cluster) error {
-	if !strings.HasPrefix(c.URI, "qdb://") {
-		return fmt.Errorf("cluster.uri must start with qdb://, got %q", c.URI)
-	}
-	if c.PublicKey != "" && c.PublicKeyFile != "" {
-		return errors.New("cluster.public_key and cluster.public_key_file are mutually exclusive")
-	}
-	if c.UserSecurityFile != "" && (c.Username != "" || c.SecretKey != "") {
-		return errors.New("cluster.user_security_file is exclusive with cluster.username and cluster.secret_key")
-	}
-	if (c.Username == "") != (c.SecretKey == "") {
-		return errors.New("cluster.username and cluster.secret_key must be set together")
-	}
-	if (c.PublicKey != "" || c.PublicKeyFile != "") && c.UserSecurityFile == "" && c.Username == "" {
-		return errors.New("a cluster public key requires a user: cluster.username or cluster.user_security_file")
-	}
 	if err := oneOf("cluster.compression", c.Compression, "none", "balanced"); err != nil {
 		return err
 	}
@@ -443,12 +431,6 @@ func validateCluster(c Cluster) error {
 	}
 	if c.MaxInBufferSize < 0 {
 		return fmt.Errorf("cluster.max_in_buffer_size must not be negative, got %d", c.MaxInBufferSize)
-	}
-	if c.Parallelism < 0 {
-		return fmt.Errorf("cluster.parallelism must not be negative, got %d", c.Parallelism)
-	}
-	if n := c.ConnectionsPerAddress; n != 0 && (n < 2 || n > 100000) {
-		return fmt.Errorf("cluster.connections_per_address must be 0 or within 2..100000, got %d", n)
 	}
 	return nil
 }
