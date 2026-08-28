@@ -3,8 +3,6 @@ package qdb
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log/slog"
 	"maps"
 	"sync"
 	"sync/atomic"
@@ -21,127 +19,6 @@ import (
 // config knob: a dialed session is always used at least once more, so the
 // tick only has to sit below idle_timeout.
 const reapInterval = 10 * time.Second
-
-// User is the QuasarDB user a pool of sessions authenticates as: the pool
-// key is the user, never a REST session or a token (ADR-0003). A user has
-// one secret key, so every REST session of a user dials identically and
-// shares the user's pool. Anonymous is the zero User.
-type User struct {
-	Username  string
-	SecretKey string
-}
-
-// LogValue renders a user without its secret key.
-func (u User) LogValue() slog.Value {
-	if u.Username == "" {
-		return slog.StringValue("(anonymous)")
-	}
-	return slog.StringValue(u.Username)
-}
-
-// budget is the process-wide ceiling on live sessions: a unit is taken
-// before a user pool dials and released when the session is actually
-// closed, so a session wedged in cgo keeps counting until its close returns.
-type budget struct {
-	tokens chan struct{}
-}
-
-func newBudget(max int) *budget {
-	return &budget{tokens: make(chan struct{}, max)}
-}
-
-// acquire takes a unit, waiting for one or for ctx to end.
-func (b *budget) acquire(ctx context.Context) error {
-	select {
-	case b.tokens <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (b *budget) release()   { <-b.tokens }
-func (b *budget) inUse() int { return len(b.tokens) }
-func (b *budget) max() int   { return cap(b.tokens) }
-
-// breakerState is the circuit breaker's position.
-type breakerState int
-
-const (
-	breakerClosed breakerState = iota
-	breakerOpen
-	breakerHalfOpen
-)
-
-// breaker fails fast for a cluster that stops answering: it opens after
-// threshold consecutive retryable failures, half-opens after openFor to
-// admit one probe, and closes again on a success. A call that the cluster
-// answers -- even by rejecting the request -- counts as a success: the
-// cluster is healthy, the caller was wrong.
-type breaker struct {
-	mu        sync.Mutex
-	state     breakerState
-	failures  int
-	openUntil time.Time
-	threshold int
-	openFor   time.Duration
-	now       func() time.Time
-}
-
-func newBreaker(threshold int, openFor time.Duration, now func() time.Time) *breaker {
-	return &breaker{state: breakerClosed, threshold: threshold, openFor: openFor, now: now}
-}
-
-// allow reports whether a call may proceed, and if not, how long until the
-// breaker next admits one.
-func (b *breaker) allow() (time.Duration, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	switch b.state {
-	case breakerOpen:
-		if remaining := b.openUntil.Sub(b.now()); remaining > 0 {
-			return remaining, false
-		}
-		b.state = breakerHalfOpen
-		return 0, true
-	case breakerHalfOpen:
-		return b.openUntil.Sub(b.now()), false
-	default:
-		return 0, true
-	}
-}
-
-func (b *breaker) recordSuccess() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.state = breakerClosed
-	b.failures = 0
-}
-
-func (b *breaker) recordFailure() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.state == breakerHalfOpen {
-		b.state = breakerOpen
-		b.openUntil = b.now().Add(b.openFor)
-		return
-	}
-	b.failures++
-	if b.failures >= b.threshold {
-		b.state = breakerOpen
-		b.openUntil = b.now().Add(b.openFor)
-	}
-}
-
-// BreakerOpenError is returned by Call while the breaker is open; the HTTP
-// layer maps it to 503 with a Retry-After of RetryAfter.
-type BreakerOpenError struct {
-	RetryAfter time.Duration
-}
-
-func (e *BreakerOpenError) Error() string {
-	return fmt.Sprintf("qdb: circuit breaker open, retry after %s", e.RetryAfter)
-}
 
 // userPool is one user's bounded set of sessions plus when it last held
 // none, for LRU eviction.
@@ -163,10 +40,10 @@ type Cluster struct {
 	breaker *breaker
 	wedged  atomic.Int64
 
-	mu    sync.Mutex
-	users map[string]*userPool
-	stop  chan struct{}
-	done  chan struct{}
+	mu         sync.Mutex
+	users      map[string]*userPool
+	reaperStop chan struct{}
+	reaperDone chan struct{}
 }
 
 // New builds the cluster from config. now defaults to time.Now; the tests
@@ -176,27 +53,17 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		now = time.Now
 	}
 	c := &Cluster{
-		cfg:     cfg.Cluster,
-		poolCfg: cfg.Pool,
-		now:     now,
-		budget:  newBudget(cfg.Pool.MaxSessions),
-		breaker: newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
-		users:   map[string]*userPool{},
-		stop:    make(chan struct{}),
-		done:    make(chan struct{}),
+		cfg:        cfg.Cluster,
+		poolCfg:    cfg.Pool,
+		now:        now,
+		budget:     newBudget(cfg.Pool.MaxSessions),
+		breaker:    newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
+		users:      map[string]*userPool{},
+		reaperStop: make(chan struct{}),
+		reaperDone: make(chan struct{}),
 	}
 	go c.reap()
 	return c
-}
-
-// credentials identify one user to the cluster: username and secret key,
-// or the user security file that carries both.
-type credentials struct {
-	username, secretKey, userSecurityFile string
-}
-
-func (u User) credentials() credentials {
-	return credentials{username: u.Username, secretKey: u.SecretKey}
 }
 
 // ownCredentials are the REST API's own user, from config.
@@ -427,12 +294,12 @@ func (c *Cluster) Probe(ctx context.Context, readinessQuery string) error {
 // reap closes idle sessions and evicts user pools that have held none for
 // idle_timeout, on a fixed tick until Close.
 func (c *Cluster) reap() {
-	defer close(c.done)
+	defer close(c.reaperDone)
 	ticker := time.NewTicker(reapInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-c.stop:
+		case <-c.reaperStop:
 			return
 		case <-ticker.C:
 			c.reapOnce()
@@ -489,8 +356,8 @@ func (c *Cluster) Stats() Stats {
 // Close stops the reaper and drains every user pool within ctx, returning
 // ctx.Err() for whatever is still wedged. The process exits regardless.
 func (c *Cluster) Close(ctx context.Context) error {
-	close(c.stop)
-	<-c.done
+	close(c.reaperStop)
+	<-c.reaperDone
 	c.mu.Lock()
 	pools := maps.Values(c.users)
 	c.users = map[string]*userPool{}
@@ -502,20 +369,4 @@ func (c *Cluster) Close(ctx context.Context) error {
 		}
 	}
 	return err
-}
-
-// context plumbing: the cluster travels next to the logger (ADR-0002's
-// pattern), so handlers read it from the request context instead of
-// taking it through a constructor.
-type clusterKey struct{}
-
-// WithCluster returns ctx carrying c.
-func WithCluster(ctx context.Context, c *Cluster) context.Context {
-	return context.WithValue(ctx, clusterKey{}, c)
-}
-
-// ClusterFrom returns the cluster carried by ctx, or nil.
-func ClusterFrom(ctx context.Context) *Cluster {
-	c, _ := ctx.Value(clusterKey{}).(*Cluster)
-	return c
 }
