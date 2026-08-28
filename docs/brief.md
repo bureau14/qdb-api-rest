@@ -427,7 +427,7 @@ query path.
 
 Authorization matches the native path: qdb-duck binds credentials at
 `ATTACH` time, so the server maintains one attached catalog and handle
-pool per principal, LRU-evicted like the native pools. User queries never
+pool per user, LRU-evicted like the native pools. User queries never
 run under a shared service credential. qdb-duck is read-only by design
 (`INSERT`/`UPDATE`/`DELETE` are rejected), which is exactly the contract
 this endpoint wants.
@@ -496,7 +496,7 @@ convenience wrapper. Decisions:
   a predictable ceiling on what this binary imposes on the cluster --
   partitioned into per-user sub-pools with caps (handles are
   authenticated per user; anonymous is one user). Idle user pools are
-  LRU-evicted. The user is the principal: the pool key is (cluster,
+  LRU-evicted. The pool key is (cluster,
   username), never a session or a token. A QuasarDB user has exactly one
   secret, so every session of a user dials identically and all of them
   share the user's pool. Login finds the existing pool or creates one and
@@ -514,7 +514,7 @@ convenience wrapper. Decisions:
   offers no way to prove non-application); the error is surfaced to the
   client. Handles additionally carry a max lifetime.
 - **Admission control**: a configured global limit on concurrent query
-  execution with per-principal fair share, so one noisy user cannot starve
+  execution with per-user fair share, so one noisy user cannot starve
   others; excess receives a fast 429 + `Retry-After`. Bounded memory,
   honest overload signaling.
 - **Timeouts everywhere**: every qdb call, every request, every stream
@@ -632,7 +632,7 @@ defaults by test.
 - The logger travels in `context.Context` (`internal/observe`), never as
   a global. The HTTP middleware tags each request context with its id
   (`X-Request-Id`: honored when well-formed, minted otherwise, always
-  echoed) and writes one access line; auth adds principal and session the
+  echoed) and writes one access line; auth adds user and session the
   same way, and every line logged below inherits those attributes.
   Decision and rationale: ADR-0002.
 - The one exception is Windows service mode, where there is no console and
@@ -659,7 +659,7 @@ preserved so it can be added without rework.
 cmd/qdb_rest/          entry point (all platforms; Windows service mode included)
 internal/config/       YAML config + flags + env
 internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0001)
-internal/auth/         JWE tokens, key derivation, principals
+internal/auth/         JWE tokens, key derivation, the caller's user
 internal/qdb/          handle/session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
 internal/httpapi/      /api/v2 handlers + legacy compat handlers + middleware

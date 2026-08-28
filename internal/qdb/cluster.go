@@ -22,22 +22,21 @@ import (
 // tick only has to sit below idle_timeout.
 const reapInterval = 10 * time.Second
 
-// Principal is the user a pool of handles authenticates as: the pool key
-// is the user, never a session or a token (ADR-0003). A QuasarDB user has
-// one secret, so every session of a user dials identically and shares the
-// user's pool. Anonymous is the zero Principal.
-type Principal struct {
-	Name   string
-	Secret string
+// User is the QuasarDB user a pool of handles authenticates as: the pool
+// key is the user, never a session or a token (ADR-0003). A user has one
+// secret key, so every session of a user dials identically and shares
+// the user's pool. Anonymous is the zero User.
+type User struct {
+	Username  string
+	SecretKey string
 }
 
-// LogValue renders a principal without its secret.
-func (p Principal) LogValue() slog.Value {
-	name := p.Name
-	if name == "" {
-		name = "(anonymous)"
+// LogValue renders a user without its secret key.
+func (u User) LogValue() slog.Value {
+	if u.Username == "" {
+		return slog.StringValue("(anonymous)")
 	}
-	return slog.StringValue(name)
+	return slog.StringValue(u.Username)
 }
 
 // budget is the process-wide ceiling on live handles: a unit is taken
@@ -196,8 +195,8 @@ type credentials struct {
 	username, secretKey, userSecurityFile string
 }
 
-func (p Principal) credentials() credentials {
-	return credentials{username: p.Name, secretKey: p.Secret}
+func (u User) credentials() credentials {
+	return credentials{username: u.Username, secretKey: u.SecretKey}
 }
 
 // ownCredentials are the REST API's own user, from config.
@@ -308,18 +307,18 @@ func (c *Cluster) dial(u credentials) pool.Dial[*Handle] {
 
 // poolFor finds or creates the user's pool; it never replaces one that
 // exists, so in-flight requests are never raced.
-func (c *Cluster) poolFor(p Principal) *pool.Pool[*Handle] {
+func (c *Cluster) poolFor(u User) *pool.Pool[*Handle] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	up, ok := c.users[p.Name]
+	up, ok := c.users[u.Username]
 	if !ok {
-		up = &userPool{pool: pool.New(c.dial(p.credentials()), pool.Options{
+		up = &userPool{pool: pool.New(c.dial(u.credentials()), pool.Options{
 			Max:         c.poolCfg.PerUserMax,
 			IdleTimeout: c.poolCfg.IdleTimeout,
 			MaxLifetime: c.poolCfg.MaxLifetime,
 			Now:         c.now,
 		})}
-		c.users[p.Name] = up
+		c.users[u.Username] = up
 	}
 	up.emptySince = time.Time{}
 	return up.pool
@@ -340,15 +339,15 @@ func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }
 
-// Call runs op against a handle authenticated as p. It gates on the
-// breaker, checks a handle out of p's pool (dialing one on demand), runs
+// Call runs op against a handle authenticated as u. It gates on the
+// breaker, checks a handle out of u's pool (dialing one on demand), runs
 // op, and decides the handle's fate: a success or a fatal error (the
 // cluster answered) releases the handle and closes the breaker; a
 // retryable error or a deadline discards it and feeds the breaker. A
 // deadline leaves the handle to its abandoned goroutine; Call never
 // touches it. WithReadRetry runs op once more on a fresh handle after a
 // retryable failure.
-func (c *Cluster) Call(ctx context.Context, p Principal, op func(*Handle) error, opts ...CallOption) error {
+func (c *Cluster) Call(ctx context.Context, u User, op func(*Handle) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -359,7 +358,7 @@ func (c *Cluster) Call(ctx context.Context, p Principal, op func(*Handle) error,
 		if !ok {
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
-		lease, aerr := c.poolFor(p).Acquire(ctx)
+		lease, aerr := c.poolFor(u).Acquire(ctx)
 		if aerr != nil {
 			if !errors.Is(aerr, context.Canceled) && !errors.Is(aerr, context.DeadlineExceeded) {
 				c.breaker.recordFailure()
@@ -392,15 +391,15 @@ func (c *Cluster) Call(ctx context.Context, p Principal, op func(*Handle) error,
 	return err
 }
 
-// Query runs a native query as p and hands each result to use.
-func (c *Cluster) Query(ctx context.Context, p Principal, text string, use func(*qdbapi.QueryResult) error, opts ...CallOption) error {
-	return c.Call(ctx, p, func(h *Handle) error { return h.query(ctx, text, use) }, opts...)
+// Query runs a native query as u and hands each result to use.
+func (c *Cluster) Query(ctx context.Context, u User, text string, use func(*qdbapi.QueryResult) error, opts ...CallOption) error {
+	return c.Call(ctx, u, func(h *Handle) error { return h.query(ctx, text, use) }, opts...)
 }
 
-// Tagged returns the aliases carrying tag, read as p.
-func (c *Cluster) Tagged(ctx context.Context, p Principal, tag string) ([]string, error) {
+// Tagged returns the aliases carrying tag, read as u.
+func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, error) {
 	var aliases []string
-	err := c.Call(ctx, p, func(h *Handle) error {
+	err := c.Call(ctx, u, func(h *Handle) error {
 		var e error
 		aliases, e = h.tagged(ctx, tag)
 		return e

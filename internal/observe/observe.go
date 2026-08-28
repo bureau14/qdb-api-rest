@@ -60,7 +60,7 @@ const (
 	KeyError     = "error"
 	KeyRequestID = "request_id"
 	KeyCluster   = "cluster"
-	KeyPrincipal = "principal"
+	KeyUsername  = "username"
 	KeyHandle    = "handle"
 )
 

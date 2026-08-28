@@ -41,7 +41,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.
   Add a key to `observe` before using it in a second package.
 - Edges enrich, handlers do not: HTTP middleware and gRPC interceptors
-  tag the ctx (request id, principal, session); code below only logs.
+  tag the ctx (request id, user, session); code below only logs.
 - Any type that holds a secret implements `slog.LogValuer` so it can
   never print one.
 

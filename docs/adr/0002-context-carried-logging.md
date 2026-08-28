@@ -9,7 +9,7 @@ Milestone: M0
 The brief fixes `slog` as the only logging API, forbids package-level
 mutable state, and requires `context.Context` through every call path.
 Log lines are only useful in production when every line of one request
-carries the same identifying attributes (request id; later principal and
+carries the same identifying attributes (request id; later user and
 session) without each call site repeating them. Go has no dynamic scope
 and no goroutine-local storage, so "the current scope's attributes" need
 an explicit carrier.
@@ -32,7 +32,7 @@ an explicit carrier.
 - Enrichment happens once per request at the edge: the HTTP middleware
   tags the ctx with `request_id` (inbound `X-Request-Id` when well-formed,
   minted otherwise, always echoed) and writes one access line; auth adds
-  principal and session the same way; handlers never re-tag.
+  user and session the same way; handlers never re-tag.
 - Shared attribute names and `observe.Err` live in `internal/observe`;
   any type holding a secret implements `slog.LogValuer`.
 

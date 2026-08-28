@@ -1,7 +1,7 @@
 // Package pool is a bounded pool of connections generic over a dial
-// function. It knows nothing about principals, HTTP or qdb-api-go, so the
+// function. It knows nothing about users, HTTP or qdb-api-go, so the
 // package could move upstream unchanged; the REST layer above it owns the
-// principal map, the budget and the breaker.
+// user map, the budget and the breaker.
 //
 // The pool never reads the wall clock directly: every age is measured
 // against Options.Now, and idle expiry happens only inside Reap or

@@ -7,9 +7,9 @@ Milestone: M1
 ## Context
 
 Every request the server serves runs one or more C API calls on a
-`qdb_handle_t` authenticated as the calling principal. The brief makes
+`qdb_handle_t` authenticated as the calling user. The brief makes
 connection reuse non-optional, sets a global handle budget partitioned
-per principal, and wants honest fast failure (brief: "Resilience and
+per user, and wants honest fast failure (brief: "Resilience and
 connection management"). The C API constrains the mechanism harder than
 the brief assumes (verified in `~/git/quasardb`; details in
 `docs/pool-plan.md` while it is alive, then here):
@@ -33,7 +33,7 @@ the brief assumes (verified in `~/git/quasardb`; details in
 
 ## Decision
 
-1. **The user is the principal.** Handles are pooled per user, keyed by
+1. **The pool key is the user.** Handles are pooled per user, keyed by
    `(cluster, username)`, under one process-wide `max_handles` budget
    and a per-user cap; idle user pools are LRU-evicted. Every session
    and every token of one user share that user's pool. Login finds the
@@ -45,7 +45,7 @@ the brief assumes (verified in `~/git/quasardb`; details in
    unreachable (only configuration errors refuse a start).
 2. **Checkout through a narrow wrapper.** A handle is used by exactly
    one goroutine at a time, obtained only through
-   `Cluster.Call(ctx, principal, op)`. `op` receives a `Handle` type
+   `Cluster.Call(ctx, user, op)`. `op` receives a `Handle` type
    owned by `internal/qdb` that exposes one method per C API operation
    the server uses; each method runs its C call under the deadline and
    the error classification below, and owns the release of any result.

@@ -67,8 +67,8 @@ func closeCluster(t *testing.T, c *Cluster) {
 	}
 }
 
-// anonymous names the anonymous principal.
-var anonymous = Principal{}
+// anonymous names the anonymous user.
+var anonymous = User{}
 
 // TestQueryRoundTrips runs a trivial query and reads its one cell back.
 func TestQueryRoundTrips(t *testing.T) {
@@ -114,7 +114,7 @@ func TestFatalErrorReusesHandle(t *testing.T) {
 }
 
 // TestPerUserCapAndSharing: one user's concurrent calls never exceed the
-// per-user cap, and two principals with the same name share one pool.
+// per-user cap, and two User values with the same name share one pool.
 func TestPerUserCapAndSharing(t *testing.T) {
 	requireQdbd(t, "127.0.0.1:2836")
 	c := New(insecureConfig(func(cfg *config.Config) {
@@ -197,7 +197,7 @@ func TestPoisonedHandleShortCircuits(t *testing.T) {
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
 
-	h, err := c.connect(context.Background(), Principal{}.credentials(), true)
+	h, err := c.connect(context.Background(), User{}.credentials(), true)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
