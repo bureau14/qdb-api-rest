@@ -112,6 +112,33 @@ a load balancer whose health checks hit the status endpoints. Docker images
 exist but package-based deployment dominates today; the rewrite should make
 container deployment first-class without breaking the package path.
 
+## Vocabulary
+
+QuasarDB's words, used unchanged in configuration keys, flags, code and
+prose:
+
+- **Cluster**: one or more qdbd nodes behind one `qdb://` URI. A secured
+  cluster has a _cluster public key_ (`cluster_public.key`; clients hold
+  it inline or as a file) and a _cluster private key file_ (server side,
+  never seen by this project).
+- **User**: a QuasarDB identity with a _username_ and a _secret key_ (the
+  user's private key). Both travel together in the _user security file_,
+  the JSON file QuasarDB's tooling generates
+  (`{"username": ..., "secret_key": ...}`), or inline. The cluster keeps
+  the users' public keys in its user list. The REST API's _own user_ is
+  the one it authenticates as on its own behalf (the readiness probe);
+  every other user is a caller.
+- **Session**, at three layers, qualified whenever the layer is not
+  obvious from the context: a _qdbd session_ is the backend's resources
+  reserved for one connection (`--total-sessions`); a _client session_
+  (bare "session" inside `internal/qdb`) is one authenticated connection a
+  client API hands back, the unit the pool leases; a _REST session_ is a
+  login, the token that carries a user's credentials back to the REST
+  API.
+- **Handle**: the C API's `qdb_handle_t` (`qdb-api-go`'s `HandleType`),
+  the object underneath a client session; the word is used only when the
+  cgo layer itself is meant.
+
 ## Goals
 
 1. **Protocol performance.** Streamed response path end-to-end; no
