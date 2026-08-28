@@ -57,9 +57,10 @@ func versionText() string {
 	return b.String()
 }
 
-// shutdownGrace bounds the drain of in-flight requests on SIGTERM; it must
-// stay below the harness's SIGTERM-to-SIGKILL window
-// (tests/e2e/common.sh::stop_server).
+// shutdownGrace is the one deadline shutdown works under on SIGTERM: the
+// HTTP drain (in-flight requests finishing) and the pool drain (sessions
+// closing) share it. It must stay below the harness's SIGTERM-to-SIGKILL
+// window (tests/e2e/common.sh::stop_server).
 const shutdownGrace = 8 * time.Second
 
 // newServer assembles one listener's server; the HTTPS listener carries a
@@ -112,10 +113,10 @@ func serve(server *http.Server) error {
 	return server.ListenAndServe()
 }
 
-// serveUntilDone serves all listeners until ctx is cancelled or one fails,
-// and returns the first terminal error (nil on a clean cancel). It does
-// not drain; the caller owns shutdown so the server drain and the cluster
-// drain share one grace budget.
+// serveUntilDone serves all listeners until ctx is cancelled (SIGINT or
+// SIGTERM) or one of them fails, and returns the first terminal error
+// (nil on a clean cancel). It does not shut anything down: shutdown does,
+// under the single shutdownGrace deadline.
 func serveUntilDone(ctx context.Context, servers []*http.Server) error {
 	errs := make(chan error, len(servers))
 	for _, server := range servers {
@@ -132,10 +133,10 @@ func serveUntilDone(ctx context.Context, servers []*http.Server) error {
 	}
 }
 
-// shutdown drains in-flight requests, then the cluster, within one shared
-// grace: server.Shutdown waits for in-flight requests (which use the
-// cluster) to finish, so by the time it returns the cluster has no callers
-// left and closing it is quick.
+// shutdown drains the HTTP servers first and the cluster second, both
+// under the one shutdownGrace deadline. The order matters: in-flight
+// requests hold sessions, so server.Shutdown returning means the cluster
+// has no callers left and its close only has idle sessions to wait for.
 func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster) {
 	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
@@ -148,6 +149,9 @@ func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster)
 }
 
 func main() {
+	// 1. Configuration: defaults, file, environment, flags. --version and
+	//    --help are answered here and exit; a config error refuses the
+	//    start with exit code 2, the only startup failure that does.
 	cfg, err := config.Load("qdb_rest", os.Args[1:], os.LookupEnv, os.Stderr)
 	if errors.Is(err, config.ErrVersionRequested) {
 		fmt.Print(versionText())
@@ -161,6 +165,9 @@ func main() {
 		os.Exit(2)
 	}
 
+	// 2. The process logger, placed in the root context (ADR-0002); the
+	//    root context also ends on SIGINT/SIGTERM, which is what stops
+	//    serving below.
 	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
@@ -171,16 +178,24 @@ func main() {
 	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode,
 		"qdb_api_version", qdb.APIVersion())
 
+	// 3. The cluster binding. The binding's own logger is routed into ours
+	//    before anything can dial; the cluster dials nothing at startup
+	//    (ADR-0003) and travels in the context so handlers reach it there.
 	qdb.InstallLogger(logger)
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)
 
+	// 4. The listeners, over the root context so every request inherits
+	//    the logger and the cluster. Loading the TLS material is the one
+	//    step here that can fail.
 	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 
+	// 5. Serve until a signal or a listener failure, then drain: HTTP
+	//    first, the cluster second, one shutdownGrace for both.
 	runErr := serveUntilDone(ctx, servers)
 	shutdown(ctx, servers, cluster)
 	if runErr != nil {
