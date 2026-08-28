@@ -397,10 +397,10 @@ returns an error has consumed no slot.
   the `shutdownGrace` already in `cmd/qdb_rest` (8 s, under the
   harness's 10 s SIGTERM-to-SIGKILL window) and returns `ctx.Err()` for
   whatever is still wedged; the process exits regardless.
-- Logging: `observe.KeyCluster` and `KeyUsername` added to `observe`
-  (`KeySession` is auth's, not the pool's); the
-  pool logs dial, discard and eviction at debug, breaker transitions at
-  warn, with `Err` for the cause. `cmd/qdb_rest` installs the adapter
+- Logging: the pool logs nothing yet; when a line is added (dial,
+  discard and eviction at debug, breaker transitions at warn, with `Err`
+  for the cause), its attribute key is added to `observe` with it
+  (`internal/AGENTS.md`). `cmd/qdb_rest` installs the adapter
   over the process logger with `qdbapi.SetLogger` before the first
   dial; the binding's Info maps to Debug. The adapter holds the
   process logger by value: the binding's `Logger` interface carries no
