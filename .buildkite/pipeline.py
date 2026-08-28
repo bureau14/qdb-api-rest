@@ -6,13 +6,11 @@ vars, overlays env, the Docker plugin, and qdb-artifacts options
 step in parallel with eight per-platform combined steps (build + unit
 tests), then an aggregate test-report step.
 
-The Go test suite talks to a live qdbd (internal/qdb, internal/httpapi),
-so each per-platform step starts qdbd via the shared test-setup submodule
-and downloads the server and utils archives next to the C API; a pre-exit
-hook stops the services. The e2e harness (tests/e2e/) is still deliberately
-NOT wired into CI (owner decision, .buildkite/AGENTS.md). The vendored
-qdb-api-go links the C API (static libqdb_api.a on Linux), with the
-locations supplied by the root .envrc through cicd_setup_qdb_env.
+Each per-platform step starts qdbd through the shared test-setup
+submodule before building and stops it in hooks/pre-exit; the
+qdb-artifacts plugin extracts the c-api, server and utils dists the step
+needs into qdb/. The e2e harness (tests/e2e/) is deliberately not in CI
+(.buildkite/AGENTS.md).
 
 Usage:
     python3 pipeline.py [generate|check]

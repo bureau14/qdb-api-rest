@@ -1,9 +1,10 @@
 label: ":hammer: build ({slug})"
 key: build-{slug}
 
-# The C API, server and utils archives are downloaded: the test suite
-# talks to a live qdbd, started here by the shared test-setup submodule.
-# The e2e harness in tests/e2e/ is still not in CI (.buildkite/AGENTS.md).
+# The qdb-test-setup submodule (scripts/tests/setup/) starts qdbd from the
+# c-api, server and utils dists that the qdb-artifacts plugin extracts into
+# qdb/, the QuasarDB project layout. The e2e harness (tests/e2e/) is not
+# in CI (.buildkite/AGENTS.md).
 
 commands:
   - echo \"+++ Start services\"

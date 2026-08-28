@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# Buildkite test step for qdb-api-rest.
-# Invoked by .buildkite/steps/_build.yml after 20.build.sh, once
-# start-services.sh has qdbd running: the suite talks to a live cluster
-# (internal/qdb, internal/httpapi), so nothing is skipped. Output is
-# converted to JUnit XML (go-junit-report, installed by
-# cicd_setup_go_toolchain) for the qdb-test-report plugin. The e2e harness
-# in tests/e2e/ stays out of CI (.buildkite/AGENTS.md).
+# Buildkite test step for qdb-api-rest: `go test ./...` against the qdbd
+# that start-services.sh started earlier in the _build.yml chain, nothing
+# skipped. Output is converted to JUnit XML (go-junit-report, installed by
+# cicd_setup_go_toolchain) for the qdb-test-report plugin.
 
 set -euxo pipefail
 

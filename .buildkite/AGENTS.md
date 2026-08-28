@@ -26,17 +26,14 @@ all of this should feel.
 - The platform matrix mirrors quasardb's pipeline name for name; the
   qdb-artifacts download variant derives from the platform slug, which
   is what wires the C-API dependency up. The c-api, server and utils
-  archives are downloaded: the vendored qdb-api-go links the c-api
-  (static `libqdb_api.a` on Linux, the shared library elsewhere) and
-  `cicd_assert_qdb_tree` fails fast when it is absent, and the server
-  and utils binaries let `scripts/tests/setup/start-services.sh` run
-  qdbd for the test step.
+  dists are extracted into `qdb/`, the QuasarDB project layout that the
+  CGO environment (`scripts/cicd/AGENTS.md`) and `scripts/tests/setup/`
+  expect.
 - qdbd runs in CI: the build step starts it via
-  `scripts/tests/setup/start-services.sh`, `hooks/pre-exit` stops it,
-  and the Go test suite in `internal/qdb` and `internal/httpapi` talks
-  to it. The e2e harness in `tests/e2e/` is still not in CI (owner
-  decision 2026-08-24). Re-adding it: start its dataset load and the
-  `make` targets in a step of their own; the services and archives it
+  `scripts/tests/setup/start-services.sh` before building, and
+  `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` is not in
+  CI (owner decision 2026-08-24). Re-adding it: its dataset load and
+  `make` targets in a step of their own; the services and dists it
   needs are already present.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
