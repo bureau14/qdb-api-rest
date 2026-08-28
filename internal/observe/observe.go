@@ -59,6 +59,9 @@ func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 const (
 	KeyError     = "error"
 	KeyRequestID = "request_id"
+	KeyCluster   = "cluster"
+	KeyPrincipal = "principal"
+	KeyHandle    = "handle"
 )
 
 // Err renders err under KeyError; a nil err yields an empty attr, which
