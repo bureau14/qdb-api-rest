@@ -34,6 +34,8 @@ already exists.
 | Defaults: `max_handles` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                  | short lifetime bounds the blast radius of a degraded handle                                                     | 1h lifetime, 5 failures                                                          |
 | `max_lifetime` is checked on release only; the reaper ticks every 10 s, a constant                                                           | a dialed handle is always used at least once more; the tick only needs to sit well under `idle_timeout`         | a lifetime check on checkout; a `pool.reap_interval` key                         |
 | Liveness, readiness and `/metrics` are pure probes                                                                                           | ADR-0004 holds the decision, its consequences and the rejected alternatives                                     | see ADR-0004                                                                     |
+| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                             | the dial proves reachability and the service user; the query proves the handle serves one; nothing heavier      | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`       |
+| The cluster travels in `context.Context` next to the logger; handlers take it from the request context                                       | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern    | constructor injection into `httpapi.NewHandler`                                  |
 | `/metrics` is out of scope for this unit                                                                                                     | M2 owns the exposition endpoint; the pool exposes counters in-process only                                      | a minimal `/metrics` now                                                         |
 | Tests run against the live qdbd of `scripts/tests/setup/`; no unit tests for the pool                                                        | project-wide convention (`qdb-api-python`, `qdb-api-go`): tests assume the database services are running        | property tests over an injected fake dialer                                      |
 | Key material inline or as a file, at most one of the two                                                                                     | inline suits `${VAR}` secret injection; files suit the QuasarDB key conventions                                 | inline only; files only                                                          |
@@ -45,7 +47,7 @@ already exists.
 
 ## Verified facts
 
-`qdb-api-go`, vendored at `4bcb78f`:
+`qdb-api-go`, vendored at `b64493c`:
 
 - There is no pool. `HandleOptions` (immutable builder,
   `NewHandleFromOptions`) covers URI, cluster public key (inline or
@@ -55,14 +57,18 @@ already exists.
   where the C API defaults to none, timeout 120 s where the C API
   defaults to 5 min. Every knob is applied only when non-zero, so a zero
   in our config means the C API default.
-- `IsRetryable(err)` (`error.go`) classifies the whole `ErrorType`
-  vocabulary: network/transient, system, partial-failure and clock-skew
-  errors are retryable; logic, schema, constraint, auth, config and
-  state errors are not; an error that is not an `ErrorType` (unwrapped
-  via `errors.As`; `wrapError` uses `%w`) is retryable. In particular
-  `ErrNetworkInbufTooSmall` (the reply exceeds `max_in_buffer_size`) is
-  retryable, so an oversized query discards its handle and counts toward
-  the breaker.
+- `IsRetryable(err)` (`error.go`) is true exactly when `ClassifyError`
+  answers `ErrorClassRetryable`. `ErrorType.ErrorClass()` calls eight
+  codes fatal -- `ErrNotImplemented`, `ErrIncompatibleType`,
+  `ErrUninitialized`, `ErrOutOfBounds`, `ErrInvalidQuery`,
+  `ErrAliasNotFound`, `ErrAliasAlreadyExists`, `ErrInvalidArgument` --
+  success and informational codes none, and every other code
+  retryable, permission and quota errors included; an error that is not
+  an `ErrorType` (unwrapped via `errors.As`; `wrapError` uses `%w`) is
+  retryable. In particular `ErrNetworkInbufTooSmall` (the reply exceeds
+  `max_in_buffer_size`) is retryable, so an oversized query discards
+  its handle and counts toward the breaker, and so does an
+  `ErrAccessDenied`.
 - The binding logs through a package-level logger (`logger.go`,
   `SetLogger`), defaulting to a text handler on stderr at Info;
   `HandleType.Connect` logs `successfully connected` at Info on every
@@ -73,13 +79,11 @@ already exists.
   `handle.Release(unsafe.Pointer(result))` (`query_test.go` is the
   reference); `qdb_close` frees whatever is left, so a leak lasts as
   long as the handle.
-- `Cluster().WaitForStabilization(d)` wraps `qdb_wait_for_stabilization`;
-  `d` must be strictly positive.
-- The upstream branch `sc-19631` adds `WithConnectionsPerAddress(int)` /
-  `GetConnectionsPerAddress()` on `HandleOptions` and
-  `Set/GetConnectionsPerAddress(uint)` on `HandleType`, validated `0 | 2..100000`, applied before `Connect`. The C API default is not
-  assumed anywhere ("depends on the C API version"). `library_link.go`
-  is untouched, so the bump is a plain `go mod vendor`.
+- `HandleOptions.WithConnectionsPerAddress(int)` is validated
+  `0 | 2..100000` and applied before `Connect`; the C API default is
+  not assumed anywhere ("depends on the C API version").
+- `SELECT 1` is a valid query on an empty cluster and returns one row;
+  a connected handle answers it without naming a table.
 - Not wrapped: `qdb_option_set_client_soft_memory_limit` and
   `qdb_option_set_stabilization_max_wait`. The binding is never patched
   (`docs/brief.md`, Vendoring), so exposing them is an upstream change.
@@ -210,10 +214,9 @@ pool:
     # How long the breaker stays open before one call is let through.
     open_for: "10s"
 status:
-  # Query executed by the readiness probe under the service user, result
-  # discarded; empty means "wait for the cluster to answer a ring-map
-  # fetch" (qdb_wait_for_stabilization).
-  readiness_query: ""
+  # Query executed by the readiness probe under the service user after
+  # the dial, result discarded.
+  readiness_query: "SELECT 1"
 ```
 
 Mechanics:
@@ -239,7 +242,7 @@ Mechanics:
   least 1 (the C API rejects less and truncates the rest); no ordering
   between `call_timeout` and `cluster.timeout` is required (one bounds
   a syscall, the other an operation); vocabulary checks on
-  `compression`/`encryption`.
+  `compression`/`encryption`; `readiness_query` non-empty.
 - `examples/qdb_rest.yaml` gains the blocks verbatim, pinned to the
   defaults by the existing test.
 - Types holding the user secret and the cluster key implement
@@ -337,8 +340,8 @@ returns an error has consumed no slot.
   `Handle` is this package's narrow wrapper around the leased
   `qdbapi.HandleType`, which is unexported and never returned. It has
   one method per C API operation the server uses -- this unit needs
-  query execution, tag lookup and `WaitForStabilization`; later units
-  add table creation, batch push and cluster status as they need them
+  query execution and tag lookup; later units add table creation,
+  batch push and cluster status as they need them
   -- and each method runs its C call on its own goroutine under the
   `ctx` that `Call` derived with `call_timeout`, on the failsafe below.
   A method whose result must be freed (`QueryResult`) hands it to a
@@ -385,7 +388,13 @@ returns an error has consumed no slot.
   pool logs dial, discard and eviction at debug, breaker transitions at
   warn, with `Err` for the cause. `cmd/qdb_rest` installs the adapter
   over the process logger with `qdbapi.SetLogger` before the first
-  dial; the binding's Info maps to Debug.
+  dial; the binding's Info maps to Debug. The adapter holds the
+  process logger by value: the binding's `Logger` interface carries no
+  context.
+- **Context**: `qdb.WithCluster(ctx, c)` / `qdb.ClusterFrom(ctx)` carry
+  the cluster the way `observe` carries the logger; `cmd/qdb_rest` puts
+  it in the process context that `BaseContext` hands every request, so
+  handlers need no constructor injection.
 
 ## Readiness
 
@@ -396,10 +405,9 @@ touches the pool, the budget or the breaker:
 1. Dial a fresh handle as the service user under `pool.call_timeout`,
    through the same abandon-on-deadline mechanism as `Call`, wrapped in
    the same `Handle`.
-2. Run the check: the `readiness_query` when configured, its result
-   released at once; otherwise `WaitForStabilization(d)` with `d` well
-   under the call timeout (a healthy cluster answers in one remote
-   round trip; an unreachable one only after the full `d`).
+2. Run `status.readiness_query` (default `SELECT 1`) and release its
+   result at once. The dial proves the cluster is reachable and the
+   service user authenticates; the query proves the handle serves one.
 3. Close the handle on its own goroutine, whatever the outcome.
 4. Success: `200`, empty body, no `Content-Type` (golden 21). Failure:
    `503`, empty body, no `Retry-After`; the cause goes to the log line,
@@ -475,10 +483,8 @@ comment in `.buildkite/steps/_build.yml`, the header of
 
 Small commits, each green on its own:
 
-1. `qdb-api-go` upstream branch `sc-19631` (connections per address);
-   bump the vendored version when it lands. Until then
-   `cluster.connections_per_address` validates and is rejected with
-   "not yet supported" when non-zero, so the config shape does not wait.
+1. `qdb-api-go` bumped to the upstream that carries connections per
+   address and the error classes.
 2. `internal/config`: typed env machinery; `cluster:`, `pool:`,
    `status:` blocks; validation; example config and its pinned test.
 3. `internal/qdb/pool`: core plus property tests.

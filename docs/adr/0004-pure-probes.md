@@ -28,9 +28,10 @@ path and no dependency on its state.
    HTTP. It is never cluster-aware.
 2. **Readiness** dials a fresh handle as the service user under
    `pool.call_timeout` (the abandon-on-deadline mechanism of ADR-0003),
-   runs one check -- `status.readiness_query` if configured, otherwise
-   `qdb_wait_for_stabilization` -- and closes the handle on its own
-   goroutine. Success is `200`, failure `503`, both with an empty body
+   runs one query -- `status.readiness_query`, default `SELECT 1` --
+   and closes the handle on its own goroutine. The dial proves the
+   cluster is reachable and the service user authenticates; the query
+   proves the handle serves one. Success is `200`, failure `503`, both with an empty body
    and no `Retry-After`; the cause goes to the log line, not the wire.
    The probe never touches the pool, the budget or the breaker, neither
    reading nor feeding them, and nothing is cached: every poll performs
@@ -48,8 +49,8 @@ path and no dependency on its state.
   and, from M2, on `/metrics`.
 - Each concurrent prober costs one transient handle outside
   `max_handles` -- the old server's cost. The operator's `readiness_query`
-  defines what "ready" means for their workload; the default is one
-  remote round trip.
+  defines what "ready" means for their workload; the default costs the
+  dial and a query that names no table.
 - The prober's cadence never drives resilience, and an open breaker
   never masks a cluster that has recovered.
 - A `/metrics` scrape is safe during an outage and under overload.
@@ -66,5 +67,6 @@ path and no dependency on its state.
 | Readiness feeding the breaker; `Retry-After` on it    | the prober's cadence would drive resilience                                          |
 | Cached verdict (TTL, singleflight)                    | lies for its TTL; a probe must be light enough to run on every poll                  |
 | `Statistics()` as the default check                   | a full stat-key scan per probe                                                       |
+| `qdb_wait_for_stabilization` as the default check     | answers whether the ring is stable, not whether a query is served                    |
 | `500` with `{"message": ...}`                         | probes and load balancers understand `503` as "not ready"                            |
 | `/metrics` behind auth, or gathering cluster stats    | a scrape must be free and must work when the cluster does not                        |

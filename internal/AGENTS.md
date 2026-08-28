@@ -25,9 +25,17 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 
 - Log through the context, `*Context` methods only:
   `observe.Logger(ctx).InfoContext(ctx, msg, attrs...)`. Never
-  `slog.Default()`, `slog.Info`, or a stored logger (`make lint` rejects
-  them). `Logger` panics on a ctx without a logger: pass the ctx you were
+  `slog.Default()` or `slog.Info` (`make lint` rejects them): the
+  logger is state (it carries attributes) and is passed along by value,
+  in the ctx wherever there is one. A component that has no ctx at call
+  time (the `qdb-api-go` logger adapter) holds the logger it was given.
+  `Logger` panics on a ctx without a logger: pass the ctx you were
   given, never `context.Background()`.
+- The context is where request-scoped and process-scoped values travel:
+  the logger (`observe`) and the cluster (`qdb.WithCluster` /
+  `qdb.ClusterFrom`). Handlers read them from the request context;
+  nothing is injected through constructors that the context already
+  carries.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.

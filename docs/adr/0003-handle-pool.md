@@ -61,14 +61,15 @@ the brief assumes (verified in `~/git/quasardb`; details in
    cancelled, and never reused after a timeout or a cancelled context.
    Dial runs under the same mechanism.
 4. **`IsRetryable` decides the handle's fate.** A call that fails with
-   an error `qdb-api-go` classifies as retryable -- network, transient,
-   system, partial failure, and anything that is not a C API error at
+   an error `qdb-api-go` classifies as retryable -- every C API error
+   it does not call fatal, plus anything that is not a C API error at
    all, deadline expiry included -- discards the handle and counts
-   toward the breaker; a non-retryable error (invalid query, unknown
-   alias or column, type mismatch, constraint, permission, quota) says
-   nothing about the handle, which is reused. Idempotent reads may
-   retry once on a fresh handle after a retryable error; ingestion
-   never retries.
+   toward the breaker; a fatal error (the binding's list: not
+   implemented, incompatible type, uninitialized, out of bounds,
+   invalid query, alias not found, alias already exists, invalid
+   argument) says nothing about the handle, which is reused.
+   Idempotent reads may retry once on a fresh handle after a retryable
+   error; ingestion never retries.
 5. **Closing never blocks the pool.** Every close runs on its own
    goroutine; the budget slot is released when the close completes, so
    wedged handles keep counting against `max_handles` and are reported
@@ -91,9 +92,9 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
   its own connect timeout (about two minutes on Linux).
 - The error matrix is upstream's: an error it calls retryable costs a
   reconnect even when the request caused it (an oversized reply,
-  `ErrNetworkInbufTooSmall`, is the notable case), and consecutive
-  calls slower than `call_timeout` open the breaker for everyone for
-  `open_for`, healthy cluster or not.
+  `ErrNetworkInbufTooSmall`, and a permission or quota error are the
+  notable cases), and consecutive calls slower than `call_timeout`
+  open the breaker for everyone for `open_for`, healthy cluster or not.
 - A cluster that stops answering shows up as budget draining toward
   zero plus an open breaker; it never shows up as goroutines piling
   behind cgo.
