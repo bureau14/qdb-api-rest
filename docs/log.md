@@ -28,9 +28,9 @@ property tests for auth and the pool green on all eight platforms.
 
 In flight:
 
-- M1, cluster config + handle pool + readiness: planned in
-  `docs/pool-plan.md` (owner decisions taken 2026-08-26 and 2026-08-27)
-  with ADR-0003 (pool) and ADR-0004 (probes) proposed. No code yet.
+- M1, cluster config + session pool + readiness: implemented on
+  `sc-19567/rr-pool` per `docs/pool-plan.md`, under owner review; the
+  review decisions of 2026-08-28 are being applied there.
 
 Next:
 
@@ -80,6 +80,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-28 -- Pool review decisions
+
+- Owner decisions: QuasarDB's vocabulary (user, session); every key in
+  every layer; option checks left to the binding; the failsafe untested
+  against the C API; a session factory upstream. `docs/pool-plan.md`, Owner decisions.
 
 ## 2026-08-27 -- Pool plan review decisions
 
