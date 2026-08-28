@@ -32,10 +32,10 @@ type Options struct {
 	Now         func() time.Time
 }
 
-// Stats is a snapshot of the pool. InUse plus Idle never exceeds Max;
+// PoolStats is a snapshot of the pool. InUse plus Idle never exceeds Max;
 // Closing counts closes still running on their own goroutines, which do
 // not hold a slot.
-type Stats struct {
+type PoolStats struct {
 	InUse     int
 	Idle      int
 	Dialing   int
@@ -270,10 +270,10 @@ func (p *Pool[C]) Close(ctx context.Context) error {
 }
 
 // Stats returns a snapshot.
-func (p *Pool[C]) Stats() Stats {
+func (p *Pool[C]) Stats() PoolStats {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return Stats{
+	return PoolStats{
 		InUse:     p.leased,
 		Idle:      len(p.idle),
 		Dialing:   p.dialing,

@@ -345,8 +345,8 @@ func (c *Cluster) reapOnce() {
 // instead of waiting for the ticker.
 func (c *Cluster) Reap() { c.reapOnce() }
 
-// Stats is a snapshot of the whole cluster's session usage.
-type Stats struct {
+// ClusterStats is a snapshot of the whole cluster's session usage.
+type ClusterStats struct {
 	BudgetInUse int
 	BudgetMax   int
 	Wedged      int
@@ -354,11 +354,11 @@ type Stats struct {
 }
 
 // Stats returns a snapshot.
-func (c *Cluster) Stats() Stats {
+func (c *Cluster) Stats() ClusterStats {
 	c.mu.Lock()
 	users := len(c.users)
 	c.mu.Unlock()
-	return Stats{
+	return ClusterStats{
 		BudgetInUse: c.budget.inUse(),
 		BudgetMax:   c.budget.max(),
 		Wedged:      int(c.wedged.Load()),
