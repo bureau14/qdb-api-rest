@@ -239,6 +239,12 @@ func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }
 
+// callerLeft reports whether err is the caller's own context ending: it
+// says nothing about the cluster and never feeds the breaker.
+func callerLeft(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // Call runs op against a session authenticated as u. It gates on the
 // breaker, checks a session out of u's pool (dialing one on demand), runs
 // op, and decides the session's fate: a success or a fatal error (the
@@ -260,7 +266,10 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opt
 		}
 		lease, aerr := c.poolFor(u).Acquire(ctx)
 		if aerr != nil {
-			if !errors.Is(aerr, context.Canceled) && !errors.Is(aerr, context.DeadlineExceeded) {
+			// A dial the cluster refused, or one past its deadline, is a
+			// cluster failure; a fatal one (unreadable key file) or the
+			// caller leaving is not.
+			if !callerLeft(aerr) && qdbapi.IsRetryable(aerr) {
 				c.breaker.recordFailure()
 			}
 			return aerr
