@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"unsafe"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
@@ -124,9 +123,11 @@ func (s *Session) call(ctx context.Context, fn func() error, onAbandon func()) e
 }
 
 // query runs one native query and, on completion, hands its result to use
-// on the calling goroutine, freeing it when use returns. A query abandoned
-// on the deadline frees its result on the goroutine that outlived the
-// deadline; the caller, which never sees that result, does not touch it.
+// on the calling goroutine, closing it when use returns. Execute may return
+// a result next to an error, and Close is nil-safe, so the result is closed
+// on every path. A query abandoned on the deadline closes its result on the
+// goroutine that outlived the deadline; the caller, which never sees that
+// result, does not touch it.
 func (s *Session) query(ctx context.Context, text string, use func(*qdbapi.QueryResult) error) error {
 	var result *qdbapi.QueryResult
 	callErr := s.call(ctx,
@@ -136,17 +137,13 @@ func (s *Session) query(ctx context.Context, text string, use func(*qdbapi.Query
 			return err
 		},
 		func() {
-			if result != nil {
-				s.hdl.Release(unsafe.Pointer(result))
-			}
+			result.Close()
 			s.disposeAbandoned()
 		})
 	if s.abandoned() {
 		return callErr
 	}
-	if result != nil {
-		defer s.hdl.Release(unsafe.Pointer(result))
-	}
+	defer result.Close()
 	if callErr != nil {
 		return callErr
 	}
