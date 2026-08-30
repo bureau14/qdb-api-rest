@@ -151,7 +151,7 @@ func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*S
 	var hdl qdbapi.HandleType
 	var dialErr error
 	go func() {
-		hdl, dialErr = qdbapi.NewHandleFromOptions(c.handleOptions(u))
+		hdl, dialErr = qdbapi.NewSessionFactory(c.handleOptions(u)).NewSession()
 		if g.finish() {
 			return
 		}
