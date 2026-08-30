@@ -337,7 +337,7 @@ binding's handle inside this package.
   `ctx` that `Call` derived with `call_timeout`, on the failsafe below.
   A method whose result must be freed (`QueryResult`) hands it to a
   callback on the calling goroutine and releases it when the callback
-  returns, so `handle.Release` never leaves the package either.
+  returns, so `QueryResult.Close` never leaves the package either.
   `Call` itself: acquire (breaker, budget, user pool, ctx wait; an
   acquire error feeds the breaker only when `IsRetryable` holds and the
   caller's own context did not end) -> run `op` on the calling goroutine -> on return, `qdbapi.IsRetryable(err)`
