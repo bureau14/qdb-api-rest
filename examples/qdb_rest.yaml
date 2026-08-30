@@ -32,8 +32,8 @@ log:
 cluster:
   # Cluster URI; several nodes as a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
-  # Cluster public key, inline or as a file; empty means an insecure
-  # cluster. At most one of the two.
+  # Cluster public key, inline or as a file (the file wins when both are
+  # given); empty means an insecure cluster.
   public_key: ""
   public_key_file: ""
   # The REST API's own user, the one it authenticates as on its own

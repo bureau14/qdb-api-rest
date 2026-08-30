@@ -469,8 +469,9 @@ func positive(key string, d time.Duration) error {
 // this config maps onto the binding's enums, the socket timeout (the C API
 // takes whole seconds, at least one, and the binding only checks for a
 // positive value), and the buffer size (an int64 here, a uint there). The
-// URI scheme, the key and user exclusivity rules and the C API knob ranges
-// are validated by the binding when a session is dialed.
+// URI scheme and the C API knob ranges are judged by the C API when a
+// session is dialed; a key or a user given both inline and as a file is
+// read from the file.
 func validateCluster(c Cluster) error {
 	if err := oneOf("cluster.compression", c.Compression); err != nil {
 		return err
