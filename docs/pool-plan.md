@@ -20,69 +20,79 @@ already exists.
 
 ## Owner decisions
 
-| Decision                                                                                                                                                                                                              | Why                                                                                                                                                     | Rejected                                                                          |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Pool lives in this repo, split so the core could be upstreamed to `qdb-api-go` later                                                                                                                                  | no upstream release cycle on M1's critical path; the core stays REST-agnostic                                                                           | landing it upstream first                                                         |
-| Pools are keyed by `(cluster, username)`; REST sessions are a token-level security abstraction, never a pool key                                                                                                      | a user has one secret, so every session of a user dials identically; login never replaces an existing pool                                              | `(cluster, session id)` as the brief first had it (brief amended 2026-08-27)      |
-| One handle per goroutine at a time; never share a checked-out handle                                                                                                                                                  | `qdb_handle_t` is treated as non-thread-safe throughout (Verified facts)                                                                                | one handle per user plus a semaphore                                              |
-| Code reaches a handle only through the narrow `Handle` wrapper inside `Cluster.Call`; the binding's `HandleType` never leaves `internal/qdb`                                                                          | the failsafe and the error classification wrap every C call by construction; nothing can stash a raw handle                                             | `op(h qdbapi.HandleType)` plus a lint rule confining the import; convention only  |
-| Per-session knobs (`parallelism`, `max_in_buffer_size`, connections per address), all at the C API default unless configured                                                                                          | matches the C API's own granularity and the old server's flags                                                                                          | a global budget the pool divides; a server-specific `parallelism` default         |
-| Every call runs under a Go-side deadline; a timed-out call discards its session                                                                                                                                       | the C API has no cancellation path and is sometimes messy; a session that timed out once is never trusted                                               | trusting the C API's own timeouts                                                 |
-| Error classification is `qdb-api-go`'s `IsRetryable`: retryable discards the session, feeds the breaker and permits one read retry                                                                                    | one matrix, maintained upstream, already covering the whole vocabulary; unknown errors default to retryable                                             | a keep-list of request-caused errors maintained here; discarding on every error   |
-| Start when the cluster is unreachable; report not-ready                                                                                                                                                               | k8s pattern; the breaker absorbs the outage; only config errors refuse to start                                                                         | fail the start (systemd restart loop)                                             |
-| Nothing dials at startup; every session is dialed on demand                                                                                                                                                           | a pre-dialed session needs a retry mechanism of its own and buys milliseconds on the first request                                                      | a warm-up session for the REST API's own user; a reserved budget slot for it      |
-| Defaults: `max_sessions` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                                                                                          | short lifetime bounds the blast radius of a degraded session                                                                                            | 1h lifetime, 5 failures                                                           |
-| `max_lifetime` is checked on release only; the reaper ticks every 10 s, a constant                                                                                                                                    | a dialed session is always used at least once more; the tick only needs to sit well under `idle_timeout`                                                | a lifetime check on checkout; a `pool.reap_interval` key                          |
-| Liveness, readiness and `/metrics` are pure probes                                                                                                                                                                    | ADR-0004 holds the decision, its consequences and the rejected alternatives                                                                             | see ADR-0004                                                                      |
-| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the REST API's own user; the query proves the session serves one; nothing heavier                                      | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`        |
-| The cluster travels in `context.Context` next to the logger; handlers take it from the request context through package-level `qdb` entry points, and `ClusterFrom` panics without one, like `observe.Logger`          | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern                                            | constructor injection into `httpapi.NewHandler`; a nil-returning lookup           |
-| `/metrics` is out of scope for this unit                                                                                                                                                                              | M2 owns the exposition endpoint; the pool exposes counters in-process only                                                                              | a minimal `/metrics` now                                                          |
-| Tests run against the live qdbd of `scripts/tests/setup/` wherever a real database is the cheapest fixture; a mechanism that would need the C API stalled or mocked is left untested beyond its pure part             | we are not testing the C API, which has no way to mock an error or a stall; a listener that never answers exercises the C API's blocking, not this code | stalling `connect` behind a silent listener; a fake dialer injected into the pool |
-| Key material inline or as a file, at most one of the two                                                                                                                                                              | inline suits `${VAR}` secret injection; files suit the QuasarDB key conventions                                                                         | inline only; files only                                                           |
-| Every key is a file key, a `QDB_REST_<KEY_PATH>` variable and a `--<key-path>` flag (dots and underscores as hyphens), derived from the one config struct; `--cluster` and `--user-security-file` are `qdbsh` aliases | the operator picks the layer; one definition, no hand-kept list per layer                                                                               | flags for `qdbsh`'s three keys only; a hand-written table per layer               |
-| The loader is koanf over stdlib `flag`: defaults from the struct, the file, the environment, the explicitly passed flags, in that order                                                                               | layering and type coercion without hand-written setters; stdlib `flag` keeps the GNU usage                                                              | a hand-rolled reflection walker; viper with `pflag`                               |
-| The C API option checks are the binding's (`HandleOptions` validation at dial); the config validates only its vocabulary, the whole-second socket timeout, the buffer size and the pool cross-checks                  | one matrix, upstream; a startup fail-fast returns once the upstream session factory validates at construction                                           | duplicating the binding's checks here                                             |
-| The per-user dial derives from a session factory in `qdb-api-go`, built upstream; until it is vendored the options template stays here                                                                                | credential merge and eager validation belong next to `HandleOptions`; the pool core is already upstream-shaped                                          | keeping the options translation here for good                                     |
-| Vocabulary is QuasarDB's (`docs/brief.md`, Vocabulary): a user has a `username` and a `secret_key`, or a `user_security_file`; the pooled client connection is a session                                              | the config, the flags, the user security file and the binding read the same; qdbd, client and REST sessions are one word at three layers                | invented terms                                                                    |
-| CI starts qdbd in the build step, the `qdb-nats-connector` way                                                                                                                                                        | tests assume the database; the e2e harness itself stays out of CI                                                                                       | skipping database tests in CI; a `-tags=integration` split                        |
-| No client out-buffer knob                                                                                                                                                                                             | the C API has none (out buffer fixed at 256 MiB)                                                                                                        | `max_out_buffer_size`                                                             |
-| The binding's global logger is replaced at startup by an adapter over the process logger                                                                                                                              | `qdb-api-go` logs through a package-level logger that defaults to text on stderr; ADR-0002 wants one stream                                             | leaving the binding's stderr output in place                                      |
-| A black-holed cluster address is documented, not engineered around                                                                                                                                                    | the OS bounds the connect syscall; the breaker opens after `breaker.failures` such dials; readiness is separate                                         | capping concurrent dials per user; an upstream connect timeout on M1's path       |
+| Decision                                                                                                                                                                                                              | Why                                                                                                                                                     | Rejected                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| The pool core is `qdb-api-go`'s `SessionPool` and `SessionFactory`, vendored; this layer owns only what is REST-specific: the user map, the global budget, the breaker, the guard and the `Session` wrapper           | one pool, maintained with the binding; nothing the binding could carry is kept here                                                                     | a pool of our own, upstream-shaped, to be moved later                                             |
+| Pools are keyed by `(cluster, username)`; REST sessions are a token-level security abstraction, never a pool key                                                                                                      | a user has one secret, so every session of a user dials identically; login never replaces an existing pool                                              | `(cluster, session id)` as the brief first had it (brief amended 2026-08-27)                      |
+| One handle per goroutine at a time; never share a checked-out handle                                                                                                                                                  | `qdb_handle_t` is treated as non-thread-safe throughout (Verified facts)                                                                                | one handle per user plus a semaphore                                                              |
+| Code reaches a handle only through the narrow `Handle` wrapper inside `Cluster.Call`; the binding's `HandleType` never leaves `internal/qdb`                                                                          | the failsafe and the error classification wrap every C call by construction; nothing can stash a raw handle                                             | `op(h qdbapi.HandleType)` plus a lint rule confining the import; convention only                  |
+| Per-session knobs (`parallelism`, `max_in_buffer_size`, connections per address), all at the C API default unless configured                                                                                          | matches the C API's own granularity and the old server's flags                                                                                          | a global budget the pool divides; a server-specific `parallelism` default                         |
+| Every call runs under a Go-side deadline; a timed-out call discards its session                                                                                                                                       | the C API has no cancellation path and is sometimes messy; a session that timed out once is never trusted                                               | trusting the C API's own timeouts                                                                 |
+| Error classification is `qdb-api-go`'s `IsRetryable`: retryable discards the session, feeds the breaker and permits one read retry                                                                                    | one matrix, maintained upstream, already covering the whole vocabulary; unknown errors default to retryable                                             | a keep-list of request-caused errors maintained here; discarding on every error                   |
+| Start when the cluster is unreachable; report not-ready                                                                                                                                                               | k8s pattern; the breaker absorbs the outage; only config errors refuse to start                                                                         | fail the start (systemd restart loop)                                                             |
+| Nothing dials at startup; every session is dialed on demand                                                                                                                                                           | a pre-dialed session needs a retry mechanism of its own and buys milliseconds on the first request                                                      | a warm-up session for the REST API's own user; a reserved budget slot for it                      |
+| Defaults: `max_sessions` 64, per-user cap 8, idle 5m, lifetime 15m, breaker 3 failures / 10s                                                                                                                          | short lifetime bounds the blast radius of a degraded session                                                                                            | 1h lifetime, 5 failures                                                                           |
+| `max_lifetime` is checked on release only; each user pool runs the binding's reaper (10 s) and the cluster evicts empty pools on its own 10 s tick, both constants                                                    | a dialed session is always used at least once more; the ticks only need to sit well under `idle_timeout`                                                | a lifetime check on checkout; a `pool.reap_interval` key; one shared reaper driven by the cluster |
+| Liveness, readiness and `/metrics` are pure probes                                                                                                                                                                    | ADR-0004 holds the decision, its consequences and the rejected alternatives                                                                             | see ADR-0004                                                                                      |
+| Readiness is a dial plus one query, `status.readiness_query`, default `SELECT 1`                                                                                                                                      | the dial proves reachability and the REST API's own user; the query proves the session serves one; nothing heavier                                      | `qdb_wait_for_stabilization` (ring stability, not service); `Statistics()`                        |
+| The cluster travels in `context.Context` next to the logger; handlers take it from the request context through package-level `qdb` entry points, and `ClusterFrom` panics without one, like `observe.Logger`          | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern                                            | constructor injection into `httpapi.NewHandler`; a nil-returning lookup                           |
+| `/metrics` is out of scope for this unit                                                                                                                                                                              | M2 owns the exposition endpoint; the pool exposes counters in-process only                                                                              | a minimal `/metrics` now                                                                          |
+| Tests run against the live qdbd of `scripts/tests/setup/` wherever a real database is the cheapest fixture; a mechanism that would need the C API stalled or mocked is left untested beyond its pure part             | we are not testing the C API, which has no way to mock an error or a stall; a listener that never answers exercises the C API's blocking, not this code | stalling `connect` behind a silent listener; a fake dialer injected into the pool                 |
+| Key material inline or as a file; when both are given the binding reads the file                                                                                                                                      | inline suits `${VAR}` secret injection; files suit the QuasarDB key conventions; rejecting the pair is enforcement for its own sake                     | inline only; files only; a startup error for both                                                 |
+| Every key is a file key, a `QDB_REST_<KEY_PATH>` variable and a `--<key-path>` flag (dots and underscores as hyphens), derived from the one config struct; `--cluster` and `--user-security-file` are `qdbsh` aliases | the operator picks the layer; one definition, no hand-kept list per layer                                                                               | flags for `qdbsh`'s three keys only; a hand-written table per layer                               |
+| The loader is koanf over stdlib `flag`: defaults from the struct, the file, the environment, the explicitly passed flags, in that order                                                                               | layering and type coercion without hand-written setters; stdlib `flag` keeps the GNU usage                                                              | a hand-rolled reflection walker; viper with `pflag`                                               |
+| The C API judges the dial options at dial time; the config validates only its vocabulary, the whole-second socket timeout, the buffer size and the pool cross-checks; there is no eager validation                    | one matrix, in the C API; a startup fail-fast would duplicate it for the sake of a few seconds                                                          | duplicating the C API's checks here; eager validation in the binding (code bloat)                 |
+| Every dial goes through the binding's `SessionFactory`, one built per dial from the per-user `HandleOptions` this layer assembles from config                                                                         | credential merge and option order live next to `HandleOptions`, upstream; a factory is a pointer, so caching one buys nothing                           | keeping the options translation here for good; a cached factory per pool                          |
+| Vocabulary is QuasarDB's (`docs/brief.md`, Vocabulary): a user has a `username` and a `secret_key`, or a `user_security_file`; the pooled client connection is a session                                              | the config, the flags, the user security file and the binding read the same; qdbd, client and REST sessions are one word at three layers                | invented terms                                                                                    |
+| CI starts qdbd in the build step, the `qdb-nats-connector` way                                                                                                                                                        | tests assume the database; the e2e harness itself stays out of CI                                                                                       | skipping database tests in CI; a `-tags=integration` split                                        |
+| No client out-buffer knob                                                                                                                                                                                             | the C API has none (out buffer fixed at 256 MiB)                                                                                                        | `max_out_buffer_size`                                                                             |
+| The binding's global logger is replaced at startup by an adapter over the process logger; the binding's Info maps to Debug                                                                                            | `qdb-api-go` logs through a package-level logger that defaults to text on stderr; ADR-0002 wants one stream, and one that stays quiet                   | leaving the binding's stderr output in place; Info as Info                                        |
+| The global budget is accounted in the pool's dialer and closer hooks (`WithDialer`, `WithCloser`)                                                                                                                     | the pool owns both ends of a session's life; the closer runs after `qdb_close` returns, which is when the cluster lets go of the session                | releasing the unit when a lease ends; a shared budget type upstream                               |
+| A black-holed cluster address is documented, not engineered around                                                                                                                                                    | the OS bounds the connect syscall; the breaker opens after `breaker.failures` such dials; readiness is separate                                         | capping concurrent dials per user; an upstream connect timeout on M1's path                       |
 
 ## Verified facts
 
-`qdb-api-go`, vendored at `b64493c`:
+`qdb-api-go`, vendored at `d6c0112`:
 
-- There is no pool. `HandleOptions` (immutable builder,
-  `NewHandleFromOptions`) covers URI, cluster public key (inline or
+- `SessionFactory` (`session.go`) dials from immutable `HandleOptions`:
+  transport, then limits, then credentials, then `Connect`. Nothing is
+  validated at construction; the C API judges the options at dial, and
+  a key or a user given both inline and as a file is read from the
+  file. `HandleOptions` covers URI, cluster public key (inline or
   file), user name/secret (inline or file), encryption, compression,
   client max parallelism, client max in-buffer size, timeout. Its
   defaults are the binding's, not the C API's: compression `CompBalanced`
   where the C API defaults to none, timeout 120 s where the C API
   defaults to 5 min. Every knob is applied only when non-zero, so a zero
   in our config means the C API default.
+- `SessionPool` (`session_pool.go`): a per-pool `max_sessions`, idle and
+  lifetime ages measured on `WithClock`, its own reaper
+  (`WithReapInterval`, 10 s), `WithDialer` (the default ignores the
+  context: the C API cannot cancel a connect) and `WithCloser` (run on
+  the pool's close goroutine, after `qdb_close` returns), every close on
+  its own goroutine, `Lease.Done(err)` discarding on `IsRetryable`, and
+  `Acquire` after `Close` failing with a fatal error. Its invariants are
+  pinned upstream by a `rapid` model.
 - `IsRetryable(err)` (`error.go`) is true exactly when `ClassifyError`
-  answers `ErrorClassRetryable`. `ErrorType.ErrorClass()` calls eight
+  answers `ErrorClassRetryable`. `ErrorType.ErrorClass()` calls nine
   codes fatal -- `ErrNotImplemented`, `ErrIncompatibleType`,
   `ErrUninitialized`, `ErrOutOfBounds`, `ErrInvalidQuery`,
-  `ErrAliasNotFound`, `ErrAliasAlreadyExists`, `ErrInvalidArgument` --
+  `ErrAliasNotFound`, `ErrAliasAlreadyExists`, `ErrInvalidArgument`,
+  `ErrNetworkInbufTooSmall` --
   success and informational codes none, and every other code
   retryable, permission and quota errors included; an error that is not
   an `ErrorType` (unwrapped via `errors.As`; `wrapError` uses `%w`) is
-  retryable. In particular `ErrNetworkInbufTooSmall` (the reply exceeds
-  `max_in_buffer_size`) is retryable, so an oversized query discards
-  its handle and counts toward the breaker, and so does an
-  `ErrAccessDenied`.
+  retryable. An oversized reply (`ErrNetworkInbufTooSmall`) is therefore
+  the request's fault: the session is reused and the breaker untouched;
+  an `ErrAccessDenied` is retryable and costs a reconnect.
 - The binding logs through a package-level logger (`logger.go`,
-  `SetLogger`), defaulting to a text handler on stderr at Info;
-  `HandleType.Connect` logs `successfully connected` at Info on every
-  dial. The adapter must implement `Detailed`, `Debug`, `Info`, `Warn`,
-  `Error`, `Panic`, `With`; the binding's Info maps to our Debug so a
-  dial is not an Info line.
-- `Query.Execute` returns a `*QueryResult` the caller must free with
-  `handle.Release(unsafe.Pointer(result))` (`query_test.go` is the
-  reference); `qdb_close` frees whatever is left, so a leak lasts as
-  long as the handle.
+  `SetLogger`), defaulting to a text handler on stderr at Info; a dial
+  logs `successfully connected` at Debug. The adapter must implement
+  `Detailed`, `Debug`, `Info`, `Warn`, `Error`, `Panic`, `With`.
+- `Query.Execute` returns a `*QueryResult` the caller closes with
+  `Close()` (nil-safe, idempotent); a result may come back next to an
+  error, so it is closed on every path. `qdb_close` frees whatever is
+  left, so a leak lasts as long as the handle.
 - `HandleOptions.WithConnectionsPerAddress(int)` is validated
   `0 | 2..100000` and applied before `Connect`; the C API default is
   not assumed anywhere ("depends on the C API version").
@@ -178,8 +188,8 @@ strings; sizes are bytes.
 cluster:
   # Cluster URI; several nodes as a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
-  # Cluster public key, inline or as a file; empty means an insecure
-  # cluster. At most one of the two.
+  # Cluster public key, inline or as a file (the file wins when both are
+  # given); empty means an insecure cluster.
   public_key: ""
   public_key_file: ""
   # The REST API's own user, the one it authenticates as on its own
@@ -257,11 +267,10 @@ Mechanics:
   positive value); `max_in_buffer_size` not negative;
   `per_user_max <= max_sessions`; `readiness_query` non-empty. No
   ordering between `call_timeout` and `cluster.timeout` is required (one
-  bounds a syscall, the other an operation). The URI scheme, the key and
-  user exclusivity rules and the knob ranges are the binding's
-  (`HandleOptions` validation), so a mistake there surfaces on the first
-  dial, not at startup, until the upstream session factory validates at
-  construction.
+  bounds a syscall, the other an operation). The URI scheme and the knob
+  ranges are the C API's, judged at dial, so a mistake there surfaces on
+  the first dial, not at startup; eager validation is deliberately
+  absent.
 - `examples/qdb_rest.yaml` gains the blocks verbatim, pinned to the
   defaults by the existing test.
 - Types holding the user secret and the cluster key implement
@@ -269,55 +278,13 @@ Mechanics:
 
 ## The pool
 
-Two layers, so the core can move to `qdb-api-go` without carrying REST
-concepts along.
-
-### `internal/qdb/pool` -- the core (upstream-shaped)
-
-A bounded pool of `Conn`s generic over a dial function; it knows nothing
-about users, HTTP, or `qdb-api-go`:
-
-```go
-type Conn interface{ Close() error }
-type Dial[C Conn] func(ctx context.Context) (C, error)
-type Options struct {
-    Max                      int
-    IdleTimeout, MaxLifetime time.Duration
-    Now                      func() time.Time // nil means time.Now
-}
-
-func New[C Conn](dial Dial[C], opts Options) *Pool[C]
-func (p *Pool[C]) Acquire(ctx context.Context) (*Lease[C], error)  // waits for a slot or ctx
-func (l *Lease[C]) Conn() C
-func (l *Lease[C]) Release()   // back to the idle set unless expired
-func (l *Lease[C]) Discard()   // closed, never reused
-func (p *Pool[C]) Reap()       // closes idle conns past IdleTimeout, as of Now()
-func (p *Pool[C]) Close(ctx context.Context) error  // drains until ctx ends
-func (p *Pool[C]) Stats() Stats  // in use, idle, closing, dialed, discarded
-```
-
-The core owns no goroutine of its own except for closes and never
-reads the wall clock directly: every age is measured against
-`Options.Now`, and idle expiry happens only when `Reap` is called (the
-REST layer runs the ticker) or when `Acquire` finds an expired idle conn
-and closes it instead of handing it out. A pool driven by a fake clock
-is therefore fully deterministic, which is what lets the property tests
-advance time without waiting.
-
-Every `Close()` of a conn -- discard, lifetime expiry, idle reap,
-shutdown -- runs on its own goroutine, because closing a session can
-block (Verified facts); `Stats.Closing` counts closes in flight. A
-leased conn belongs to its lease until `Release` or `Discard`; the core
-never closes a leased conn, not even in `Pool.Close`, which waits for
-leases and closes until `ctx` ends and then returns `ctx.Err()`.
-
-Invariants (the property tests below pin exactly these): never more
-than `Max` conns are leased or idle at once; a discarded conn is never
-handed out again; a conn past `MaxLifetime` is closed on release; an
-idle conn past `IdleTimeout` is closed by the next `Reap` or `Acquire`,
-never handed out; `Acquire` returns when ctx ends; `Close` returns when
-every conn is closed or when ctx ends, whichever is first; a dial that
-returns an error has consumed no slot.
+The core is the binding's: `qdbapi.SessionPool` leases `qdbapi.Session`s
+(connected handles) dialed by a `SessionFactory`, bounded per pool, with
+idle and lifetime ages, its own reaper, and dialer and closer hooks
+(Verified facts). This layer builds one such pool per user and adds what
+is REST-specific: the user map, the global budget, the breaker, the
+deadline guard over cgo, and the `Session` wrapper that keeps the
+binding's handle inside this package.
 
 ### `internal/qdb` -- the REST layer
 
@@ -326,21 +293,26 @@ returns an error has consumed no slot.
   concern and never reach this layer: every REST session of a user
   shares the user's pool. Until auth exists, the REST API's own user is the only
   user; anonymous is `{"", ""}`.
-- **Cluster**: the `cluster:` block turned into a dial function per
-  user (`HandleOptions` + the per-handle knobs + `Connect`), the
-  breaker, the global budget, and the map of user pools. Looking up a
+- **Cluster**: the `cluster:` block turned into per-user
+  `HandleOptions`, a `SessionPool` per user (`per_user_max`, the ages,
+  the cluster clock, the budgeted dialer and closer; a rejected option
+  is a programming error, config validation having bounded them all),
+  the breaker, the global budget, and the map of user pools. Looking up a
   user finds its pool or creates one; nothing ever replaces a pool
   that exists.
-- **Budget**: one weighted semaphore of `max_sessions` taken before a
-  user pool dials, released when the session is actually closed --
-  including a session whose dial or call was abandoned on deadline,
-  which still holds cluster connections and threads until the C call
-  returns. Per-user cap is the user pool's `Max`.
+- **Budget**: one weighted semaphore of `max_sessions`, taken in the
+  pool's dialer before a session is dialed and released in its closer
+  once `qdb_close` has returned -- so a session whose dial or call was
+  abandoned on deadline, which still holds cluster connections and
+  threads until the C call returns, keeps counting until then. The
+  per-user cap is the user pool's `max_sessions`.
 - **Eviction**: a user pool that has held no conns for `idle_timeout`
   is closed and removed (LRU by last release); in-flight leases are
-  never revoked. The map is reaped on the same ticker as the sessions:
-  a fixed 10 s (`reapInterval`, a constant, not a config key). The map
-  is bounded by the number of distinct users, not logins.
+  never revoked. Each pool's own reaper closes its idle sessions; the
+  cluster's ticker (`evictInterval`, 10 s, a constant, not a config
+  key) only evicts pools that have held nothing for `idle_timeout`,
+  closing them so their reapers stop. The map is bounded by the number
+  of distinct users, not logins.
 - **Breaker**: per cluster; counts consecutive retryable failures from
   dials and calls (`IsRetryable`, which includes Go-side deadline
   expiries), opens for `open_for`, half-open lets one call through
@@ -357,7 +329,7 @@ returns an error has consumed no slot.
   ```
 
   `Session` is this package's narrow wrapper around the leased
-  `qdbapi.HandleType`, which is unexported and never returned. It has
+  `qdbapi.Session`, built per checkout and never returned. It has
   one method per C API operation the server uses -- this unit needs
   query execution and tag lookup; later units add table creation,
   batch push and cluster status as they need them
@@ -366,8 +338,9 @@ returns an error has consumed no slot.
   A method whose result must be freed (`QueryResult`) hands it to a
   callback on the calling goroutine and releases it when the callback
   returns, so `handle.Release` never leaves the package either.
-  `Call` itself: acquire (breaker, budget, user pool, ctx wait) -> run
-  `op` on the calling goroutine -> on return, `qdbapi.IsRetryable(err)`
+  `Call` itself: acquire (breaker, budget, user pool, ctx wait; an
+  acquire error feeds the breaker only when `IsRetryable` holds and the
+  caller's own context did not end) -> run `op` on the calling goroutine -> on return, `qdbapi.IsRetryable(err)`
   decides: false (the request caused it) releases the session for
   reuse; true, or any non-`ErrorType` error, discards it and counts
   toward the breaker. A ctx that ends while a C call runs -- client
@@ -393,7 +366,7 @@ returns an error has consumed no slot.
   abandon-on-deadline mechanism, bounded by `call_timeout`. A dial
   abandoned on deadline returns an error to the core (no slot consumed
   there) while the abandoned goroutine keeps the budget unit until
-  `NewHandleFromOptions` returns and has closed the handle. A
+  `NewSession` returns and has closed the handle. A
   black-holed address therefore pins one budget unit per attempted dial
   for the OS connect timeout; the breaker stops new attempts after
   `breaker.failures` of them.
@@ -443,19 +416,11 @@ where they are gitignored -- the same fixture `qdb-api-go`'s own tests
 use). They fail fast with the `start-services.sh` hint when the port
 does not answer; nothing is skipped under `-short`.
 
-- `internal/qdb/pool`: `rapid` property tests over random sequences of
-  acquire / release / discard / advance-clock / reap with real sessions
-  to the insecure cluster, asserting the invariants above. The clock is
-  a fake behind `Options.Now`; "advance" moves it and nothing sleeps,
-  so idle and lifetime expiry are exercised at arbitrary ages in
-  microseconds. Only the dial and close of a real session cost wall
-  time; `rapid`'s example count is set explicitly (overridable with
-  `-rapid.checks`) so the suite stays within seconds under `-race` on
-  every platform.
 - `internal/qdb`: per-user cap under concurrent calls and two logins of
   one user sharing one pool; breaker opening against an unreachable
   URI; retry-once after a retryable failure; a fatal error returning
-  the session to the pool; LRU eviction (fake clock, as above); the
+  the session to the pool; LRU eviction (fake clock; the test runs the
+  pool's reap pass itself instead of waiting for its tick); the
   secure-cluster dial as the REST API's own user. The failsafe is
   pinned on `guard` alone, with no C call: which side owns the outcome
   when the work finishes first and when the deadline fires first. The
@@ -487,18 +452,17 @@ comment in `.buildkite/steps/_build.yml`, the header of
 
 Small commits, each green on its own:
 
-1. `qdb-api-go` bumped to the upstream that carries connections per
-   address and the error classes.
+1. `qdb-api-go` bumped to the upstream that carries the session factory
+   and the pool.
 2. `internal/config`: typed env machinery; `cluster:`, `pool:`,
    `status:` blocks; validation; example config and its pinned test.
-3. `internal/qdb/pool`: core plus property tests.
-4. `internal/qdb`: the user, the `Session` wrapper, dial, budget,
-   breaker, `Call`, `Probe`; integration tests.
-5. `internal/httpapi`: readiness on `Probe`; `503` shape; tests.
-6. `cmd/qdb_rest`: install the logger adapter, construct the cluster
+3. `internal/qdb`: the user, the `Session` wrapper, dial, budget,
+   breaker, `Call`, `Probe` on the binding's pool; integration tests.
+4. `internal/httpapi`: readiness on `Probe`; `503` shape; tests.
+5. `cmd/qdb_rest`: install the logger adapter, construct the cluster
    from config, close on shutdown.
-7. CI: qdbd in the build step (Tests).
-8. ADR-0003 and ADR-0004 accepted; `docs/log.md` Current state
+6. CI: qdbd in the build step (Tests).
+7. ADR-0003 and ADR-0004 accepted; `docs/log.md` Current state
    updated; this plan deleted with its facts moved (`docs/AGENTS.md`,
    Plans).
 
@@ -507,8 +471,9 @@ Small commits, each green on its own:
 - `cluster.max_in_buffer_size` at the C API default (256 MiB) cannot
   return the 5.6M-row `SELECT *` the bench runs; the old server's e2e
   flags raise it to 8 GiB (`tests/e2e/Makefile`). `legacy@new-rest`
-  needs the same, and M2 should map `ErrNetworkInbufTooSmall` to a
-  client error before it reaches the breaker.
+  needs the same; an oversized reply (`ErrNetworkInbufTooSmall`) is
+  fatal in the binding, so it costs no reconnect and M2 only has to map
+  it to a client error.
 - Auth's session id claim is a security abstraction (logging out a
   user's other sessions, later revocation); it never reaches
   `internal/qdb`. `/api/login` for a known user finds the existing pool

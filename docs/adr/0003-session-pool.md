@@ -26,8 +26,10 @@ the brief assumes (verified in `~/git/quasardb`; details in
   connected handle happen to be guarded; configuration, `connect` and
   `qdb_get_last_error` (per handle, not per thread) are not. We treat
   every operation on a handle as non-thread-safe.
-- `qdb-api-go` is vendored and never patched; it has no pool and
-  classifies its errors with `IsRetryable`.
+- `qdb-api-go` is vendored and never patched; it provides the session
+  factory and a bounded `SessionPool` with dialer and closer hooks, and
+  classifies its errors with `IsRetryable`. The deadline over cgo, the
+  global budget, the breaker and the per-user map are this layer's.
 - A QuasarDB user has exactly one secret. Every login of a user, from
   any client, dials with the same credentials.
 
@@ -91,9 +93,8 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
   TCP connect to a black-holed address, which the OS releases after
   its own connect timeout (about two minutes on Linux).
 - The error matrix is upstream's: an error it calls retryable costs a
-  reconnect even when the request caused it (an oversized reply,
-  `ErrNetworkInbufTooSmall`, and a permission or quota error are the
-  notable cases), and consecutive calls slower than `call_timeout`
+  reconnect even when the request caused it (a permission or quota
+  error are the notable cases), and consecutive calls slower than `call_timeout`
   open the breaker for everyone for `open_for`, healthy cluster or not.
 - A cluster that stops answering shows up as budget draining toward
   zero plus an open breaker; it never shows up as goroutines piling
@@ -115,6 +116,7 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
 
 | Alternative                                             | Why not                                                                             |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| A pool of our own, upstream-shaped, moved later         | the binding's pool is the same design and is maintained with the binding            |
 | Pools keyed per REST session, as the brief first had it | N tokens of one user would hold N pools of identical sessions; no isolation gained  |
 | Replace the user's pool on re-login                     | the old server's race against in-flight requests                                    |
 | One handle per user shared by concurrent goroutines     | thread-safety undocumented, configuration racy, last-error per handle; owner rule   |

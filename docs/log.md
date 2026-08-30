@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-27
+Last updated: 2026-08-30
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -24,13 +24,14 @@ against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
 `legacy@old-rest` on every query under `CAPI_COMPRESSION=none`; the
 readiness probe dials the cluster as the REST API's own user and answers
 `200`/`503`; the auth ADR (JWE library, AEAD, key derivation) accepted;
-property tests for auth and the pool green on all eight platforms.
+property tests for auth and the pool's REST layer green on all eight
+platforms.
 
 In flight:
 
 - M1, cluster config + session pool + readiness: implemented on
-  `sc-19567/rr-pool` per `docs/pool-plan.md`, under owner review; the
-  review decisions of 2026-08-28 are being applied there.
+  `sc-19567/rr-pool` per `docs/pool-plan.md`, on the binding's session
+  pool since 2026-08-30, under owner review.
 
 Next:
 
@@ -80,6 +81,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-08-30 -- Pool core taken from qdb-api-go
+
+- Owner decision: the REST API integrates the binding's `SessionPool`
+  and `SessionFactory`; the local core is dropped and eager option
+  validation is out. `docs/pool-plan.md`, Owner decisions; ADR-0003.
 
 ## 2026-08-28 -- Pool review decisions
 
