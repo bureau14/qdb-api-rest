@@ -188,10 +188,11 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		t.Fatalf("want one user pool after a query, got %d", s.Users)
 	}
 
-	// Past idle_timeout the idle session is closed; the pool is now empty.
+	// Past idle_timeout the pool's own reaper closes the idle session; the
+	// test runs that pass itself instead of waiting for the tick.
 	clk.advance(2 * time.Minute)
-	c.Reap()
 	up := c.poolFor(anonymous)
+	up.Reap()
 	deadline := time.Now().Add(10 * time.Second)
 	for s := up.Stats(); s.Idle != 0 || s.Closing != 0; s = up.Stats() {
 		if time.Now().After(deadline) {

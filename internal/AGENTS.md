@@ -12,7 +12,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Small composable functions with descriptive names; explicit over
   implicit. Comments state why, as facts; never history.
 - A statistics snapshot is named after what it describes, `FooStats`
-  (`ClusterStats`, `pool.PoolStats`), never a bare `Stats`; a bare
+  (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
   package.
 

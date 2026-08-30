@@ -6,8 +6,6 @@ import (
 	"sync"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
-
-	"github.com/bureau14/qdb-api-rest/internal/qdb/pool"
 )
 
 // ErrCallTimeout is returned when a C API call outlives its deadline. The
@@ -16,35 +14,25 @@ import (
 // goroutine closes the session when the C call finally returns.
 var ErrCallTimeout = errors.New("qdb: call timed out")
 
-// Session is one authenticated client session, the only way code touches
-// a leased qdb_handle_t: the binding's HandleType never leaves this
-// package. Every method runs its C call on its own goroutine under the
-// call deadline (the failsafe in call), so the deadline and the error
-// classification wrap every C call by construction.
-// One goroutine uses a Session at a time; the pool never leases one twice.
+// Session is one authenticated client session as this package sees it: the
+// narrow wrapper around a qdb_handle_t and the only way code touches one;
+// the binding's HandleType never leaves this package. Every method runs its
+// C call on its own goroutine under the call deadline (the failsafe in
+// call), so the deadline and the error classification wrap every C call by
+// construction. A Session is built per checkout: Call wraps the handle the
+// user's pool leased, Probe the one it dialed itself. One goroutine uses a
+// Session at a time; the pool never leases a handle twice.
 type Session struct {
-	cluster  *Cluster
-	hdl      qdbapi.HandleType
-	budgeted bool // holds a global budget unit, released on Close
+	cluster *Cluster
+	hdl     qdbapi.Session
+	lease   *qdbapi.Lease // the lease the handle is checked out under; nil for the probe's own session
 
 	mu       sync.Mutex
 	poisoned bool
-	lease    *pool.Lease[*Session] // set while pooled; nil for the probe's own session
 }
 
-// newSession wraps a freshly connected session. budgeted sessions release a
-// budget unit when closed; the probe's session does not hold one.
-func newSession(c *Cluster, hdl qdbapi.HandleType, budgeted bool) *Session {
-	return &Session{cluster: c, hdl: hdl, budgeted: budgeted}
-}
-
-// bind attaches the lease a pooled session is currently checked out under,
-// so an abandoned call can discard it. A poisoned session is never leased
-// again, so no stale lease is ever observed.
-func (s *Session) bind(lease *pool.Lease[*Session]) {
-	s.mu.Lock()
-	s.lease = lease
-	s.mu.Unlock()
+func newSession(c *Cluster, hdl qdbapi.Session, lease *qdbapi.Lease) *Session {
+	return &Session{cluster: c, hdl: hdl, lease: lease}
 }
 
 // abandoned reports whether a call on this session timed out; the abandoned
@@ -55,22 +43,12 @@ func (s *Session) abandoned() bool {
 	return s.poisoned
 }
 
-// Close closes the underlying handle and releases the budget unit a
-// budgeted session holds. qdb_close joins the handle's worker threads and
-// can block for a long time; the pool always calls this on its own
-// goroutine.
-func (s *Session) Close() error {
-	err := s.hdl.Close()
-	if s.budgeted {
-		s.cluster.budget.release()
-	}
-	return err
-}
-
-// closeAsync closes on its own goroutine; the probe uses it so a probe is
-// never blocked by a slow close.
+// closeAsync closes the handle on its own goroutine: qdb_close joins the
+// handle's worker threads and can block for a long time. Only the probe's
+// own session ends here; a pooled one ends through its lease, and the pool
+// closes it the same way.
 func (s *Session) closeAsync() {
-	go func() { _ = s.Close() }()
+	go func() { _ = s.hdl.Close() }()
 }
 
 // disposeAbandoned closes a session whose call was abandoned: a pooled
@@ -78,11 +56,8 @@ func (s *Session) closeAsync() {
 // session by closing itself. It runs only after the C call has returned, so
 // the close never races an in-flight call.
 func (s *Session) disposeAbandoned() {
-	s.mu.Lock()
-	lease := s.lease
-	s.mu.Unlock()
-	if lease != nil {
-		lease.Discard()
+	if s.lease != nil {
+		s.lease.Discard()
 		return
 	}
 	s.closeAsync()

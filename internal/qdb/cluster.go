@@ -11,19 +11,18 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
-	"github.com/bureau14/qdb-api-rest/internal/qdb/pool"
 )
 
-// reapInterval is how often idle sessions are closed and empty user pools
-// evicted. It is a constant, well under any sensible idle_timeout, not a
-// config knob: a dialed session is always used at least once more, so the
-// tick only has to sit below idle_timeout.
-const reapInterval = 10 * time.Second
+// evictInterval is how often user pools that hold no session are evicted.
+// It is a constant, well under any sensible idle_timeout, not a config
+// knob; each pool's own reaper closes its idle sessions on the binding's
+// default tick.
+const evictInterval = 10 * time.Second
 
 // userPool is one user's bounded set of sessions plus when it last held
 // none, for LRU eviction.
 type userPool struct {
-	pool       *pool.Pool[*Session]
+	pool       *qdbapi.SessionPool
 	emptySince time.Time // zero while the pool holds a session
 }
 
@@ -50,14 +49,14 @@ type Cluster struct {
 
 	mu    sync.Mutex           // guards users
 	users map[string]*userPool // one session pool per user, keyed by username
-	// reaperStop ends the reaper goroutine and reaperDone closes once it
-	// has ended; Close uses both so no reap pass races the drain.
-	reaperStop chan struct{}
-	reaperDone chan struct{}
+	// evictStop ends the eviction goroutine and evictDone closes once it
+	// has ended; Close uses both so no eviction pass races the drain.
+	evictStop chan struct{}
+	evictDone chan struct{}
 }
 
 // New builds the cluster from config. now defaults to time.Now; the tests
-// pass a fake clock. The reaper goroutine starts here and stops on Close.
+// pass a fake clock. The eviction goroutine starts here and stops on Close.
 func New(cfg config.Config, now func() time.Time) *Cluster {
 	if now == nil {
 		now = time.Now
@@ -70,10 +69,10 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		budget:         newBudget(cfg.Pool.MaxSessions),
 		breaker:        newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
 		users:          map[string]*userPool{},
-		reaperStop:     make(chan struct{}),
-		reaperDone:     make(chan struct{}),
+		evictStop:      make(chan struct{}),
+		evictDone:      make(chan struct{}),
 	}
-	go c.reap()
+	go c.evict()
 	return c
 }
 
@@ -134,13 +133,13 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 // connect dials one session for u under the call deadline, through the same
 // abandon-on-deadline failsafe as a call: a dial to a black-holed address
 // blocks in cgo past its deadline, so the goroutine is abandoned and
-// closes the session itself when connect finally returns. budgeted dials
-// take a budget unit first and release it when the session closes (or, when
-// abandoned or failed, as soon as the dial resolves).
-func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*Session, error) {
+// closes the session itself when the dial finally returns. budgeted dials
+// take a budget unit first and hold it until the session's close returns
+// (or, when the dial fails, until the dial resolves).
+func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
 	if budgeted {
 		if err := c.budget.acquire(ctx); err != nil {
-			return nil, err
+			return qdbapi.Session{}, err
 		}
 	}
 	callCtx, cancel := context.WithTimeout(ctx, c.poolCfg.CallTimeout)
@@ -148,7 +147,7 @@ func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*S
 
 	g := newGuard()
 	g.onAbandon = func() { c.wedged.Add(1) }
-	var hdl qdbapi.HandleType
+	var hdl qdbapi.Session
 	var dialErr error
 	go func() {
 		hdl, dialErr = qdbapi.NewSessionFactory(c.handleOptions(u)).NewSession()
@@ -165,37 +164,60 @@ func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (*S
 	}()
 
 	if !g.wait(callCtx) {
-		return nil, ErrCallTimeout
+		return qdbapi.Session{}, ErrCallTimeout
 	}
 	if dialErr != nil {
 		if budgeted {
 			c.budget.release()
 		}
-		return nil, dialErr
+		return qdbapi.Session{}, dialErr
 	}
-	return newSession(c, hdl, budgeted), nil
+	return hdl, nil
 }
 
-// dial is the pool's dial function for one user: a budgeted connect.
-func (c *Cluster) dial(u credentials) pool.Dial[*Session] {
-	return func(ctx context.Context) (*Session, error) {
+// dial is a user pool's dialer: a budgeted connect.
+func (c *Cluster) dial(u credentials) func(context.Context) (qdbapi.Session, error) {
+	return func(ctx context.Context) (qdbapi.Session, error) {
 		return c.connect(ctx, u, true)
 	}
 }
 
+// closeBudgeted is the user pools' closer: it closes the handle and only
+// then releases its budget unit, so a session counts against max_sessions
+// until qdb_close has returned and the cluster has let go of it. The pool
+// runs it on its own goroutine.
+func (c *Cluster) closeBudgeted(s qdbapi.Session) error {
+	err := s.Close()
+	c.budget.release()
+	return err
+}
+
+// newUserPool builds one user's pool: the per-user cap, the ages from
+// config, the cluster clock, the budgeted dialer and closer, and the
+// binding's own reaper for idle sessions. The binding rejects options that
+// config validation already bounds, so a rejection is a programming error.
+func (c *Cluster) newUserPool(u credentials) *qdbapi.SessionPool {
+	p, err := qdbapi.NewSessionPool(nil, qdbapi.NewSessionPoolOptions().
+		WithMaxSessions(c.poolCfg.PerUserMax).
+		WithIdleTimeout(c.poolCfg.IdleTimeout).
+		WithMaxLifetime(c.poolCfg.MaxLifetime).
+		WithClock(c.now).
+		WithDialer(c.dial(u)).
+		WithCloser(c.closeBudgeted))
+	if err != nil {
+		panic("qdb: session pool options rejected: " + err.Error())
+	}
+	return p
+}
+
 // poolFor finds or creates the user's pool; it never replaces one that
 // exists, so in-flight requests are never raced.
-func (c *Cluster) poolFor(u User) *pool.Pool[*Session] {
+func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	up, ok := c.users[u.Username]
 	if !ok {
-		up = &userPool{pool: pool.New(c.dial(u.credentials()), pool.Options{
-			Max:         c.poolCfg.PerUserMax,
-			IdleTimeout: c.poolCfg.IdleTimeout,
-			MaxLifetime: c.poolCfg.MaxLifetime,
-			Now:         c.now,
-		})}
+		up = &userPool{pool: c.newUserPool(u.credentials())}
 		c.users[u.Username] = up
 	}
 	up.emptySince = time.Time{}
@@ -243,8 +265,7 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opt
 			}
 			return aerr
 		}
-		s := lease.Conn()
-		s.bind(lease)
+		s := newSession(c, lease.Session(), lease)
 		err = op(s)
 		switch {
 		case s.abandoned():
@@ -291,10 +312,11 @@ func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, err
 // dial proves the cluster is reachable and the REST API's own user
 // authenticates; the query proves the session serves one (ADR-0004).
 func (c *Cluster) Probe(ctx context.Context) error {
-	s, err := c.connect(ctx, c.ownCredentials(), false)
+	hdl, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
 		return err
 	}
+	s := newSession(c, hdl, nil)
 	qerr := s.query(ctx, c.readinessQuery, func(*qdbapi.QueryResult) error { return nil })
 	if !s.abandoned() {
 		s.closeAsync()
@@ -302,32 +324,34 @@ func (c *Cluster) Probe(ctx context.Context) error {
 	return qerr
 }
 
-// reap closes idle sessions and evicts user pools that have held none for
-// idle_timeout, on a fixed tick until Close.
-func (c *Cluster) reap() {
-	defer close(c.reaperDone)
-	ticker := time.NewTicker(reapInterval)
+// evict removes user pools that have held no session for idle_timeout, on
+// a fixed tick until Close.
+func (c *Cluster) evict() {
+	defer close(c.evictDone)
+	ticker := time.NewTicker(evictInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-c.reaperStop:
+		case <-c.evictStop:
 			return
 		case <-ticker.C:
-			c.reapOnce()
+			c.evictOnce()
 		}
 	}
 }
 
-// reapOnce closes the idle sessions of every user pool, then evicts the
-// pools that have held nothing for idle_timeout: the first pass that
-// finds a pool empty stamps emptySince, a later pass past idle_timeout
-// deletes the pool, and a pool that holds anything again loses the stamp.
-func (c *Cluster) reapOnce() {
+// takeIdle removes and returns the user pools that have held nothing for
+// idle_timeout: the first pass that finds a pool empty stamps emptySince,
+// a later pass past idle_timeout takes the pool, and a pool that holds
+// anything again loses the stamp. A pool's own reaper closes its idle
+// sessions, so a pool reads as empty within one reap tick of its last
+// session expiring.
+func (c *Cluster) takeIdle() []*qdbapi.SessionPool {
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	var taken []*qdbapi.SessionPool
 	for name, up := range c.users {
-		up.pool.Reap()
 		s := up.pool.Stats()
 		if s.InUse+s.Idle+s.Closing+s.Dialing > 0 {
 			up.emptySince = time.Time{}
@@ -339,13 +363,25 @@ func (c *Cluster) reapOnce() {
 		}
 		if now.Sub(up.emptySince) >= c.poolCfg.IdleTimeout {
 			delete(c.users, name)
+			taken = append(taken, up.pool)
 		}
+	}
+	return taken
+}
+
+// evictOnce closes the idle user pools, which stops their reapers. A taken
+// pool holds nothing, so its close returns at once; the one exception is a
+// caller that took the pool from poolFor microseconds before, whose dial
+// the close then waits for.
+func (c *Cluster) evictOnce() {
+	for _, p := range c.takeIdle() {
+		_ = p.Close(context.Background())
 	}
 }
 
 // Reap runs one eviction pass; the tests drive it against a fake clock
 // instead of waiting for the ticker.
-func (c *Cluster) Reap() { c.reapOnce() }
+func (c *Cluster) Reap() { c.evictOnce() }
 
 // ClusterStats is a snapshot of the whole cluster's session usage.
 type ClusterStats struct {
@@ -368,13 +404,13 @@ func (c *Cluster) Stats() ClusterStats {
 	}
 }
 
-// Close first stops the reaper (and waits for its goroutine to end, so no
-// eviction pass runs during the drain), then takes every user pool out of
-// the map and drains each within ctx, returning ctx.Err() for whatever is
-// still wedged. The process exits regardless.
+// Close first stops eviction (and waits for its goroutine to end, so no
+// pass runs during the drain), then takes every user pool out of the map
+// and drains each within ctx, returning ctx.Err() for whatever is still
+// wedged. The process exits regardless.
 func (c *Cluster) Close(ctx context.Context) error {
-	close(c.reaperStop)
-	<-c.reaperDone
+	close(c.evictStop)
+	<-c.evictDone
 	c.mu.Lock()
 	pools := maps.Values(c.users)
 	c.users = map[string]*userPool{}
