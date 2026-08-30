@@ -11,8 +11,8 @@ import (
 // Logger interface, which carries no context: the binding logs through a
 // global, so the adapter holds the logger it is given (ADR-0002 allows a
 // stored logger exactly where no context is available). The binding's
-// Info is a dial-and-forget line ("successfully connected" on every
-// dial), so it maps to Debug; its Panic is not fatal here and maps to
+// Info lines are its own housekeeping, noise at a gateway's request
+// volume, so Info maps to Debug; its Panic is not fatal here and maps to
 // Error.
 type bindingLogger struct{ log *slog.Logger }
 
