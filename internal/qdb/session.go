@@ -2,17 +2,20 @@ package qdb
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
 
-// ErrCallTimeout is returned when a C API call outlives its deadline. The
-// call cannot be cancelled, so the session it ran on is poisoned: every
-// later call on it returns this without touching cgo, and the abandoned
+// ErrCallTimeout is returned when a C API call outlives its deadline. It
+// wraps the binding's ErrTimeout, so errors.Is(err, qdbapi.ErrTimeout)
+// holds and IsRetryable classifies it like any timeout the C API reports
+// itself; the sentinel still tells the Go-side deadline apart. The call
+// cannot be cancelled, so the session it ran on is poisoned: every later
+// call on it returns this without touching cgo, and the abandoned
 // goroutine closes the session when the C call finally returns.
-var ErrCallTimeout = errors.New("qdb: call timed out")
+var ErrCallTimeout = fmt.Errorf("qdb: call timed out: %w", qdbapi.ErrTimeout)
 
 // Session is one authenticated client session as this package sees it: the
 // narrow wrapper around a qdb_handle_t and the only way code touches one;
