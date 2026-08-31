@@ -44,17 +44,24 @@ cryptography itself is stdlib (`crypto/cipher` AES-GCM, `crypto/hkdf`,
    primitives above. `golang.org/x/crypto` (argon2id) is the only new
    runtime dependency; no JOSE library links into the binary.
 3. **Key derivation**, once at startup, per passphrase in
-   `auth.token_secrets`: argon2id with RFC 9106's second recommended
-   parameter set (t=3, m=64 MiB, p=4, 32-byte output) and a fixed
+   `auth.token_secrets`: argon2id (32-byte output) with a fixed
    application salt -- there is no per-user storage to hold one, and
    the derivation's purpose is cost per attacker guess (~100ms), not
    per-record uniqueness -- then HKDF-SHA-256 with distinct info
    strings derives the 32-byte encryption key and the `kid`
-   independently. The parameters are protocol constants: changing any
-   of them changes every derived key and `kid`, so a parameter bump
-   behaves exactly like a key rotation. The ephemeral startup key (no
-   secret configured) skips argon2id -- a random key needs no
-   stretching -- and flows through the same HKDF split.
+   independently. The argon2id cost parameters (time, memory,
+   parallelism) are configuration, so operators tune the toll to their
+   hardware; defaults follow RFC 9106 and live in `internal/config`,
+   not here. The parameters join the passphrase as derivation input:
+   every instance behind a load balancer must run the same values,
+   exactly as it must share `token_secrets`, and changing them changes
+   every derived key and `kid`, so a tuning change behaves as a key
+   rotation. They are never read from a token: the verifier derives
+   nothing per token (a `kid` lookup into the keychain), and honoring
+   header-supplied KDF parameters is a known DoS class (PBES2 `p2c`).
+   The ephemeral startup key (no secret configured) skips argon2id -- a
+   random key needs no stretching -- and flows through the same HKDF
+   split.
 4. **Conformance**: `go-jose/v4` is a test-only dependency. Property
    tests assert both directions -- every token we mint decrypts under
    go-jose, and tokens go-jose encrypts under our derived keys verify
