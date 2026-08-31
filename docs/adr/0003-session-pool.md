@@ -23,9 +23,9 @@ verified against the test cluster, 2026-08-28):
   use-after-free, so is a double close, and `qdb_close()` may itself
   block for minutes (it joins the handle's worker threads).
 - Nothing documents `qdb_handle_t` as thread-safe. Some operations on a
-  connected handle happen to be guarded; configuration, `connect` and
-  `qdb_get_last_error` (per handle, not per thread) are not. We treat
-  every operation on a handle as non-thread-safe.
+  connected handle happen to be internally synchronized; configuration,
+  `connect` and `qdb_get_last_error` (per handle, not per thread) are
+  not. We treat every operation on a handle as non-thread-safe.
 - `qdb-api-go` is vendored and never patched; it provides the session
   factory and a bounded `SessionPool` with dialer and closer hooks, and
   classifies its errors with `IsRetryable`. The global budget, the
