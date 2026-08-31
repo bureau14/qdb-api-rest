@@ -5,13 +5,16 @@ import (
 	"sync"
 )
 
-// guard runs one blocking cgo call on its own goroutine and races it
-// against a deadline. It sits directly above the C call: Session.call
-// wraps one C API operation in it, Cluster.connect wraps the dial. The C API has no cancellation path, so a call past
-// its deadline cannot be stopped; the guard abandons its goroutine
-// instead, and the goroutine, when the C call finally returns, owns the
-// cleanup (freeing any result and closing the session). The caller never
-// touches what an abandoned call produced.
+// guard is the ownership handshake between a caller waiting under a
+// deadline and the goroutine that Session.call or Cluster.connect spawns
+// for one blocking cgo call; the guard itself runs nothing and holds no
+// timer. Exactly one side wins. The work finishing first hands the caller
+// the outcome; the deadline firing first marks the work abandoned, and
+// the goroutine -- told so by finish returning false -- owns the cleanup
+// (freeing any result, closing the session) once the C call returns. The
+// split exists because the C API can neither cancel a call in flight nor
+// survive a close from another thread: the call must be left to finish,
+// and only whoever saw it return may close the session.
 type guard struct {
 	mu        sync.Mutex
 	done      chan struct{}
@@ -32,8 +35,10 @@ func (g *guard) finish() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.abandoned {
+		// The caller gave up while the call ran; clean-up is ours.
 		return false
 	}
+	// The caller is still waiting: publish completion and wake it.
 	g.completed = true
 	close(g.done)
 	return true
@@ -52,8 +57,11 @@ func (g *guard) wait(ctx context.Context) bool {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		if g.completed {
+			// finish won the race to the lock; take the outcome anyway.
 			return true
 		}
+		// Abandon: from here finish returns false and the goroutine
+		// cleans up after itself.
 		g.abandoned = true
 		if g.onAbandon != nil {
 			g.onAbandon()

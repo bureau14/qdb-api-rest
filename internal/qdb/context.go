@@ -13,10 +13,10 @@ func WithCluster(ctx context.Context, c *Cluster) context.Context {
 	return context.WithValue(ctx, clusterKey{}, c)
 }
 
-// ClusterFrom returns the cluster carried by ctx. A ctx without one is a
-// programming error (a context.Background() or TODO() mid-call-chain) and
-// panics, as observe.Logger does: fail fast rather than serve without a
-// cluster.
+// ClusterFrom returns the cluster carried by ctx. A ctx without one means
+// a caller built a fresh context instead of passing along the one it was
+// given; that is a programming error and panics, as observe.Logger does:
+// fail fast rather than serve without a cluster.
 func ClusterFrom(ctx context.Context) *Cluster {
 	c, ok := ctx.Value(clusterKey{}).(*Cluster)
 	if !ok {

@@ -30,7 +30,12 @@ type Session struct {
 	session qdbapi.Session
 	lease   *qdbapi.Lease // the lease the handle is checked out under; nil for the probe's own session
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// poisoned is set by call, exactly once, when the deadline fires
+	// while a C call is still blocked in cgo. From then on every method
+	// returns ErrCallTimeout without touching cgo, Call never releases
+	// the session back to its pool, and the abandoned goroutine -- the
+	// only owner left -- disposes of it when the C call finally returns.
 	poisoned bool
 }
 
@@ -66,12 +71,17 @@ func (s *Session) disposeAbandoned() {
 	s.closeAsync()
 }
 
-// call runs f, one C API call, under ctx on its own goroutine. It returns
-// f's error if f finished in time; on a deadline it poisons the session,
-// returns ErrCallTimeout, and the abandoned goroutine runs onAbandon (free
-// any result, then dispose of the session) when fn returns. onAbandon must
-// touch nothing the caller still reads.
+// call runs f, one C API call, under ctx. Strategy: f runs on its own
+// goroutine so the deadline can be honored even though the C API has no
+// cancellation path, and the guard decides who owns the outcome. Work
+// first: the caller gets f's error. Deadline first: the caller returns
+// ErrCallTimeout at once, the session is poisoned, and the goroutine --
+// now the sole owner -- runs onAbandon (free any result, then dispose of
+// the session) when the C call finally returns. onAbandon must touch
+// nothing the caller still reads.
 func (s *Session) call(ctx context.Context, f func() error, onAbandon func()) error {
+	// A poisoned session has an abandoned call possibly still blocked in
+	// cgo; touching the handle again would race it.
 	s.mu.Lock()
 	poisoned := s.poisoned
 	s.mu.Unlock()
@@ -79,14 +89,19 @@ func (s *Session) call(ctx context.Context, f func() error, onAbandon func()) er
 		return ErrCallTimeout
 	}
 
+	// wedged is bumped in onAbandon -- under the guard's lock, before the
+	// goroutine can observe the abandonment -- and dropped by the
+	// goroutine once its cleanup is done, so the counter never dips.
 	g := newGuard()
 	g.onAbandon = func() { s.cluster.wedged.Add(1) }
 	var fErr error
 	go func() {
 		fErr = f()
 		if g.finish() {
+			// The caller is still waiting and owns the outcome.
 			return
 		}
+		// Abandoned: the caller returned long ago; clean up here.
 		onAbandon()
 		s.cluster.wedged.Add(-1)
 	}()
@@ -94,6 +109,7 @@ func (s *Session) call(ctx context.Context, f func() error, onAbandon func()) er
 	if g.wait(ctx) {
 		return fErr
 	}
+	// Deadline first: poison the session and leave it to the goroutine.
 	s.mu.Lock()
 	s.poisoned = true
 	s.mu.Unlock()
@@ -101,11 +117,14 @@ func (s *Session) call(ctx context.Context, f func() error, onAbandon func()) er
 }
 
 // query runs q and, on completion, hands its result to f on the calling
-// goroutine, closing it when f returns. Execute may return
-// a result next to an error, and Close is nil-safe, so the result is closed
-// on every path. A query abandoned on the deadline closes its result on the
-// goroutine that outlived the deadline; the caller, which never sees that
-// result, does not touch it.
+// goroutine, closing it when f returns.
+//
+// The result cannot be deferred closed at the top: on a deadline its
+// ownership moves to the abandoned goroutine, which closes it when the C
+// call returns, and a caller-side Close would race that one (Close is
+// idempotent but not goroutine-safe). So each owner closes the result on
+// its own path -- and since Execute may return a result next to an error
+// and Close is nil-safe, each does so unconditionally.
 func (s *Session) query(ctx context.Context, q string, f func(*qdbapi.QueryResult) error) error {
 	var result *qdbapi.QueryResult
 	callErr := s.call(ctx,
@@ -115,10 +134,12 @@ func (s *Session) query(ctx context.Context, q string, f func(*qdbapi.QueryResul
 			return err
 		},
 		func() {
+			// Abandoned: this goroutine owns the result now.
 			result.Close()
 			s.disposeAbandoned()
 		})
 	if s.abandoned() {
+		// The abandoned goroutine owns result; never touch it here.
 		return callErr
 	}
 	defer result.Close()

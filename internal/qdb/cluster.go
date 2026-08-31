@@ -234,8 +234,11 @@ type callConfig struct {
 type CallOption func(*callConfig)
 
 // WithReadRetry permits one transparent retry on a fresh session after a
-// retryable failure. Only idempotent reads may ask for it; ingestion never
-// does (a batch push offers no way to prove non-application).
+// retryable failure. Retry is per call, never the default, because
+// idempotence is a fact only the call site knows: ingestion must never
+// retry (a batch push offers no way to prove non-application), and a
+// streamed response must not retry once bytes have left the server.
+// Idempotent reads opt in.
 func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }

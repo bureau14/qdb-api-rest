@@ -47,13 +47,18 @@ func (b *breaker) allow() (time.Duration, bool) {
 	switch b.state {
 	case breakerOpen:
 		if remaining := b.openUntil.Sub(b.now()); remaining > 0 {
+			// Still open: fail fast and say when to come back.
 			return remaining, false
 		}
+		// The window has passed: this caller becomes the probe.
 		b.state = breakerHalfOpen
 		return 0, true
 	case breakerHalfOpen:
+		// A probe is in flight; everyone else keeps failing fast. The
+		// hint is what is left of the window, zero or less by now.
 		return b.openUntil.Sub(b.now()), false
 	default:
+		// Closed: every call proceeds.
 		return 0, true
 	}
 }
@@ -78,12 +83,16 @@ func (b *breaker) recordFailure() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.state == breakerHalfOpen {
+		// The probe failed: reopen for another window; the streak is
+		// already past the threshold and stays as it is.
 		b.state = breakerOpen
 		b.openUntil = b.now().Add(b.openFor)
 		return
 	}
 	b.failures++
 	if b.failures >= b.threshold {
+		// The streak reached the threshold: open for the window. A
+		// failure landing while already open only lengthens the streak.
 		b.state = breakerOpen
 		b.openUntil = b.now().Add(b.openFor)
 	}
