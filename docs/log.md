@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -29,27 +29,22 @@ platforms.
 
 In flight:
 
-- M1, cluster config + session pool + readiness: implemented on
-  `sc-19567/rr-pool` per `docs/pool-plan.md`, on the binding's session
-  pool since 2026-08-30, under owner review.
+- Nothing.
 
 Next:
 
-1. `cluster:`, `pool:` and `status:` config blocks, the `internal/qdb`
-   session pool, and the readiness probe on its own dial
-   (`docs/pool-plan.md`, Implementation order).
-2. Auth ADR, then `internal/auth`.
-3. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
+1. Auth ADR, then `internal/auth`.
+2. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
    golden by golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>`
    is green.
-4. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
+3. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
    and run `make -C tests/e2e/bench bench-legacy@new-rest`.
-5. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+4. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-6. Circle back, no date: return the e2e harness to CI
+5. Circle back, no date: return the e2e harness to CI
    (`.buildkite/AGENTS.md` holds the decision and the recipe).
 
 Handoff to M1:
@@ -61,8 +56,14 @@ Handoff to M1:
   the pool, and fails with `503` (ADR-0004; `docs/brief.md`,
   Compatibility contract).
 - `cluster.max_in_buffer_size` must be raised for the bench's full-table
-  query, as the old server's e2e flags do (`docs/pool-plan.md`, Handoff
-  notes).
+  query: the C API default (256 MiB) cannot return the 5.6M-row
+  `SELECT *`; the old server's e2e flags use 8 GiB
+  (`tests/e2e/Makefile`). An oversized reply
+  (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it costs no
+  reconnect; M2 maps it to a client error.
+- `/api/login` for a known user finds the existing pool and dials
+  nothing; auth's session id claim never reaches `internal/qdb`
+  (ADR-0003).
 - Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
   `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
   keeping the brief's sentinel mapping for typed undefined values is
@@ -82,30 +83,37 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-31 -- Pool unit landed; ADR-0003 and ADR-0004 accepted
+
+- `pool-plan.md` deleted; facts moved to ADR-0003 (C API and qdbd
+  constraints), `internal/AGENTS.md` (session-exhaustion test rule) and
+  the Handoff block (bench buffer size, login handoff).
+
 ## 2026-08-30 -- Pool core taken from qdb-api-go
 
 - Owner decision: the REST API integrates the binding's `SessionPool`
   and `SessionFactory`; the local core is dropped and eager option
-  validation is out. `docs/pool-plan.md`, Owner decisions; ADR-0003.
+  validation is out. ADR-0003.
 
 ## 2026-08-28 -- Pool review decisions
 
 - Owner decisions: QuasarDB's vocabulary (user, session); every key in
   every layer; option checks left to the binding; the failsafe untested
-  against the C API; a session factory upstream. `docs/pool-plan.md`, Owner decisions.
+  against the C API; a session factory upstream. `docs/brief.md`,
+  Vocabulary; `cmd/qdb_rest/AGENTS.md`; ADR-0003.
 
 ## 2026-08-27 -- Pool plan review decisions
 
 - Owner decisions: pools keyed per user, not per session (brief amended,
   "Resilience and connection management"); C calls reach code only
   through a narrow `Handle` wrapper; probes get their own ADR-0004
-  (proposed). `docs/pool-plan.md`, Owner decisions; ADR-0003.
+  (accepted 2026-08-31). ADR-0003.
 
 ## 2026-08-26 -- Pool plan decisions
 
 - Owner decisions: readiness dials its own handle and fails with `503`
   (brief contract amended); `IsRetryable` classifies errors; nothing
-  dials at startup. `docs/pool-plan.md`, Owner decisions; ADR-0003.
+  dials at startup. ADR-0003; ADR-0004.
 
 ## 2026-08-25 -- M0 complete, M1 started
 
