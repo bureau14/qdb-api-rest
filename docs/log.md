@@ -83,6 +83,13 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-31 -- v1 aliases minted; v1 routes wrap v2
+
+- Owner decision: every legacy endpoint also served at `/api/v1/<path>`,
+  unversioned paths assume v1, new endpoints under `/api/v2/*` only; v1
+  routes wrap v2 implementations, no parallel code. `docs/brief.md`,
+  Compatibility contract.
+
 ## 2026-08-31 -- Per-call deadlines are a binding concern, not the gateway's
 
 - Owner decision: the abandon-on-deadline failsafe, session poisoning,
