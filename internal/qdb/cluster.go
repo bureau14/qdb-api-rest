@@ -5,7 +5,6 @@ import (
 	"errors"
 	"maps"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
@@ -42,12 +41,8 @@ type Cluster struct {
 	// breaker is the per-cluster circuit breaker Call gates on; dials and
 	// calls feed it, the readiness probe never does (ADR-0004).
 	breaker *breaker
-	// wedged counts dials and calls abandoned on their deadline whose C
-	// call has not returned yet. Each still holds its budget unit; the
-	// abandoned goroutine decrements wedged once its close has completed.
-	wedged atomic.Int64
 
-	mu    sync.Mutex           // guards users
+	mu    sync.Mutex           // protects users
 	users map[string]*userPool // one session pool per user, keyed by username
 	// evictStop ends the eviction goroutine and evictDone closes once it
 	// has ended; Close uses both so no eviction pass races the drain.
@@ -131,47 +126,21 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 	return o
 }
 
-// connect dials one session for u under the call deadline, through the same
-// abandon-on-deadline failsafe as a call: a dial to a black-holed address
-// blocks in cgo past its deadline, so the goroutine is abandoned and
-// closes the session itself when the dial finally returns. budgeted dials
-// take a budget unit first and hold it until the session's close returns
-// (or, when the dial fails, until the dial resolves).
+// connect dials one session for u. A budgeted dial takes a budget unit
+// first and holds it until the session's close returns; a dial that fails
+// gives its unit back at once.
 func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
 	if budgeted {
 		if err := c.budget.acquire(ctx); err != nil {
 			return qdbapi.Session{}, err
 		}
 	}
-	callCtx, cancel := context.WithTimeout(ctx, c.poolCfg.CallTimeout)
-	defer cancel()
-
-	g := newGuard()
-	g.onAbandon = func() { c.wedged.Add(1) }
-	var hdl qdbapi.Session
-	var dialErr error
-	go func() {
-		hdl, dialErr = qdbapi.NewSessionFactory(c.handleOptions(u)).NewSession()
-		if g.finish() {
-			return
-		}
-		if dialErr == nil {
-			_ = hdl.Close()
-		}
+	hdl, err := qdbapi.NewSessionFactory(c.handleOptions(u)).NewSession()
+	if err != nil {
 		if budgeted {
 			c.budget.release()
 		}
-		c.wedged.Add(-1)
-	}()
-
-	if !g.wait(callCtx) {
-		return qdbapi.Session{}, ErrCallTimeout
-	}
-	if dialErr != nil {
-		if budgeted {
-			c.budget.release()
-		}
-		return qdbapi.Session{}, dialErr
+		return qdbapi.Session{}, err
 	}
 	return hdl, nil
 }
@@ -253,10 +222,8 @@ func callerLeft(err error) bool {
 // breaker, checks a session out of u's pool (dialing one on demand), runs
 // f, and decides the session's fate: a success or a fatal error (the
 // cluster answered) releases the session and closes the breaker; a
-// retryable error or a deadline discards it and feeds the breaker. A
-// deadline leaves the session to its abandoned goroutine; Call never
-// touches it. WithReadRetry runs f once more on a fresh session after a
-// retryable failure.
+// retryable error discards it and feeds the breaker. WithReadRetry runs f
+// once more on a fresh session after a retryable failure.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -270,19 +237,16 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 		}
 		lease, aerr := c.poolFor(u).Acquire(ctx)
 		if aerr != nil {
-			// A dial the cluster refused, or one past its deadline, is a
-			// cluster failure; a fatal one (unreadable key file) or the
-			// caller leaving is not.
+			// A dial the cluster refused is a cluster failure; a fatal
+			// one (unreadable key file) or the caller leaving is not.
 			if !callerLeft(aerr) && qdbapi.IsRetryable(aerr) {
 				c.breaker.recordFailure()
 			}
 			return aerr
 		}
-		s := newSession(c, lease.Session(), lease)
+		s := newSession(lease.Session())
 		err = f(s)
 		switch {
-		case s.abandoned():
-			c.breaker.recordFailure() // the abandoned goroutine owns the lease
 		case err == nil:
 			lease.Release()
 			c.breaker.recordSuccess()
@@ -305,7 +269,7 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 
 // Query runs q as u and hands its result to f.
 func (c *Cluster) Query(ctx context.Context, u User, q string, f func(*qdbapi.QueryResult) error, opts ...CallOption) error {
-	return c.Call(ctx, u, func(s *Session) error { return s.query(ctx, q, f) }, opts...)
+	return c.Call(ctx, u, func(s *Session) error { return s.query(q, f) }, opts...)
 }
 
 // Tagged returns the aliases carrying t, read as u.
@@ -313,7 +277,7 @@ func (c *Cluster) Tagged(ctx context.Context, u User, t string) ([]string, error
 	var aliases []string
 	err := c.Call(ctx, u, func(s *Session) error {
 		var e error
-		aliases, e = s.tagged(ctx, t)
+		aliases, e = s.tagged(t)
 		return e
 	}, WithReadRetry())
 	return aliases, err
@@ -329,11 +293,9 @@ func (c *Cluster) Probe(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s := newSession(c, hdl, nil)
-	qerr := s.query(ctx, c.readinessQuery, func(*qdbapi.QueryResult) error { return nil })
-	if !s.abandoned() {
-		s.closeAsync()
-	}
+	s := newSession(hdl)
+	qerr := s.query(c.readinessQuery, func(*qdbapi.QueryResult) error { return nil })
+	s.closeAsync()
 	return qerr
 }
 
@@ -400,7 +362,6 @@ func (c *Cluster) Reap() { c.evictOnce() }
 type ClusterStats struct {
 	BudgetInUse int
 	BudgetMax   int
-	Wedged      int
 	Users       int
 }
 
@@ -412,15 +373,14 @@ func (c *Cluster) Stats() ClusterStats {
 	return ClusterStats{
 		BudgetInUse: c.budget.inUse(),
 		BudgetMax:   c.budget.max(),
-		Wedged:      int(c.wedged.Load()),
 		Users:       users,
 	}
 }
 
 // Close first stops eviction (and waits for its goroutine to end, so no
 // pass runs during the drain), then takes every user pool out of the map
-// and drains each within ctx, returning ctx.Err() for whatever is still
-// wedged. The process exits regardless.
+// and drains each within ctx, returning ctx.Err() for whatever has not
+// closed in time. The process exits regardless.
 func (c *Cluster) Close(ctx context.Context) error {
 	close(c.evictStop)
 	<-c.evictDone
