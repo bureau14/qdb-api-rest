@@ -59,9 +59,8 @@ type Log struct {
 // file, the REST API's own user (the user security file carrying username
 // and secret key; empty means anonymous), and the per-session C API
 // knobs. A zero knob means the C API default. Key material comes from
-// files only, the form QuasarDB's tooling produces; a secret never sits
-// in the YAML. Callers' credentials arrive inline through the API and
-// never through this struct.
+// files only, the form QuasarDB's tooling produces, so no secret sits in
+// the YAML; callers' credentials arrive through the API.
 type Cluster struct {
 	URI                   string        `yaml:"uri" help:"cluster URI, comma-separated for several nodes"`
 	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file; empty means an insecure cluster"`

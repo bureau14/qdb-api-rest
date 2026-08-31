@@ -23,8 +23,8 @@ var ErrCallTimeout = fmt.Errorf("qdb: call timed out: %w", qdbapi.ErrTimeout)
 // C call on its own goroutine under the call deadline (the failsafe in
 // call), so the deadline and the error classification wrap every C call by
 // construction. A Session is built per checkout: Call wraps the handle the
-// user's pool leased, Probe the one it dialed itself. One goroutine uses a
-// Session at a time; the pool never leases a handle twice.
+// user's pool leased, Probe the one it dialed itself. One goroutine uses
+// a Session at a time.
 type Session struct {
 	cluster *Cluster
 	session qdbapi.Session

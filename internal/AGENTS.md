@@ -10,7 +10,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - No package-level mutable state. `context.Context` is the first
   parameter of anything that does I/O, logs, or can be cancelled.
 - Small composable functions with descriptive names; explicit over
-  implicit. Comments state why, as facts; never history.
+  implicit. Comments state why, as facts; never history. A negation
+  belongs in a comment only where it records a rejected alternative or
+  an invariant, never to correct what an earlier version claimed.
 - Validation has one home: the component that consumes a value owns its
   checks, made once, where a violation cannot get past them (`tlsconf`
   owns the certificate-pair rule; the C API judges the dial options at

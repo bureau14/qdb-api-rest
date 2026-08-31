@@ -5,16 +5,16 @@ import (
 	"sync"
 )
 
-// guard is the ownership handshake between a caller waiting under a
-// deadline and the goroutine that Session.call or Cluster.connect spawns
-// for one blocking cgo call; the guard itself runs nothing and holds no
-// timer. Exactly one side wins. The work finishing first hands the caller
-// the outcome; the deadline firing first marks the work abandoned, and
-// the goroutine -- told so by finish returning false -- owns the cleanup
-// (freeing any result, closing the session) once the C call returns. The
-// split exists because the C API can neither cancel a call in flight nor
-// survive a close from another thread: the call must be left to finish,
-// and only whoever saw it return may close the session.
+// guard decides who owns the outcome of one blocking cgo call: the
+// caller waiting under a deadline, or the goroutine that Session.call or
+// Cluster.connect spawned to run the call. Exactly one side wins. The
+// work finishing first hands the caller the outcome; the deadline firing
+// first marks the work abandoned, and the goroutine -- told so by finish
+// returning false -- owns the cleanup (freeing any result, closing the
+// session) once the C call returns. The split exists because the C API
+// can neither cancel a call in flight nor survive a close from another
+// thread: the call must be left to finish, and only whoever saw it
+// return may close the session.
 type guard struct {
 	mu        sync.Mutex
 	done      chan struct{}
