@@ -246,15 +246,15 @@ func callerLeft(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// Call runs op against a session authenticated as u. It gates on the
+// Call runs f against a session authenticated as u. It gates on the
 // breaker, checks a session out of u's pool (dialing one on demand), runs
-// op, and decides the session's fate: a success or a fatal error (the
+// f, and decides the session's fate: a success or a fatal error (the
 // cluster answered) releases the session and closes the breaker; a
 // retryable error or a deadline discards it and feeds the breaker. A
 // deadline leaves the session to its abandoned goroutine; Call never
-// touches it. WithReadRetry runs op once more on a fresh session after a
+// touches it. WithReadRetry runs f once more on a fresh session after a
 // retryable failure.
-func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opts ...CallOption) error {
+func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -276,7 +276,7 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opt
 			return aerr
 		}
 		s := newSession(c, lease.Session(), lease)
-		err = op(s)
+		err = f(s)
 		switch {
 		case s.abandoned():
 			c.breaker.recordFailure() // the abandoned goroutine owns the lease
@@ -300,17 +300,17 @@ func (c *Cluster) Call(ctx context.Context, u User, op func(*Session) error, opt
 	return err
 }
 
-// Query runs a native query as u and hands each result to use.
-func (c *Cluster) Query(ctx context.Context, u User, text string, use func(*qdbapi.QueryResult) error, opts ...CallOption) error {
-	return c.Call(ctx, u, func(s *Session) error { return s.query(ctx, text, use) }, opts...)
+// Query runs q as u and hands its result to f.
+func (c *Cluster) Query(ctx context.Context, u User, q string, f func(*qdbapi.QueryResult) error, opts ...CallOption) error {
+	return c.Call(ctx, u, func(s *Session) error { return s.query(ctx, q, f) }, opts...)
 }
 
-// Tagged returns the aliases carrying tag, read as u.
-func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, error) {
+// Tagged returns the aliases carrying t, read as u.
+func (c *Cluster) Tagged(ctx context.Context, u User, t string) ([]string, error) {
 	var aliases []string
 	err := c.Call(ctx, u, func(s *Session) error {
 		var e error
-		aliases, e = s.tagged(ctx, tag)
+		aliases, e = s.tagged(ctx, t)
 		return e
 	}, WithReadRetry())
 	return aliases, err

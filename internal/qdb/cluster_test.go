@@ -1,3 +1,8 @@
+// The integration tests of Cluster against the live qdbd fixture
+// (internal/qdbtest): breaker, per-user cap, retry-once, the fate of a
+// fatal error, user-pool eviction, and the secure dial as the REST
+// API's own user. The pool's own invariants are pinned upstream in
+// qdb-api-go.
 package qdb
 
 import (

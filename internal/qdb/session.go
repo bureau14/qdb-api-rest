@@ -27,15 +27,15 @@ var ErrCallTimeout = fmt.Errorf("qdb: call timed out: %w", qdbapi.ErrTimeout)
 // Session at a time; the pool never leases a handle twice.
 type Session struct {
 	cluster *Cluster
-	hdl     qdbapi.Session
+	session qdbapi.Session
 	lease   *qdbapi.Lease // the lease the handle is checked out under; nil for the probe's own session
 
 	mu       sync.Mutex
 	poisoned bool
 }
 
-func newSession(c *Cluster, hdl qdbapi.Session, lease *qdbapi.Lease) *Session {
-	return &Session{cluster: c, hdl: hdl, lease: lease}
+func newSession(c *Cluster, session qdbapi.Session, lease *qdbapi.Lease) *Session {
+	return &Session{cluster: c, session: session, lease: lease}
 }
 
 // abandoned reports whether a call on this session timed out; the abandoned
@@ -51,7 +51,7 @@ func (s *Session) abandoned() bool {
 // own session ends here; a pooled one ends through its lease, and the pool
 // closes it the same way.
 func (s *Session) closeAsync() {
-	go func() { _ = s.hdl.Close() }()
+	go func() { _ = s.session.Close() }()
 }
 
 // disposeAbandoned closes a session whose call was abandoned: a pooled
@@ -66,12 +66,12 @@ func (s *Session) disposeAbandoned() {
 	s.closeAsync()
 }
 
-// call runs fn, one C API call, under ctx on its own goroutine. It returns
-// fn's error if fn finished in time; on a deadline it poisons the session,
+// call runs f, one C API call, under ctx on its own goroutine. It returns
+// f's error if f finished in time; on a deadline it poisons the session,
 // returns ErrCallTimeout, and the abandoned goroutine runs onAbandon (free
 // any result, then dispose of the session) when fn returns. onAbandon must
 // touch nothing the caller still reads.
-func (s *Session) call(ctx context.Context, fn func() error, onAbandon func()) error {
+func (s *Session) call(ctx context.Context, f func() error, onAbandon func()) error {
 	s.mu.Lock()
 	poisoned := s.poisoned
 	s.mu.Unlock()
@@ -81,9 +81,9 @@ func (s *Session) call(ctx context.Context, fn func() error, onAbandon func()) e
 
 	g := newGuard()
 	g.onAbandon = func() { s.cluster.wedged.Add(1) }
-	var fnErr error
+	var fErr error
 	go func() {
-		fnErr = fn()
+		fErr = f()
 		if g.finish() {
 			return
 		}
@@ -92,7 +92,7 @@ func (s *Session) call(ctx context.Context, fn func() error, onAbandon func()) e
 	}()
 
 	if g.wait(ctx) {
-		return fnErr
+		return fErr
 	}
 	s.mu.Lock()
 	s.poisoned = true
@@ -100,18 +100,18 @@ func (s *Session) call(ctx context.Context, fn func() error, onAbandon func()) e
 	return ErrCallTimeout
 }
 
-// query runs one native query and, on completion, hands its result to use
-// on the calling goroutine, closing it when use returns. Execute may return
+// query runs q and, on completion, hands its result to f on the calling
+// goroutine, closing it when f returns. Execute may return
 // a result next to an error, and Close is nil-safe, so the result is closed
 // on every path. A query abandoned on the deadline closes its result on the
 // goroutine that outlived the deadline; the caller, which never sees that
 // result, does not touch it.
-func (s *Session) query(ctx context.Context, text string, use func(*qdbapi.QueryResult) error) error {
+func (s *Session) query(ctx context.Context, q string, f func(*qdbapi.QueryResult) error) error {
 	var result *qdbapi.QueryResult
 	callErr := s.call(ctx,
 		func() error {
 			var err error
-			result, err = s.hdl.Query(text).Execute()
+			result, err = s.session.Query(q).Execute()
 			return err
 		},
 		func() {
@@ -125,17 +125,17 @@ func (s *Session) query(ctx context.Context, text string, use func(*qdbapi.Query
 	if callErr != nil {
 		return callErr
 	}
-	return use(result)
+	return f(result)
 }
 
-// tagged returns the aliases carrying tag; the binding frees its own C
+// tagged returns the aliases carrying t; the binding frees its own C
 // memory, so an abandoned call only disposes of the session.
-func (s *Session) tagged(ctx context.Context, tag string) ([]string, error) {
+func (s *Session) tagged(ctx context.Context, t string) ([]string, error) {
 	var aliases []string
 	err := s.call(ctx,
 		func() error {
 			var e error
-			aliases, e = s.hdl.GetTagged(tag)
+			aliases, e = s.session.GetTagged(t)
 			return e
 		},
 		s.disposeAbandoned)
