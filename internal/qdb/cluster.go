@@ -106,8 +106,10 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 	o := qdbapi.NewHandleOptions().
 		WithClusterUri(c.cfg.URI).
 		WithCompression(compressionOf(c.cfg.Compression)).
-		WithEncryption(encryptionOf(c.cfg.Encryption)).
-		WithTimeout(c.cfg.Timeout)
+		WithEncryption(encryptionOf(c.cfg.Encryption))
+	if c.cfg.Timeout > 0 {
+		o = o.WithTimeout(c.cfg.Timeout)
+	}
 	if c.cfg.PublicKeyFile != "" {
 		o = o.WithClusterPublicKeyFile(c.cfg.PublicKeyFile)
 	}

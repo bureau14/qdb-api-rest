@@ -199,10 +199,12 @@ cluster:
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"
-  # C API socket timeout per session, whole seconds, at least 1s (per
-  # send/receive, retried inside the C API); the operation-level bound
-  # is pool.call_timeout.
-  timeout: "60s"
+  # C API socket timeout per session: the bound on one low-level network
+  # operation (a single send or receive, retried inside the C API), not
+  # on a whole call -- pool.call_timeout bounds an entire operation such
+  # as a query. Whole seconds, at least 1s; 0 leaves the Go API's
+  # default.
+  timeout: "0s"
   # Per session, 0 = C API default: client input buffer cap (bytes) and
   # C API worker threads (the C API default is half the logical cores,
   # per session).
@@ -224,8 +226,10 @@ pool:
   idle_timeout: "5m"
   # A session older than this is closed on return, never on checkout.
   max_lifetime: "15m"
-  # Deadline for one C API call, dial included; on expiry the caller
-  # gets an error and the session is discarded.
+  # Deadline for one whole C API call, dial included: an entire sequence
+  # of low-level network operations, each bounded on its own by
+  # cluster.timeout. On expiry the caller gets an error and the session
+  # is discarded.
   call_timeout: "60s"
   breaker:
     # Consecutive retryable failures (dial errors, deadline expiries,
@@ -257,9 +261,9 @@ Mechanics:
   draws every key in every layer from the same walk.
 - Validation, only what the binding does not check when a session is
   dialed: vocabulary checks on `compression`/`encryption`;
-  `cluster.timeout` a whole number of seconds, at least 1 (the C API
-  rejects less and truncates the rest; the binding only requires a
-  positive value); `max_in_buffer_size` not negative;
+  `cluster.timeout` zero (the Go API's default) or a whole number of
+  seconds, at least 1 (the C API rejects less and truncates the rest);
+  `max_in_buffer_size` not negative;
   `per_user_max <= max_sessions`; `readiness_query` non-empty. No
   ordering between `call_timeout` and `cluster.timeout` is required (one
   bounds a syscall, the other an operation). The URI scheme and the knob

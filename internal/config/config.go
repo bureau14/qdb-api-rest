@@ -68,7 +68,7 @@ type Cluster struct {
 	UserSecurityFile      string        `yaml:"user_security_file" help:"user security file of the REST API's own user"`
 	Compression           string        `yaml:"compression" help:"client-side C API compression: none | balanced"`
 	Encryption            string        `yaml:"encryption" help:"client-cluster traffic encryption: none | aes"`
-	Timeout               time.Duration `yaml:"timeout" help:"C API socket timeout per session, whole seconds"`
+	Timeout               time.Duration `yaml:"timeout" help:"C API socket timeout per session, whole seconds; 0 leaves the Go API's default"`
 	MaxInBufferSize       int64         `yaml:"max_in_buffer_size" help:"client input buffer cap per session, in bytes; 0 means the C API default"`
 	Parallelism           int           `yaml:"parallelism" help:"C API worker threads per session; 0 means the C API default"`
 	ConnectionsPerAddress int           `yaml:"connections_per_address" help:"soft limit on connections per node address, per session; 0 means the C API default"`
@@ -131,7 +131,6 @@ func Default() Config {
 			URI:         "qdb://127.0.0.1:2836",
 			Compression: "none",
 			Encryption:  "none",
-			Timeout:     60 * time.Second,
 		},
 		Pool: Pool{
 			MaxSessions: 64,
@@ -463,9 +462,10 @@ func positive(key string, d time.Duration) error {
 }
 
 // validateCluster checks only what the binding does not: the vocabulary
-// this config maps onto the binding's enums, the socket timeout (the C API
-// takes whole seconds, at least one, and the binding only checks for a
-// positive value), and the buffer size (an int64 here, a uint there). The
+// this config maps onto the binding's enums, the socket timeout (zero
+// leaves the Go API's default; otherwise whole seconds, at least one, the
+// C API's own granularity), and the buffer size (an int64 here, a uint
+// there). The
 // URI scheme and the C API knob ranges are judged by the C API when a
 // session is dialed; a key or a user given both inline and as a file is
 // read from the file.
@@ -476,8 +476,8 @@ func validateCluster(c Cluster) error {
 	if err := oneOf("cluster.encryption", c.Encryption); err != nil {
 		return err
 	}
-	if c.Timeout < time.Second || c.Timeout%time.Second != 0 {
-		return fmt.Errorf("cluster.timeout must be a whole number of seconds, at least 1s, got %s", c.Timeout)
+	if c.Timeout != 0 && (c.Timeout < time.Second || c.Timeout%time.Second != 0) {
+		return fmt.Errorf("cluster.timeout must be zero or a whole number of seconds, at least 1s, got %s", c.Timeout)
 	}
 	if c.MaxInBufferSize < 0 {
 		return fmt.Errorf("cluster.max_in_buffer_size must not be negative, got %d", c.MaxInBufferSize)
