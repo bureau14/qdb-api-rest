@@ -224,7 +224,7 @@ pool:
   # session for this long is evicted (so at most twice this after the
   # last request).
   idle_timeout: "5m"
-  # A session older than this is closed on return, never on checkout.
+  # A session older than this is closed instead of being reused.
   max_lifetime: "15m"
   # Deadline for one whole C API call, dial included: an entire sequence
   # of low-level network operations, each bounded on its own by
