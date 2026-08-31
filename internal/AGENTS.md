@@ -64,11 +64,8 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
   wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
 - The tests are not in the business of testing the C API, which offers
-  no way to mock an error or a stall. A mechanism that could only be
-  exercised by stalling or faking a C call (the abandon-on-deadline
-  failsafe) is pinned on its pure part (`guard`) and otherwise left
-  untested; never add a listener that stalls `connect`, and never mock
-  the binding.
+  no way to mock an error or a stall: never add a listener that stalls
+  `connect`, and never mock the binding.
 - `internal/qdb` and `internal/httpapi` tests dial a live qdbd (the pair
   from `scripts/tests/setup/start-services.sh`, insecure `2836` / secure
   `2838`), so a bare `go test ./...` needs those services up. The fixture
