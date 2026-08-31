@@ -239,12 +239,21 @@ ecosystems and is trivial to deploy.
 ## Compatibility contract
 
 Versioning stance: the legacy unversioned API is retroactively **v1** --
-frozen, warts and all, served forever at its historical unversioned paths.
-The new API is **v2** under `/api/v2/*`. Legacy endpoints are **not**
-redirected (a 307/308 on POST breaks conservative HTTP clients and changes
-observable behavior); they are served directly. No new `/api/v1/*` aliases
-are minted: that would create brand-new URLs with a permanent support
-obligation, purely for taxonomy.
+frozen, warts and all, served forever. New endpoints are minted under
+`/api/v2/*` only. Every legacy endpoint is served at both its historical
+unversioned path and an `/api/v1/<path>` alias that makes the legacy
+protocol explicit; an unversioned path assumes v1. Both spellings are the
+same handler served directly -- never an HTTP redirect (a 307/308 on POST
+breaks conservative HTTP clients and changes observable behavior, and the
+goldens pin direct `200` responses).
+
+v1 routes carry no parallel implementation: unless genuinely impossible, a
+v1 route wraps its v2 counterpart, translating request and response shapes
+around the v2 handler's core. Serialization and translation overhead is an
+accepted price for code simplicity and for nudging clients toward v2; a
+separate v1 implementation is justified only by a very large measured
+penalty on that route (as a yardstick: wrapping at least doubling its
+cost).
 
 The following endpoints must behave byte-shape identically to the old
 server. Golden responses captured from the old server are part of the e2e
