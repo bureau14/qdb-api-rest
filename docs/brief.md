@@ -517,11 +517,11 @@ convenience wrapper. Decisions:
   execution with per-user fair share, so one noisy user cannot starve
   others; excess receives a fast 429 + `Retry-After`. Bounded memory,
   honest overload signaling.
-- **Timeouts everywhere**: every qdb call, every request, every stream
-  write carries a deadline; graceful shutdown drains in-flight streams.
-  Note: `qdb-api-go` exposes only a session-wide timeout and no
-  `context.Context` plumbing, so per-call deadlines and cancellation over
-  blocking cgo calls are implemented at the pool layer.
+- **Timeouts**: every request and every stream write carries a deadline;
+  graceful shutdown drains in-flight streams. QuasarDB calls are bounded
+  by the C API's own socket timeout (`cluster.timeout`): `qdb-api-go`
+  exposes no `context.Context` plumbing, and a blocking cgo call cannot
+  be cancelled from Go.
 - All of it -- pool occupancy, breaker state, admission queue, retry
   counts -- is exported via `/metrics`.
 
