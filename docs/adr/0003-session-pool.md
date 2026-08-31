@@ -1,6 +1,6 @@
 # ADR-0003: QuasarDB session pool: checkout model, budget, failsafe
 
-Status: proposed
+Status: accepted
 Date: 2026-08-25
 Milestone: M1
 
@@ -11,8 +11,8 @@ Every request the server serves runs one or more C API calls on a
 connection reuse non-optional, sets a global session budget partitioned
 per user, and wants honest fast failure (brief: "Resilience and
 connection management"). The C API constrains the mechanism harder than
-the brief assumes (verified in `~/git/quasardb`; details in
-`docs/pool-plan.md` while it is alive, then here):
+the brief assumes (verified in `~/git/quasardb`, 2026-08-25/26; qdbd
+verified against the test cluster, 2026-08-28):
 
 - There is no cancellation path for an in-flight call.
   `qdb_option_set_timeout` is a per-syscall socket timeout (whole
@@ -32,6 +32,16 @@ the brief assumes (verified in `~/git/quasardb`; details in
   global budget, the breaker and the per-user map are this layer's.
 - A QuasarDB user has exactly one secret. Every login of a user, from
   any client, dials with the same credentials.
+- Each handle is itself a pool: a thread pool of `client_max_parallelism`
+  workers (0 = half the logical cores) plus per-node-address TCP
+  connection pools, created at connect. Sixty-four sessions at the
+  defaults on a 32-core host is about a thousand threads; the session
+  pool sits above those, not instead of them.
+- qdbd's own session pool is finite and exhaustion is punished: the test
+  configuration accepted about 640 concurrent sessions, then logged
+  `out of free sessions` and refused new ones for fifteen minutes. A
+  handle holds its qdbd sessions until `qdb_close` returns, so closes in
+  flight count against the cluster.
 
 ## Decision
 
@@ -47,7 +57,7 @@ the brief assumes (verified in `~/git/quasardb`; details in
    unreachable (only configuration errors refuse a start).
 2. **Checkout through a narrow wrapper.** A session is used by exactly
    one goroutine at a time, obtained only through
-   `Cluster.Call(ctx, user, op)`. `op` receives a `Session` type
+   `Cluster.Call(ctx, user, f)`. `f` receives a `Session` type
    owned by `internal/qdb` that exposes one method per C API operation
    the server uses; each method runs its C call under the deadline and
    the error classification below, and owns the release of any result.
@@ -69,7 +79,8 @@ the brief assumes (verified in `~/git/quasardb`; details in
    toward the breaker; a fatal error (the binding's list: not
    implemented, incompatible type, uninitialized, out of bounds,
    invalid query, alias not found, alias already exists, invalid
-   argument) says nothing about the session, which is reused.
+   argument, network inbuf too small) says nothing about the session,
+   which is reused.
    Idempotent reads may retry once on a fresh session after a retryable
    error; ingestion never retries.
 5. **Closing never blocks the pool.** Every close runs on its own
@@ -120,7 +131,7 @@ The readiness probe is outside this mechanism entirely: ADR-0004.
 | Pools keyed per REST session, as the brief first had it | N tokens of one user would hold N pools of identical sessions; no isolation gained  |
 | Replace the user's pool on re-login                     | the old server's race against in-flight requests                                    |
 | One handle per user shared by concurrent goroutines     | thread-safety undocumented, configuration racy, last-error per handle; owner rule   |
-| `op` receives the binding's `HandleType`                | nothing stops `op` from stashing it; the deadline would cover `op`, not each C call |
+| `f` receives the binding's `HandleType`                 | nothing stops `f` from stashing it; the deadline would cover `f`, not each C call   |
 | `HandleType` plus a lint rule confining the import      | catches the import, not the misuse; the failsafe still would not wrap each call     |
 | Close the handle from the timing-out goroutine          | use-after-free in the C API                                                         |
 | A keep-list of request-caused errors maintained here    | duplicates upstream's matrix and drifts from it                                     |
