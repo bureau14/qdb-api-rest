@@ -44,12 +44,15 @@ cryptography itself is stdlib (`crypto/cipher` AES-GCM, `crypto/hkdf`,
    primitives above. `golang.org/x/crypto` (argon2id) is the only new
    runtime dependency; no JOSE library links into the binary.
 3. **Key derivation**, once at startup, per passphrase in
-   `auth.token_secrets`: argon2id (32-byte output) with a fixed
-   application salt -- there is no per-user storage to hold one, and
-   the derivation's purpose is cost per attacker guess (~100ms), not
-   per-record uniqueness -- then HKDF-SHA-256 with distinct info
-   strings derives the 32-byte encryption key and the `kid`
-   independently. The argon2id cost parameters (time, memory,
+   `auth.token_secrets`: argon2id (32-byte output) with the fixed
+   application salt `"qdb-rest/token-secrets/v1"` -- there is no
+   per-user storage to hold a random one, the derivation's purpose is
+   cost per attacker guess (~100ms), not per-record uniqueness, and the
+   constant domain-separates our derivations from any other argon2id
+   user while its `v1` suffix versions the scheme (changing it rolls
+   every key and `kid`, i.e. a key rotation) -- then HKDF-SHA-256 with
+   distinct info strings derives the 32-byte encryption key and the
+   `kid` independently. The argon2id cost parameters (time, memory,
    parallelism) are configuration, so operators tune the toll to their
    hardware; defaults follow RFC 9106 and live in `internal/config`,
    not here. The parameters join the passphrase as derivation input:
