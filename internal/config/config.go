@@ -91,14 +91,12 @@ type Breaker struct {
 }
 
 // Pool sizes the session pool: the process-wide budget, the per-user cap,
-// the ages at which sessions are closed, and the deadline of one C API
-// call.
+// and the ages at which sessions are closed.
 type Pool struct {
 	MaxSessions int           `yaml:"max_sessions" help:"sessions this process may hold across all users"`
 	PerUserMax  int           `yaml:"per_user_max" help:"sessions one user may hold"`
 	IdleTimeout time.Duration `yaml:"idle_timeout" help:"a session unused this long is closed; a user pool empty this long is evicted"`
 	MaxLifetime time.Duration `yaml:"max_lifetime" help:"a session older than this is closed on return"`
-	CallTimeout time.Duration `yaml:"call_timeout" help:"deadline for one C API call, dial included"`
 	Breaker     Breaker       `yaml:"breaker"`
 }
 
@@ -136,7 +134,6 @@ func Default() Config {
 			PerUserMax:  8,
 			IdleTimeout: 5 * time.Minute,
 			MaxLifetime: 15 * time.Minute,
-			CallTimeout: 60 * time.Second,
 			Breaker:     Breaker{Failures: 3, OpenFor: 10 * time.Second},
 		},
 		Status: Status{ReadinessQuery: "SELECT 1"},
@@ -485,7 +482,7 @@ func validateCluster(c Cluster) error {
 }
 
 // validatePool: every count at least one, the per-user cap within the
-// budget, every age and deadline positive.
+// budget, every age positive.
 func validatePool(p Pool) error {
 	if p.MaxSessions < 1 {
 		return fmt.Errorf("pool.max_sessions must be at least 1, got %d", p.MaxSessions)
@@ -497,9 +494,6 @@ func validatePool(p Pool) error {
 		return err
 	}
 	if err := positive("pool.max_lifetime", p.MaxLifetime); err != nil {
-		return err
-	}
-	if err := positive("pool.call_timeout", p.CallTimeout); err != nil {
 		return err
 	}
 	if p.Breaker.Failures < 1 {
