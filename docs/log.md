@@ -83,6 +83,13 @@ Blocked on:
 
 ## Entries
 
+## 2026-08-31 -- Per-call deadlines are a binding concern, not the gateway's
+
+- Owner decision: the abandon-on-deadline failsafe, session poisoning,
+  the wedged counter and `pool.call_timeout` leave `internal/qdb`; calls
+  are bounded by the C socket timeout. If wanted, the capability belongs
+  upstream (`qdb-api-go` or the C API). ADR-0003.
+
 ## 2026-08-31 -- Pool unit landed; ADR-0003 and ADR-0004 accepted
 
 - `pool-plan.md` deleted; facts moved to ADR-0003 (C API and qdbd
