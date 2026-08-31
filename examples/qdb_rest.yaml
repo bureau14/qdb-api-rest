@@ -80,3 +80,21 @@ status:
   # Query executed by the readiness probe, as the REST API's own user,
   # after the dial; result discarded.
   readiness_query: "SELECT 1"
+
+auth:
+  # Rolling token passphrases (docs/adr/0005-token-cryptography.md): the
+  # first entry mints and verifies, the rest verify only, so a rotation
+  # prepends the new passphrase and later drops the old. Empty: an
+  # ephemeral key is generated at every start, and tokens survive
+  # neither a restart nor a second instance behind a load balancer. As a
+  # flag or environment variable the list is comma-separated.
+  # token_secrets:
+  #   - "${QDB_REST_TOKEN_SECRET}"
+  argon2id:
+    # Cost of deriving keys from the passphrases -- what one attacker
+    # guess pays (RFC 9106's second recommended set). Identical on every
+    # instance behind a load balancer; changing any value re-derives the
+    # keys, which behaves as a key rotation.
+    time: 3
+    memory_mib: 64
+    parallelism: 4

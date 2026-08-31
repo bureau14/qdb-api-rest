@@ -56,6 +56,10 @@ func values(k key) *rapid.Generator[string] {
 		return rapid.Map(rapid.IntRange(-1, 100001), strconv.Itoa)
 	case reflect.TypeFor[int64]():
 		return rapid.SampledFrom([]string{"0", "8589934592", "-1"})
+	case reflect.TypeFor[[]string]():
+		// "" is the empty list; ",x" carries an empty element and "a,a"
+		// a repeated one, both drawn for the reject side.
+		return rapid.SampledFrom([]string{"", "hunter2", "new phrase,old phrase", ",x", "a,a"})
 	}
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }
@@ -121,7 +125,17 @@ func TestLoadIsTheLayerFold(t *testing.T) {
 					ref := "REF_" + strings.ToUpper(strings.ReplaceAll(k.path, ".", "_"))
 					vars[ref], text = text, "${"+ref+"}"
 				}
-				file.put(k.path, text)
+				if k.typ == reflect.TypeFor[[]string]() {
+					// The file carries a real YAML list, not the
+					// comma form the other layers use.
+					value, err := parseValue(k, text)
+					if err != nil {
+						rt.Fatal(err)
+					}
+					file.put(k.path, value)
+				} else {
+					file.put(k.path, text)
+				}
 			}
 			if rapid.Bool().Draw(rt, k.path+" in env") {
 				text := values(k).Draw(rt, k.path+" env")
@@ -153,10 +167,26 @@ func TestLoadIsTheLayerFold(t *testing.T) {
 		if want := validate(expected); (err == nil) != (want == nil) {
 			rt.Fatalf("Load error = %v, validate(expected) = %v", err, want)
 		}
-		if err == nil && cfg != expected {
+		if err == nil && !reflect.DeepEqual(cfg, expected) {
 			rt.Fatalf("got %+v, want %+v", cfg, expected)
 		}
 	})
+}
+
+// A ${VAR} inside a list element expands like any string value; unset,
+// it refuses the start by name.
+func TestListElementsInterpolate(t *testing.T) {
+	path := writeConfig(t, "auth:\n  token_secrets:\n    - \"${TOKEN_A}\"\n    - \"literal\"\n")
+	cfg, err := load([]string{"--config", path}, map[string]string{"TOKEN_A": "hunter2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"hunter2", "literal"}; !reflect.DeepEqual(cfg.Auth.TokenSecrets, want) {
+		t.Fatalf("auth.token_secrets = %v, want %v", cfg.Auth.TokenSecrets, want)
+	}
+	if _, err := load([]string{"--config", path}, nil); err == nil || !strings.Contains(err.Error(), "TOKEN_A") {
+		t.Fatalf("want an error naming TOKEN_A, got %v", err)
+	}
 }
 
 // An unset ${VAR} refuses the start and names the variable.
@@ -218,7 +248,7 @@ func TestExampleIsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg != Default() {
+	if !reflect.DeepEqual(cfg, Default()) {
 		t.Fatalf("examples/qdb_rest.yaml = %+v, want %+v", cfg, Default())
 	}
 }

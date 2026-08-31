@@ -105,8 +105,37 @@ type Status struct {
 	ReadinessQuery string `yaml:"readiness_query" help:"query the readiness probe runs after its dial"`
 }
 
-// Config is the full server configuration. It stays comparable with ==:
-// tests fold layers and compare whole values.
+// Argon2id sets the cost of deriving token keys from passphrases: what
+// one attacker guess pays (ADR-0005). Every instance behind a load
+// balancer must run the same values; changing any of them re-derives
+// every key and behaves as a key rotation.
+type Argon2id struct {
+	Time        int `yaml:"time" help:"argon2id passes over the memory"`
+	MemoryMiB   int `yaml:"memory_mib" help:"argon2id memory cost, in MiB"`
+	Parallelism int `yaml:"parallelism" help:"argon2id lanes"`
+}
+
+// Auth holds the token passphrases (ADR-0005): a rolling list, the first
+// entry mints, the rest are verified against. Empty means an ephemeral
+// key is generated at startup; tokens then survive neither a restart nor
+// a second instance behind a load balancer.
+type Auth struct {
+	TokenSecrets []string `yaml:"token_secrets" help:"rolling token passphrases, first mints and the rest verify; comma-separated as a flag or variable"`
+	Argon2id     Argon2id `yaml:"argon2id"`
+}
+
+// LogValue renders the auth block without its secrets.
+func (a Auth) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Int("token_secrets", len(a.TokenSecrets)),
+		slog.Int("argon2id_time", a.Argon2id.Time),
+		slog.Int("argon2id_memory_mib", a.Argon2id.MemoryMiB),
+		slog.Int("argon2id_parallelism", a.Argon2id.Parallelism))
+}
+
+// Config is the full server configuration. Tests fold layers and compare
+// whole values with reflect.DeepEqual (the passphrase list keeps Config
+// from being ==-comparable).
 type Config struct {
 	Listen  Listen  `yaml:"listen"`
 	TLS     TLS     `yaml:"tls"`
@@ -114,12 +143,15 @@ type Config struct {
 	Cluster Cluster `yaml:"cluster"`
 	Pool    Pool    `yaml:"pool"`
 	Status  Status  `yaml:"status"`
+	Auth    Auth    `yaml:"auth"`
 }
 
 // Default returns the configuration used when nothing is specified: both
 // listeners on their customary ports, JSON logs at info, the local
-// insecure cluster, C API knobs at their C API defaults, and the pool
-// sized for one gateway in front of one cluster.
+// insecure cluster, C API knobs at their C API defaults, the pool sized
+// for one gateway in front of one cluster, no token passphrases (an
+// ephemeral key per start), and argon2id at RFC 9106's second
+// recommended cost.
 func Default() Config {
 	return Config{
 		Listen: Listen{HTTP: ":40080", HTTPS: ":40443"},
@@ -137,6 +169,14 @@ func Default() Config {
 			Breaker:     Breaker{Failures: 3, OpenFor: 10 * time.Second},
 		},
 		Status: Status{ReadinessQuery: "SELECT 1"},
+		// The empty secrets list is the non-nil empty slice: the
+		// defaults round-trip through YAML (defaults()), where nil
+		// marshals as [] and decodes back non-nil, and one canonical
+		// empty keeps whole-value compares honest.
+		Auth: Auth{
+			TokenSecrets: []string{},
+			Argon2id:     Argon2id{Time: 3, MemoryMiB: 64, Parallelism: 4},
+		},
 	}
 }
 
@@ -224,6 +264,15 @@ func parseValue(k key, text string) (any, error) {
 			return nil, fmt.Errorf("want a size in bytes, got %q", text)
 		}
 		return n, nil
+	case reflect.TypeFor[[]string]():
+		// The environment and the command line carry a list
+		// comma-separated; an element containing a comma must arrive
+		// through the YAML list form. Empty text is the canonical
+		// empty list (see Default).
+		if text == "" {
+			return []string{}, nil
+		}
+		return strings.Split(text, ","), nil
 	}
 	panic("config: unsupported key type " + k.typ.String())
 }
@@ -235,6 +284,8 @@ func placeholder(k key) string {
 		return "DURATION"
 	case reflect.TypeFor[int](), reflect.TypeFor[int64]():
 		return "N"
+	case reflect.TypeFor[[]string]():
+		return "LIST"
 	}
 	return "VALUE"
 }
@@ -361,20 +412,36 @@ func envLayer(lookup func(string) (string, bool)) (map[string]any, error) {
 	return layer(values, envName)
 }
 
-// interpolate expands ${VAR} in every string value the file loaded.
-// Values only, never the raw file: comments may mention the syntax freely.
+// interpolate expands ${VAR} in every string value the file loaded,
+// list elements included (a secret in auth.token_secrets arrives this
+// way). Values only, never the raw file: comments may mention the syntax
+// freely.
 func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 	for path, value := range k.All() {
-		text, ok := value.(string)
-		if !ok {
-			continue
-		}
-		expanded, err := interpolateEnv(text, lookup)
-		if err != nil {
-			return err
-		}
-		if err := k.Set(path, expanded); err != nil {
-			return err
+		switch v := value.(type) {
+		case string:
+			expanded, err := interpolateEnv(v, lookup)
+			if err != nil {
+				return err
+			}
+			if err := k.Set(path, expanded); err != nil {
+				return err
+			}
+		case []any:
+			for i, item := range v {
+				text, ok := item.(string)
+				if !ok {
+					continue
+				}
+				expanded, err := interpolateEnv(text, lookup)
+				if err != nil {
+					return err
+				}
+				v[i] = expanded
+			}
+			if err := k.Set(path, v); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -502,6 +569,32 @@ func validatePool(p Pool) error {
 	return positive("pool.breaker.open_for", p.Breaker.OpenFor)
 }
 
+// validateAuth: every passphrase non-empty and unique (a repeated entry
+// would derive the same key twice), the argon2id costs at least one pass
+// over one MiB, the lane count within argon2's uint8.
+func validateAuth(a Auth) error {
+	seen := map[string]bool{}
+	for i, s := range a.TokenSecrets {
+		if s == "" {
+			return fmt.Errorf("auth.token_secrets[%d] is empty", i)
+		}
+		if seen[s] {
+			return fmt.Errorf("auth.token_secrets[%d] repeats an earlier passphrase", i)
+		}
+		seen[s] = true
+	}
+	if a.Argon2id.Time < 1 {
+		return fmt.Errorf("auth.argon2id.time must be at least 1, got %d", a.Argon2id.Time)
+	}
+	if a.Argon2id.MemoryMiB < 1 {
+		return fmt.Errorf("auth.argon2id.memory_mib must be at least 1, got %d", a.Argon2id.MemoryMiB)
+	}
+	if a.Argon2id.Parallelism < 1 || a.Argon2id.Parallelism > 255 {
+		return fmt.Errorf("auth.argon2id.parallelism must be within 1..255, got %d", a.Argon2id.Parallelism)
+	}
+	return nil
+}
+
 // validate rejects impossible configurations before the server starts.
 func validate(cfg Config) error {
 	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
@@ -522,7 +615,7 @@ func validate(cfg Config) error {
 	if cfg.Status.ReadinessQuery == "" {
 		return errors.New("status.readiness_query must not be empty")
 	}
-	return nil
+	return validateAuth(cfg.Auth)
 }
 
 // Load assembles the configuration for one process: defaults, then the
