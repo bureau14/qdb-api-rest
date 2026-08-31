@@ -55,16 +55,16 @@ type Log struct {
 	Format string `yaml:"format" help:"json | console"`
 }
 
-// Cluster binds the process to one cluster: where it is, its public key,
-// the REST API's own user (username and secret key inline, or the user
-// security file that carries both; all empty means anonymous), and the
-// per-session C API knobs. A zero knob means the C API default.
+// Cluster binds the process to one cluster: where it is, its public key
+// file, the REST API's own user (the user security file carrying username
+// and secret key; empty means anonymous), and the per-session C API
+// knobs. A zero knob means the C API default. Key material comes from
+// files only, the form QuasarDB's tooling produces; a secret never sits
+// in the YAML. Callers' credentials arrive inline through the API and
+// never through this struct.
 type Cluster struct {
 	URI                   string        `yaml:"uri" help:"cluster URI, comma-separated for several nodes"`
-	PublicKey             string        `yaml:"public_key" help:"cluster public key, inline; empty means an insecure cluster"`
-	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file"`
-	Username              string        `yaml:"username" help:"the REST API's own user, set together with cluster.secret_key"`
-	SecretKey             string        `yaml:"secret_key" help:"secret key of the REST API's own user"`
+	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file; empty means an insecure cluster"`
 	UserSecurityFile      string        `yaml:"user_security_file" help:"user security file of the REST API's own user"`
 	Compression           string        `yaml:"compression" help:"client-side C API compression: none | balanced"`
 	Encryption            string        `yaml:"encryption" help:"client-cluster traffic encryption: none | aes"`
@@ -74,15 +74,12 @@ type Cluster struct {
 	ConnectionsPerAddress int           `yaml:"connections_per_address" help:"soft limit on connections per node address, per session; 0 means the C API default"`
 }
 
-// LogValue renders the binding without key material.
+// LogValue renders the binding compactly for the startup log.
 func (c Cluster) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("uri", c.URI),
 		slog.String("public_key_file", c.PublicKeyFile),
-		slog.Bool("public_key_set", c.PublicKey != ""),
-		slog.String("username", c.Username),
 		slog.String("user_security_file", c.UserSecurityFile),
-		slog.Bool("secret_key_set", c.SecretKey != ""),
 		slog.String("compression", c.Compression),
 		slog.String("encryption", c.Encryption),
 		slog.Duration("timeout", c.Timeout))

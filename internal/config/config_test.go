@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -221,16 +220,5 @@ func TestExampleIsTheDefaults(t *testing.T) {
 	}
 	if cfg != Default() {
 		t.Fatalf("examples/qdb_rest.yaml = %+v, want %+v", cfg, Default())
-	}
-}
-
-// Secret-bearing config types never render their secret.
-func TestSecretsNeverLogged(t *testing.T) {
-	c := Cluster{PublicKey: "PUBKEY", Username: "u", SecretKey: "S3CRET"}
-	rendered := fmt.Sprint(c.LogValue())
-	for _, leak := range []string{"S3CRET", "PUBKEY"} {
-		if strings.Contains(rendered, leak) {
-			t.Errorf("LogValue leaks %s: %s", leak, rendered)
-		}
 	}
 }

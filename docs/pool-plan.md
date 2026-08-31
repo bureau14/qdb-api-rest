@@ -38,7 +38,7 @@ already exists.
 | The cluster travels in `context.Context` next to the logger; handlers take it from the request context through package-level `qdb` entry points, and `ClusterFrom` panics without one, like `observe.Logger`          | a value passed along is simpler and more stable than injection plumbing; the logger already sets the pattern                                            | constructor injection into `httpapi.NewHandler`; a nil-returning lookup                           |
 | `/metrics` is out of scope for this unit                                                                                                                                                                              | M2 owns the exposition endpoint; the pool exposes counters in-process only                                                                              | a minimal `/metrics` now                                                                          |
 | Tests run against the live qdbd of `scripts/tests/setup/` wherever a real database is the cheapest fixture; a mechanism that would need the C API stalled or mocked is left untested beyond its pure part             | we are not testing the C API, which has no way to mock an error or a stall; a listener that never answers exercises the C API's blocking, not this code | stalling `connect` behind a silent listener; a fake dialer injected into the pool                 |
-| Key material inline or as a file; when both are given the binding reads the file                                                                                                                                      | inline suits `${VAR}` secret injection; files suit the QuasarDB key conventions; rejecting the pair is enforcement for its own sake                     | inline only; files only; a startup error for both                                                 |
+| The cluster key and the REST API's own user come from files only (`public_key_file`, `user_security_file`); callers' credentials arrive inline through the API, never through config                                  | files are what QuasarDB's tooling produces; a secret in the YAML invites leaks                                                                          | inline config keys with `${VAR}` injection; inline next to file with a precedence rule            |
 | Every key is a file key, a `QDB_REST_<KEY_PATH>` variable and a `--<key-path>` flag (dots and underscores as hyphens), derived from the one config struct; `--cluster` and `--user-security-file` are `qdbsh` aliases | the operator picks the layer; one definition, no hand-kept list per layer                                                                               | flags for `qdbsh`'s three keys only; a hand-written table per layer                               |
 | The loader is koanf over stdlib `flag`: defaults from the struct, the file, the environment, the explicitly passed flags, in that order                                                                               | layering and type coercion without hand-written setters; stdlib `flag` keeps the GNU usage                                                              | a hand-rolled reflection walker; viper with `pflag`                                               |
 | The C API judges the dial options at dial time; the config validates only its vocabulary, the whole-second socket timeout, the buffer size and the pool cross-checks; there is no eager validation                    | one matrix, in the C API; a startup fail-fast would duplicate it for the sake of a few seconds                                                          | duplicating the C API's checks here; eager validation in the binding (code bloat)                 |
@@ -188,16 +188,11 @@ strings; sizes are bytes.
 cluster:
   # Cluster URI; several nodes as a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
-  # Cluster public key, inline or as a file (the file wins when both are
-  # given); empty means an insecure cluster.
-  public_key: ""
+  # Cluster public key file; empty means an insecure cluster.
   public_key_file: ""
-  # The REST API's own user, the one it authenticates as on its own
-  # behalf (the readiness probe): username and secret key inline, or the
-  # user security file that carries both. Required when the cluster has a
-  # public key; all empty means anonymous.
-  username: ""
-  secret_key: ""
+  # User security file of the REST API's own user, the one it
+  # authenticates as on its own behalf (the readiness probe). Required
+  # when the cluster has a public key; empty means anonymous.
   user_security_file: ""
   # Client-side C API compression: none | balanced (the binding exposes
   # only these two).

@@ -570,8 +570,8 @@ pretending otherwise:
   instances behind a load balancer (each instance derives its own
   ephemeral key). Secured clusters require an explicit secret. No default
   keys, ever.
-- The REST API has its **own QuasarDB user** (`cluster.username` and
-  `cluster.secret_key`, or `cluster.user_security_file`), the one it
+- The REST API has its **own QuasarDB user** (`cluster.user_security_file`),
+  the one it
   authenticates as on its own behalf: readiness checks, and future
   central coordination.
 - **Revocation is deliberately deferred.** The `jti` + generation claims

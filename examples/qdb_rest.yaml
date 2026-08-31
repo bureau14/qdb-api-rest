@@ -32,16 +32,11 @@ log:
 cluster:
   # Cluster URI; several nodes as a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
-  # Cluster public key, inline or as a file (the file wins when both are
-  # given); empty means an insecure cluster.
-  public_key: ""
+  # Cluster public key file; empty means an insecure cluster.
   public_key_file: ""
-  # The REST API's own user, the one it authenticates as on its own
-  # behalf (the readiness probe): username and secret key inline, or the
-  # user security file that carries both. Required when the cluster has a
-  # public key; all empty means anonymous.
-  username: ""
-  secret_key: ""
+  # User security file of the REST API's own user, the one it
+  # authenticates as on its own behalf (the readiness probe). Required
+  # when the cluster has a public key; empty means anonymous.
   user_security_file: ""
   # Client-side C API compression: none | balanced (the C binding exposes
   # only these two; the C API's "best" level is not wrapped).

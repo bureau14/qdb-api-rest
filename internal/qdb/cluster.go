@@ -76,9 +76,11 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 	return c
 }
 
-// ownCredentials are the REST API's own user, from config.
+// ownCredentials are the REST API's own user: config carries it as a user
+// security file only; inline credentials exist only for callers, whose
+// secrets arrive through the API.
 func (c *Cluster) ownCredentials() credentials {
-	return credentials{username: c.cfg.Username, secretKey: c.cfg.SecretKey, userSecurityFile: c.cfg.UserSecurityFile}
+	return credentials{userSecurityFile: c.cfg.UserSecurityFile}
 }
 
 // compressionOf and encryptionOf map the config vocabulary onto the
@@ -106,9 +108,6 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 		WithCompression(compressionOf(c.cfg.Compression)).
 		WithEncryption(encryptionOf(c.cfg.Encryption)).
 		WithTimeout(c.cfg.Timeout)
-	if c.cfg.PublicKey != "" {
-		o = o.WithClusterPublicKey(c.cfg.PublicKey)
-	}
 	if c.cfg.PublicKeyFile != "" {
 		o = o.WithClusterPublicKeyFile(c.cfg.PublicKeyFile)
 	}
