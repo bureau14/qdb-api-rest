@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -94,9 +95,13 @@ func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 }
 
 // loadCertificate resolves the certificate per config: the PEM pair when
-// configured, a generated one otherwise. config.Load guarantees the pair
-// is complete or absent.
+// configured, a generated one otherwise. A lone certificate or key is
+// rejected here, the one place that reads the pair, so a half-configured
+// pair can never silently serve an ephemeral certificate.
 func loadCertificate(cfg config.TLS, now time.Time) (tls.Certificate, Source, error) {
+	if (cfg.Certificate == "") != (cfg.PrivateKey == "") {
+		return tls.Certificate{}, SourceFile, errors.New("tls.certificate and tls.private_key must be set together")
+	}
 	if cfg.Certificate == "" {
 		cert, err := generateSelfSigned(now)
 		return cert, SourceEphemeral, err

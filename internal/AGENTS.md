@@ -11,6 +11,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   parameter of anything that does I/O, logs, or can be cancelled.
 - Small composable functions with descriptive names; explicit over
   implicit. Comments state why, as facts; never history.
+- Validation has one home: the component that consumes a value owns its
+  checks, made once, where a violation cannot get past them (`tlsconf`
+  owns the certificate-pair rule; the C API judges the dial options at
+  dial). Never duplicate a rule at a second layer, and add no eager
+  check for what the consumer already rejects loudly.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its

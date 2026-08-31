@@ -514,9 +514,6 @@ func validate(cfg Config) error {
 	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
 		return errors.New("both listeners disabled: set listen.http or listen.https")
 	}
-	if (cfg.TLS.Certificate == "") != (cfg.TLS.PrivateKey == "") {
-		return errors.New("tls.certificate and tls.private_key must be set together")
-	}
 	if err := oneOf("log.level", cfg.Log.Level); err != nil {
 		return err
 	}

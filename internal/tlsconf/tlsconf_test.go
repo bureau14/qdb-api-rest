@@ -113,6 +113,15 @@ func TestFileCertificates(t *testing.T) {
 	}
 }
 
+func TestLoneCertificateOrKeyIsError(t *testing.T) {
+	certPath, keyPath, _ := writePEMPair(t, t.TempDir())
+	for _, cfg := range []config.TLS{{Certificate: certPath}, {PrivateKey: keyPath}} {
+		if _, _, err := Load(cfg, time.Now()); err == nil {
+			t.Fatalf("want an error for the half-configured pair %+v, got nil", cfg)
+		}
+	}
+}
+
 func TestMissingFileIsError(t *testing.T) {
 	_, _, err := Load(config.TLS{Certificate: "/nonexistent/cert.pem", PrivateKey: "/nonexistent/key.pem"}, time.Now())
 	if err == nil {
