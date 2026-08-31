@@ -26,8 +26,7 @@ path and no dependency on its state.
 
 1. **Liveness** is the canonical k8s definition: the process serves
    HTTP. It is never cluster-aware.
-2. **Readiness** dials a fresh session as the REST API's own user under
-   `pool.call_timeout` (the abandon-on-deadline mechanism of ADR-0003),
+2. **Readiness** dials a fresh session as the REST API's own user,
    runs one query -- `status.readiness_query`, default `SELECT 1` --
    and closes the session on its own goroutine. The dial proves the
    cluster is reachable and the REST API's own user authenticates; the query
