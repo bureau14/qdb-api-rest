@@ -240,10 +240,12 @@ ecosystems and is trivial to deploy.
 
 Versioning stance: the legacy unversioned API is retroactively **v1** --
 frozen, warts and all, served forever. New endpoints are minted under
-`/api/v2/*` only. Every legacy endpoint is served at both its historical
-unversioned path and an `/api/v1/<path>` alias that makes the legacy
-protocol explicit; an unversioned path assumes v1. Both spellings are the
-same handler served directly -- never an HTTP redirect (a 307/308 on POST
+`/api/v2/*` only. The canonical spelling of every legacy endpoint is
+`/api/v1/<path>`: the URI itself says the legacy protocol is in play, and
+internal references -- documentation, code, tests -- use only this form.
+The historical unversioned path is additionally mapped onto the same
+handler, a compatibility nice-to-have for existing clients. The mapping
+serves the handler directly -- never an HTTP redirect (a 307/308 on POST
 breaks conservative HTTP clients and changes observable behavior, and the
 goldens pin direct `200` responses).
 
@@ -259,7 +261,7 @@ The following endpoints must behave byte-shape identically to the old
 server. Golden responses captured from the old server are part of the e2e
 test suite; this section is the specification.
 
-### POST /api/login
+### POST /api/v1/login
 
 - Request: `{"username": "...", "secret_key": "..."}` -- literally the
   content of a QuasarDB user private-key file. Empty or absent username
@@ -273,10 +275,10 @@ test suite; this section is the specification.
   expected to re-login on 401 (verified: the Grafana plugin clears its
   token and retries on 401).
 
-### POST /api/query
+### POST /api/v1/query
 
 - Auth: `Authorization: Bearer <token>` or `?token=<token>` query parameter
-  (legacy only; v2 does not accept tokens in URLs).
+  (v1 only; v2 does not accept tokens in URLs).
 - Request: `{"query": "..."}`. (The old README showing a bare JSON string is
   wrong; the deployed binder and the Grafana plugin both use the object
   form.)
@@ -294,10 +296,10 @@ test suite; this section is the specification.
     routed too.
 - Errors 400/500: `{"message": "..."}`.
 
-### GET /api/tags
+### GET /api/v1/tags
 
 - Auth as above. Optional `?regex=` parameter.
-- Response: the same `QueryResult` shape as `/api/query`, containing a
+- Response: the same `QueryResult` shape as `/api/v1/query`, containing a
   single table named `""` with one column `name` of type `string`.
 - Consumer: the Grafana plugin's tag autocomplete.
 
@@ -551,7 +553,8 @@ pretending otherwise:
   surfaced as "logged in since" by `GET /api/v2/session`).
 - **Access tokens** are short-lived (minutes); **refresh tokens** are
   long-lived and sliding. `/api/v2/auth/refresh` returns a fresh pair. One
-  verifier handles both, plus the 12h tokens minted by legacy `/api/login`.
+  verifier handles both, plus the 12h tokens minted by legacy
+  `/api/v1/login`.
 - **Keys from passphrases**: config holds human-friendly passphrases;
   actual keys are derived once at startup via argon2id (memory-hard: an
   attacker brute-forcing a captured token pays ~100ms per passphrase
@@ -785,9 +788,9 @@ entry/exit criteria defined when it starts.
   scaffolding against a live qdbd.
 - **M1 -- Drop-in compat**: auth core (JWE, key derivation, rolling keys,
   legacy 12h tokens), connection pool core (budget, breaker, retry),
-  legacy `/api/login`, `/api/query`, `/api/tags` with golden equivalence
-  tests. Outcome: replaces the old binary at a customer site with no
-  client changes.
+  legacy `/api/v1/login`, `/api/v1/query`, `/api/v1/tags` (and their
+  unversioned compat aliases) with golden equivalence tests. Outcome:
+  replaces the old binary at a customer site with no client changes.
 - **M2 -- v2 data plane**: streaming query engine + all four encoders,
   compression, v2 auth endpoints, tables/schema/tags/cluster endpoints,
   multi-table ingestion, admission control, `/metrics`, performance

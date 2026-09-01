@@ -33,8 +33,9 @@ In flight:
 
 Next:
 
-1. `/api/query` with the legacy JSON encoder (Bearer and `?token=`
-   verification, the pinned 401 bodies), then `/api/tags`, golden by
+1. `/api/v1/query` with the legacy JSON encoder (Bearer and `?token=`
+   verification, the pinned 401 bodies), then `/api/v1/tags`; the
+   unversioned compat aliases map onto the same handlers; golden by
    golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` is
    green.
 2. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
@@ -79,6 +80,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-01 -- canonical spelling is /api/v1
+
+- Owner decision: internal references always spell legacy endpoints
+  `/api/v1/<path>`; the unversioned aliases are compatibility-only.
+  `docs/brief.md`, Compatibility contract.
 
 ## 2026-09-01 -- ADR-0005 accepted: token cryptography
 
