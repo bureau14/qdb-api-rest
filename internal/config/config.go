@@ -569,32 +569,6 @@ func validatePool(p Pool) error {
 	return positive("pool.breaker.open_for", p.Breaker.OpenFor)
 }
 
-// validateAuth: every passphrase non-empty and unique (a repeated entry
-// would derive the same key twice), the argon2id costs at least one pass
-// over one MiB, the lane count within argon2's uint8.
-func validateAuth(a Auth) error {
-	seen := map[string]bool{}
-	for i, s := range a.TokenSecrets {
-		if s == "" {
-			return fmt.Errorf("auth.token_secrets[%d] is empty", i)
-		}
-		if seen[s] {
-			return fmt.Errorf("auth.token_secrets[%d] repeats an earlier passphrase", i)
-		}
-		seen[s] = true
-	}
-	if a.Argon2id.Time < 1 {
-		return fmt.Errorf("auth.argon2id.time must be at least 1, got %d", a.Argon2id.Time)
-	}
-	if a.Argon2id.MemoryMiB < 1 {
-		return fmt.Errorf("auth.argon2id.memory_mib must be at least 1, got %d", a.Argon2id.MemoryMiB)
-	}
-	if a.Argon2id.Parallelism < 1 || a.Argon2id.Parallelism > 255 {
-		return fmt.Errorf("auth.argon2id.parallelism must be within 1..255, got %d", a.Argon2id.Parallelism)
-	}
-	return nil
-}
-
 // validate rejects impossible configurations before the server starts.
 func validate(cfg Config) error {
 	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
@@ -615,7 +589,7 @@ func validate(cfg Config) error {
 	if cfg.Status.ReadinessQuery == "" {
 		return errors.New("status.readiness_query must not be empty")
 	}
-	return validateAuth(cfg.Auth)
+	return nil
 }
 
 // Load assembles the configuration for one process: defaults, then the

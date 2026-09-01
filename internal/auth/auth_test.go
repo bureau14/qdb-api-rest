@@ -180,6 +180,21 @@ func TestEphemeralIsolated(t *testing.T) {
 	}
 }
 
+// New refuses what derivation cannot use, naming the config key.
+func TestBadConfigRefused(t *testing.T) {
+	for name, a := range map[string]config.Auth{
+		"empty passphrase":     {TokenSecrets: []string{""}, Argon2id: testCost},
+		"duplicate passphrase": {TokenSecrets: []string{"a", "a"}, Argon2id: testCost},
+		"zero time":            {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 0, MemoryMiB: 1, Parallelism: 1}},
+		"zero memory":          {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 0, Parallelism: 1}},
+		"lanes overflow":       {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 256}},
+	} {
+		if _, err := New(ctx(), a, func() time.Time { return epoch }); err == nil || !strings.Contains(err.Error(), "auth.") {
+			t.Errorf("%s: want a refusal naming the key, got %v", name, err)
+		}
+	}
+}
+
 // Changing any argon2id cost re-derives key and kid: a cost bump behaves
 // as a key rotation (ADR-0005).
 func TestCostChangeRollsKeys(t *testing.T) {

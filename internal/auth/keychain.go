@@ -87,6 +87,34 @@ type keychain struct {
 	verify map[string]key
 }
 
+// validateAuth refuses what derivation cannot use, naming the config
+// key: every passphrase non-empty and unique (a repeated entry would
+// derive the same key twice), the costs at least one pass over one MiB,
+// the lane count within the argon2 API's uint8. As the consumer of
+// these values this package owns the checks; config only parses shape.
+func validateAuth(a config.Auth) error {
+	seen := map[string]bool{}
+	for i, s := range a.TokenSecrets {
+		if s == "" {
+			return fmt.Errorf("auth.token_secrets[%d] is empty", i)
+		}
+		if seen[s] {
+			return fmt.Errorf("auth.token_secrets[%d] repeats an earlier passphrase", i)
+		}
+		seen[s] = true
+	}
+	if a.Argon2id.Time < 1 {
+		return fmt.Errorf("auth.argon2id.time must be at least 1, got %d", a.Argon2id.Time)
+	}
+	if a.Argon2id.MemoryMiB < 1 {
+		return fmt.Errorf("auth.argon2id.memory_mib must be at least 1, got %d", a.Argon2id.MemoryMiB)
+	}
+	if a.Argon2id.Parallelism < 1 || a.Argon2id.Parallelism > 255 {
+		return fmt.Errorf("auth.argon2id.parallelism must be within 1..255, got %d", a.Argon2id.Parallelism)
+	}
+	return nil
+}
+
 // ephemeral is a single-key keychain from random material, the fallback
 // when no passphrase is configured: tokens then survive neither a
 // restart nor a second instance. Random material needs no argon2id
@@ -110,6 +138,9 @@ func ephemeral() (keychain, error) {
 // newKeychain derives every configured passphrase once, first entry
 // minting, or falls back to an ephemeral key.
 func newKeychain(a config.Auth) (keychain, error) {
+	if err := validateAuth(a); err != nil {
+		return keychain{}, err
+	}
 	if len(a.TokenSecrets) == 0 {
 		return ephemeral()
 	}

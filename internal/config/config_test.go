@@ -57,8 +57,8 @@ func values(k key) *rapid.Generator[string] {
 	case reflect.TypeFor[int64]():
 		return rapid.SampledFrom([]string{"0", "8589934592", "-1"})
 	case reflect.TypeFor[[]string]():
-		// "" is the empty list; ",x" carries an empty element and "a,a"
-		// a repeated one, both drawn for the reject side.
+		// Config owns only the list's shape; ",x" and "a,a" fold like
+		// any value (internal/auth judges their content, at startup).
 		return rapid.SampledFrom([]string{"", "hunter2", "new phrase,old phrase", ",x", "a,a"})
 	}
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
