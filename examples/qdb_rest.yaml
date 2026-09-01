@@ -17,7 +17,7 @@ listen:
 tls:
   # PEM certificate and private key for the HTTPS listener, set together.
   # Both empty: an ephemeral self-signed certificate is generated at every
-  # start (docs/adr/0001-tls-certificates.md).
+  # start.
   certificate: ""
   private_key: ""
   # private_key: "${QDB_REST_TLS_KEY_PATH}"
@@ -82,19 +82,13 @@ status:
   readiness_query: "SELECT 1"
 
 auth:
-  # Rolling token passphrases (docs/adr/0005-token-cryptography.md): the
-  # first entry mints and verifies, the rest verify only, so a rotation
-  # prepends the new passphrase and later drops the old. Empty: an
-  # ephemeral key is generated at every start, and tokens survive
-  # neither a restart nor a second instance behind a load balancer. As a
-  # flag or environment variable the list is comma-separated.
+  # Rolling token passphrases: the first entry mints tokens, the rest
+  # stay valid during rotation. Empty: tokens do not survive a restart
+  # and do not span multiple instances.
   # token_secrets:
   #   - "${QDB_REST_TOKEN_SECRET}"
   argon2id:
-    # Cost of deriving keys from the passphrases -- what one attacker
-    # guess pays (RFC 9106's second recommended set). Identical on every
-    # instance behind a load balancer; changing any value re-derives the
-    # keys, which behaves as a key rotation.
+    # Token key-derivation cost; must be identical on every instance.
     time: 3
     memory_mib: 64
     parallelism: 4
