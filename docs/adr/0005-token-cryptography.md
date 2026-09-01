@@ -1,6 +1,6 @@
 # ADR-0005: Token cryptography: hand-rolled compact JWE, dir + A256GCM
 
-Status: proposed
+Status: accepted
 Date: 2026-08-31
 Milestone: M1
 

@@ -80,6 +80,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-01 -- ADR-0005 accepted: token cryptography
+
+- Hand-rolled dir+A256GCM compact JWE, argon2id + HKDF derivation,
+  go-jose as the test-side cross-check. `internal/auth` and legacy
+  `/api/login` land with it.
+
 ## 2026-09-01 -- ADR-0006 accepted: clock injection
 
 - The clock is a `now func() time.Time` constructor argument, never
