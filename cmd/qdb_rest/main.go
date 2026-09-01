@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
@@ -185,16 +186,27 @@ func main() {
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)
 
-	// 4. The listeners, over the root context so every request inherits
-	//    the logger and the cluster. Loading the TLS material is the one
-	//    step here that can fail.
+	// 4. The token keychain, derived once from the configured
+	//    passphrases (ADR-0005); it travels in the context like the
+	//    cluster. Derivation pays the argon2id cost per passphrase here,
+	//    at startup, never per request.
+	tokens, err := auth.New(ctx, cfg.Auth, time.Now)
+	if err != nil {
+		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
+		os.Exit(1)
+	}
+	ctx = auth.WithTokens(ctx, tokens)
+
+	// 5. The listeners, over the root context so every request inherits
+	//    the logger, the cluster and the keychain. Loading the TLS
+	//    material is the one step here that can fail.
 	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 
-	// 5. Serve until a signal or a listener failure, then drain: HTTP
+	// 6. Serve until a signal or a listener failure, then drain: HTTP
 	//    first, the cluster second, one shutdownGrace for both.
 	runErr := serveUntilDone(ctx, servers)
 	shutdown(ctx, servers, cluster)
