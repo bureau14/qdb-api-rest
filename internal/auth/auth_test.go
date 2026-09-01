@@ -68,6 +68,8 @@ func claimsGen(rt *rapid.T) Claims {
 // Whatever goes in comes out, under any passphrase list.
 func TestMintVerifyRoundtrip(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
+		// Mint under a drawn keychain; Verify must return the claims
+		// bit-identical, whatever the strings contained.
 		tk := tokensFor(rt, secretsGen().Draw(rt, "secrets"))
 		c := claimsGen(rt)
 		token, err := tk.Mint(c)
@@ -138,8 +140,11 @@ func TestTamperNeverVerifies(t *testing.T) {
 		if err != nil {
 			rt.Fatal(err)
 		}
+		// The alphabet stays within token characters, so every
+		// mutation yields a plausible token, not a cheap parse reject.
 		i := rapid.IntRange(0, len(token)-1).Draw(rt, "index")
 		r := alphabet[rapid.IntRange(0, len(alphabet)-1).Draw(rt, "replacement")]
+		// A replacement equal to the original proves nothing; skip.
 		if token[i] == r {
 			rt.Skip("replacement equals original")
 		}
@@ -166,12 +171,15 @@ func TestVerifyNeverPanics(t *testing.T) {
 
 // Two ephemeral keychains never accept each other's tokens.
 func TestEphemeralIsolated(t *testing.T) {
+	// Nil secrets: each New draws its own random key.
 	a := tokensFor(t, nil)
 	b := tokensFor(t, nil)
 	token, err := a.Mint(Claims{ExpiresAt: epoch.Unix() + 60})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// a's token verifies at a and dies at b -- the documented cost of
+	// running unconfigured behind a load balancer.
 	if _, err := a.Verify(token); err != nil {
 		t.Fatalf("own token rejected: %v", err)
 	}
@@ -198,6 +206,8 @@ func TestBadConfigRefused(t *testing.T) {
 // Changing any argon2id cost re-derives key and kid: a cost bump behaves
 // as a key rotation (ADR-0005).
 func TestCostChangeRollsKeys(t *testing.T) {
+	// White-box on derive: the kid fingerprints passphrase, salt and
+	// costs together, so a cost bump must roll it.
 	bumped := config.Argon2id{Time: 2, MemoryMiB: 1, Parallelism: 1}
 	before, err := derive("passphrase", testCost)
 	if err != nil {

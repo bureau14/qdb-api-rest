@@ -428,6 +428,8 @@ func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 				return err
 			}
 		case []any:
+			// koanf hands a YAML list back as []any; only its string
+			// elements can carry ${VAR}.
 			for i, item := range v {
 				text, ok := item.(string)
 				if !ok {
@@ -439,6 +441,7 @@ func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 				}
 				v[i] = expanded
 			}
+			// Mutate in place, then Set so koanf sees the expanded list.
 			if err := k.Set(path, v); err != nil {
 				return err
 			}

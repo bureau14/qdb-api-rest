@@ -40,10 +40,14 @@ func handleLegacyLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	// A fresh sid and jti per login; auth_time equals iat because this
+	// is an original login, never a refresh.
 	token, err := auth.TokensFrom(ctx).Mint(auth.Claims{
 		Username:  req.Username,
 		SecretKey: req.SecretKey,
 		SessionID: uuid.NewV7().String(),
+		// Legacy tokens are long-lived access tokens: typ access, the
+		// contract's 12h exp, and no refresh counterpart.
 		Typ:       "access",
 		JTI:       uuid.NewV7().String(),
 		AuthTime:  now.Unix(),

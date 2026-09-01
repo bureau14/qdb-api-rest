@@ -67,7 +67,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 ## Tests
 
 - Pin genuine logic only; no tests for glue. White-box, same package,
-  small helpers declared before use, `t.Helper()`.
+  small helpers declared before use, `t.Helper()`. Test bodies carry the
+  same compact walk-through comments as dense code wherever a step's
+  purpose is not evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
   wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
 - The tests are not in the business of testing the C API, which offers
