@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -33,18 +33,18 @@ In flight:
 
 Next:
 
-1. Auth ADR, then `internal/auth`.
-2. `/api/login`, `/api/query` with the legacy JSON encoder, `/api/tags`,
-   golden by golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>`
-   is green.
-3. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
+1. `/api/query` with the legacy JSON encoder (Bearer and `?token=`
+   verification, the pinned 401 bodies), then `/api/tags`, golden by
+   golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` is
+   green.
+2. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
    and run `make -C tests/e2e/bench bench-legacy@new-rest`.
-4. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+3. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-5. Circle back, no date: return the e2e harness to CI
+4. Circle back, no date: return the e2e harness to CI
    (`.buildkite/AGENTS.md` holds the decision and the recipe).
 
 Handoff to M1:
@@ -61,9 +61,6 @@ Handoff to M1:
   (`tests/e2e/Makefile`). An oversized reply
   (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it costs no
   reconnect; M2 maps it to a client error.
-- `/api/login` for a known user finds the existing pool and dials
-  nothing; auth's session id claim never reaches `internal/qdb`
-  (ADR-0003).
 - Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
   `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
   keeping the brief's sentinel mapping for typed undefined values is
