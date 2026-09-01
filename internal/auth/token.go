@@ -67,6 +67,9 @@ func headerFor(kid string) string {
 // parseHeader decodes a protected header strictly: exactly the three
 // known fields, exactly our algorithms.
 func parseHeader(raw []byte) (header, error) {
+	// DisallowUnknownFields makes the allowlist the whole parser: any
+	// extra parameter -- zip, crit, an algorithm we do not speak -- is
+	// an error before any of it can take effect.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var h header
@@ -104,12 +107,21 @@ func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, err
 // header, empty encrypted-key segment (alg dir), random IV, ciphertext,
 // tag, each base64url. The encoded header is the AAD (RFC 7516).
 func (t *Tokens) Mint(c Claims) (string, error) {
+	// The claims are the JWE plaintext: everything in them, secret key
+	// included, ends up encrypted and authenticated.
 	plaintext, err := json.Marshal(c)
 	if err != nil {
 		return "", err
 	}
+	// The encoded protected header doubles as the AAD, so the header is
+	// authenticated too: nobody can re-point an existing ciphertext at
+	// another key or mode by swapping the header.
 	k := t.keys.mint
 	protected := b64.EncodeToString([]byte(headerFor(k.kid)))
+	// One fresh random IV per token. GCM's safety rests on never
+	// reusing one under the same key; at token-minting volume (one per
+	// login or refresh) the random-collision bound is unreachable
+	// within any rotation period (ADR-0005).
 	iv := make([]byte, k.aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
 		return "", err
@@ -118,6 +130,9 @@ func (t *Tokens) Mint(c Claims) (string, error) {
 	// GCM appends its tag to the ciphertext; JWE carries the tag as its
 	// own segment.
 	split := len(sealed) - k.aead.Overhead()
+	// Compact serialization: header.key.iv.ciphertext.tag. The key
+	// segment stays empty -- alg dir means the derived key is used
+	// directly, nothing about it travels in the token.
 	return strings.Join([]string{
 		protected,
 		"",
@@ -129,13 +144,18 @@ func (t *Tokens) Mint(c Claims) (string, error) {
 
 // Verify opens a compact JWE and returns its claims. Any malformed,
 // unknown-key or tampered token is ErrInvalidToken; a genuine token past
-// its exp is ErrTokenExpired. The claims decode leniently, so an
-// instance one release behind still accepts a newer token during a
-// rolling upgrade.
+// its exp is ErrTokenExpired.
 func (t *Tokens) Verify(token string) (Claims, error) {
+	// Refuse absurd input before doing any work on it; a real token is
+	// a few hundred bytes.
 	if len(token) > maxTokenLength {
 		return Claims{}, ErrInvalidToken
 	}
+	// A compact JWE is exactly five dot-separated segments, and under
+	// alg dir the second -- the encrypted key -- is empty. Every
+	// failure from here down is the same ErrInvalidToken: a verifier
+	// that distinguishes parse errors from decryption errors hands an
+	// attacker an oracle.
 	parts := strings.Split(token, ".")
 	if len(parts) != 5 || parts[1] != "" {
 		return Claims{}, ErrInvalidToken
@@ -148,10 +168,14 @@ func (t *Tokens) Verify(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
+	// The header's kid picks the key; a kid the keychain does not hold
+	// means a rotated-out or foreign key, and the token is dead.
 	k, ok := t.keys.verify[h.Kid]
 	if !ok {
 		return Claims{}, ErrInvalidToken
 	}
+	// The nonce length is checked, not assumed: GCM panics on a
+	// wrong-size nonce, and this is attacker-supplied input.
 	iv, err := b64.DecodeString(parts[2])
 	if err != nil || len(iv) != k.aead.NonceSize() {
 		return Claims{}, ErrInvalidToken
@@ -164,14 +188,22 @@ func (t *Tokens) Verify(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
+	// One Open authenticates everything at once: the header (as AAD),
+	// the ciphertext and the tag. A change to any segment fails here,
+	// and nothing decrypted is ever released from a failed Open.
 	plaintext, err := k.aead.Open(nil, iv, append(ciphertext, tag...), []byte(parts[0]))
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
+	// The claims decode leniently, on purpose: during a rolling upgrade
+	// an instance one release behind must accept a newer token, so an
+	// unknown claim is ignored, never refused.
 	var c Claims
 	if err := json.Unmarshal(plaintext, &c); err != nil {
 		return Claims{}, ErrInvalidToken
 	}
+	// Time is judged last, on an authentic token only, so an expired
+	// answer proves the token was once genuine.
 	if t.now().Unix() >= c.ExpiresAt {
 		return Claims{}, ErrTokenExpired
 	}

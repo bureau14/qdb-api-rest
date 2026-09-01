@@ -18,11 +18,13 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 )
 
-// salt fills argon2id's required salt parameter, a constant because keys
-// derive from config alone and there is no per-user storage for a random
-// one. It domain-separates our derivations from any other argon2id user,
-// and bumping its version suffix re-derives every key and kid, which
-// behaves as a key rotation (ADR-0005).
+// salt fills argon2id's required salt parameter. A constant is safe here
+// because the classical purposes of a salt do not apply: keys derive
+// from config alone, so there is no table of per-user records to
+// decorrelate. What the constant still buys is domain separation -- a
+// dictionary precomputed against any other argon2id user is useless
+// against us -- and a version handle: bumping the suffix re-derives
+// every key and kid, which behaves as a key rotation (ADR-0005).
 var salt = []byte("qdb-rest/token-secrets/v1")
 
 // b64 is the JOSE alphabet: base64url, unpadded, and canonical -- the
@@ -47,14 +49,22 @@ func expand(prk []byte, info string, n int) ([]byte, error) {
 // keyFrom splits stretched key material into a keychain entry: 32 bytes
 // of AES-256-GCM key under "enc", 8 bytes of kid under "kid".
 func keyFrom(prk []byte) (key, error) {
+	// Two independent expansions of the same stretched material: the
+	// kid travels in every token header, public, so it must reveal
+	// nothing about the encryption key -- neither derives from the
+	// other, only from prk under its own info string.
 	enc, err := expand(prk, "enc", 32)
 	if err != nil {
 		return key{}, err
 	}
+	// 8 bytes of kid is plenty: it only picks a keychain entry, it
+	// never has to resist guessing.
 	kid, err := expand(prk, "kid", 8)
 	if err != nil {
 		return key{}, err
 	}
+	// Wrap the 32 bytes as AES-256-GCM, the enc every token header
+	// promises; past this point the raw key bytes are not kept.
 	block, err := aes.NewCipher(enc)
 	if err != nil {
 		return key{}, err
@@ -87,10 +97,16 @@ type keychain struct {
 // restart nor a second instance. Random material needs no argon2id
 // stretching and takes the same HKDF split.
 func ephemeral() (keychain, error) {
+	// Fresh randomness stands in for the stretched passphrase: 32
+	// random bytes already carry full key entropy, so argon2id would
+	// add nothing here.
 	prk := make([]byte, 32)
 	if _, err := rand.Read(prk); err != nil {
 		return keychain{}, err
 	}
+	// From here the pipeline cannot tell the difference: the same HKDF
+	// split yields the key and its kid, and the single entry both
+	// mints and verifies.
 	k, err := keyFrom(prk)
 	if err != nil {
 		return keychain{}, err
@@ -105,11 +121,16 @@ func newKeychain(a config.Auth) (keychain, error) {
 		return ephemeral()
 	}
 	kc := keychain{verify: map[string]key{}}
+	// One derivation per configured passphrase: the argon2id cost is
+	// paid here, at startup, never per request.
 	for i, passphrase := range a.TokenSecrets {
 		k, err := derive(passphrase, a.Argon2id)
 		if err != nil {
 			return keychain{}, fmt.Errorf("auth.token_secrets[%d]: %w", i, err)
 		}
+		// The first entry is the current key and mints; every entry,
+		// first included, verifies. Keyed by kid, so the verifier finds
+		// the right key without trial decryption.
 		if i == 0 {
 			kc.mint = k
 		}
