@@ -14,9 +14,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/meta"
@@ -25,7 +25,6 @@ import (
 	runtime "github.com/go-openapi/runtime"
 	middleware "github.com/go-openapi/runtime/middleware"
 	swag "github.com/go-openapi/swag"
-	cmap "github.com/orcaman/concurrent-map"
 	cors "github.com/rs/cors"
 	pool "github.com/silenceper/pool"
 
@@ -149,16 +148,60 @@ func dummyProducer() runtime.Producer {
 	})
 }
 
-func RemoveFromCache(cache *cmap.ConcurrentMap, key string) {
-	if tmp, found := cache.Pop(key); found {
-		if handle, ok := tmp.(*qdb.HandleType); ok {
-			handle.Close()
-		}
-	}
+type poolCacheEntry struct {
+	ready chan struct{}
+	pool  *pool.Pool
+	err   error
 }
 
-func RemoveHandleFromCache(cache *cmap.ConcurrentMap, key string) {
-	cache.Remove(key)
+// connectionPoolCache ensures that concurrent logins for the same credentials
+// share one pool. An entry is published before its pool is constructed so that
+// other callers wait for that construction instead of creating competing pools.
+type connectionPoolCache struct {
+	mu      sync.Mutex
+	entries map[string]*poolCacheEntry
+}
+
+func newConnectionPoolCache() *connectionPoolCache {
+	return &connectionPoolCache{entries: make(map[string]*poolCacheEntry)}
+}
+
+func (cache *connectionPoolCache) Get(key string) (*pool.Pool, bool) {
+	cache.mu.Lock()
+	entry, found := cache.entries[key]
+	cache.mu.Unlock()
+	if !found {
+		return nil, false
+	}
+
+	<-entry.ready
+	return entry.pool, entry.err == nil
+}
+
+func (cache *connectionPoolCache) GetOrCreate(key string, create func() (*pool.Pool, error)) (*pool.Pool, error) {
+	cache.mu.Lock()
+	if entry, found := cache.entries[key]; found {
+		cache.mu.Unlock()
+		<-entry.ready
+		return entry.pool, entry.err
+	}
+
+	entry := &poolCacheEntry{ready: make(chan struct{})}
+	cache.entries[key] = entry
+	cache.mu.Unlock()
+
+	entry.pool, entry.err = create()
+	cache.mu.Lock()
+	if entry.err != nil {
+		delete(cache.entries, key)
+	}
+	close(entry.ready)
+	cache.mu.Unlock()
+	return entry.pool, entry.err
+}
+
+func credentialsCacheKey(username, secretKey string) string {
+	return username + "\x00" + secretKey
 }
 
 func formatDuration(d time.Duration) string {
@@ -169,7 +212,7 @@ func formatDuration(d time.Duration) string {
 }
 
 func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
-	handleCache := cmap.New()
+	handleCache := newConnectionPoolCache()
 
 	CreatePool := func(username string, secretKey string, clusterURI string) (*pool.Pool, error) {
 		factory := func() (interface{}, error) {
@@ -243,25 +286,28 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Pool returned invalid handle type %T for user %s", v, username)
 			return nil, fmt.Errorf("pool returned invalid handle for user %s", username)
 		}
-		p.Put(handle)
+		if err := p.Put(handle); err != nil {
+			api.Logger("Failed to return initial handle to pool for user %s: %v", username, err)
+			p.Release()
+			return nil, fmt.Errorf("failed to initialize connection pool for user %s: %w", username, err)
+		}
 		return &p, nil
 	}
 
 	PutHandle := func(principal *models.Principal, handle *qdb.HandleType) error {
-		credentials := strings.Split(string(*principal), ":")
+		credentials := strings.SplitN(string(*principal), ":", 2)
 
 		if len(credentials) < 2 {
 			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
 			return errors.New(500, "Invalid principal")
 		}
 		username := credentials[0]
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				(*pl).Put(handle)
-				return nil
+		if pl, found := handleCache.Get(credentialsCacheKey(username, credentials[1])); found {
+			if err := (*pl).Put(handle); err != nil {
+				api.Logger("Warning: failed to return handle to pool for user %s: %v", username, err)
+				return errors.New(500, "Failed to return handle to connection pool for user %s: %v", username, err)
 			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
+			return nil
 		}
 		str := fmt.Sprintf("Could not connection pool for user: %s. Please try reconnecting", username)
 		api.Logger(str)
@@ -269,20 +315,19 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	}
 
 	CloseHandle := func(principal *models.Principal, handle *qdb.HandleType) error {
-		credentials := strings.Split(string(*principal), ":")
+		credentials := strings.SplitN(string(*principal), ":", 2)
 
 		if len(credentials) < 2 {
 			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
 			return errors.New(500, "Invalid principal")
 		}
 		username := credentials[0]
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				(*pl).Close(handle)
-				return nil
+		if pl, found := handleCache.Get(credentialsCacheKey(username, credentials[1])); found {
+			if err := (*pl).Close(handle); err != nil {
+				api.Logger("Warning: failed to close handle for user %s: %v", username, err)
+				return errors.New(500, "Failed to close handle for user %s: %v", username, err)
 			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
+			return nil
 		}
 		str := fmt.Sprintf("Could not connection pool for user: %s. Please try reconnecting", username)
 		api.Logger(str)
@@ -292,7 +337,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 	GetHandle := func(principal *models.Principal) (*qdb.HandleType, error) {
 
 		// This is always a username:secret_key pair, validated in BearerAuth
-		credentials := strings.Split(string(*principal), ":")
+		credentials := strings.SplitN(string(*principal), ":", 2)
 
 		if len(credentials) < 2 {
 			api.Logger("Error: invalid principal key. This should never happen because it's checked in BearerAuth")
@@ -300,26 +345,22 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		}
 		username := credentials[0]
 
-		if tmp, found := handleCache.Get(username); found {
-			if pl, ok := tmp.(*pool.Pool); ok {
-				v, err := (*pl).Get()
-				if err != nil {
-					api.Logger("Got handle from cache: %s", err.Error())
-					return nil, errors.New(500, "Invalid handle")
-				}
-				if v == nil {
-					api.Logger("Pool returned nil handle for user %s", username)
-					return nil, errors.New(500, "Nil handle")
-				}
-				handle, ok := v.(*qdb.HandleType)
-				if !ok || handle == nil {
-					api.Logger("Pool returned invalid handle type %T for user %s", v, username)
-					return nil, errors.New(500, "Invalid handle")
-				}
-				return handle, nil
+		if pl, found := handleCache.Get(credentialsCacheKey(username, credentials[1])); found {
+			v, err := (*pl).Get()
+			if err != nil {
+				api.Logger("Got handle from cache: %s", err.Error())
+				return nil, errors.New(500, "Invalid handle")
 			}
-			api.Logger("Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
-			return nil, errors.New(500, "Warning: expected handle type from cache to be *pool.Pool but got %s", reflect.TypeOf(tmp))
+			if v == nil {
+				api.Logger("Pool returned nil handle for user %s", username)
+				return nil, errors.New(500, "Nil handle")
+			}
+			handle, ok := v.(*qdb.HandleType)
+			if !ok || handle == nil {
+				api.Logger("Pool returned invalid handle type %T for user %s", v, username)
+				return nil, errors.New(500, "Invalid handle")
+			}
+			return handle, nil
 		}
 		api.Logger("Could not find connection pool for user: %s. Please try reconnecting", username)
 
@@ -383,21 +424,12 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			api.Logger("Logged anonymous user")
 		}
 
-		// Check whether an existing pool already exists for this user, if so, remember it so we
-		// can clean it up later
-		oldPool, oldPoolFound := handleCache.Get(params.Credential.Username)
-
-		p, err := CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
+		cacheKey := credentialsCacheKey(params.Credential.Username, params.Credential.SecretKey)
+		_, err = handleCache.GetOrCreate(cacheKey, func() (*pool.Pool, error) {
+			return CreatePool(params.Credential.Username, params.Credential.SecretKey, clusterURI)
+		})
 		if err != nil {
 			return operations.NewLoginUnauthorized().WithPayload(&models.QdbError{Message: err.Error()})
-		}
-		handleCache.Set(params.Credential.Username, p)
-
-		if oldPoolFound {
-			if pl, ok := oldPool.(*pool.Pool); ok {
-				api.Logger("Releasing all old handles after allocating new pool")
-				(*pl).Release()
-			}
 		}
 
 		return operations.NewLoginOK().WithPayload(&models.Token{Token: token})
@@ -442,7 +474,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(401, "Invalid authentication token")
 		}
 
-		cacheKey := credentials.Username
+		cacheKey := credentialsCacheKey(credentials.Username, credentials.SecretKey)
 		principle := models.Principal(credentials.Username + ":" + credentials.SecretKey)
 
 		now := time.Now()
@@ -454,16 +486,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
-			RemoveFromCache(&handleCache, cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
 		if _, found := handleCache.Get(cacheKey); !found {
-			p, err := CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+			_, err := handleCache.GetOrCreate(cacheKey, func() (*pool.Pool, error) {
+				return CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+			})
 			if err != nil {
 				return nil, errors.New(401, err.Error())
 			}
-			handleCache.Set(credentials.Username, p)
 		}
 
 		return &principle, nil
@@ -477,7 +509,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 			return nil, errors.New(401, "Invalid authentication token")
 		}
 
-		cacheKey := credentials.Username
+		cacheKey := credentialsCacheKey(credentials.Username, credentials.SecretKey)
 		principle := models.Principal(credentials.Username + ":" + credentials.SecretKey)
 
 		now := time.Now()
@@ -489,16 +521,16 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if now.After(credentials.Expiry) {
 			api.Logger("Token has expired")
-			RemoveFromCache(&handleCache, cacheKey)
 			return nil, errors.New(401, "Token has expired. Please login again")
 		}
 
 		if _, found := handleCache.Get(cacheKey); !found {
-			p, err := CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+			_, err := handleCache.GetOrCreate(cacheKey, func() (*pool.Pool, error) {
+				return CreatePool(credentials.Username, credentials.SecretKey, clusterURI)
+			})
 			if err != nil {
 				return nil, errors.New(401, err.Error())
 			}
-			handleCache.Set(credentials.Username, p)
 		}
 
 		return &principle, nil
@@ -537,7 +569,7 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 		if err != nil {
 			return query.NewPostQueryInternalServerError().WithPayload(&models.QdbError{Message: err.Error()})
 		}
-		credentials := strings.Split(string(*principal), ":")
+		credentials := strings.SplitN(string(*principal), ":", 2)
 
 		queryStart := time.Now()
 		api.Logger("Executing query: %s", params.Query.Query)
@@ -794,9 +826,6 @@ func configureAPI(api *operations.QdbAPIRestAPI) http.Handler {
 
 		if err != nil {
 			defer CloseHandle(principal, handle)
-			credentials := strings.Split(string(*principal), ":")
-			RemoveHandleFromCache(&handleCache, credentials[0])
-
 			api.Logger("Failed to access %s node status: %s", params.ID, err.Error())
 			return cluster.NewGetNodeBadRequest().WithPayload(&models.QdbError{Message: err.Error()})
 		}
