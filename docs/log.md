@@ -80,6 +80,11 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-01 -- ADR-0006 accepted: clock injection
+
+- The clock is a `now func() time.Time` constructor argument, never
+  context state; synctest deferred to future pure-Go timer units.
+
 ## 2026-08-31 -- v1 aliases minted; v1 routes wrap v2
 
 - Owner decision: every legacy endpoint also served at `/api/v1/<path>`,
