@@ -13,6 +13,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   implicit. Comments state why, as facts; never history. A negation
   belongs in a comment only where it records a rejected alternative or
   an invariant, never to correct what an earlier version claimed.
+- Dense code -- crypto, parsers, encoders -- additionally gets compact
+  inline walk-through comments: one short sentence per step, the why as
+  it happens (`internal/auth/token.go` is the reference). Glue gets
+  none, and a walk-through never pads into narration.
 - Validation has one home: the component that consumes a value owns its
   checks, made once, where a violation cannot get past them (`tlsconf`
   owns the certificate-pair rule; the C API judges the dial options at
