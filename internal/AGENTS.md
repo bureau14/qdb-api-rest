@@ -20,8 +20,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Validation has one home: the component that consumes a value owns its
   checks, made once, where a violation cannot get past them (`tlsconf`
   owns the certificate-pair rule; the C API judges the dial options at
-  dial). Never duplicate a rule at a second layer, and add no eager
-  check for what the consumer already rejects loudly.
+  dial; `internal/auth` judges its passphrases and argon2id costs).
+  `internal/config` owns only shape -- parsing, layer folding, the
+  vocabulary of enumerated keys -- never a value's semantic bounds.
+  Never duplicate a rule at a second layer, and add no eager check for
+  what the consumer already rejects loudly.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
