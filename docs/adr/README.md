@@ -10,3 +10,4 @@ what stays in plan decision-log tables: `docs/AGENTS.md`, "ADRs".
 | [0003](0003-session-pool.md)            | QuasarDB session pool: checkout model and budget           | accepted |
 | [0004](0004-pure-probes.md)             | Probes and observability endpoints stay pure               | accepted |
 | [0005](0005-token-cryptography.md)      | Token cryptography: hand-rolled compact JWE, dir + A256GCM | proposed |
+| [0006](0006-clock-injection.md)         | The clock is an injected function, not context or synctest | accepted |
