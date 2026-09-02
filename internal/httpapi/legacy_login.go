@@ -21,8 +21,8 @@ type loginRequest struct {
 	SecretKey string `json:"secret_key"`
 }
 
-// writeJSON writes v as the response body with the given status.
-func writeJSON(w http.ResponseWriter, status int, v any) {
+// writeLegacyJSON writes v as the response body with the given status.
+func writeLegacyJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
@@ -36,7 +36,7 @@ func handleLegacyLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "invalid request body"})
+		writeLegacyJSON(w, http.StatusBadRequest, map[string]string{"message": "invalid request body"})
 		return
 	}
 	now := time.Now()
@@ -56,16 +56,16 @@ func handleLegacyLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		observe.Logger(ctx).ErrorContext(ctx, "minting a login token failed", observe.Err(err))
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "internal error"})
+		writeLegacyJSON(w, http.StatusInternalServerError, map[string]string{"message": "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+	writeLegacyJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
-// registerAuthRoutes serves the legacy login at its historical
+// registerLegacyAuthRoutes serves the legacy login at its historical
 // unversioned path and its /api/v1 alias, the same handler and never a
 // redirect (brief, Compatibility contract).
-func registerAuthRoutes(mux *http.ServeMux) {
+func registerLegacyAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", handleLegacyLogin)
 	mux.HandleFunc("POST /api/v1/login", handleLegacyLogin)
 }
