@@ -61,8 +61,8 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   the logger (`observe`) and the cluster (`qdb.WithCluster` /
   `qdb.ClusterFrom`, which panics without one, like `Logger`). Handlers
   read them from the request context; nothing is injected through
-  constructors that the context already carries. `NewHandler`'s one
-  argument is the legacy route set (ADR-0007): composition, not state.
+  constructors that the context already carries. Composing the legacy
+  routes (ADR-0007) is the entry point's job: composition, not state.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.

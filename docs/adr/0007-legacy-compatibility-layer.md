@@ -2,7 +2,6 @@
 
 Status: accepted
 Date: 2026-09-02
-Milestone: M1
 
 ## Context
 
@@ -38,7 +37,7 @@ code that satisfies it is written.
 1. **v2 first.** The v2 data plane -- query execution core, encoders,
    auth endpoints -- is built before any legacy route. No legacy route
    is written before the v2 counterpart it wraps exists; the milestone
-   order in the brief (M1 v2 data plane, M2 drop-in compat) follows from
+   order in the brief (v2 query before drop-in compat) follows from
    this, not the reverse.
 2. **v1 wraps v2.** Every v1 route is a wrapper around its v2
    counterpart's core: it parses the legacy request shape, calls the v2
@@ -49,25 +48,26 @@ code that satisfies it is written.
    impossible or at least doubles the route's measured cost.
 3. **One package.** Legacy code lives in `internal/httpapi/legacy`, a
    package that imports `internal/httpapi` for the v2 core. The binary's
-   entry point composes the two: `internal/httpapi` builds the router
-   and accepts the legacy routes as an argument, so it never imports the
-   legacy package -- an import cycle makes the wrap direction a compiler
-   fact, not a convention. Inside the package, names say legacy;
-   outside it, nothing knows a wart exists. The package carries its own
-   `AGENTS.md` for the wire facts the goldens pin.
+   entry point composes the two; `internal/httpapi` never imports the
+   legacy package, so an import cycle makes the wrap direction a
+   compiler fact, not a convention. Inside the package, names say
+   legacy; outside it, nothing knows a wart exists. The package carries
+   its own `AGENTS.md` for the wire facts the goldens pin.
 
 ## Consequences
 
 - v2 shapes are chosen on v2's merits; the v1 wrapper pays whatever
   translation that costs. The v2 JSON encoder never emits a sentinel or
   orders keys for a legacy client.
-- M1 carries no legacy route; the legacy login returns in M2 as a
-  wrapper over `POST /api/v2/auth/login`.
+- The v2 query milestone carries no legacy route; the legacy login
+  returns with the drop-in milestone as a wrapper over
+  `POST /api/v2/auth/login`.
 - The compatibility bar moves later in the schedule; the goldens hold
   the contract until then.
 - Retiring or auditing the legacy surface is one directory.
-- The `NewHandler` constructor takes the legacy routes as an argument;
-  this is composition, not the state the context carries (ADR-0002).
+- Composing the legacy routes into the server is the entry point's job;
+  how they reach the router is decided when the package is written, and
+  it is composition, not the state the context carries (ADR-0002).
 
 ## Alternatives rejected
 
