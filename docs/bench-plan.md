@@ -82,12 +82,12 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 
 Valid runs (the registry is this table, nothing else):
 
-| run                  | answers                                                                         | available                     |
-| -------------------- | ------------------------------------------------------------------------------- | ----------------------------- |
-| `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | Phase 1                       |
-| `legacy@old-rest`    | the production server's baseline                                                | Phase 1                       |
-| `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | with the legacy wrappers (M2) |
-| `flightsql@new-rest` | the gateway thesis                                                              | with Flight SQL (M3)          |
+| run                  | answers                                                                         | available                |
+| -------------------- | ------------------------------------------------------------------------------- | ------------------------ |
+| `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | Phase 1                  |
+| `legacy@old-rest`    | the production server's baseline                                                | Phase 1                  |
+| `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | with the legacy wrappers |
+| `flightsql@new-rest` | the gateway thesis                                                              | with Flight SQL          |
 
 Exactly **one run per invocation**. No simultaneous runs: this keeps the
 code focused and makes RSS attribution unambiguous (only one REST server
@@ -232,7 +232,7 @@ Measurement mechanics, verified 2026-08-19:
   `old-rest` can honor -- a `balanced` run against it fails fast) and
   records the effective per-run value in the result file's environment
   block. The new server must expose an explicit client-compression knob
-  before the legacy wrappers (M2) so `legacy@new-rest` runs under the
+  before the legacy wrappers so `legacy@new-rest` runs under the
   same pinned mode.
 - No WAN emulation (dummynet/netem) in the first version: bytes stand in
   for bandwidth, client CPU seconds for client compute. A throttled-link
@@ -361,8 +361,8 @@ cd tests/e2e/bench
 make check venv old-server                # parity check, bench venv, old binary
 make bench-native@qdbd                    # -> results/native@qdbd.json
 make bench-legacy@old-rest                # -> results/legacy@old-rest.json
-make bench-legacy@new-rest                # needs the legacy wrappers (M2)
-make bench-flightsql@new-rest             # needs Flight SQL (M3)
+make bench-legacy@new-rest                # needs the legacy wrappers
+make bench-flightsql@new-rest             # needs Flight SQL
 make report                               # merges results/*.json
 ```
 
@@ -493,16 +493,16 @@ Reference for `native@qdbd` (sc-19522 measurements, same dataset):
    cross-checks the legacy parser against the native client before the
    rewrite ever enters the picture.
 5. `servers/new_rest.py` + `protocols/flightsql.py` stubs; registry rows
-   `legacy@new-rest` (enabled with the legacy wrappers, M2) and
-   `flightsql@new-rest` (enabled with Flight SQL, M3) raise "not
+   `legacy@new-rest` (enabled with the legacy wrappers) and
+   `flightsql@new-rest` (enabled with Flight SQL) raise "not
    implemented" until then.
 
 Steps 1-4 are Phase 1 and make the tool immediately useful: native vs
 legacy@old-rest numbers quantify the old server's REST tax, and the equivalence
 check hardens the harness itself. The rewrite drops in at step 5's
-seams: `legacy@new-rest` the moment the legacy wrappers (M2) serve the
+seams: `legacy@new-rest` the moment the legacy wrappers serve the
 legacy endpoints (the first real drop-in compatibility signal),
-`flightsql@new-rest` with Flight SQL (M3).
+`flightsql@new-rest` with Flight SQL.
 When new-rest wins on both, the tool has done its job and is removed.
 
 ## Decision log (2026-08-16)
