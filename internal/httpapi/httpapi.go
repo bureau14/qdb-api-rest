@@ -1,6 +1,6 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
-// legacy compatibility endpoints, the /api/v2 resource API, and the
-// unauthenticated status probes.
+// /api/v2 resource API, the unauthenticated status probes, and the
+// legacy compatibility endpoints that wrap v2 (ADR-0007).
 package httpapi
 
 import (
@@ -50,6 +50,5 @@ func registerStatusRoutes(mux *http.ServeMux) {
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	registerStatusRoutes(mux)
-	registerLegacyAuthRoutes(mux)
 	return withRequestLogging(mux)
 }
