@@ -8,7 +8,7 @@ Milestone: M1
 
 Load balancers at customer sites and orchestrators poll
 `/api/status/liveness` and `/api/status/readiness` on their own cadence
-(brief: "Compatibility contract"); M2 adds Prometheus `/metrics`. The
+(brief: "Compatibility contract"); Prometheus `/metrics` joins them. The
 resilience machinery of ADR-0003 carries state -- breaker, budget, pool
 occupancy -- that a probe could consult (report the breaker as
 readiness) or feed (count probe failures toward the breaker), and a
@@ -36,7 +36,7 @@ path and no dependency on its state.
    reading nor feeding them, and nothing is cached: every poll performs
    the call. The process starts and reports not-ready while the cluster
    is unreachable.
-3. **`/metrics`** (M2) reads in-process counters only. A scrape never
+3. **`/metrics`** reads in-process counters only. A scrape never
    triggers cluster work, is not gated on auth or on cluster state, and
    the only switch is the configuration key that disables the endpoint.
 
@@ -45,7 +45,7 @@ path and no dependency on its state.
 - A readiness `200` proves the cluster is reachable from this instance,
   now, and that the REST API's own user authenticates. It says nothing about
   pool capacity; capacity is reported on real requests (`429`/`503`)
-  and, from M2, on `/metrics`.
+  and on `/metrics`.
 - Each concurrent prober costs one transient session outside
   `max_sessions` -- the old server's cost. The operator's `readiness_query`
   defines what "ready" means for their workload; the default costs the

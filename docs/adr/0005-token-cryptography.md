@@ -10,7 +10,7 @@ The brief (Authentication) locks the token design: JWE with modern
 primitives, claims carrying reconnect material, keys derived from
 passphrases via argon2id + HKDF, rolling keys through the
 `auth.token_secrets` list, an ephemeral key when nothing is configured,
-and 12h tokens minted by legacy `/api/login`. M1's exit requires this
+and 12h tokens minted by legacy `/api/v1/login`. M1's exit requires this
 ADR -- the JWE library, AEAD, and key derivation choices -- accepted
 before `internal/auth` lands.
 
