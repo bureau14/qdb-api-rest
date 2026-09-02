@@ -11,8 +11,8 @@ Last updated: 2026-09-02
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
 | M1 -- v2 query        | in progress | auth core and pool core landed                  |
-| M2 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
-| M3 -- v2 auth         | not started |                                                 |
+| M2 -- v2 auth         | not started |                                                 |
+| M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
 | M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
 | M5 -- Flight SQL      | not started |                                                 |
 | M6 -- Exploration     | not started |                                                 |
@@ -29,12 +29,12 @@ mints an access token the query endpoint accepts; gzip negotiated via
 `Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
 query recorded in the e2e results.
 
-M2 criteria. Entry: the v2 endpoints its wrappers need (auth, query)
-are landed; the 18 legacy goldens replay against a server under test
-(already true). Exit: every legacy golden green against `bin/qdb_rest`;
-`bench-legacy@new-rest` fingerprints equal `legacy@old-rest` on every
-query under `CAPI_COMPRESSION=none` (enable `("legacy", "new-rest")` in
-`tests/e2e/bench/bench.py`).
+M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
+the 18 legacy goldens replay against a server under test (already
+true). Exit: every legacy golden green against `bin/qdb_rest` at both
+spellings; `bench-legacy@new-rest` fingerprints equal `legacy@old-rest`
+on every query under `CAPI_COMPRESSION=none` (enable
+`("legacy", "new-rest")` in `tests/e2e/bench/bench.py`).
 
 In flight:
 
@@ -43,8 +43,10 @@ In flight:
 Next:
 
 1. Plan M1: `POST /api/v2/query` (streaming engine, content-negotiated
-   encoders), the bearer middleware, the minimal login and gzip: plan
-   document, ADRs as needed. The plan must raise
+   encoders), the bearer middleware, the minimal login and gzip, and
+   the `tests/e2e` target that runs the full-table `text/csv`
+   equivalence against `/api/v2/query` (`test-legacy` is the only
+   replay target today): plan document, ADRs as needed. The plan must raise
    `cluster.max_in_buffer_size` for the bench's full-table query: the C
    API default (256 MiB) cannot return the 5.6M-row `SELECT *`; the old
    server's e2e flags use 8 GiB (`tests/e2e/Makefile`). An oversized
@@ -59,7 +61,7 @@ Next:
    budgets run locally (`.buildkite/AGENTS.md` holds the decision and
    the recipe).
 
-Handoff to M2 (the legacy wrappers):
+Handoff to M3 (the legacy wrappers):
 
 - The legacy byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
@@ -67,6 +69,9 @@ Handoff to M2 (the legacy wrappers):
 - Every legacy route is a wrapper over its v2 counterpart and lives in
   `internal/httpapi/legacy`, a package that does not exist yet and
   carries its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
+- The `find` wart (goldens 12 and 13) has no v2 endpoint until M6; its
+  v2 core is a tag-find function in `internal/qdb`, written in M3 and
+  reused by M6's tags endpoint (`docs/brief.md`, Milestones).
 - The goldens and the bench client exercise only the unversioned
   aliases (the old server knows no other spelling); the exit criterion
   additionally proves `/api/v1/<path>` answers identically, by replaying
@@ -75,11 +80,6 @@ Handoff to M2 (the legacy wrappers):
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
-  `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
-  keeping the brief's sentinel mapping for typed undefined values is
-  compatible either way (`docs/e2e-plan.md`, "The CSV is the expected
-  output").
 
 Deferred to M9 (release), tracked nowhere else:
 
@@ -93,6 +93,19 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-02 -- v2 auth precedes the drop-in; the find core lands with the wrappers
+
+- Owner decision: M2 is v2 auth, M3 the drop-in, so the first shippable
+  binary exposes no half-built v2 endpoint. The `find` wart's v2 core
+  is written in M3. `docs/brief.md`, Milestones.
+
+## 2026-09-02 -- admission control and the sentinels leave the scope
+
+- Owner decision: the session budget is the whole overload mechanism;
+  no admission layer, no 429. The unreachable `"(void)"` /
+  `"(undefined)"` sentinels are not reproduced. `docs/brief.md`,
+  Resilience and Compatibility contract.
 
 ## 2026-09-02 -- milestones re-cut into nine smaller ones
 
