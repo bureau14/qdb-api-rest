@@ -2,7 +2,6 @@
 
 Status: accepted
 Date: 2026-09-01
-Milestone: M1
 
 ## Context
 
@@ -26,9 +25,12 @@ spelling, or documentation, code and tests drift between two.
 3. **An alias is never a redirect.** The alias serves the handler
    directly. A `307`/`308` on `POST` breaks conservative HTTP clients,
    changes observable behaviour, and contradicts the goldens.
-4. **Unversioned means v1.** A path under `/api/` with no version
-   segment is the legacy protocol; new endpoints exist under `/api/v2/*`
-   only.
+4. **Unversioned means v1, except the probes.** A path under `/api/`
+   with no version segment is the legacy protocol; new endpoints exist
+   under `/api/v2/*` only. The status probes (`/api/status/*`) are the
+   one exception: they are an operational surface for load balancers
+   and orchestrators, not part of the application protocol, so they
+   are neither legacy nor aliased under `/api/v1/`.
 
 ## Consequences
 
@@ -39,7 +41,9 @@ spelling, or documentation, code and tests drift between two.
   spellings.
 - The status probes keep their unversioned paths as the paths load
   balancers are configured with; their `/api/v2/status/*` mirrors are
-  the current-protocol spelling, not aliases of a legacy one.
+  the current-protocol spelling, not aliases of a legacy one. The probe
+  goldens replay at the unversioned path only; the both-spellings check
+  covers the protocol endpoints.
 - Route registration in the legacy package lists each handler twice;
   that duplication is the whole aliasing mechanism.
 
