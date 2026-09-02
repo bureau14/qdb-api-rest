@@ -152,8 +152,8 @@ undefined values is faithful either way, but the sentinels cannot be
 pinned by a golden under this C API.
 
 Verified 2026-09-02, the byte-shape facts the goldens pin (from the old
-server's models and producers on `master`; for whoever implements the
-legacy endpoints):
+server's models and producers on `master`; for the v1 wrappers in
+`internal/httpapi/legacy`, ADR-0007):
 
 - Key order and omission follow the old models' struct order: column
   objects serialize `data`, `name`, `type` (`name` and `type`
