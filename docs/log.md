@@ -7,67 +7,73 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-09-02
 
-| Milestone             | State       | Note                                     |
-| --------------------- | ----------- | ---------------------------------------- |
-| M0 -- Foundation      | done        | exit signed off 2026-08-25               |
-| M1 -- Drop-in compat  | in progress | red bar: `make -C tests/e2e test-legacy` |
-| M2 -- v2 data plane   | not started |                                          |
-| M3 -- Flight SQL      | not started |                                          |
-| M4 -- Embedded DuckDB | not started |                                          |
-| M5 -- Release         | not started |                                          |
+| Milestone             | State       | Note                                            |
+| --------------------- | ----------- | ----------------------------------------------- |
+| M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
+| M1 -- v2 data plane   | in progress | auth core and pool core landed                  |
+| M2 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
+| M3 -- Flight SQL      | not started |                                                 |
+| M4 -- Embedded DuckDB | not started |                                                 |
+| M5 -- Release         | not started |                                                 |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
-upstream that links `libqdb_api.a` statically on Linux; the 18 legacy
-goldens replay against a server under test; the bench's
-`legacy@new-rest` row awaits enabling. Exit: every legacy golden green
-against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
-`legacy@old-rest` on every query under `CAPI_COMPRESSION=none`; the
-readiness probe dials the cluster as the REST API's own user and answers
-`200`/`503`; the auth ADR (JWE library, AEAD, key derivation) accepted;
-property tests for auth and the pool's REST layer green on all eight
-platforms.
+upstream that links `libqdb_api.a` statically on Linux; the auth core
+landed with ADR-0005 accepted; the pool core landed with ADR-0003 and
+ADR-0004 accepted; property tests for auth and the pool's REST layer
+green on all eight platforms. Exit: to be defined with the v2 query
+plan (owner).
+
+M2 criteria. Entry: the v2 endpoints its wrappers need (auth, query)
+are landed; the 18 legacy goldens replay against a server under test
+(already true). Exit: every legacy golden green against `bin/qdb_rest`;
+`bench-legacy@new-rest` fingerprints equal `legacy@old-rest` on every
+query under `CAPI_COMPRESSION=none` (enable `("legacy", "new-rest")` in
+`tests/e2e/bench/bench.py`).
 
 In flight:
 
-- `/api/v1/query` and the legacy tags removal
-  (`docs/legacy-query-plan.md`).
+- Nothing.
 
 Next:
 
-1. `/api/v1/query` with the legacy JSON encoder (Bearer and `?token=`
-   verification, the pinned 401 bodies) and its unversioned compat
-   alias; golden by golden until
-   `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` is green
-   (`docs/legacy-query-plan.md`).
-2. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
-   and run `make -C tests/e2e/bench bench-legacy@new-rest`.
-3. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+1. Plan the v2 data plane, starting with `POST /api/v2/query`
+   (streaming engine, content-negotiated encoders): plan document,
+   ADRs as needed, and M1 exit criteria for owner sign-off.
+2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-4. Circle back, no date: return the e2e harness to CI
+3. Circle back, no date: return the e2e harness to CI
    (`.buildkite/AGENTS.md` holds the decision and the recipe).
 
-Handoff to M1:
+Handoff to M2 (the legacy wrappers):
 
+- The legacy byte-shape facts -- key order, 401 bodies, error-message
+  concatenation, find and gzip warts -- are recorded in
+  `docs/e2e-plan.md`, "The CSV is the expected output".
+- Legacy `/api/v1/login` is currently a direct implementation; when the
+  v2 auth core lands it becomes a wrapper over it (`docs/brief.md`,
+  Compatibility contract).
+- Legacy compatibility code is strictly separated from current-protocol
+  code (`internal/AGENTS.md`).
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
-- The readiness probe dials its own session as the REST API's own user, outside
-  the pool, and fails with `503` (ADR-0004; `docs/brief.md`,
-  Compatibility contract).
-- `cluster.max_in_buffer_size` must be raised for the bench's full-table
-  query: the C API default (256 MiB) cannot return the 5.6M-row
-  `SELECT *`; the old server's e2e flags use 8 GiB
-  (`tests/e2e/Makefile`). An oversized reply
-  (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it costs no
-  reconnect; M2 maps it to a client error.
 - Legacy goldens pin JSON `null` for null cells; the `"(void)"` /
   `"(undefined)"` sentinels are unreachable under the 3.15 C API, so
   keeping the brief's sentinel mapping for typed undefined values is
   compatible either way (`docs/e2e-plan.md`, "The CSV is the expected
   output").
+
+Handoff to M1 (the v2 data plane):
+
+- `cluster.max_in_buffer_size` must be raised for the bench's full-table
+  query: the C API default (256 MiB) cannot return the 5.6M-row
+  `SELECT *`; the old server's e2e flags use 8 GiB
+  (`tests/e2e/Makefile`). An oversized reply
+  (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it costs no
+  reconnect; the v2 engine maps it to a client error.
 
 Deferred to M5, tracked nowhere else:
 
@@ -82,11 +88,17 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-02 -- milestones reordered: v2 data plane before drop-in compat
+
+- Owner decision: v1 routes wrap v2, so v2 is built first and the
+  legacy endpoints follow as thin wrappers (`docs/brief.md`,
+  Milestones). The direct legacy-query implementation and its plan were
+  discarded; the verified wire facts moved to `docs/e2e-plan.md`.
+
 ## 2026-09-02 -- legacy /api/v1/tags dropped from scope
 
 - Owner decision: unused; removed from the compat surface, the goldens
-  and the code. `docs/brief.md`, Compatibility contract;
-  `docs/legacy-query-plan.md`.
+  and the code. `docs/brief.md`, Compatibility contract.
 
 ## 2026-09-01 -- canonical spelling is /api/v1
 
