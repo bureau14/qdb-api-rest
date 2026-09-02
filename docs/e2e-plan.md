@@ -151,6 +151,39 @@ reachable with any probed query (raw selects, `IN RANGE`, `GROUP BY`,
 undefined values is faithful either way, but the sentinels cannot be
 pinned by a golden under this C API.
 
+Verified 2026-09-02, the byte-shape facts the goldens pin (from the old
+server's models and producers on `master`; for whoever implements the
+legacy endpoints):
+
+- Key order and omission follow the old models' struct order: column
+  objects serialize `data`, `name`, `type` (`name` and `type`
+  omitempty); table objects `columns` then `name` (`name` omitempty,
+  `columns` never omitted). A query-result table carries no name, a
+  tag-find table carries `"columns":null`, and an empty result is
+  `{"tables":[]}`, never `null`.
+- 200/400/500 bodies end with a newline and leave HTML unescaped
+  (`SetEscapeHTML(false)`; the seeded `<&>` string pins it); 401 bodies
+  have no trailing newline and use `{"code":401,"message":"..."}` in
+  that key order.
+- The 401 messages: no token -> `unauthenticated for invalid
+credentials`; unverifiable token -> `Invalid authentication token`;
+  expired token -> `Token has expired. Please login again`.
+- Query and find execution errors are 400 `{"message":...}`; the
+  message is the binding's error, a space, and the query result's
+  `ErrorMessage()` (golden: `query_execute (operation=query_execute,
+query=SELECT FROM): The provided query is invalid. expected FROM`).
+  The binding's `wrapError` rendering is identical between the old
+  server's vendored binding and ours.
+- The find wart executes the raw find expression through the binding's
+  `Find().ExecuteString` (`qdb_query_find`); `qdb_get_tagged` plays no
+  part in it.
+- Auth extraction: the `Authorization` header's `Bearer ` prefix is
+  optional (a bare token authenticates), and the header wins over the
+  `?token=` parameter.
+- gzip: a request whose `Accept-Encoding` contains the substring `gzip`
+  gets a gzipped body plus `content-encoding: gzip`, on every route;
+  everything else is identity.
+
 Two compatibility layers, deliberately: this harness checks **byte-shape**
 (golden pairs, permanent, CI); the temporary bench checks **semantic**
 compatibility through a real client -- the same legacy-protocol Python
