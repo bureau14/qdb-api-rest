@@ -777,9 +777,7 @@ entry/exit criteria defined when it starts.
   connection pool core (budget, breaker, retry), `POST /api/v2/query`
   streamed through all four encoders, bearer authentication,
   `POST /api/v2/auth/login` (access token only), gzip response
-  compression. Exit: the full-table `text/csv` equivalence and the
-  format-equivalence property test are green; time-to-first-byte and
-  server RSS for the 5.6M-row query are recorded.
+  compression.
 - **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
