@@ -26,11 +26,13 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   Never duplicate a rule at a second layer, and add no eager check for
   what the consumer already rejects loudly.
 - Legacy compatibility code -- the v1 wire surface: wrapper handlers,
-  wart encoders, legacy token extraction -- lives in designated
-  `legacy_*.go` files (with `legacy_*_test.go` beside them), one concern
-  per file, and is never mixed into current-protocol files. Names say
-  legacy too (`writeLegacyJSON`, never a bare `writeJSON` that later
-  turns out to be legacy-only).
+  wart encoders, legacy token extraction -- lives in
+  `internal/httpapi/legacy` and nowhere else (ADR-0007). That package
+  imports `internal/httpapi` for the v2 core and the binary's entry
+  point composes the two, so `internal/httpapi` never imports it; a
+  legacy route wraps its v2 counterpart, never reimplements it. Inside
+  the package names say legacy too (`writeLegacyJSON`, never a bare
+  `writeJSON`); outside it, no code knows a wart exists.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
@@ -59,8 +61,8 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   the logger (`observe`) and the cluster (`qdb.WithCluster` /
   `qdb.ClusterFrom`, which panics without one, like `Logger`). Handlers
   read them from the request context; nothing is injected through
-  constructors that the context already carries, and `NewHandler` takes
-  no arguments.
+  constructors that the context already carries. `NewHandler`'s one
+  argument is the legacy route set (ADR-0007): composition, not state.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.
 - Keys come from `observe.Key*`; errors go through `observe.Err(err)`.
