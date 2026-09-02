@@ -52,11 +52,13 @@ Handoff to M2 (the legacy wrappers):
 - The legacy byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
   `docs/e2e-plan.md`, "The CSV is the expected output".
-- Legacy `/api/v1/login` is currently a direct implementation; when the
-  v2 auth core lands it becomes a wrapper over it (`docs/brief.md`,
-  Compatibility contract).
-- Legacy compatibility code is strictly separated from current-protocol
-  code (`internal/AGENTS.md`).
+- Every legacy route is a wrapper over its v2 counterpart and lives in
+  `internal/httpapi/legacy`, a package that does not exist yet and
+  carries its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
+- The goldens and the bench client exercise only the unversioned
+  aliases (the old server knows no other spelling); the exit criterion
+  additionally proves `/api/v1/<path>` answers identically, by replaying
+  every golden at both spellings (ADR-0008).
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
@@ -88,12 +90,24 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-02 -- ADR-0007 accepted: legacy compatibility layer
+
+- v2 first; every v1 route wraps its v2 counterpart; legacy code in
+  `internal/httpapi/legacy` only. The direct legacy login leaves the
+  tree and returns as a wrapper in M2.
+
+## 2026-09-02 -- ADR-0008 records the /api/v1 spelling decision
+
+- The 2026-09-01 owner decision (canonical `/api/v1/<path>`, unversioned
+  aliases, never a redirect) moves from the brief into ADR-0008.
+
 ## 2026-09-02 -- milestones reordered: v2 data plane before drop-in compat
 
 - Owner decision: v1 routes wrap v2, so v2 is built first and the
-  legacy endpoints follow as thin wrappers (`docs/brief.md`,
-  Milestones). The direct legacy-query implementation and its plan were
-  discarded; the verified wire facts moved to `docs/e2e-plan.md`.
+  legacy endpoints follow as thin wrappers in their own package
+  (`docs/brief.md`, Milestones; ADR-0007). The direct legacy-query
+  implementation and its plan were discarded; the verified wire facts
+  moved to `docs/e2e-plan.md`.
 
 ## 2026-09-02 -- legacy /api/v1/tags dropped from scope
 
@@ -104,13 +118,13 @@ Blocked on:
 
 - Owner decision: internal references always spell legacy endpoints
   `/api/v1/<path>`; the unversioned aliases are compatibility-only.
-  `docs/brief.md`, Compatibility contract.
+  ADR-0008.
 
 ## 2026-09-01 -- ADR-0005 accepted: token cryptography
 
 - Hand-rolled dir+A256GCM compact JWE, argon2id + HKDF derivation,
   go-jose as the test-side cross-check. `internal/auth` and legacy
-  `/api/login` land with it.
+  `/api/v1/login` land with it.
 
 ## 2026-09-01 -- ADR-0006 accepted: clock injection
 
