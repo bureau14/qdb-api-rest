@@ -2,7 +2,6 @@
 
 Status: accepted
 Date: 2026-08-31
-Milestone: M1
 
 ## Context
 
@@ -10,9 +9,9 @@ The brief (Authentication) locks the token design: JWE with modern
 primitives, claims carrying reconnect material, keys derived from
 passphrases via argon2id + HKDF, rolling keys through the
 `auth.token_secrets` list, an ephemeral key when nothing is configured,
-and 12h tokens minted by legacy `/api/v1/login`. M1's exit requires this
-ADR -- the JWE library, AEAD, and key derivation choices -- accepted
-before `internal/auth` lands.
+and 12h tokens minted by legacy `/api/v1/login`. This ADR -- the JWE
+library, AEAD, and key derivation choices -- is accepted before
+`internal/auth` lands.
 
 The decisive structural fact: the token has exactly one producer and one
 consumer, both this binary. Clients treat it as opaque (brief,

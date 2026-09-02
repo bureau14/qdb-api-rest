@@ -2,7 +2,6 @@
 
 Status: accepted
 Date: 2026-08-21
-Milestone: M0
 
 ## Context
 
@@ -67,4 +66,4 @@ restart-based for now.
 | Let's Encrypt / ACME (autocert) | Requires a public DNS name and inbound reachability on 80/443; the product runs inside customer networks where neither holds. Additive later if demand materializes.  |
 | AWS Certificate Manager         | ACM never releases private keys, so in-binary integration is impossible by design; ACM certificates terminate on AWS load balancers, which already front this server. |
 | Persisted generated certificate | State on disk (path, permissions, packaging, multi-instance semantics) for marginal gain; contradicts the ephemeral-key precedent and stateless posture.              |
-| Certificate hot reload now      | Real value for cert-manager deployments, but additive; M0 keeps the listener minimal and restart-based rotation is acceptable at current scope.                       |
+| Certificate hot reload now      | Real value for cert-manager deployments, but additive; the foundation milestone keeps the listener minimal and restart-based rotation is acceptable at current scope. |

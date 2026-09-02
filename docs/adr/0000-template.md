@@ -2,7 +2,6 @@
 
 Status: proposed | accepted | superseded by ADR-NNNN
 Date: YYYY-MM-DD
-Milestone: M0..M5
 
 ## Context
 
