@@ -277,9 +277,13 @@ test suite; this section is the specification.
 - Response 200: `{"tables": [{"name": "...", "columns": [{"name": "...",
 "type": "...", "data": [...]}]}]}`.
 - Column types: `blob | double | int64 | string | timestamp | count | none`.
+- Null cells of every type are JSON `null`, the column type taken from
+  the last non-null row (`"none"` if every row is null). The old
+  server's `"(void)"` (minimum-timestamp) and `"(undefined)"` (null
+  int64) substitutions are unreachable under the 3.15 C API, which
+  types every null cell `qdb_query_result_none`; they are not
+  reproduced.
 - Warts preserved verbatim on this legacy endpoint (and only here):
-  - The string `"(void)"` appears in place of a minimum-timestamp sentinel.
-  - The string `"(undefined)"` appears in place of a null int64.
   - A query whose text begins with the literal prefix `find` is routed to
     the tag-find API and returns tables with names only, no columns. The
     match is a raw, case-sensitive, untrimmed prefix test
