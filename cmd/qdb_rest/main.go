@@ -1,6 +1,6 @@
-// The qdb_rest binary: QuasarDB's HTTP front door. Serves the /api/v2
-// API and the legacy compatibility endpoints on an HTTP and an HTTPS
-// listener, both configured by internal/config.
+// The qdb_rest binary: QuasarDB's HTTP front door. Serves the routes
+// internal/httpapi assembles on an HTTP and an HTTPS listener, both
+// configured by internal/config.
 package main
 
 import (

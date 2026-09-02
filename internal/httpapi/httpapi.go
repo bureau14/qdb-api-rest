@@ -1,6 +1,7 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
-// /api/v2 resource API, the unauthenticated status probes, and the
-// legacy compatibility endpoints that wrap v2 (ADR-0007).
+// /api/v2 resource API and the unauthenticated status probes. The
+// legacy compatibility endpoints wrap v2 from their own package
+// (ADR-0007), composed into the server by the entry point.
 package httpapi
 
 import (
