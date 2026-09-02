@@ -776,14 +776,16 @@ entry/exit criteria defined when it starts.
   compression. Exit: the full-table `text/csv` equivalence and the
   format-equivalence property test are green; time-to-first-byte and
   server RSS for the 5.6M-row query are recorded.
-- **M2 -- Drop-in compat**: the legacy endpoints as thin wrappers over
-  their v2 counterparts: `/api/v1/login` (12h tokens) and
-  `/api/v1/query` (and their unversioned compat aliases) with golden
-  equivalence tests. Outcome: replaces the old binary at a customer site
-  with no client changes; the first shippable binary.
-- **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
+- **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
+- **M3 -- Drop-in compat**: the legacy endpoints as thin wrappers over
+  their v2 counterparts: `/api/v1/login` (12h tokens) and
+  `/api/v1/query` (and their unversioned compat aliases) with golden
+  equivalence tests; the tag-find core in `internal/qdb` that the
+  `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
+  replaces the old binary at a customer site with no client changes;
+  the first shippable binary.
 - **M4 -- Resilience**: admission control (fast 429/503 with
   `Retry-After`), `/metrics`, zstd, the graceful-drain and concurrency
   stress, performance budgets as gates with their numbers versioned in
@@ -807,9 +809,11 @@ entry/exit criteria defined when it starts.
   remote read/write.
 
 Ordering rationale. A v1 route wraps its v2 counterpart, so the v2 core
-must exist before any legacy route is written (ADR-0007); M1 carries
-gzip and a minimal login because M2 cannot go green without them, and
-the rest of v2 auth waits for M3. Flight SQL precedes exploration and
+must exist before any legacy route is written (ADR-0007). M1 carries a
+minimal login so the query endpoint is exercisable end to end; M2
+completes v2 auth before anything ships, so the first shippable binary
+exposes no v2 endpoint whose shape or lifetime is still moving, and the
+legacy login wraps a finished counterpart. Flight SQL precedes exploration and
 ingestion because the gateway thesis is why the project exists, the
 Arrow encoder is fresh from M1, and the bench retires as soon as Flight
 SQL is measured. M4's budgets-as-gates require the e2e harness in CI,
