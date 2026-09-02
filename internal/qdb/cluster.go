@@ -272,17 +272,6 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, f func(*qdbapi.Qu
 	return c.Call(ctx, u, func(s *Session) error { return s.query(q, f) }, opts...)
 }
 
-// Tagged returns the aliases carrying t, read as u.
-func (c *Cluster) Tagged(ctx context.Context, u User, t string) ([]string, error) {
-	var aliases []string
-	err := c.Call(ctx, u, func(s *Session) error {
-		var e error
-		aliases, e = s.tagged(t)
-		return e
-	}, WithReadRetry())
-	return aliases, err
-}
-
 // Probe answers readiness. It dials a fresh session as the REST API's own
 // user (outside the pool, the budget and the breaker), runs
 // status.readiness_query, and closes the session on its own goroutine. The

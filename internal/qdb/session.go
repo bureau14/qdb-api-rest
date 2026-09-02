@@ -40,8 +40,3 @@ func (s *Session) query(q string, f func(*qdbapi.QueryResult) error) error {
 	defer result.Close()
 	return f(result)
 }
-
-// tagged returns the aliases carrying t.
-func (s *Session) tagged(t string) ([]string, error) {
-	return s.session.GetTagged(t)
-}
