@@ -780,15 +780,16 @@ entry/exit criteria defined when it starts.
   qdb-nats-connector's pipeline as the reference) with the C-API artifact
   dance (static `libqdb_api.a` on Linux), e2e harness and benchmark
   scaffolding against a live qdbd.
-- **M1 -- Drop-in compat**: auth core (JWE, key derivation, rolling keys,
-  legacy 12h tokens), connection pool core (budget, breaker, retry),
-  legacy `/api/v1/login` and `/api/v1/query` (and their unversioned
-  compat aliases) with golden equivalence tests. Outcome: replaces the
-  old binary at a customer site with no client changes.
-- **M2 -- v2 data plane**: streaming query engine + all four encoders,
-  compression, v2 auth endpoints, tables/schema/tags/cluster endpoints,
-  multi-table ingestion, admission control, `/metrics`, performance
-  budgets enforced.
+- **M1 -- v2 data plane**: auth core (JWE, key derivation, rolling
+  keys), connection pool core (budget, breaker, retry), streaming query
+  engine + all four encoders, compression, v2 auth endpoints,
+  tables/schema/tags/cluster endpoints, multi-table ingestion, admission
+  control, `/metrics`, performance budgets enforced.
+- **M2 -- Drop-in compat**: the legacy endpoints as thin wrappers over
+  their v2 counterparts: `/api/v1/login` (12h tokens) and
+  `/api/v1/query` (and their unversioned compat aliases) with golden
+  equivalence tests. Outcome: replaces the old binary at a customer site
+  with no client changes.
 - **M3 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
   `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests.
 - **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
@@ -800,8 +801,11 @@ entry/exit criteria defined when it starts.
   configs), `qdb-release` version registration, migration notes covering
   the dropped cluster endpoints and Prometheus remote read/write.
 
-M1 before M2 is deliberate: shipping the drop-in early de-risks the
-compatibility story while the new protocol work proceeds.
+M1 before M2 is deliberate: v1 routes wrap their v2 counterparts (see
+Compatibility contract), so the v2 core must exist before any legacy
+route is written. The legacy surface is then thin wrappers from day one
+-- no direct legacy implementation is built only to be unwound later,
+and legacy compatibility code never mingles with the current protocol.
 
 ## Versioning and release
 
