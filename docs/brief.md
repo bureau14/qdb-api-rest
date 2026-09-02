@@ -304,8 +304,8 @@ test suite; this section is the specification.
 `/api/cluster`, `/api/cluster/nodes/{id}`, `/api/tags`. The cluster
 endpoints have no known consumer (the Grafana plugin does not call them)
 but are publicly documented, as is the Prometheus remote-storage
-integration; both removals are covered explicitly in the M5 migration
-notes and the `qdb-documentation` rewrite. v2 provides cluster-status
+integration; both removals are covered explicitly in the release milestone's
+migration notes and the `qdb-documentation` rewrite. v2 provides cluster-status
 equivalents. `/api/tags` is unused (owner decision, 2026-09-01) and
 returns only as a deliberate re-add.
 
@@ -432,7 +432,7 @@ this endpoint wants.
 ### /api/v2 endpoint sketch
 
 **This is a very early sketch.** Endpoint shapes, names, and payloads are
-decided in ADRs during the v2 milestone; the sketch fixes intent, not
+decided in ADRs during the v2 milestones; the sketch fixes intent, not
 contract. Multi-table ingestion is a hard requirement: `qdb-api-go`'s
 `Writer` pushes multiple tables in a single batch-push call
 (`qdb_exp_batch_push_with_options`), and the ingest API is designed around
@@ -769,29 +769,52 @@ entry/exit criteria defined when it starts.
   qdb-nats-connector's pipeline as the reference) with the C-API artifact
   dance (static `libqdb_api.a` on Linux), e2e harness and benchmark
   scaffolding against a live qdbd.
-- **M1 -- v2 data plane**: auth core (JWE, key derivation, rolling
-  keys), connection pool core (budget, breaker, retry), streaming query
-  engine + all four encoders, compression, v2 auth endpoints,
-  tables/schema/tags/cluster endpoints, multi-table ingestion, admission
-  control, `/metrics`, performance budgets enforced.
+- **M1 -- v2 query**: auth core (JWE, key derivation, rolling keys),
+  connection pool core (budget, breaker, retry), `POST /api/v2/query`
+  streamed through all four encoders, bearer authentication,
+  `POST /api/v2/auth/login` (access token only), gzip response
+  compression. Exit: the full-table `text/csv` equivalence and the
+  format-equivalence property test are green; time-to-first-byte and
+  server RSS for the 5.6M-row query are recorded.
 - **M2 -- Drop-in compat**: the legacy endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with golden
   equivalence tests. Outcome: replaces the old binary at a customer site
-  with no client changes.
-- **M3 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
-  `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests.
-- **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
+  with no client changes; the first shippable binary.
+- **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
+  `GET /api/v2/session`, access and refresh TTL configuration, key
+  rotation through refresh.
+- **M4 -- Resilience**: admission control (fast 429/503 with
+  `Retry-After`), `/metrics`, zstd, the graceful-drain and concurrency
+  stress, performance budgets as gates with their numbers versioned in
+  the repo.
+- **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
+  `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests;
+  the bench retires once the new server wins on both of its rows.
+- **M6 -- Exploration**: tables list, schema and create; tags; cluster
+  and node status.
+- **M7 -- Ingestion**: `/api/v2/ingest` multi-table (Arrow IPC, NDJSON,
+  CSV bodies; `Content-Encoding`), `/api/v2/tables/{name}/rows`,
+  ingest/query roundtrip property tests per input format.
+- **M8 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
   quasardb extension, resource governance, streamed responses through the
   shared encoders.
-- **M5 -- Release**: hardening, docs rewrite in `qdb-documentation`
+- **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections, and fixing the stale `tls_port` sample
-  configs), `qdb-release` version registration, migration notes covering
-  the dropped cluster endpoints and Prometheus remote read/write.
+  configs), `qdb-release` version registration, Windows service mode,
+  migration notes covering the dropped cluster endpoints and Prometheus
+  remote read/write.
 
-M1 before M2 is deliberate: a v1 route wraps its v2 counterpart, so the
-v2 core must exist before any legacy route is written (ADR-0007).
+Ordering rationale. A v1 route wraps its v2 counterpart, so the v2 core
+must exist before any legacy route is written (ADR-0007); M1 carries
+gzip and a minimal login because M2 cannot go green without them, and
+the rest of v2 auth waits for M3. Flight SQL precedes exploration and
+ingestion because the gateway thesis is why the project exists, the
+Arrow encoder is fresh from M1, and the bench retires as soon as Flight
+SQL is measured. M4's budgets-as-gates require the e2e harness in CI,
+or an explicit rule that they run locally; that decision is taken at
+M4's entry.
 
 ## Versioning and release
 
