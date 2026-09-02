@@ -98,7 +98,7 @@ where they are.
 | `quasardb`                      | The database server. REST API package version is pinned 1:1 to server releases.                                                                                                                                       |
 | `qdb-api-go`                    | The cgo client binding; the primary path to the cluster. Vendored, never forked: improvements are merged upstream first, then the vendored copy is updated.                                                           |
 | `qdb-duck`                      | Native DuckDB extension that attaches QuasarDB clusters (catalog integration, handle pool). Embedded into this binary via go-duckdb to provide the full-SQL endpoint.                                                 |
-| `qdb-grafana-plugin`            | External consumer of `/api/login`, `/api/query`. Defines the backwards-compatibility surface together with customer code.                                                                                             |
+| `qdb-grafana-plugin`            | External consumer of `/api/v1/login` and `/api/v1/query` through their unversioned aliases. Defines the backwards-compatibility surface together with customer code.                                                  |
 | `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects; this project designs the protocol with them in the loop. |
 | `qdb-dashboard`                 | Legacy ClojureScript SPA, unused by customers. Retired; no feature-parity obligation.                                                                                                                                 |
 | `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                 |
@@ -148,7 +148,8 @@ prose:
    it, so datacenter clients pay nothing and WAN clients opt in.
    Performance budgets enforced in CI.
 2. **Backwards compatibility** for the endpoints customers and the Grafana
-   plugin actually use: `/api/login`, `/api/query`, and the status probes.
+   plugin actually use: `/api/v1/login`, `/api/v1/query`, and the status
+   probes.
    Byte-shape compatible, warts included (see Compatibility contract).
 3. **A proper versioned API** (`/api/v2/*`) with a real resource model:
    query, table listing and schema inspection, table creation, ingestion
@@ -240,21 +241,12 @@ ecosystems and is trivial to deploy.
 Versioning stance: the legacy unversioned API is retroactively **v1** --
 frozen, warts and all, served forever. New endpoints are minted under
 `/api/v2/*` only. The canonical spelling of every legacy endpoint is
-`/api/v1/<path>`: the URI itself says the legacy protocol is in play, and
-internal references -- documentation, code, tests -- use only this form.
-The historical unversioned path is additionally mapped onto the same
-handler, a compatibility nice-to-have for existing clients. The mapping
-serves the handler directly -- never an HTTP redirect (a 307/308 on POST
-breaks conservative HTTP clients and changes observable behavior, and the
-goldens pin direct `200` responses).
+`/api/v1/<path>`; the historical unversioned path is an alias served by
+the same handler, never a redirect (ADR-0008).
 
-v1 routes carry no parallel implementation: unless genuinely impossible, a
-v1 route wraps its v2 counterpart, translating request and response shapes
-around the v2 handler's core. Serialization and translation overhead is an
-accepted price for code simplicity and for nudging clients toward v2; a
-separate v1 implementation is justified only by a very large measured
-penalty on that route (as a yardstick: wrapping at least doubling its
-cost).
+v1 routes carry no parallel implementation: a v1 route wraps its v2
+counterpart, translating request and response shapes around the v2
+core, and legacy code lives in its own package (ADR-0007).
 
 The following endpoints must behave byte-shape identically to the old
 server. Golden responses captured from the old server are part of the e2e
@@ -338,12 +330,12 @@ One binary, two listeners:
 `POST /api/v2/query` is a streamed response in a content-negotiated format
 (ClickHouse-HTTP-style):
 
-| Accept                                | Encoding                                                          |
-| ------------------------------------- | ----------------------------------------------------------------- |
-| `application/json` (default)          | Legacy-compatible tables/columns shape, streamed as it serializes |
-| `application/x-ndjson`                | One JSON object per row                                           |
-| `text/csv`                            | RFC 4180                                                          |
-| `application/vnd.apache.arrow.stream` | Arrow IPC stream, columnar batches                                |
+| Accept                                | Encoding                                                           |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `application/json` (default)          | Columnar tables/columns shape, v2's own, streamed as it serializes |
+| `application/x-ndjson`                | One JSON object per row                                            |
+| `text/csv`                            | RFC 4180                                                           |
+| `application/vnd.apache.arrow.stream` | Arrow IPC stream, columnar batches                                 |
 
 All formats are produced by one query-execution core with N encoders. v2
 uses proper nulls per format instead of the legacy sentinel strings.
@@ -668,7 +660,8 @@ internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0
 internal/auth/         JWE tokens, key derivation, the caller's user
 internal/qdb/          session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
-internal/httpapi/      /api/v2 handlers + legacy compat handlers + middleware
+internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
+internal/httpapi/legacy/  v1 wrappers over the v2 core; the only package that knows the legacy wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
@@ -752,7 +745,7 @@ tests exist only where a pure function has genuine logic worth pinning.
    it): one Python harness, one headline KPI -- wall-clock time until
    the client holds a fully materialized DataFrame -- measured for
    exactly one (protocol, server) pair per run: the native `quasardb`
-   Python client against qdbd, the legacy `/api/query` JSON protocol
+   Python client against qdbd, the legacy `/api/v1/query` JSON protocol
    (parsed client-side) against the old _and_ the new server, and Arrow
    Flight SQL against the new server. Running the unchanged legacy client
    code against both servers is the drop-in compatibility check
@@ -801,11 +794,8 @@ entry/exit criteria defined when it starts.
   configs), `qdb-release` version registration, migration notes covering
   the dropped cluster endpoints and Prometheus remote read/write.
 
-M1 before M2 is deliberate: v1 routes wrap their v2 counterparts (see
-Compatibility contract), so the v2 core must exist before any legacy
-route is written. The legacy surface is then thin wrappers from day one
--- no direct legacy implementation is built only to be unwound later,
-and legacy compatibility code never mingles with the current protocol.
+M1 before M2 is deliberate: a v1 route wraps its v2 counterpart, so the
+v2 core must exist before any legacy route is written (ADR-0007).
 
 ## Versioning and release
 
