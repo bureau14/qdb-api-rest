@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 | Milestone             | State       | Note                                     |
 | --------------------- | ----------- | ---------------------------------------- |
@@ -17,7 +17,7 @@ Last updated: 2026-09-01
 | M5 -- Release         | not started |                                          |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
-upstream that links `libqdb_api.a` statically on Linux; the 21 legacy
+upstream that links `libqdb_api.a` statically on Linux; the 18 legacy
 goldens replay against a server under test; the bench's
 `legacy@new-rest` row awaits enabling. Exit: every legacy golden green
 against `bin/qdb_rest`; `bench-legacy@new-rest` fingerprints equal
@@ -29,15 +29,16 @@ platforms.
 
 In flight:
 
-- Nothing.
+- `/api/v1/query` and the legacy tags removal
+  (`docs/legacy-query-plan.md`).
 
 Next:
 
 1. `/api/v1/query` with the legacy JSON encoder (Bearer and `?token=`
-   verification, the pinned 401 bodies), then `/api/v1/tags`; the
-   unversioned compat aliases map onto the same handlers; golden by
-   golden until `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` is
-   green.
+   verification, the pinned 401 bodies) and its unversioned compat
+   alias; golden by golden until
+   `make -C tests/e2e test-legacy QDB_REST_BIN=<bin>` is green
+   (`docs/legacy-query-plan.md`).
 2. Add `("legacy", "new-rest")` to `ENABLED` in `tests/e2e/bench/bench.py`
    and run `make -C tests/e2e/bench bench-legacy@new-rest`.
 3. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
@@ -80,6 +81,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-02 -- legacy /api/v1/tags dropped from scope
+
+- Owner decision: unused; removed from the compat surface, the goldens
+  and the code. `docs/brief.md`, Compatibility contract;
+  `docs/legacy-query-plan.md`.
 
 ## 2026-09-01 -- canonical spelling is /api/v1
 

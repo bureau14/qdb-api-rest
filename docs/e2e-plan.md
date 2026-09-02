@@ -106,8 +106,8 @@ everything else exact; QuasarDB's deterministic ordering makes row order
 comparable). Cross-format equivalence (JSON, NDJSON, Arrow IPC, Flight
 SQL) is covered by the Go generative property tests, not by golden files.
 
-Legacy byte-shape equivalence (`/api/login`, `/api/query`, `/api/tags`,
-status probes) uses small golden request/response pairs captured from the
+Legacy byte-shape equivalence (`/api/login`, `/api/query`, status
+probes) uses small golden request/response pairs captured from the
 old server under `tests/e2e/golden/legacy/<NN-slug>/`: a hand-written
 `request.json` (method, path, pre-encoded query string, headers, JSON
 body, auth mode `none|bearer|urlparam`, compare mode

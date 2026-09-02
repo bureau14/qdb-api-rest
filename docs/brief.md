@@ -98,7 +98,7 @@ where they are.
 | `quasardb`                      | The database server. REST API package version is pinned 1:1 to server releases.                                                                                                                                       |
 | `qdb-api-go`                    | The cgo client binding; the primary path to the cluster. Vendored, never forked: improvements are merged upstream first, then the vendored copy is updated.                                                           |
 | `qdb-duck`                      | Native DuckDB extension that attaches QuasarDB clusters (catalog integration, handle pool). Embedded into this binary via go-duckdb to provide the full-SQL endpoint.                                                 |
-| `qdb-grafana-plugin`            | External consumer of `/api/login`, `/api/query`, `/api/tags`. Defines the backwards-compatibility surface together with customer code.                                                                                |
+| `qdb-grafana-plugin`            | External consumer of `/api/login`, `/api/query`. Defines the backwards-compatibility surface together with customer code.                                                                                             |
 | `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects; this project designs the protocol with them in the loop. |
 | `qdb-dashboard`                 | Legacy ClojureScript SPA, unused by customers. Retired; no feature-parity obligation.                                                                                                                                 |
 | `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                 |
@@ -148,9 +148,8 @@ prose:
    it, so datacenter clients pay nothing and WAN clients opt in.
    Performance budgets enforced in CI.
 2. **Backwards compatibility** for the endpoints customers and the Grafana
-   plugin actually use: `/api/login`, `/api/query`, `/api/tags`, and the
-   status probes. Byte-shape compatible, warts included (see Compatibility
-   contract).
+   plugin actually use: `/api/login`, `/api/query`, and the status probes.
+   Byte-shape compatible, warts included (see Compatibility contract).
 3. **A proper versioned API** (`/api/v2/*`) with a real resource model:
    query, table listing and schema inspection, table creation, ingestion
    (multi-table), tags, cluster and node status, health.
@@ -296,13 +295,6 @@ test suite; this section is the specification.
     routed too.
 - Errors 400/500: `{"message": "..."}`.
 
-### GET /api/v1/tags
-
-- Auth as above. Optional `?regex=` parameter.
-- Response: the same `QueryResult` shape as `/api/v1/query`, containing a
-  single table named `""` with one column `name` of type `string`.
-- Consumer: the Grafana plugin's tag autocomplete.
-
 ### GET /api/status/liveness, GET /api/status/readiness
 
 - Unauthenticated, empty body. Load balancers at customer sites
@@ -317,11 +309,13 @@ test suite; this section is the specification.
 
 `/api/prometheus/read`, `/api/prometheus/write`, `/api/tables/{name}.csv`,
 `/api/option/parallelism`, `/api/option/max-in-buffer-size`,
-`/api/cluster`, `/api/cluster/nodes/{id}`. The cluster endpoints have no
-known consumer (the Grafana plugin does not call them) but are publicly
-documented, as is the Prometheus remote-storage integration; both removals
-are covered explicitly in the M5 migration notes and the
-`qdb-documentation` rewrite. v2 provides cluster-status equivalents.
+`/api/cluster`, `/api/cluster/nodes/{id}`, `/api/tags`. The cluster
+endpoints have no known consumer (the Grafana plugin does not call them)
+but are publicly documented, as is the Prometheus remote-storage
+integration; both removals are covered explicitly in the M5 migration
+notes and the `qdb-documentation` rewrite. v2 provides cluster-status
+equivalents. `/api/tags` is unused (owner decision, 2026-09-01) and
+returns only as a deliberate re-add.
 
 ## Architecture
 
@@ -788,9 +782,9 @@ entry/exit criteria defined when it starts.
   scaffolding against a live qdbd.
 - **M1 -- Drop-in compat**: auth core (JWE, key derivation, rolling keys,
   legacy 12h tokens), connection pool core (budget, breaker, retry),
-  legacy `/api/v1/login`, `/api/v1/query`, `/api/v1/tags` (and their
-  unversioned compat aliases) with golden equivalence tests. Outcome:
-  replaces the old binary at a customer site with no client changes.
+  legacy `/api/v1/login` and `/api/v1/query` (and their unversioned
+  compat aliases) with golden equivalence tests. Outcome: replaces the
+  old binary at a customer site with no client changes.
 - **M2 -- v2 data plane**: streaming query engine + all four encoders,
   compression, v2 auth endpoints, tables/schema/tags/cluster endpoints,
   multi-table ingestion, admission control, `/metrics`, performance
