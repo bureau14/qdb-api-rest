@@ -168,8 +168,9 @@ prose:
    statically linked Linux binary (new static `libqdb_api.a`) so
    deployment is copy-one-file.
 8. **SRE-first resilience**: elaborate QuasarDB connection pooling
-   (connection reuse is non-optional), circuit breakers, admission
-   control, honest fast failure under overload. See Architecture.
+   (connection reuse is non-optional), a session budget that bounds
+   load, circuit breakers, honest fast failure when the cluster is
+   down. See Architecture.
 9. **Useful statistics**: a Prometheus exposition endpoint with request
    and query latencies, rows/bytes streamed per format, time-to-first-byte,
    pool and breaker state, qdb call durations, Go runtime and build info.
@@ -495,7 +496,10 @@ convenience wrapper. Decisions:
   share the user's pool. Login finds the existing pool or creates one and
   never replaces or drains one, so in-flight requests are never raced.
   The session id claim (Authentication) is a security abstraction, not a
-  pool key. Mechanism: ADR-0003.
+  pool key. The budget is the whole overload mechanism: a request past
+  it waits for a session or times out at its deadline; there is no
+  separate admission layer, no per-user fair share, no 429. Mechanism:
+  ADR-0003.
 - **Circuit breaker, fail fast**: a breaker per cluster opens on
   consecutive connect/timeout failures; while open, requests fail
   immediately with 503 + `Retry-After` (half-open probes test recovery).
@@ -506,17 +510,13 @@ convenience wrapper. Decisions:
   idempotent reads only. Ingestion is never auto-retried (batch push
   offers no way to prove non-application); the error is surfaced to the
   client. Sessions additionally carry a max lifetime.
-- **Admission control**: a configured global limit on concurrent query
-  execution with per-user fair share, so one noisy user cannot starve
-  others; excess receives a fast 429 + `Retry-After`. Bounded memory,
-  honest overload signaling.
 - **Timeouts**: every request and every stream write carries a deadline;
   graceful shutdown drains in-flight streams. QuasarDB calls are bounded
   by the C API's own socket timeout (`cluster.timeout`): `qdb-api-go`
   exposes no `context.Context` plumbing, and a blocking cgo call cannot
   be cancelled from Go.
-- All of it -- pool occupancy, breaker state, admission queue, retry
-  counts -- is exported via `/metrics`.
+- All of it -- pool occupancy, breaker state, retry counts -- is
+  exported via `/metrics`.
 
 ### Authentication
 
@@ -730,10 +730,10 @@ tests exist only where a pure function has genuine logic worth pinning.
    for the full 5.6M-row query -- time-to-first-byte under a fixed
    bound, server RSS delta bounded and independent of result size,
    sustained throughput floor per format (Flight SQL path included);
-   plus a concurrency stress (N parallel clients) asserting fast
-   429/503 + `Retry-After` under overload rather than goodput collapse,
-   and that in-flight streams complete across a graceful-shutdown
-   drain. Budgets are versioned numbers in the repo, revised
+   plus a concurrency stress (N parallel clients) asserting that the
+   session budget bounds memory and load (excess waits or times out,
+   no goodput collapse), and that in-flight streams complete across a
+   graceful-shutdown drain. Budgets are versioned numbers in the repo, revised
    deliberately, never silently.
 4. **Local assessment benchmark** (`tests/e2e/bench/`; developer
    machines, deliberately not CI; **temporary** -- retired once the
@@ -786,10 +786,9 @@ entry/exit criteria defined when it starts.
   `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
   replaces the old binary at a customer site with no client changes;
   the first shippable binary.
-- **M4 -- Resilience**: admission control (fast 429/503 with
-  `Retry-After`), `/metrics`, zstd, the graceful-drain and concurrency
-  stress, performance budgets as gates with their numbers versioned in
-  the repo.
+- **M4 -- Resilience**: `/metrics`, zstd, the graceful-drain and
+  concurrency stress, performance budgets as gates with their numbers
+  versioned in the repo.
 - **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
   `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests;
   the bench retires once the new server wins on both of its rows.
@@ -848,9 +847,9 @@ M4's entry.
    incrementally; candidates are a cursor-style query API or the Arrow
    paths); until then, memory is bounded in this binary but not in the
    binding. The gateway direction raises the stakes: large raw `SELECT`s
-   from thin clients materialize in the gateway, making admission control
-   the short-term backstop and upstream streaming the long-term relief
-   valve.
+   from thin clients materialize in the gateway, making the session
+   budget the short-term backstop and upstream streaming the long-term
+   relief valve.
 3. **Gateway latency shape**: aggregation-heavy queries get dramatically
    faster from thin clients; small point queries pay one extra
    (in-datacenter, sub-millisecond over persistent channels) hop versus a
