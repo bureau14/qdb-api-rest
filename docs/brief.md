@@ -479,10 +479,6 @@ material is never echoed back. Primary audience: debugging "who am I
 logged in as / why am I unauthorized / where are my connections" -- the
 most common support questions an API like this gets.
 
-An OpenAPI 3 document for v2 is maintained by hand as a published artifact
-and verified against the implementation in tests. It is not used for code
-generation.
-
 ### Resilience and connection management
 
 Operational/SRE concerns are primary. QuasarDB connection reuse is
@@ -665,7 +661,7 @@ internal/httpapi/legacy/  v1 wrappers over the v2 core; the only package that kn
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
-docs/                  this brief, ADRs, OpenAPI document
+docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
 tests/e2e/             golden-data harness (make + shell + curl + awk, live qdbd); bench/ inside is temporary
 vendor/                vendored dependencies (committed)
