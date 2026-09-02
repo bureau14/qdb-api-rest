@@ -25,6 +25,12 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   vocabulary of enumerated keys -- never a value's semantic bounds.
   Never duplicate a rule at a second layer, and add no eager check for
   what the consumer already rejects loudly.
+- Legacy compatibility code -- the v1 wire surface: wrapper handlers,
+  wart encoders, legacy token extraction -- lives in designated
+  `legacy_*.go` files (with `legacy_*_test.go` beside them), one concern
+  per file, and is never mixed into current-protocol files. Names say
+  legacy too (`writeLegacyJSON`, never a bare `writeJSON` that later
+  turns out to be legacy-only).
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
