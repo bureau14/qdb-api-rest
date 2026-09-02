@@ -43,8 +43,8 @@ path and no dependency on its state.
 
 - A readiness `200` proves the cluster is reachable from this instance,
   now, and that the REST API's own user authenticates. It says nothing about
-  pool capacity; capacity is reported on real requests (`429`/`503`)
-  and on `/metrics`.
+  pool capacity; capacity is visible on `/metrics`, and a real request
+  past the budget waits for a session or times out.
 - Each concurrent prober costs one transient session outside
   `max_sessions` -- the old server's cost. The operator's `readiness_query`
   defines what "ready" means for their workload; the default costs the
