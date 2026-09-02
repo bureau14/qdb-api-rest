@@ -10,18 +10,24 @@ Last updated: 2026-09-02
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 data plane   | in progress | auth core and pool core landed                  |
+| M1 -- v2 query        | in progress | auth core and pool core landed                  |
 | M2 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
-| M3 -- Flight SQL      | not started |                                                 |
-| M4 -- Embedded DuckDB | not started |                                                 |
-| M5 -- Release         | not started |                                                 |
+| M3 -- v2 auth         | not started |                                                 |
+| M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
+| M5 -- Flight SQL      | not started |                                                 |
+| M6 -- Exploration     | not started |                                                 |
+| M7 -- Ingestion       | not started |                                                 |
+| M8 -- Embedded DuckDB | not started |                                                 |
+| M9 -- Release         | not started |                                                 |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
-upstream that links `libqdb_api.a` statically on Linux; the auth core
-landed with ADR-0005 accepted; the pool core landed with ADR-0003 and
-ADR-0004 accepted; property tests for auth and the pool's REST layer
-green on all eight platforms. Exit: to be defined with the v2 query
-plan (owner).
+upstream that links `libqdb_api.a` statically on Linux. Exit:
+`make -C tests/e2e` full-table `text/csv` equivalence green against
+`bin/qdb_rest`; the format-equivalence property test (JSON, NDJSON,
+CSV, Arrow IPC) green on all eight platforms; `POST /api/v2/auth/login`
+mints an access token the query endpoint accepts; gzip negotiated via
+`Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
+query recorded in the e2e results.
 
 M2 criteria. Entry: the v2 endpoints its wrappers need (auth, query)
 are landed; the 18 legacy goldens replay against a server under test
@@ -36,16 +42,22 @@ In flight:
 
 Next:
 
-1. Plan the v2 data plane, starting with `POST /api/v2/query`
-   (streaming engine, content-negotiated encoders): plan document,
-   ADRs as needed, and M1 exit criteria for owner sign-off.
+1. Plan M1: `POST /api/v2/query` (streaming engine, content-negotiated
+   encoders), the bearer middleware, the minimal login and gzip: plan
+   document, ADRs as needed. The plan must raise
+   `cluster.max_in_buffer_size` for the bench's full-table query: the C
+   API default (256 MiB) cannot return the 5.6M-row `SELECT *`; the old
+   server's e2e flags use 8 GiB (`tests/e2e/Makefile`). An oversized
+   reply (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it
+   costs no reconnect; the v2 engine maps it to a client error.
 2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-3. Circle back, no date: return the e2e harness to CI
-   (`.buildkite/AGENTS.md` holds the decision and the recipe).
+3. At M4's entry: decide whether the e2e harness returns to CI or the
+   budgets run locally (`.buildkite/AGENTS.md` holds the decision and
+   the recipe).
 
 Handoff to M2 (the legacy wrappers):
 
@@ -58,7 +70,8 @@ Handoff to M2 (the legacy wrappers):
 - The goldens and the bench client exercise only the unversioned
   aliases (the old server knows no other spelling); the exit criterion
   additionally proves `/api/v1/<path>` answers identically, by replaying
-  every golden at both spellings (ADR-0008).
+  every login and query golden at both spellings. The probe goldens
+  have one spelling (ADR-0008).
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
@@ -68,16 +81,7 @@ Handoff to M2 (the legacy wrappers):
   compatible either way (`docs/e2e-plan.md`, "The CSV is the expected
   output").
 
-Handoff to M1 (the v2 data plane):
-
-- `cluster.max_in_buffer_size` must be raised for the bench's full-table
-  query: the C API default (256 MiB) cannot return the 5.6M-row
-  `SELECT *`; the old server's e2e flags use 8 GiB
-  (`tests/e2e/Makefile`). An oversized reply
-  (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it costs no
-  reconnect; the v2 engine maps it to a client error.
-
-Deferred to M5, tracked nowhere else:
+Deferred to M9 (release), tracked nowhere else:
 
 - Windows service mode: Event Log for lifecycle events, `log.file` with
   rotation (`docs/brief.md`, "Observability and logging").
@@ -89,6 +93,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-02 -- milestones re-cut into nine smaller ones
+
+- Owner decision: M1 narrows to the v2 query path plus a minimal login;
+  the remaining v2 surface, resilience, Flight SQL, ingestion and DuckDB
+  become M3..M8 with one green bar each. `docs/brief.md`, Milestones.
 
 ## 2026-09-02 -- ADR-0007 accepted: legacy compatibility layer
 
