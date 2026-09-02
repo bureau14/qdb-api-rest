@@ -119,8 +119,10 @@ tokens vary per call. `tests/e2e/legacy.sh capture|replay` drives both
 sides; `make capture-golden` is an operator step, `make test-legacy`
 replays against the server under test, `make test-legacy-selfcheck`
 replays against the old server to prove the goldens are deterministic.
-Full-table golden responses are deliberately not captured (834 MB of
-JSON is not a fixture).
+Every login and query golden also replays at its `/api/v1/<path>`
+spelling against the server under test; the probe goldens replay at
+the unversioned path only (ADR-0008). Full-table golden responses are
+deliberately not captured (834 MB of JSON is not a fixture).
 
 Goldens are captured from the old server **built from `master`** in a
 worktree (`make old-server`), linked against this repo's `qdb/` tree --
@@ -202,8 +204,9 @@ All against the 5,613,032-row table, all shell + curl + awk:
    the request), sustained throughput floor per format. Budget numbers
    are versioned in the repo and revised deliberately, never silently.
 3. **Concurrency**: N parallel clients (`xargs -P` + curl) against the
-   full query; assert admission control fails fast with 429/503 +
-   `Retry-After` instead of goodput collapse, and that in-flight streams
+   full query; assert the session budget bounds memory and load (a
+   request past the budget waits for a session or times out at its
+   deadline, never goodput collapse), and that in-flight streams
    complete across a graceful shutdown drain.
 
 ## Layout
