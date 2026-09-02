@@ -7,7 +7,8 @@
 
 -- Nine tiny tables with tags (ported from old master's rest-setup qdbsh_seed_db):
 -- foo/bar/baz_01..03, values 1.0..27.0, tags tag_01..03 round-robin, all
--- three tags attached to $qdb.tagroot so /api/tags finds them.
+-- three tags attached to $qdb.tagroot -- exactly the state the goldens
+-- were captured against; the find goldens query tag_01.
 DROP TABLE foo_01
 CREATE TABLE foo_01 ($timestamp TIMESTAMP, value DOUBLE)
 INSERT INTO foo_01 ($timestamp, value) VALUES (2020-01-01, 1.0), (2020-01-02, 2.0), (2020-01-03, 3.0)
