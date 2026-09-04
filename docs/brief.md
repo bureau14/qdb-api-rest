@@ -502,18 +502,11 @@ convenience wrapper. Decisions:
   The session id claim (Authentication) is a security abstraction, not a
   pool key. The budget is the whole overload mechanism: a request past
   it waits for a session or times out at its deadline; there is no
-  separate admission layer, no per-user fair share, no 429. Mechanism:
-  ADR-0003.
+  separate admission layer, no per-user fair share, no 429.
 - **Circuit breaker, fail fast**: a breaker per cluster opens on
   consecutive connect/timeout failures; while open, requests fail
   immediately with 503 + `Retry-After` (half-open probes test recovery).
   No hanging, no queueing onto a dead cluster, no goodput collapse.
-- **Session health**: no per-checkout ping (a cluster round-trip per
-  request contradicts the performance goal). Connection-class errors
-  discard the session and transparently retry once on a fresh one -- for
-  idempotent reads only. Ingestion is never auto-retried (batch push
-  offers no way to prove non-application); the error is surfaced to the
-  client. Sessions additionally carry a max lifetime.
 - **Timeouts**: every request and every stream write carries a deadline;
   graceful shutdown drains in-flight streams. QuasarDB calls are bounded
   by the C API's own socket timeout (`cluster.timeout`): `qdb-api-go`
