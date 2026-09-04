@@ -7,9 +7,8 @@ import (
 // Session is one authenticated client session as this package sees it: the
 // narrow wrapper around a qdb_handle_t and the only way code touches one;
 // the binding's HandleType never leaves this package. Every method runs one
-// C API operation under the error classification Call applies and owns the
-// release of any result, so the surface the server depends on is enumerable
-// here. A Session is built per checkout: Call wraps the handle the user's
+// C API operation and owns the release of any result, so the surface the
+// server depends on is enumerable here. A Session is built per checkout: Call wraps the handle the user's
 // pool leased, Probe the one it dialed itself. One goroutine uses a Session
 // at a time.
 type Session struct {

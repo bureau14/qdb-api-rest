@@ -218,12 +218,14 @@ func callerLeft(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// Call runs f against a session authenticated as u. It gates on the
-// breaker, checks a session out of u's pool (dialing one on demand), runs
-// f, and decides the session's fate: a success or a fatal error (the
-// cluster answered) releases the session and closes the breaker; a
-// retryable error discards it and feeds the breaker. WithReadRetry runs f
-// once more on a fresh session after a retryable failure.
+// Call runs f against a session authenticated as u. The breaker gates the
+// call; u's pool leases a session (dialing one on demand), runs f, and
+// decides the session's fate from f's error: that judgement is the
+// binding's (IsBadSession, through Lease.Done), never made here. What this
+// layer decides is per cluster: the breaker, and the opt-in retry of an
+// idempotent read after a retryable failure. A retry after a bad session
+// runs on a fresh one, the pool having discarded the old; after any other
+// retryable failure it may run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -235,31 +237,19 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 		if !ok {
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
-		lease, aerr := c.poolFor(u).Acquire(ctx)
-		if aerr != nil {
-			// A dial the cluster refused is a cluster failure; a fatal
-			// one (unreadable key file) or the caller leaving is not.
-			if !callerLeft(aerr) && qdbapi.IsRetryable(aerr) {
-				c.breaker.recordFailure()
-			}
-			return aerr
-		}
-		s := newSession(lease.Session())
-		err = f(s)
+		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error { return f(newSession(s)) })
 		switch {
-		case err == nil:
-			lease.Release()
-			c.breaker.recordSuccess()
-			return nil
-		case qdbapi.IsRetryable(err):
-			lease.Discard()
-			c.breaker.recordFailure()
-		default: // fatal: the cluster answered and rejected the request
-			lease.Release()
-			c.breaker.recordSuccess()
+		case callerLeft(err):
+			// The caller's own context ending says nothing about the
+			// cluster; the breaker never hears of it.
 			return err
+		case qdbapi.IsRetryable(err):
+			c.breaker.recordFailure()
+		default:
+			// nil, or an answer: the cluster is up, whatever it said.
+			c.breaker.recordSuccess()
 		}
-		if !cc.retry {
+		if !cc.retry || !qdbapi.IsRetryable(err) {
 			return err
 		}
 		cc.retry = false
