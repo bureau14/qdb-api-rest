@@ -3,7 +3,7 @@ package qdb
 import "log/slog"
 
 // User is the QuasarDB user a pool of sessions authenticates as: the pool
-// key is the user, never a REST session or a token (ADR-0003). A user has
+// key is the user, never a REST session or a token. A user has
 // one secret key, so every REST session of a user dials identically and
 // shares the user's pool. Anonymous is the zero User.
 type User struct {

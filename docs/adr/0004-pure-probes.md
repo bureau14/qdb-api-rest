@@ -8,7 +8,7 @@ Date: 2026-08-27
 Load balancers at customer sites and orchestrators poll
 `/api/status/liveness` and `/api/status/readiness` on their own cadence
 (brief: "Compatibility contract"); Prometheus `/metrics` joins them. The
-resilience machinery of ADR-0003 carries state -- breaker, budget, pool
+resilience machinery of `internal/qdb` carries state -- breaker, budget, pool
 occupancy -- that a probe could consult (report the breaker as
 readiness) or feed (count probe failures toward the breaker), and a
 probe verdict is cheap to cache. Each of these makes the endpoint report

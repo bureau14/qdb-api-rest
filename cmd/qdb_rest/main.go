@@ -181,7 +181,7 @@ func main() {
 
 	// 3. The cluster binding. The binding's own logger is routed into ours
 	//    before anything can dial; the cluster dials nothing at startup
-	//    (ADR-0003) and travels in the context so handlers reach it there.
+	//    and travels in the context so handlers reach it there.
 	qdb.InstallLogger(logger)
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)

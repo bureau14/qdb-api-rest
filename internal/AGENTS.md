@@ -91,7 +91,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   answer. Nothing is skipped under `-short`.
 - qdbd's session pool is finite and exhaustion is punished: past its
   limit the test cluster logs `out of free sessions` and refuses new
-  ones for fifteen minutes (ADR-0003, Context). Run the packages
+  ones for fifteen minutes. Run the packages
   serially (`go test -p 1 ./...`), and bound the sessions every test
   holds open at every step -- closes in flight count, because a handle
   holds its qdbd sessions until `qdb_close` returns.
