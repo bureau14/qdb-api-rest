@@ -1,5 +1,5 @@
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260830122924-d6c011211541 h1:EyTTw1t91r7LU0wGkhSYSMp9dd9aC+hqrroajcIiqFE=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260830122924-d6c011211541/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260904082650-31f9661d43f1 h1:rxIwEphjmxG1gIMjQBxBlkD91/eA+OAOKqeGHkhJ6mI=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260904082650-31f9661d43f1/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=

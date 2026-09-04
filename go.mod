@@ -5,7 +5,7 @@ go 1.27
 toolchain go1.27.0
 
 require (
-	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260830122924-d6c011211541
+	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260904082650-31f9661d43f1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/knadh/koanf/parsers/yaml v1.1.1
