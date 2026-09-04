@@ -16,10 +16,11 @@ const (
 )
 
 // breaker fails fast for a cluster that stops answering: it opens after
-// threshold consecutive retryable failures, half-opens after openFor to
-// admit one probe, and closes again on a success. A call that the cluster
-// answers -- even by rejecting the request -- counts as a success: the
-// cluster is healthy, the caller was wrong.
+// threshold consecutive failures that are evidence the cluster is
+// unreachable or too busy to answer, half-opens after openFor to admit one
+// probe, and closes again on a success. A call that the cluster answers --
+// even by rejecting the request -- counts as a success: the cluster is
+// healthy, the caller was wrong.
 type breaker struct {
 	mu        sync.Mutex
 	state     breakerState
@@ -73,7 +74,7 @@ func (b *breaker) recordSuccess() {
 	b.failures = 0
 }
 
-// recordFailure counts one retryable failure. A failed half-open probe
+// recordFailure counts one cluster-unavailable failure. A failed half-open probe
 // reopens the breaker for another openFor and leaves the streak alone.
 // Otherwise the streak grows by one and, at threshold, opens the breaker
 // for openFor; a failure that lands while already open (a call admitted

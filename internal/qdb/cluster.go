@@ -39,7 +39,8 @@ type Cluster struct {
 	// a unit is held from before a dial until the session's close returns.
 	budget *budget
 	// breaker is the per-cluster circuit breaker Call gates on; dials and
-	// calls feed it, the readiness probe never does (ADR-0004).
+	// calls that find the cluster unavailable feed it, the readiness probe
+	// never does (ADR-0004).
 	breaker *breaker
 
 	mu    sync.Mutex           // protects users
@@ -222,10 +223,11 @@ func callerLeft(err error) bool {
 // call; u's pool leases a session (dialing one on demand), runs f, and
 // decides the session's fate from f's error: that judgement is the
 // binding's (IsBadSession, through Lease.Done), never made here. What this
-// layer decides is per cluster: the breaker, and the opt-in retry of an
-// idempotent read after a retryable failure. A retry after a bad session
-// runs on a fresh one, the pool having discarded the old; after any other
-// retryable failure it may run on the same session again.
+// layer decides is per cluster: the breaker, fed only by the errors that
+// are evidence about the cluster (IsClusterUnavailable), and the opt-in
+// retry of an idempotent read after a retryable failure. A retry after a
+// bad session runs on a fresh one, the pool having discarded the old;
+// after any other retryable failure it may run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -243,10 +245,12 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 			// The caller's own context ending says nothing about the
 			// cluster; the breaker never hears of it.
 			return err
-		case qdbapi.IsRetryable(err):
+		case qdbapi.IsClusterUnavailable(err):
 			c.breaker.recordFailure()
 		default:
-			// nil, or an answer: the cluster is up, whatever it said.
+			// nil, or an answer: the cluster is up, whatever it said. A
+			// rejected request and a failure in f's own Go code both land
+			// here.
 			c.breaker.recordSuccess()
 		}
 		if !cc.retry || !qdbapi.IsRetryable(err) {
