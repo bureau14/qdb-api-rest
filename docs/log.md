@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
@@ -93,6 +93,13 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-04 -- Session fate is the binding's; ADR-0003 removed
+
+- Owner decision: `qdb-api-go` decides a session's fate (`IsBadSession`,
+  through `Lease.Done`); this layer keeps the breaker (fed by
+  `IsClusterUnavailable`), the budget, the per-user map and the opt-in
+  read retry. Session health leaves `docs/brief.md`, Resilience.
 
 ## 2026-09-02 -- v2 auth precedes the drop-in; the find core lands with the wrappers
 
