@@ -1,8 +1,8 @@
 // The integration tests of Cluster against the live qdbd fixture
-// (internal/qdbtest): breaker, per-user cap, retry-once, the fate of a
-// fatal error, user-pool eviction, and the secure dial as the REST
-// API's own user. The pool's own invariants are pinned upstream in
-// qdb-api-go.
+// (internal/qdbtest): breaker, per-user cap, retry-once, a rejected
+// query's session and breaker, user-pool eviction, and the secure dial as
+// the REST API's own user. The pool's own invariants and the error
+// predicates are pinned upstream in qdb-api-go.
 package qdb
 
 import (
@@ -44,9 +44,10 @@ func closeCluster(t *testing.T, c *Cluster) {
 // anonymous names the anonymous user.
 var anonymous = User{}
 
-// TestFatalErrorReusesSession: a bad query is fatal (the cluster answered),
-// so the session is returned to the pool, not discarded.
-func TestFatalErrorReusesSession(t *testing.T) {
+// TestRejectedQueryReusesSession: a malformed query is rejected by the
+// cluster, which is an answer: the session goes back to the pool and the
+// breaker counts a success.
+func TestRejectedQueryReusesSession(t *testing.T) {
 	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
@@ -55,11 +56,14 @@ func TestFatalErrorReusesSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error for a malformed query")
 	}
-	if qdbapi.IsRetryable(err) {
-		t.Fatalf("a malformed query should be fatal, got retryable: %v", err)
+	if qdbapi.IsBadSession(err) {
+		t.Fatalf("a malformed query should not condemn the session: %v", err)
 	}
 	if s := c.poolFor(anonymous).Stats(); s.Idle != 1 {
-		t.Fatalf("fatal error did not return the session: %+v", s)
+		t.Fatalf("rejected query did not return the session: %+v", s)
+	}
+	if st, n := c.breaker.state, c.breaker.failures; st != breakerClosed || n != 0 {
+		t.Fatalf("rejected query fed the breaker: state %d, failures %d", st, n)
 	}
 }
 
@@ -132,7 +136,7 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 		attempts++
 		return qdbapi.ErrConnectionReset // retryable
 	}, WithReadRetry())
-	if !qdbapi.IsRetryable(err) {
+	if !errors.Is(err, qdbapi.ErrConnectionReset) {
 		t.Fatalf("want the retryable error back, got %v", err)
 	}
 	if attempts != 2 {

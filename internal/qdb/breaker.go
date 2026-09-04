@@ -74,12 +74,12 @@ func (b *breaker) recordSuccess() {
 	b.failures = 0
 }
 
-// recordFailure counts one cluster-unavailable failure. A failed half-open probe
-// reopens the breaker for another openFor and leaves the streak alone.
-// Otherwise the streak grows by one and, at threshold, opens the breaker
-// for openFor; a failure that lands while already open (a call admitted
-// before the breaker opened) only lengthens the streak, which the next
-// success resets.
+// recordFailure counts one cluster-unavailable failure. A failed half-open
+// probe reopens the breaker for another openFor and leaves the streak
+// alone. Otherwise the streak grows by one and, at threshold, opens the
+// breaker for openFor; a failure that lands while already open (a call
+// admitted before the breaker opened) only lengthens the streak, which the
+// next success resets.
 func (b *breaker) recordFailure() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
