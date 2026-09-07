@@ -13,7 +13,22 @@
       <param name="platform" value="windows-64bit" />
       <param name="select.gcc" value="%system.gcc-64.select%" />
     </parameters>
-    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_295, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203" />
+    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_295, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203">
+      <runner id="RUNNER_295" name="Diagnose qdb_rest executable" type="simpleRunner">
+        <parameters>
+          <param name="script.content"><![CDATA[@echo off
+setlocal EnableExtensions
+"%%GOROOT%%\bin\go.exe" version
+"%%GOROOT%%\bin\go.exe" env GOOS GOARCH CGO_ENABLED CC
+dir apps\qdb_rest\qdb_rest.exe
+powershell.exe -NoProfile -NonInteractive -Command "$bytes = [System.IO.File]::ReadAllBytes('apps/qdb_rest/qdb_rest.exe'); Write-Output ('Header: {0:X2} {1:X2} {2:X2} {3:X2}' -f $bytes[0], $bytes[1], $bytes[2], $bytes[3])"
+exit /b 0]]></param>
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="teamcity.step.mode" value="default" />
+          <param name="use.custom.script" value="true" />
+        </parameters>
+      </runner>
+    </build-runners>
     <requirements>
       <contains id="RQ_184" name="teamcity.agent.jvm.os.name" value="Windows" />
       <contains id="RQ_280" name="teamcity.agent.name" value="default" />
