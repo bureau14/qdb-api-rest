@@ -10,7 +10,7 @@
       <param name="QDB_API_PATH" value="%env.GOPATH%%path.sep%src%path.sep%github.com%path.sep%bureau14%path.sep%qdb-api-go%path.sep%/qdb" />
       <param name="QDB_REST_PATH" value="%env.GOPATH%%path.sep%src%path.sep%github.com%path.sep%bureau14%path.sep%qdb-api-rest" />
       <param name="env.GOPATH" value="%teamcity.agent.work.dir%%path.sep%%teamcity.build.default.checkoutDir%" />
-      <param name="env.GOROOT" value="%system.go1.24-64.goroot%" />
+      <param name="env.GOROOT" value="%system.go1.26-64.goroot%" />
       <param name="env.PATH" value="%env.GOPATH%%path.sep%bin%env_path.sep%%env.GOROOT%%path.sep%bin%env_path.sep%%env.PATH%" />
       <param name="env_path.sep" value="" />
       <param name="os_name" value="" />
@@ -93,7 +93,7 @@
       </vcs-entry-ref>
     </vcs-settings>
     <requirements>
-      <contains id="RQ_306" name="system.go1.24-64.version" value="1.24" />
+      <contains id="RQ_306" name="system.go1.26-64.version" value="1.26" />
     </requirements>
     <build-extensions>
       <extension id="BUILD_EXT_31" type="BuildFailureOnMessage">
