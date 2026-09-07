@@ -13,7 +13,7 @@
       <param name="platform" value="windows-64bit" />
       <param name="select.gcc" value="%system.gcc-64.select%" />
     </parameters>
-    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203" />
+    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_295, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203" />
     <requirements>
       <contains id="RQ_184" name="teamcity.agent.jvm.os.name" value="Windows" />
       <contains id="RQ_280" name="teamcity.agent.name" value="default" />

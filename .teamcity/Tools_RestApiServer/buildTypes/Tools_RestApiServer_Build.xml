@@ -42,6 +42,14 @@
           <param name="teamcity.step.mode" value="default" />
         </parameters>
       </runner>
+      <runner id="RUNNER_295" name="Diagnose qdb_rest executable" type="simpleRunner">
+        <parameters>
+          <param name="command.executable" value="bash" />
+          <param name="command.parameters" value="-c 'set -x; &quot;${GOROOT}/bin/go&quot; version; &quot;${GOROOT}/bin/go&quot; env GOOS GOARCH CGO_ENABLED CC; ls -l apps/qdb_rest/qdb_rest.exe || true; file apps/qdb_rest/qdb_rest.exe || true; od -An -t x1 -N 4 apps/qdb_rest/qdb_rest.exe || true'" />
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="teamcity.step.mode" value="default" />
+        </parameters>
+      </runner>
       <runner id="RUNNER_13" name="" type="_placeholder_" />
       <runner id="RUNNER_293" name="Start rest service" type="simpleRunner">
         <parameters>
