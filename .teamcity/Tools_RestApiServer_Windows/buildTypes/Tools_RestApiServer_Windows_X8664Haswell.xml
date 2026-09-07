@@ -13,7 +13,7 @@
       <param name="platform" value="windows-64bit" />
       <param name="select.gcc" value="%system.gcc-64.select%" />
     </parameters>
-    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_295, RUNNER_288, RUNNER_293, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203">
+    <build-runners order="RUNNER_152, RUNNER_182, RUNNER_295, RUNNER_288, RUNNER_293, RUNNER_296, RUNNER_291, RUNNER_294, RUNNER_289, RUNNER_203">
       <runner id="RUNNER_295" name="Diagnose qdb_rest executable" type="simpleRunner">
         <parameters>
           <param name="script.content"><![CDATA[@echo off
@@ -21,10 +21,24 @@ setlocal EnableExtensions
 "%%GOROOT%%\bin\go.exe" version
 "%%GOROOT%%\bin\go.exe" env GOOS GOARCH CGO_ENABLED CC
 dir apps\qdb_rest\qdb_rest.exe
-powershell.exe -NoProfile -NonInteractive -Command "$bytes = [System.IO.File]::ReadAllBytes('apps/qdb_rest/qdb_rest.exe'); Write-Output ('Header: {0:X2} {1:X2} {2:X2} {3:X2}' -f $bytes[0], $bytes[1], $bytes[2], $bytes[3])"
+powershell.exe -NoProfile -NonInteractive -Command "$bytes = [System.IO.File]::ReadAllBytes('apps/qdb_rest/qdb_rest.exe'); $peOffset = [BitConverter]::ToInt32($bytes, 0x3c); $signature = [Text.Encoding]::ASCII.GetString($bytes, $peOffset, 4); $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4); $magic = [BitConverter]::ToUInt16($bytes, $peOffset + 24); Write-Output ('Header: {0:X2} {1:X2} {2:X2} {3:X2}; PE signature: {4}; machine: 0x{5:X4}; optional header: 0x{6:X4}' -f $bytes[0], $bytes[1], $bytes[2], $bytes[3], $signature, $machine, $magic)"
 exit /b 0]]></param>
           <param name="teamcity.build.workingDir" value="qdb-api-rest" />
           <param name="teamcity.step.mode" value="default" />
+          <param name="use.custom.script" value="true" />
+        </parameters>
+      </runner>
+      <runner id="RUNNER_296" name="Print REST startup logs" type="simpleRunner">
+        <parameters>
+          <param name="script.content"><![CDATA[@echo off
+setlocal EnableExtensions
+echo --- rest_log.out.txt ---
+if exist rest_log.out.txt (type rest_log.out.txt) else (echo File not found)
+echo --- rest_log.err.txt ---
+if exist rest_log.err.txt (type rest_log.err.txt) else (echo File not found)
+exit /b 0]]></param>
+          <param name="teamcity.build.workingDir" value="qdb-api-rest" />
+          <param name="teamcity.step.mode" value="execute_always" />
           <param name="use.custom.script" value="true" />
         </parameters>
       </runner>
