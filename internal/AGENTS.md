@@ -33,6 +33,15 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   legacy route wraps its v2 counterpart, never reimplements it. Inside
   the package names say legacy too (`writeLegacyJSON`, never a bare
   `writeJSON`); outside it, no code knows a wart exists.
+- A query result outside `internal/qdb` is the binding's Go-owned
+  `QueryResultSet` and nothing else: `Cluster.Query` returns one, the
+  session is back in its pool before the caller sees a row, and the
+  binding's `QueryResult` (a view over C memory with a Close
+  obligation) never leaves the vendored package.
+- Encoders (`internal/encoding`) share one seam over that result set
+  and know only their media type and their bytes: they never flush,
+  never log, never negotiate. The Arrow encoder is zero-copy over the
+  result set's buffers; its wire types are ADR-0009.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
@@ -45,7 +54,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   `source .envrc` (or direnv) before a bare `go build` / `go test`; the
   root Makefile does it for you. Without it the compile fails on missing
   qdb headers. `qdb-api-go` is never patched in `vendor/`: fix upstream,
-  then bump the version in `go.mod` and re-run `go mod vendor`.
+  then bump the version in `go.mod` (`go get ...@<commit>`, a commit on
+  upstream `master`; a branch commit lives only as long as the work
+  that needs it) and re-run `go mod tidy` and `go mod vendor`; nothing
+  under `vendor/` is written by hand.
 
 ## Logging (ADR-0002)
 
