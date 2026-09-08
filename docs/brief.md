@@ -283,6 +283,11 @@ test suite; this section is the specification.
   int64) substitutions are unreachable under the 3.15 C API, which
   types every null cell `qdb_query_result_none`; they are not
   reproduced.
+- A `COUNT(...)` column is typed `int64`, where the old server said
+  `count`: a count is an int64 number, clients never told the two
+  apart, and the binding folds the count tag into int64 (owner
+  decision, 2026-09-08). The legacy equivalence check accepts `int64`
+  for a golden column typed `count`.
 - Warts preserved verbatim on this legacy endpoint (and only here):
   - A query whose text begins with the literal prefix `find` is routed to
     the tag-find API and returns tables with names only, no columns. The
