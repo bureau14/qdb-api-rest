@@ -3,7 +3,7 @@ module github.com/bureau14/qdb-api-rest
 go 1.23.0
 
 require (
-	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260728075543-91ca6c4fce11
+	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a
 	github.com/go-openapi/errors v0.20.2
 	github.com/go-openapi/loads v0.21.1
 	github.com/go-openapi/runtime v0.24.1

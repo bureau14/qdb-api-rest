@@ -1,7 +1,7 @@
 # github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260728075543-91ca6c4fce11
+# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a
 ## explicit; go 1.23.0
 github.com/bureau14/qdb-api-go/v3
 # github.com/davecgh/go-spew v1.1.1
