@@ -5,12 +5,12 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-04
+Last updated: 2026-09-08
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 query        | in progress | auth core and pool core landed                  |
+| M1 -- v2 query        | in progress | auth core, pool core, Arrow encoder landed      |
 | M2 -- v2 auth         | not started |                                                 |
 | M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
 | M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
@@ -42,22 +42,29 @@ In flight:
 
 Next:
 
-1. Plan M1: `POST /api/v2/query` (streaming engine, content-negotiated
-   encoders), the bearer middleware, the minimal login and gzip, and
+1. The rest of M1, each unit extending `docs/m1-plan.md` before it
+   starts: the JSON, NDJSON and CSV encoders over the same seam as the
+   Arrow one; `POST /api/v2/query` with `Accept` negotiation and the
+   flushing writer; the bearer middleware, the minimal login and gzip;
    the `tests/e2e` target that runs the full-table `text/csv`
    equivalence against `/api/v2/query` (`test-legacy` is the only
-   replay target today): plan document, ADRs as needed. The plan must raise
+   replay target today). The handler unit must raise
    `cluster.max_in_buffer_size` for the bench's full-table query: the C
    API default (256 MiB) cannot return the 5.6M-row `SELECT *`; the old
    server's e2e flags use 8 GiB (`tests/e2e/Makefile`). An oversized
    reply (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it
    costs no reconnect; the v2 engine maps it to a client error.
-2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+2. Upstream against `qdb-api-go`, before the query handler:
+   `Query.Fetch` drops the result's `ErrorMessage()` (the server's
+   detail of a rejected query, which the v2 400 body and legacy golden
+   14 both render); the error it returns must carry it. Owner decision
+   pending upstream.
+3. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-3. At M4's entry: decide whether the e2e harness returns to CI or the
+4. At M4's entry: decide whether the e2e harness returns to CI or the
    budgets run locally (`.buildkite/AGENTS.md` holds the decision and
    the recipe).
 
@@ -93,6 +100,13 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-08 -- count answers as int64 in v1
+
+- Owner decision: a `count` column is an int64 and clients never told
+  them apart, so v1 answers `"type":"int64"` where the old server said
+  `"count"`. `docs/m1-plan.md`, Compatibility deviation; the brief's
+  Compatibility contract follows.
 
 ## 2026-09-04 -- Session fate is the binding's; ADR-0003 removed
 
