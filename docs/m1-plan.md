@@ -5,10 +5,9 @@ brief defines it (`docs/brief.md`, Milestones): `POST /api/v2/query`
 streamed through the four content-negotiated encoders. It is a working
 document: verified facts and dates are recorded here, not in the brief;
 progress is recorded in `docs/log.md`, not here. The first unit of work
-under it is the Arrow IPC encoder, specified in full below; the sibling
-encoders, the handler, bearer authentication, the minimal login and gzip
-are later units and are sketched only as far as the Arrow unit needs
-their seam. Each later unit extends this document before it starts. The
+under it is the Arrow IPC encoder, specified in full below; the later
+units of M1 (the sibling encoders, the handler, bearer authentication,
+the minimal login, gzip) extend this document when they start. The
 plan is deleted when M1 exits, its surviving facts moved to
 `internal/AGENTS.md`, the `AGENTS.md` of `internal/encoding`, and ADRs
 (`docs/AGENTS.md`, Plans).
@@ -107,9 +106,6 @@ type Encoder interface {
 
 Rules that hold for every encoder:
 
-- An encoder never reads a `QueryColumn` cell by cell through `Values`
-  and the mask when a whole-buffer path exists; the Arrow encoder is
-  buffer-only.
 - An encoder holds no state across calls and logs nothing: a write
   error is the caller's to log, tagged by the request middleware.
 - An encoder writes to the `io.Writer` it is given and never flushes:
@@ -245,28 +241,6 @@ accepted deviation. Consequences:
 - The legacy byte-shape compare (M3, `tests/e2e/legacy.sh`) must accept
   `int64` for a golden column typed `count`, or golden 07 is re-captured
   with the deviation applied; decided at M3.
-
-## Later units
-
-Each extends this document before it starts. Fixed by the brief, open
-in detail:
-
-- **JSON, NDJSON, CSV encoders.** Proposals, not decisions: timestamps
-  as RFC 3339 with nanoseconds in UTC; blobs base64; JSON nulls as
-  `null`, CSV nulls as an empty field; CSV with a header row; the v2
-  JSON shape is v2's own, never the legacy key order (ADR-0007).
-  Adopting `encoding/json/v2` is an ADR-worthy decision
-  (`docs/brief.md`, Development standards).
-- **The handler.** `POST /api/v2/query`, `{"query": "..."}`, `Accept`
-  negotiation with `application/json` as the default, the flushing
-  writer, per-request write deadline, the mapping of binding errors
-  (`ErrNetworkInbufTooSmall`, the conversion errors) to a client error
-  before the first byte.
-- **Full-table query.** The e2e target that runs the 5.6M-row `text/csv`
-  equivalence needs `cluster.max_in_buffer_size` raised for the server
-  under test (the old server's e2e flags use 8 GiB,
-  `tests/e2e/Makefile`); the C API default cannot return that result.
-- **Bearer middleware, `POST /api/v2/auth/login`, gzip.**
 
 ## Implementation order (the Arrow unit)
 
