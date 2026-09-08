@@ -4,8 +4,8 @@ github.com/apache/arrow-go/v18 v18.7.0 h1:Vw/i+cJyebUofT7JlqFpe65LrmwxULn166jjwS
 github.com/apache/arrow-go/v18 v18.7.0/go.mod h1:PM6IigLJkdMwIpeHXnymo+xZ52f42a9EYiLtRel4p/A=
 github.com/apache/thrift v0.24.0 h1:zy31L1a49QTNB2bG1BBfMXol3yJrTH975G3pPubQVLQ=
 github.com/apache/thrift v0.24.0/go.mod h1:zPt6WxgvTOM6hF92y8C+MkEM5LMxZuk4JcQOiU4Esvs=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908091112-14011c4a1f07 h1:dy2pZJ35J6Ewasq70MOdXPxanLmKk5vTkODj8cV2tlE=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908091112-14011c4a1f07/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a h1:7xgHC33FYLGo2hUUWpov+dul9UsO+YTGu0eTVgZbRSg=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=
