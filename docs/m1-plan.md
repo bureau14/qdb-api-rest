@@ -242,16 +242,44 @@ accepted deviation. Consequences:
   `int64` for a golden column typed `count`, or golden 07 is re-captured
   with the deviation applied; decided at M3.
 
-## Implementation order (the Arrow unit)
+## Working method
 
-1. Vendor `qdb-api-go` at `b3ccb61` and `arrow-go` v18.7.0.
-2. `Cluster.Query` returns a `QueryResultSet`; `Session.query` is a
-   `Fetch`; `Probe` discards the set.
-3. `internal/encoding`: the `Encoder` seam and the result-set-to-record
-   half.
-4. The IPC stream half: `Encode` over batches.
-5. The round-trip property test against the live qdbd.
-6. `docs/log.md` Current state: in flight, and the brief's deviation.
+The unit lands as a sequence of small commits, one per separable step,
+each of which builds and passes `make lint` on its own; a step that
+turns out to have two separable parts becomes two commits. Commit
+messages are one conventional-commit line. The sequence for the Arrow
+unit, in order:
+
+1. `build(vendor): bump qdb-api-go to the upstream that fetches query results as columns`
+2. `build(vendor): add arrow-go for the Arrow IPC encoder`
+3. `refactor(qdb): Query returns a Go-owned result set`
+4. `feat(encoding): the Encoder seam`
+5. `feat(encoding): a result set becomes one Arrow record`
+6. `feat(encoding): the Arrow IPC stream encoder`
+7. `test(encoding): a generated result set round-trips through Arrow IPC`
+8. `docs(log): the Arrow encoder is in flight`
+9. `docs(brief): count answers as int64 in v1` (with open question 1)
+
+Code comments follow `internal/AGENTS.md`: they state why the code is
+as it is, never what it does, and never history. The encoder is dense
+code under that file's rule, so anything with a branch or an algorithm
+gets a compact walk-through, one short sentence per step with the why
+as it happens (`internal/auth/token.go` is the reference). For this
+unit that is, at least:
+
+- the `QueryColumn` type switch: why every field is nullable, why the
+  validity buffer is always passed, why a sentinel in a null slot is not
+  a bug;
+- the buffer wrapping: why the mask bytes, the offsets and the cell
+  buffer are Arrow buffers as they are, and why no bytes are copied;
+- batch slicing: why the batch size bounds nothing on the server, why
+  `ctx` is checked between batches and not inside one;
+- the test body: what each generator dimension pins (a type, a null
+  density, rows spanning batches), where the assertion alone does not
+  say it.
+
+Glue (the `Encoder` interface, `Cluster.Query`'s one-line body, the
+`ContentType` method) gets no walk-through.
 
 ## Open questions
 
