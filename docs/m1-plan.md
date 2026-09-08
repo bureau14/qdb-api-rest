@@ -38,14 +38,16 @@ surface the other three consume.
   (`qdb_query`, one shot); no cursor exists (`docs/brief.md`, Data
   plane). Streaming in M1 therefore means overlapping serialization and
   transmission with iteration over a materialized result.
-- `qdb-api-go` PR #121 (`sc-19711/more-efficient-query-results`, commit
-  `b3ccb61`) adds `QueryResultSet`: a Go-owned, columnar copy of a
-  result with no C pointers and no Close obligation. Per column a sealed
-  `QueryColumn` (`QueryColumnInt64`, `QueryColumnDouble`,
-  `QueryColumnTimestamp`, `QueryColumnString`, `QueryColumnBlob`,
-  `QueryColumnNull`), each a dense `Values` slice plus a validity `Mask`.
-  `Query.Fetch()` executes, converts and releases the C result in one
-  call.
+- `qdb-api-go` master (`e3f87c3`, PR #121 merged) has `QueryResultSet`:
+  a Go-owned, columnar copy of a result with no C pointers and no Close
+  obligation. Per column a sealed `QueryColumn` (`QueryColumnInt64`,
+  `QueryColumnDouble`, `QueryColumnTimestamp`, `QueryColumnString`,
+  `QueryColumnBlob`, `QueryColumnNull`), each a dense `Values` slice
+  plus a validity `Mask`. `Query.Fetch()` executes, converts and
+  releases the C result in one call. Every binding error is a
+  `*qdb.Error` whose `Detail` carries the server's message of a
+  rejected query, rendered after the code text (`errors.As` reaches
+  it); the handler needs no string parsing.
 - The result set is Arrow-shaped in memory: `Mask.Bytes()` is an Arrow
   validity bitmap (LSB-first, 1 = valid, `(n+7)/8` bytes, padding bits
   clear); `Values` of the fixed-width columns are Arrow values buffers;
@@ -214,16 +216,13 @@ which is a programming error against the sealed set and panics.
 Both changes are mechanical, never by hand under `vendor/`:
 
 ```
-go get github.com/bureau14/qdb-api-go/v3@b3ccb61
+go get github.com/bureau14/qdb-api-go/v3@e3f87c3
 go get github.com/apache/arrow-go/v18@v18.7.0
 go mod tidy
 go mod vendor
 ```
 
-- `b3ccb61` is on the PR branch; once PR #121 is on `master`, re-pin to
-  the master commit the same way before this branch fast-forwards into
-  the base, so the base never points at a branch commit for longer than
-  the work takes.
+- `e3f87c3` is `master`; the base never points at a branch commit.
 - `go mod vendor` brings in only the arrow-go packages the encoder
   imports (`arrow`, `array`, `memory`, `ipc`) and what they import
   (flatbuffers, compression libraries for the IPC reader, and a few
@@ -301,4 +300,4 @@ Glue (the `Encoder` interface, `Cluster.Query`'s one-line body, the
 | No IPC buffer compression in M1                            | independent of HTTP gzip, which M1 carries; negotiation mechanism unspecified                      | lz4/zstd record batches now                                                          |
 | Encoder never flushes, never logs                          | flushing and logging are the handler's, tagged by the middleware                                   | a flushing encoder                                                                   |
 | `count` answers as `int64` in v1                           | owner decision; clients never distinguished them; the tag does not survive the binding             | a `QueryColumnCount` upstream; reading `QueryResult` in the wrapper                  |
-| Vendor the PR commit now, re-pin to master before merging  | the accessors are needed today; the base never keeps a branch pin                                  | waiting for the merge; builders meanwhile                                            |
+| Pin `qdb-api-go` at master, never a branch commit          | the base stays on published upstream; a branch pin lives only as long as the work that needs it    | a lasting pin on the PR branch; builders instead of the accessors                    |
