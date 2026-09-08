@@ -42,9 +42,9 @@ In flight:
 
 Next:
 
-1. The rest of M1, each unit extending `docs/m1-plan.md` before it
-   starts: the JSON, NDJSON and CSV encoders over the same seam as the
-   Arrow one; `POST /api/v2/query` with `Accept` negotiation and the
+1. The rest of M1, each unit with its own plan before it starts: the
+   JSON, NDJSON and CSV encoders over the same seam as the Arrow one
+   (`internal/encoding`, ADR-0009); `POST /api/v2/query` with `Accept` negotiation and the
    flushing writer; the bearer middleware, the minimal login and gzip;
    the `tests/e2e` target that runs the full-table `text/csv`
    equivalence against `/api/v2/query` (`test-legacy` is the only
@@ -82,6 +82,10 @@ Handoff to M3 (the legacy wrappers):
 - Client-side C API compression is an explicit config knob, default
   `none`, so `legacy@new-rest` runs under the bench's pinned mode
   (`docs/bench-plan.md`, "Two volumes").
+- Golden 07 pins `"type":"count"`; v1 answers `int64` there
+  (`docs/brief.md`, v1 query). The replay normalizes `count` to
+  `int64` on the golden side, or the golden is re-captured with the
+  deviation applied.
 
 Deferred to M9 (release), tracked nowhere else:
 
@@ -96,12 +100,22 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-08 -- m1-plan.md deleted with the Arrow unit landed
+
+- Wire types to ADR-0009; the `count` deviation to `docs/brief.md`,
+  Compatibility contract; result-set and vendoring rules to
+  `internal/AGENTS.md`. Later M1 units bring their own plan.
+
+## 2026-09-08 -- ADR-0009 accepted: Arrow wire types for query results
+
+- Timestamp(ns, UTC), Utf8 and Binary, every field nullable, zero-copy
+  from the binding's result set.
+
 ## 2026-09-08 -- count answers as int64 in v1
 
 - Owner decision: a `count` column is an int64 and clients never told
   them apart, so v1 answers `"type":"int64"` where the old server said
-  `"count"`. `docs/m1-plan.md`, Compatibility deviation; the brief's
-  Compatibility contract follows.
+  `"count"`. `docs/brief.md`, Compatibility contract.
 
 ## 2026-09-04 -- Session fate is the binding's; ADR-0003 removed
 
