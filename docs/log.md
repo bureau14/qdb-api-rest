@@ -54,17 +54,12 @@ Next:
    server's e2e flags use 8 GiB (`tests/e2e/Makefile`). An oversized
    reply (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it
    costs no reconnect; the v2 engine maps it to a client error.
-2. Upstream against `qdb-api-go`, before the query handler:
-   `Query.Fetch` drops the result's `ErrorMessage()` (the server's
-   detail of a rejected query, which the v2 400 body and legacy golden
-   14 both render); the error it returns must carry it. Owner decision
-   pending upstream.
-3. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
+2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
    `client.h` documents as API-managed and not to be freed. No local
    patch (`docs/brief.md`, Vendoring).
-4. At M4's entry: decide whether the e2e harness returns to CI or the
+3. At M4's entry: decide whether the e2e harness returns to CI or the
    budgets run locally (`.buildkite/AGENTS.md` holds the decision and
    the recipe).
 
