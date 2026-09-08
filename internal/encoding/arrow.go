@@ -57,14 +57,12 @@ func variableWidth(dt arrow.DataType, m qdbapi.Mask, offsets []int32, cells []by
 func arrowColumn(c qdbapi.QueryColumn) arrow.Array {
 	switch c := c.(type) {
 	case *qdbapi.QueryColumnInt64:
-		// A count(...) aggregate lands here too, an int64 on the wire.
 		return fixedWidth(arrow.PrimitiveTypes.Int64, c.Mask, arrow.Int64Traits.CastToBytes(c.Values))
 	case *qdbapi.QueryColumnDouble:
 		return fixedWidth(arrow.PrimitiveTypes.Float64, c.Mask, arrow.Float64Traits.CastToBytes(c.Values))
 	case *qdbapi.QueryColumnTimestamp:
 		return fixedWidth(timestampNanosUTC, c.Mask, arrow.Int64Traits.CastToBytes(c.Values))
 	case *qdbapi.QueryColumnString:
-		// Symbols arrive as strings; no dictionary encoding.
 		return variableWidth(arrow.BinaryTypes.String, c.Mask, c.Offsets(), c.Bytes())
 	case *qdbapi.QueryColumnBlob:
 		return variableWidth(arrow.BinaryTypes.Binary, c.Mask, c.Offsets(), c.Bytes())
@@ -103,18 +101,15 @@ func Record(rs *qdbapi.QueryResultSet) arrow.RecordBatch {
 	return rec
 }
 
-// arrowBatchRows is the number of rows per record batch on the wire. The
-// C API materializes the whole result before the first byte exists, so the
-// batch size bounds nothing on the server; it is the consumer's
-// granularity, and a constant rather than configuration for that reason.
+// arrowBatchRows is the number of rows per record batch on the wire: the
+// consumer's granularity, nothing the server bounds, so a constant.
 const arrowBatchRows = 65536
 
 // ArrowContentType is the media type of the Arrow IPC streaming format.
 const ArrowContentType = "application/vnd.apache.arrow.stream"
 
 // Arrow encodes a result set as an Arrow IPC stream: the schema, the
-// record in batches, the end-of-stream marker. The streaming format, not
-// the file format: a response body has no footer to seek to.
+// record in batches, the end-of-stream marker.
 type Arrow struct{}
 
 // ContentType implements Encoder.
