@@ -261,9 +261,20 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 	return err
 }
 
-// Query runs q as u and hands its result to f.
-func (c *Cluster) Query(ctx context.Context, u User, q string, f func(*qdbapi.QueryResult) error, opts ...CallOption) error {
-	return c.Call(ctx, u, func(s *Session) error { return s.query(q, f) }, opts...)
+// Query runs q as u and returns its result, Go-owned: the session is back
+// in its pool before the caller sees a row, so a slow response never
+// holds one. A statement that produces no result set yields a nil set.
+func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOption) (*qdbapi.QueryResultSet, error) {
+	var rs *qdbapi.QueryResultSet
+	err := c.Call(ctx, u, func(s *Session) error {
+		var err error
+		rs, err = s.fetch(q)
+		return err
+	}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return rs, nil
 }
 
 // Probe answers readiness. It dials a fresh session as the REST API's own
@@ -277,7 +288,7 @@ func (c *Cluster) Probe(ctx context.Context) error {
 		return err
 	}
 	s := newSession(hdl)
-	qerr := s.query(c.readinessQuery, func(*qdbapi.QueryResult) error { return nil })
+	_, qerr := s.fetch(c.readinessQuery)
 	s.closeAsync()
 	return qerr
 }

@@ -52,7 +52,7 @@ func TestRejectedQueryReusesSession(t *testing.T) {
 	c := New(insecureConfig(nil), nil)
 	defer closeCluster(t, c)
 
-	err := c.Query(context.Background(), anonymous, "NOT A QUERY", func(*qdbapi.QueryResult) error { return nil })
+	_, err := c.Query(context.Background(), anonymous, "NOT A QUERY")
 	if err == nil {
 		t.Fatal("want an error for a malformed query")
 	}
@@ -80,11 +80,14 @@ func TestPerUserCapAndSharing(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 6 {
 		wg.Go(func() {
-			err := c.Query(context.Background(), anonymous, "SELECT 1", func(*qdbapi.QueryResult) error {
-				if s := c.poolFor(anonymous).Stats(); s.InUse > 2 {
-					t.Errorf("per-user cap exceeded: %+v", s)
+			// The cap is checked while the session is held, so through
+			// Call: Query has already returned it by the time it answers.
+			err := c.Call(context.Background(), anonymous, func(s *Session) error {
+				_, err := s.fetch("SELECT 1")
+				if st := c.poolFor(anonymous).Stats(); st.InUse > 2 {
+					t.Errorf("per-user cap exceeded: %+v", st)
 				}
-				return nil
+				return err
 			})
 			if err != nil {
 				t.Errorf("query: %v", err)
@@ -190,7 +193,7 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 	}), clk.Now)
 	defer closeCluster(t, c)
 
-	if err := c.Query(context.Background(), anonymous, "SELECT 1", func(*qdbapi.QueryResult) error { return nil }); err != nil {
+	if _, err := c.Query(context.Background(), anonymous, "SELECT 1"); err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if s := c.Stats(); s.Users != 1 {
