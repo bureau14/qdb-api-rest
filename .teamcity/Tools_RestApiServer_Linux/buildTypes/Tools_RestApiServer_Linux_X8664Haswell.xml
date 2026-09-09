@@ -11,6 +11,8 @@
     </disabled-settings>
     <parameters>
       <param name="env.LD_LIBRARY_PATH" value="%QDB_API_PATH%/lib" />
+      <param name="env.CMAKE_C_COMPILER" value="system.gcc15.gcc.path" />
+      <param name="env.CMAKE_CXX_COMPILER" value="system.gcc15.g++.path" />
       <param name="env_path.sep" value=":" />
       <param name="os_name" value="linux-64bit" />
       <param name="platform" value="linux-64bit" />
