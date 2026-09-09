@@ -126,11 +126,9 @@ deliberately not captured (834 MB of JSON is not a fixture).
 Goldens are captured from the old server **built from `master`** in a
 worktree (`make old-server`), linked against this repo's `qdb/` tree --
 the same C API the server under test uses, so any difference is the REST
-layer's. Verified 2026-08-19: the legacy wire-shape code
-(`qdbinterface/query.go`, `models/`, `restapi/configure_qdb_api_rest.go`)
-is byte-identical between tag `v3.14.2`, branch `3.14.x` and `master`
-(only `const version = "3.14.2"` differs); `3.14.x` itself has no
-`vendor/` and needs a `../qdb-api-go` checkout at v3.13.5.
+layer's. `master`'s wire-shape code is byte-identical to the released
+`v3.14.2` (verified 2026-08-19), so the goldens stand for the deployed
+server.
 
 Fixture for the goldens (`make seed`, `tests/e2e/seed.sql`, idempotent):
 the nine tagged tables from old master's rest-setup (`foo/bar/baz_01..03`,
@@ -140,21 +138,19 @@ with a nanosecond timestamp and `"`, `,`, `<&>` in a string) and
 `legacy_allnull` (pins `"type":"none"`). `reproduce` supplies count,
 `LIMIT 10` and a `GROUP BY side` aggregate.
 
-Verified 2026-08-19, relevant to the brief's wart list: against the 3.15
-C API, null cells of every type reach the REST layer typed
-`qdb_query_result_none` and serialize as JSON `null`, with the column
-type taken from the last non-null row (`"none"` if all null). The
-`"(void)"` / `"(undefined)"` branches in the old `qdbinterface/query.go`
-(typed int64/timestamp carrying the undefined sentinel) were not
-reachable with any probed query (raw selects, `IN RANGE`, `GROUP BY`,
-`MIN/MAX/SUM/FIRST/LAST`, arithmetic on nulls). The goldens therefore pin
-`null`; a rewrite that keeps the same sentinel mapping for typed
-undefined values is faithful either way, but the sentinels cannot be
-pinned by a golden under this C API.
+Two places where the goldens and the contract (`docs/brief.md`,
+Compatibility contract) meet:
 
-Verified 2026-09-02, the byte-shape facts the goldens pin (from the old
-server's models and producers on `master`; for the v1 wrappers in
-`internal/httpapi/legacy`, ADR-0007):
+- Null cells are JSON `null` in every golden; the old server's sentinel
+  strings never appear because the C API types every null cell
+  `qdb_query_result_none` (verified 2026-08-19 over raw selects,
+  `IN RANGE`, `GROUP BY`, aggregates and arithmetic on nulls).
+- Golden 07 carries `"type":"count"` where v1 answers `"type":"int64"`;
+  the replay treats the two as equal for that column.
+
+The byte-shape facts the goldens pin (verified 2026-09-02 from the old
+server's models and producers on `master`; the v1 wrappers in
+`internal/httpapi/legacy` reproduce them, ADR-0007):
 
 - Key order and omission follow the old models' struct order: column
   objects serialize `data`, `name`, `type` (`name` and `type`
