@@ -178,22 +178,19 @@ prose:
 ## Non-goals
 
 - **No SPA, no frontend framework, no node/npm anywhere.**
-- **No packaging and no Docker image** (owner decision, 2026-08-24):
-  deb/rpm packaging and the standalone Docker image are removed from the
-  milestone plan entirely and return only as a deliberate re-add when
-  deployment becomes a concern. The `qdb-pkg-*` / `qdb-docker`
-  integration moves with them, as does the packaging-finalization note
-  that the RPM must mark the config `%config(noreplace)` (Debian's
+- **No packaging and no Docker image.** deb/rpm packaging, the
+  standalone Docker image and the `qdb-pkg-*` / `qdb-docker` integration
+  are out of scope until deployment becomes a concern; when packaging
+  returns, the RPM marks the config `%config(noreplace)` (Debian's
   conffile handling is the reference).
 - **No dashboard in the initial scope.** SSR dashboard is a future
   direction (see Architecture: Dashboard); the routing seam and
   cookie-compatible auth are preserved for it.
-- **No Prometheus remote read/write.** The legacy `/api/prometheus/*`
-  storage-integration endpoints are dropped. (The new `/metrics`
-  exposition endpoint is unrelated to these.)
-- **No CSV table-export endpoint.** `/api/tables/{name}.csv` and its
-  hardcoded per-customer column logic are dropped.
-- **No `/api/option/*` endpoints.**
+- **No Prometheus remote read/write, no CSV table export, no
+  `/api/option/*`.** The legacy endpoints that v1 does not carry are
+  listed under Compatibility contract, "Explicitly dropped". (The
+  `/metrics` exposition endpoint is unrelated to the Prometheus
+  remote-storage integration.)
 - **No config-file compatibility.** The config format is redesigned; only
   the wire protocol is compatibility-constrained. (Customers' pain is their
   custom client code, not their install scripts.)
@@ -259,35 +256,29 @@ test suite; this section is the specification.
   content of a QuasarDB user private-key file. Empty or absent username
   means anonymous login (insecure clusters); the Grafana plugin relies on
   this.
-- Response 200: `{"token": "<opaque string>"}`. The token was a JWT in the
-  old server; clients treat it as opaque, so the internal format may change.
-  Validity: 12 hours (preserved for this endpoint).
+- Response 200: `{"token": "<opaque string>"}`. Clients treat the token
+  as opaque; its format is this server's alone (ADR-0005). Validity: 12
+  hours.
 - Response 401: `{"message": "..."}`.
-- Outstanding old-server tokens do not survive the upgrade; clients are
-  expected to re-login on 401 (verified: the Grafana plugin clears its
-  token and retries on 401).
+- Tokens minted by the old server are rejected; clients re-login on 401
+  (the Grafana plugin clears its token and retries on 401).
 
 ### POST /api/v1/query
 
 - Auth: `Authorization: Bearer <token>` or `?token=<token>` query parameter
   (v1 only; v2 does not accept tokens in URLs).
-- Request: `{"query": "..."}`. (The old README showing a bare JSON string is
-  wrong; the deployed binder and the Grafana plugin both use the object
-  form.)
+- Request: `{"query": "..."}`, the object form the Grafana plugin sends;
+  a bare JSON string is not accepted.
 - Response 200: `{"tables": [{"name": "...", "columns": [{"name": "...",
 "type": "...", "data": [...]}]}]}`.
-- Column types: `blob | double | int64 | string | timestamp | count | none`.
+- Column types: `blob | double | int64 | string | timestamp | none`. A
+  `COUNT(...)` column is an `int64`: the old server's `count` type
+  named the same number, and no client told the two apart.
 - Null cells of every type are JSON `null`, the column type taken from
   the last non-null row (`"none"` if every row is null). The old
-  server's `"(void)"` (minimum-timestamp) and `"(undefined)"` (null
-  int64) substitutions are unreachable under the 3.15 C API, which
-  types every null cell `qdb_query_result_none`; they are not
-  reproduced.
-- A `COUNT(...)` column is typed `int64`, where the old server said
-  `count`: a count is an int64 number, clients never told the two
-  apart, and the binding folds the count tag into int64 (owner
-  decision, 2026-09-08). The legacy equivalence check accepts `int64`
-  for a golden column typed `count`.
+  server's `"(void)"` and `"(undefined)"` sentinel strings are not
+  reproduced; the C API types every null cell `qdb_query_result_none`,
+  so no query could produce them.
 - Warts preserved verbatim on this legacy endpoint (and only here):
   - A query whose text begins with the literal prefix `find` is routed to
     the tag-find API and returns tables with names only, no columns. The
@@ -301,23 +292,21 @@ test suite; this section is the specification.
 
 - Unauthenticated, empty body. Load balancers at customer sites
   health-check these paths; keep them verbatim (also mirrored under
-  `/api/v2/status/*`). Success is `200`; readiness failure is `503`
-  (the old server answered `500` with a JSON message; that shape is
-  deliberately not preserved, `503` being what probes and load
-  balancers understand as "not ready"). Readiness dials the cluster as
-  the REST API's own user on every probe (ADR-0004).
+  `/api/v2/status/*`). Success is `200`; readiness failure is `503`,
+  the one deliberate break with the old server's `500` (ADR-0004).
+  Readiness dials the cluster as the REST API's own user on every probe
+  (ADR-0004).
 
 ### Explicitly dropped
 
 `/api/prometheus/read`, `/api/prometheus/write`, `/api/tables/{name}.csv`,
 `/api/option/parallelism`, `/api/option/max-in-buffer-size`,
-`/api/cluster`, `/api/cluster/nodes/{id}`, `/api/tags`. The cluster
-endpoints have no known consumer (the Grafana plugin does not call them)
-but are publicly documented, as is the Prometheus remote-storage
-integration; both removals are covered explicitly in the release milestone's
-migration notes and the `qdb-documentation` rewrite. v2 provides cluster-status
-equivalents. `/api/tags` is unused (owner decision, 2026-09-01) and
-returns only as a deliberate re-add.
+`/api/cluster`, `/api/cluster/nodes/{id}`, `/api/tags`. None has a
+known consumer (the Grafana plugin calls none of them). The cluster
+endpoints and the Prometheus remote-storage integration are publicly
+documented, so the release milestone's migration notes and the
+`qdb-documentation` rewrite cover their removal; v2 provides
+cluster-status equivalents.
 
 ## Architecture
 
