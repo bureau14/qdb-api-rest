@@ -5,7 +5,24 @@
 package qdb
 
 /*
+	#cgo noescape qdb_go_error_origin
+	#cgo nocallback qdb_go_error_origin
+	#cgo noescape qdb_go_error_severity
+	#cgo nocallback qdb_go_error_severity
+
 	#include <qdb/error.h>
+
+	// Wrappers for the qdb/error.h macros, which cgo cannot call directly.
+
+	static inline qdb_error_origin_t qdb_go_error_origin(qdb_error_t e)
+	{
+		return (qdb_error_origin_t)QDB_ERROR_ORIGIN(e);
+	}
+
+	static inline qdb_error_severity_t qdb_go_error_severity(qdb_error_t e)
+	{
+		return (qdb_error_severity_t)QDB_ERROR_SEVERITY(e);
+	}
 */
 import "C"
 
@@ -15,9 +32,11 @@ import (
 	"strings"
 )
 
-// Error handling patterns for qdb-api-go:
+// Error handling patterns for qdb-api-go. Three predicates each answer
+// one question about an error, independently; an error without a C API
+// code answers no to all of them.
 //
-// 1. Check retryability with exponential backoff:
+// 1. Retry loop, IsRetryable: may the same request succeed later?
 //
 //	err := handle.PutBlob(alias, data)
 //	for attempt := 0; err != nil && IsRetryable(err) && attempt < 3; attempt++ {
@@ -25,7 +44,13 @@ import (
 //	    err = handle.PutBlob(alias, data)
 //	}
 //
-// 2. Use errors.Is() for specific error checks:
+// 2. Session pool, IsBadSession: can the handle still be trusted?
+// Lease.Done asks it; a pool of its own discards the session when it holds.
+//
+// 3. Circuit breaker, IsClusterUnavailable: was the cluster unreachable or
+// overloaded? Count it as a failure; any other outcome counts as a success.
+//
+// 4. Use errors.Is() for specific error checks:
 //
 //	if errors.Is(err, qdb.ErrAliasNotFound) {
 //	    // Create new entry
@@ -33,7 +58,7 @@ import (
 //	    // Handle auth failure
 //	}
 //
-// 3. Extract ErrorType from wrapped errors:
+// 5. Extract ErrorType from wrapped errors:
 //
 //	var qdbErr qdb.ErrorType
 //	if errors.As(err, &qdbErr) {
@@ -48,30 +73,9 @@ import (
 // ErrorType: QuasarDB error codes, wraps C.qdb_error_t
 type ErrorType C.qdb_error_t
 
-// Error codes: retryable errors default true except logic/constraint/permission failures
-//
-// Network/transient (retryable):
-// - ErrTimeout: network timeout
-// - ErrConnectionRefused/Reset: connection failed
-// - ErrUnstableCluster: temporary cluster issue
-// - ErrTryAgain: explicit retry request
-// - ErrResourceLocked: concurrent access conflict
-// - ErrNetworkError: generic network failure
-//
-// Logic/programming (non-retryable):
-// - ErrInvalidArgument: bad parameter
-// - ErrIncompatibleType: type mismatch
-// - ErrInvalidQuery: malformed query
-// - ErrBufferTooSmall: insufficient buffer
-//
-// Constraints (non-retryable):
-// - ErrAliasAlreadyExists: duplicate key
-// - ErrEntryTooLarge: size limit exceeded
-// - ErrQuotaExceeded: storage quota reached
-//
-// Permissions (non-retryable):
-// - ErrAccessDenied: insufficient privileges
-// - ErrOperationNotPermitted: forbidden operation
+// Error codes, wraps the qdb_error_t enum. Three predicates answer what a
+// code means for the caller: IsRetryable, IsBadSession and
+// IsClusterUnavailable.
 const (
 	Success                      ErrorType = C.qdb_e_ok
 	Created                      ErrorType = C.qdb_e_ok_created
@@ -140,6 +144,28 @@ const (
 	ErrAsyncPipeFull             ErrorType = C.qdb_e_async_pipe_full
 )
 
+// ErrorOrigin: origin bits of an error code, wraps C.qdb_error_origin_t
+type ErrorOrigin C.qdb_error_origin_t
+
+const (
+	ErrorOriginSystemRemote ErrorOrigin = C.qdb_e_origin_system_remote
+	ErrorOriginSystemLocal  ErrorOrigin = C.qdb_e_origin_system_local
+	ErrorOriginConnection   ErrorOrigin = C.qdb_e_origin_connection
+	ErrorOriginInput        ErrorOrigin = C.qdb_e_origin_input
+	ErrorOriginOperation    ErrorOrigin = C.qdb_e_origin_operation
+	ErrorOriginProtocol     ErrorOrigin = C.qdb_e_origin_protocol
+)
+
+// ErrorSeverity: severity bits of an error code, wraps C.qdb_error_severity_t
+type ErrorSeverity C.qdb_error_severity_t
+
+const (
+	ErrorSeverityUnrecoverable ErrorSeverity = C.qdb_e_severity_unrecoverable
+	ErrorSeverityError         ErrorSeverity = C.qdb_e_severity_error
+	ErrorSeverityWarning       ErrorSeverity = C.qdb_e_severity_warning
+	ErrorSeverityInfo          ErrorSeverity = C.qdb_e_severity_info
+)
+
 func (e ErrorType) Error() string { return C.GoString(C.qdb_error(C.qdb_error_t(e))) }
 
 // Is enables errors.Is() comparison for wrapped errors.
@@ -160,6 +186,16 @@ func (e ErrorType) Is(target error) bool {
 	return false
 }
 
+// Origin returns the origin bits (QDB_ERROR_ORIGIN)
+func (e ErrorType) Origin() ErrorOrigin {
+	return ErrorOrigin(C.qdb_go_error_origin(C.qdb_error_t(e)))
+}
+
+// Severity returns the severity bits (QDB_ERROR_SEVERITY)
+func (e ErrorType) Severity() ErrorSeverity {
+	return ErrorSeverity(C.qdb_go_error_severity(C.qdb_error_t(e)))
+}
+
 func makeErrorOrNil(err C.qdb_error_t) error {
 	if err != 0 && err != C.qdb_e_ok_created {
 		return ErrorType(err)
@@ -168,10 +204,71 @@ func makeErrorOrNil(err C.qdb_error_t) error {
 	return nil
 }
 
+// Error is what every failed operation in this package returns: the code,
+// the operation and its context as passed to wrapError, and the server's
+// own description of the failure when it supplied one. Unwrap yields the
+// code, so errors.Is against an ErrorType constant and the three
+// predicates work on it unchanged.
+type Error struct {
+	Code      ErrorType
+	Operation string
+	// Context holds the key-value pairs given to wrapError, in order.
+	Context []any
+	// Detail is the server's description of this particular failure, such as
+	// the parser's message for an invalid query. Empty when the server gave
+	// nothing beyond the code.
+	Detail string
+}
+
+// Error renders the operation, its context, the code's text and, when
+// present, the detail: "op (operation=op, k=v): <code text> <detail>". The
+// detail follows a single space so a caller that showed the code text and
+// the query message side by side sees the same string as before.
+func (e *Error) Error() string {
+	var sb strings.Builder
+	sb.Grow(len(e.Operation) + len(e.Context)*20 + len(e.Detail) + 10)
+
+	sb.WriteString(e.Operation)
+
+	if len(e.Context) > 0 {
+		sb.WriteString(" (operation=")
+		sb.WriteString(e.Operation)
+
+		for i := 0; i < len(e.Context); i += 2 {
+			fmt.Fprint(&sb, ", ", e.Context[i], "=", e.Context[i+1])
+		}
+
+		sb.WriteString(")")
+	}
+
+	sb.WriteString(": ")
+	sb.WriteString(e.Code.Error())
+
+	if e.Detail != "" {
+		sb.WriteString(" ")
+		sb.WriteString(e.Detail)
+	}
+
+	return sb.String()
+}
+
+// Unwrap returns the code, so errors.Is and errors.As reach the ErrorType.
+func (e *Error) Unwrap() error {
+	return e.Code
+}
+
+// errorDetailKey is the context key wrapError lifts into Error.Detail
+// instead of the context: the server's message is part of the error, not a
+// label on it, and a caller must be able to reach it without parsing text.
+const errorDetailKey = "detail"
+
 // wrapError wraps C error with context
 // In: err C.qdb_error_t, op string, kv pairs
 // Out: error with context, nil if success
-// Ex: wrapError(err, "connect", "uri", uri) → "connect (operation=connect, uri=qdb://host): timeout"
+// Ex: wrapError(err, "connect", "uri", uri) -> "connect (operation=connect, uri=qdb://host): timeout"
+//
+// A pair keyed "detail" is not context: its value becomes Error.Detail and
+// is dropped from Context, and an empty value is dropped altogether.
 func wrapError(err C.qdb_error_t, operation string, keyValues ...any) error {
 	if err == 0 || err == C.qdb_e_ok_created {
 		return nil
@@ -182,140 +279,132 @@ func wrapError(err C.qdb_error_t, operation string, keyValues ...any) error {
 		panic(fmt.Sprintf("wrapError: odd number of key-value arguments provided (%d). Keys and values must be provided in pairs.", len(keyValues)))
 	}
 
-	baseErr := ErrorType(err)
+	e := &Error{Code: ErrorType(err), Operation: operation}
 
-	// Pre-allocate builder capacity to avoid reallocation
-	// because error formatting is on hot path for failures
-	var sb strings.Builder
-	sb.Grow(len(operation) + len(keyValues)*20 + 10)
-
-	sb.WriteString(operation)
-
-	if len(keyValues) > 0 {
-		sb.WriteString(" (operation=")
-		sb.WriteString(operation)
-
-		// Format context pairs - allows debugging failures with full context
-		for i := 0; i < len(keyValues); i += 2 {
-			sb.WriteString(", ")
-			sb.WriteString(fmt.Sprintf("%v", keyValues[i]))
-			sb.WriteString("=")
-			sb.WriteString(fmt.Sprintf("%v", keyValues[i+1]))
+	// Every pair goes into the context except the detail, which has its
+	// own field. The common case has no detail, so the pairs are kept as
+	// they are unless one has to be removed.
+	for i := 0; i < len(keyValues); i += 2 {
+		if keyValues[i] != errorDetailKey {
+			continue
 		}
+		e.Detail = fmt.Sprint(keyValues[i+1])
+		keyValues = append(keyValues[:i:i], keyValues[i+2:]...)
 
-		sb.WriteString(")")
+		break
 	}
+	e.Context = keyValues
 
-	sb.WriteString(": ")
-
-	return fmt.Errorf("%s%w", sb.String(), baseErr)
+	return e
 }
 
-// IsRetryable checks if error is transient/retryable.
-// Args:
-//
-//	err: any error (wrapped or direct)
-//
-// Returns:
-//
-//	true: network/resource errors → retry
-//	false: logic/permission errors → fail fast
+// IsRetryable reports whether the same request may succeed on a later
+// attempt: the question a retry loop asks. Answers false for nil, for
+// success and informational codes, and for an error without an ErrorType
+// in its chain. ErrTransactionPartialFailure keeps failing until the
+// transaction is rolled back (qdb/error.h), so a retry needs a delay.
 //
 // Example:
 //
 //	if IsRetryable(err) { time.Sleep(backoff); retry() }
+//
+//nolint:exhaustive // unlisted codes are not retryable
 func IsRetryable(err error) bool {
-	if err == nil {
+	var e ErrorType
+	if !errors.As(err, &e) {
 		return false
 	}
 
-	// Extract ErrorType from wrapped errors - enables retry logic
-	// to work with contextual errors from wrapError()
-	var errorType ErrorType
-	if !errors.As(err, &errorType) {
-		return true // Unknown errors assumed retryable to avoid data loss
-	}
-
-	// Retry decision matrix - prevents infinite loops on permanent failures
-	// while allowing recovery from transient issues
-	switch errorType {
-	// Success - no retry needed
-	case Success, Created:
-
-		return false
-
-	// Retryable network/transient errors
-	case ErrTimeout, ErrConnectionRefused, ErrConnectionReset, ErrUnstableCluster,
-		ErrTryAgain, ErrResourceLocked, ErrNetworkError, ErrNetworkInbufTooSmall:
-
+	switch e {
+	case ErrTimeout, ErrConnectionRefused, ErrConnectionReset, ErrNotConnected, ErrHostNotFound,
+		ErrNetworkError, ErrUnstableCluster, ErrTryAgain, ErrResourceLocked, ErrConflict,
+		ErrTransactionPartialFailure, ErrPartialFailure, ErrAsyncPipeFull, ErrNoMemoryRemote,
+		ErrInterrupted, ErrInvalidReply:
 		return true
 
-	// Retryable system errors - may be temporary
-	case ErrSystemRemote, ErrSystemLocal, ErrInternalRemote, ErrInternalLocal,
-		ErrNoMemoryRemote, ErrNoMemoryLocal, ErrConflict, ErrNotConnected,
-		ErrInterrupted, ErrAsyncPipeFull:
-
-		return true
-
-	// Partial failures - some operations succeeded, worth retrying remainder
-	case ErrTransactionPartialFailure, ErrPartialFailure:
-
-		return true
-
-	// Clock skew - may resolve over time
-	case ErrClockSkew:
-
-		return true
-
-	// Logic errors - retrying won't fix bad code
-	case ErrInvalidArgument, ErrInvalidHandle, ErrInvalidIterator, ErrInvalidVersion,
-		ErrInvalidProtocol, ErrInvalidReply, ErrInvalidQuery, ErrInvalidRegex,
-		ErrInvalidCryptoKey, ErrBufferTooSmall, ErrNotImplemented, ErrIteratorEnd,
-		ErrUninitialized:
-
-		return false
-
-	// Schema errors - retrying won't change schema
-	case ErrIncompatibleType, ErrColumnNotFound, ErrQueryTooComplex:
-
-		return false
-
-	// Constraint violations - retrying won't resolve conflicts
-	case ErrAliasAlreadyExists, ErrElementAlreadyExists, ErrTagAlreadySet,
-		ErrOutOfBounds, ErrOverflow, ErrUnderflow, ErrEntryTooLarge,
-		ErrAliasTooLong, ErrUnmatchedContent, ErrReservedAlias, ErrSkipped:
-
-		return false
-
-	// Auth failures - retrying won't fix credentials
-	case ErrAccessDenied, ErrLoginFailed, ErrOperationNotPermitted, ErrUnknownUser:
-
-		return false
-
-	// Config errors - retrying won't enable features
-	case ErrOperationDisabled:
-
-		return false
-
-	// State errors - retrying won't create missing data
-	case ErrContainerEmpty, ErrContainerFull, ErrElementNotFound, ErrTagNotSet,
-		ErrAliasNotFound, ErrHostNotFound:
-
-		return false
-
-	// Data integrity - retrying won't fix corruption
-	case ErrDataCorruption:
-
-		return false
-
-	// Resource exhaustion - retrying won't free disk space
-	case ErrNoSpaceLeft, ErrQuotaExceeded:
-
-		return false
-
-	// Unknown errors assumed retryable - prevents data loss from new errors
 	default:
+		return false
+	}
+}
 
+// IsBadSession reports whether the handle that produced err can no longer
+// be trusted, so that a session pool discards it instead of reusing it:
+// the question Lease.Done asks. Answers false for nil, for success and
+// informational codes, and for an error without an ErrorType in its
+// chain, which says nothing about the handle.
+func IsBadSession(err error) bool {
+	var e ErrorType
+
+	return errors.As(err, &e) && e.isBadSession()
+}
+
+// isBadSession lists every code, exhaustive by lint: a code added later
+// fails the build until it is classified. Created and ErrOkCreated share
+// a value, so only one can appear.
+func (e ErrorType) isBadSession() bool {
+	switch e {
+	case
+		// the wire failed
+		ErrTimeout, ErrConnectionRefused, ErrConnectionReset, ErrNotConnected, ErrHostNotFound, ErrNetworkError,
+		// the handle's topology view is stale
+		ErrUnstableCluster,
+		// the protocol is confused
+		ErrInvalidProtocol, ErrInvalidVersion, ErrInvalidReply,
+		// the client side failed; ErrNetworkInbufTooSmall leaves the body of
+		// the oversized reply unread on the socket
+		ErrSystemLocal, ErrInternalLocal, ErrNoMemoryLocal, ErrNetworkInbufTooSmall,
+		// the server failed internally; the handle is probably fine, discard
+		// costs one reconnect
+		ErrSystemRemote, ErrInternalRemote, ErrNoMemoryRemote, ErrDataCorruption, ErrInterrupted,
+		// the handle itself is unusable
+		ErrInvalidHandle, ErrUninitialized:
 		return true
+
+	// success and informational
+	case Success, Created, ErrElementNotFound, ErrElementAlreadyExists, ErrTagAlreadySet, ErrTagNotSet,
+		ErrUnmatchedContent, ErrIteratorEnd:
+		return false
+
+	// the request was judged, input side
+	case ErrOutOfBounds, ErrBufferTooSmall, ErrInvalidArgument, ErrReservedAlias, ErrInvalidIterator,
+		ErrEntryTooLarge, ErrAliasTooLong, ErrInvalidCryptoKey, ErrInvalidQuery, ErrInvalidRegex, ErrUnknownUser:
+		return false
+
+	// the request was judged, operation side
+	case ErrAliasNotFound, ErrAliasAlreadyExists, ErrSkipped, ErrIncompatibleType, ErrContainerEmpty,
+		ErrContainerFull, ErrOverflow, ErrUnderflow, ErrConflict, ErrResourceLocked,
+		ErrTransactionPartialFailure, ErrOperationDisabled, ErrOperationNotPermitted, ErrAccessDenied,
+		ErrColumnNotFound, ErrQueryTooComplex, ErrPartialFailure:
+		return false
+
+	// the server answered with a condition
+	case ErrTryAgain, ErrAsyncPipeFull, ErrNotImplemented, ErrNoSpaceLeft, ErrQuotaExceeded, ErrClockSkew,
+		ErrLoginFailed:
+		return false
+	}
+
+	return false
+}
+
+// IsClusterUnavailable reports whether err is evidence that the cluster
+// was unreachable or too busy to answer: the question a circuit breaker
+// asks. Answers false for nil and for an error without an ErrorType in
+// its chain. ErrTimeout is listed although a query slower than the socket
+// timeout produces it too; consecutive-failure counting bounds that.
+//
+//nolint:exhaustive // unlisted codes are not evidence about the cluster
+func IsClusterUnavailable(err error) bool {
+	var e ErrorType
+	if !errors.As(err, &e) {
+		return false
+	}
+
+	switch e {
+	case ErrTimeout, ErrConnectionRefused, ErrConnectionReset, ErrNotConnected, ErrHostNotFound,
+		ErrNetworkError, ErrUnstableCluster, ErrTryAgain, ErrAsyncPipeFull, ErrNoMemoryRemote:
+		return true
+
+	default:
+		return false
 	}
 }

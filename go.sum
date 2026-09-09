@@ -46,8 +46,8 @@ github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d/go.mod h1:W
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260728075543-91ca6c4fce11 h1:SjZ1VXAR3bx88gxzzGd4MVIZB8B506rVSSAJTDb2Rx8=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260728075543-91ca6c4fce11/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a h1:7xgHC33FYLGo2hUUWpov+dul9UsO+YTGu0eTVgZbRSg=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260908101131-e3f87c3e9b1a/go.mod h1:d2MebGaHDxjAIPC/X6C6Z3ZcnyGhfZO8s2nNd4u2dUQ=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
