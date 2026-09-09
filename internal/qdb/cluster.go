@@ -196,13 +196,12 @@ func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 }
 
 // Session is one authenticated client session as this package sees it: the
-// narrow wrapper around a qdb_handle_t and the only way code touches one;
-// the binding's HandleType never leaves this package. Every method runs one
-// C API operation and returns Go-owned memory, so the surface the server
-// depends on is enumerable here and nothing outside it holds C memory. A
-// Session is built per checkout: Call wraps the handle the user's pool
-// leased, Probe the one it dialed itself. One goroutine uses a Session at
-// a time.
+// narrow wrapper around the binding's session and the only way code
+// touches one. Every method runs one C API operation and returns Go-owned
+// memory, so the surface the server depends on is enumerable here and
+// nothing outside this package holds C memory. A Session is built per
+// checkout: Call wraps the session the user's pool leased, Probe the one it
+// dialed itself. One goroutine uses a Session at a time.
 type Session struct {
 	session qdbapi.Session
 }
@@ -219,9 +218,9 @@ func (s *Session) closeAsync() {
 	go func() { _ = s.session.Close() }()
 }
 
-// fetch runs q and returns its result copied into Go memory; the binding
-// releases the C result before returning, so the set needs no Close. A
-// statement that produces no result set (DDL) yields a nil set.
+// fetch runs q and returns its result copied into Go memory, the C result
+// released by the binding before it returns. A statement that produces no
+// result set (DDL) yields a nil set.
 func (s *Session) fetch(q string) (*qdbapi.QueryResultSet, error) {
 	return s.session.Query(q).Fetch()
 }
@@ -252,13 +251,13 @@ func callerLeft(err error) bool {
 
 // Call runs f against a session authenticated as u. The breaker gates the
 // call; u's pool leases a session (dialing one on demand), runs f, and
-// decides the session's fate from f's error: that judgement is the
-// binding's (IsBadSession, through Lease.Done), never made here. What this
-// layer decides is per cluster: the breaker, fed only by the errors that
-// are evidence about the cluster (IsClusterUnavailable), and the opt-in
-// retry of an idempotent read after a retryable failure. A retry after a
-// bad session runs on a fresh one, the pool having discarded the old;
-// after any other retryable failure it may run on the same session again.
+// decides the session's fate from f's error (the binding's IsBadSession,
+// through Lease.Done). This layer decides per cluster: the breaker, fed
+// only by the errors that are evidence about the cluster
+// (IsClusterUnavailable), and the opt-in retry of an idempotent read after
+// a retryable failure. A retry after a bad session runs on a fresh one,
+// the pool having discarded the old; after any other retryable failure it
+// may run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {

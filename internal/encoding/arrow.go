@@ -124,8 +124,8 @@ func (Arrow) Encode(ctx context.Context, w io.Writer, rs *qdbapi.QueryResultSet)
 // built once over the whole set and sliced per batch: a slice shares every
 // buffer, and only the offsets of a string or blob slice are rebased by the
 // writer, a copy of batchRows int32 values, never of the cells. No
-// in-format buffer compression: gzip at the HTTP layer is this milestone's
-// compression, and the two are independent.
+// in-format buffer compression: the response's compression is negotiated
+// at the HTTP layer, and the two are independent (ADR-0009).
 func writeArrow(ctx context.Context, w io.Writer, rs *qdbapi.QueryResultSet, batchRows int64) error {
 	rec := Record(rs)
 	defer rec.Release()

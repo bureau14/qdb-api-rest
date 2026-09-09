@@ -38,8 +38,7 @@ cluster:
   # authenticates as on its own behalf (the readiness probe). Required
   # when the cluster has a public key; empty means anonymous.
   user_security_file: ""
-  # Client-side C API compression: none | balanced (the C binding exposes
-  # only these two; the C API's "best" level is not wrapped).
+  # Client-side C API compression: none | balanced.
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"
