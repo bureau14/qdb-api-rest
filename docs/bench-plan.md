@@ -43,10 +43,9 @@ isolation, persist normalized fingerprints and timings, compare
 afterwards -- so they share the harness; only `report` reads the result
 files differently for each.
 
-This is a local developer tool, deliberately **not** wired into Buildkite.
-That buys freedom: we may build `qdb-api-python` from a local checkout,
-build the old server from a `master` worktree, and skip cross-platform
-ceremony.
+This is a local developer tool, deliberately **not** wired into Buildkite:
+it builds `qdb-api-python` from a local checkout and the old server from
+a `master` worktree, and skips cross-platform ceremony.
 
 ## Dependencies on the e2e harness
 
@@ -68,11 +67,11 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 - **server** = the process that answers; owns `server_cmd()`, port,
   pidfile (qdbd is the shared service and has none).
 
-| protocol    | client                                                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `native`    | `quasardb` Python package over `qdb://`, streaming via `stream_query` (sc-19522); one-shot `qdb_query` mode dropped 2026-08-24 |
-| `legacy`    | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                                          |
-| `flightsql` | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                               |
+| protocol    | client                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `native`    | `quasardb` Python package over `qdb://`, streaming via `stream_query`, the native reference the gateway is chasing |
+| `legacy`    | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                              |
+| `flightsql` | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                   |
 
 | server     | what                                          | ports         |
 | ---------- | --------------------------------------------- | ------------- |
@@ -82,18 +81,18 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 
 Valid runs (the registry is this table, nothing else):
 
-| run                  | answers                                                                         | available                |
-| -------------------- | ------------------------------------------------------------------------------- | ------------------------ |
-| `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | Phase 1                  |
-| `legacy@old-rest`    | the production server's baseline                                                | Phase 1                  |
-| `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | with the legacy wrappers |
-| `flightsql@new-rest` | the gateway thesis                                                              | with Flight SQL          |
+| run                  | answers                                                                         | needs                |
+| -------------------- | ------------------------------------------------------------------------------- | -------------------- |
+| `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | qdbd and the dataset |
+| `legacy@old-rest`    | the production server's baseline                                                | the old server       |
+| `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers  |
+| `flightsql@new-rest` | the gateway thesis                                                              | Flight SQL           |
 
 Exactly **one run per invocation**. No simultaneous runs: this keeps the
 code focused and makes RSS attribution unambiguous (only one REST server
 process exists during a run). Cross-run comparison happens afterwards,
-over persisted result files. Runs not yet available raise "not
-implemented". A future `qdb-api-python` Flight SQL transport is a new
+over persisted result files. A run whose server side does not exist
+raises "not implemented". A future `qdb-api-python` Flight SQL transport is a new
 protocol (`flightsql-qdbpy@new-rest`) to measure integration overhead
 separately -- one module, no harness change.
 
@@ -147,8 +146,7 @@ measured repetitions, summarized by the **median** (robust to a single
 straggler on a developer machine). Warmups run through the identical
 measurement path -- fresh child, fresh REST server, counters -- so only
 one code path exists; what they warm is qdbd, which needs 2-3 executions
-of a query to reach steady state (verified 2026-08-24, cause of the
-warmth bias in the first cross-run comparison). Warmup reps are persisted
+of a query to reach steady state (verified 2026-08-24). Warmup reps are persisted
 in the result file flagged `warmup: true` and count for the fingerprint
 check, but never for the medians; cold-start walls therefore stay
 inspectable. Counts are the `WARMUP` / `REPS` Makefile variables.
@@ -179,8 +177,8 @@ query family below exists to cover each class:
 | same + `ORDER BY agg DESC LIMIT k`               | **large**          | **tiny**          | the gateway thesis: WAN bytes and client CPU collapse to ~k rows   |
 | full raw select                                  | large              | large             | the existing headline materialization KPI                          |
 
-Patterns learned while probing the dataset (mechanics, not numbers; the
-numbers are measured by the bench and debated there):
+How the dataset behaves on the two axes (mechanics; the numbers are the
+bench's to measure):
 
 - `LIMIT` without `ORDER BY` is pushed down: qdbd ships roughly the
   limited rows. `ORDER BY <aggregate> ... LIMIT k` is **not**: qdbd ships
@@ -218,22 +216,17 @@ Measurement mechanics, verified 2026-08-19:
   requests, measured once per run as a no-op baseline and subtracted.
 - OS-level socket accounting (`nettop`) reports zero for loopback traffic
   on macOS; the qdbd counters are the only portable source for volume 1.
-- The counter is pre-compression (verified 2026-08-24: byte-identical
-  `out_bytes` across balanced and uncompressed runs of the same query), so
-  volume-1 numbers are comparable regardless of `qdb_compression_t`. The
-  binding defaults are NOT the same (verified 2026-08-24):
-  qdb-api-python's `Cluster` sets
-  `qdb_comp_balanced` explicitly, while the old server's bare
-  `qdb.NewHandle()` leaves the C API default, which is `qdb_comp_none`
-  ("balanced ... not enabled by default", `qdb/option.h`). Over loopback,
-  balanced is a pure CPU tax: ~13% wall on `agg_topk` (~4.3 s vs ~3.8 s).
-  The bench therefore pins the mode on every run via the
-  `CAPI_COMPRESSION` Makefile variable (default `none`, the only value
-  `old-rest` can honor -- a `balanced` run against it fails fast) and
-  records the effective per-run value in the result file's environment
-  block. The new server must expose an explicit client-compression knob
-  before the legacy wrappers so `legacy@new-rest` runs under the
-  same pinned mode.
+- The counter is pre-compression (verified 2026-08-24), so volume-1
+  numbers are comparable regardless of `qdb_compression_t`. Wall clock
+  is not: over loopback, `balanced` is a pure CPU tax, and the C API
+  holders default differently (qdb-api-python's `Cluster` sets
+  `qdb_comp_balanced`, the old server's bare `qdb.NewHandle()` leaves
+  the C API default, `qdb_comp_none`). The bench therefore pins the mode
+  on every run via the `CAPI_COMPRESSION` Makefile variable (default
+  `none`, the only value `old-rest` can honor -- a `balanced` run
+  against it fails fast; `new-rest` takes it through
+  `cluster.compression`) and records the effective per-run value in the
+  result file's environment block.
 - No WAN emulation (dummynet/netem) in the first version: bytes stand in
   for bandwidth, client CPU seconds for client compute. A throttled-link
   mode converting bytes into seconds is an opt-in later addition if the
@@ -417,18 +410,13 @@ def server_cmd(cfg) -> list[str]
   server lifecycle, fingerprinting, persistence. Adding `flightsql` later
   means writing `protocols/flightsql.py` (~30 lines) and enabling the
   registry row -- no harness changes.
-- `legacy.py` internals: anonymous login (`{"username":"","secret_key":""}`
-  -> Bearer token), `POST /api/query` over stdlib `http.client` (exact
-  first-body-byte TTFB, explicit `Accept-Encoding`), then columnar JSON to
-  DataFrame:
-  `pd.DataFrame({col.name: col.data})` plus legacy-wart normalization
-  (`"(void)"` -> NaT, `"(undefined)"` -> NA, ISO timestamps parsed),
-  counting warts as it goes. Plain `json.loads` on purpose: that parse
-  cost is the honest price a real customer pays on this path and belongs
-  in the measurement. HTTP gzip is on by default and the only mode in the
-  standard runs (real clients send `Accept-Encoding: gzip`; the server
-  compresses on any such header); `--no-gzip` exists for one-off probes,
-  and every result records the setting plus both byte counts.
+- `legacy.py` is a customer's script: anonymous login, `POST /api/query`
+  over stdlib `http.client` (exact first-body-byte TTFB), plain
+  `json.loads` (that parse cost is the honest price of this path), then
+  columnar JSON to DataFrame with the sentinel strings normalized and
+  counted. HTTP gzip is on in the standard runs, as real clients send
+  `Accept-Encoding: gzip`; `--no-gzip` exists for probes, and every
+  result records the setting plus both byte counts.
 
 ## Functional equivalence across runs
 
@@ -478,32 +466,14 @@ Reference for `native@qdbd` (sc-19522 measurements, same dataset):
 `stream_query` holds client RSS ~2.2 GB flat vs ~7.7 GB peak inside
 `libqdb_api` for one-shot `qdb_query`.
 
-## Implementation order
+## Where the rewrite drops in
 
-1. e2e prerequisites (owned by `docs/e2e-plan.md`): shared
-   `scripts/tests/setup/`, dataset conversion + upload, `make load`.
-2. `Makefile`: `check`, `venv` (wheel build via qdb-api-python's
-   `scripts/cicd/10.build.sh`), `old-server` (worktree build recipe,
-   proven).
-3. `bench.py` core: child runner, server lifecycle, RSS sampler,
-   fingerprinting, `results/` persistence, `report`.
-4. `protocols/native.py` (`stream_query`),
-   `protocols/legacy.py`, `servers/old_rest.py`; run `native@qdbd` and
-   `legacy@old-rest` and validate equivalence between them -- this
-   cross-checks the legacy parser against the native client before the
-   rewrite ever enters the picture.
-5. `servers/new_rest.py` + `protocols/flightsql.py` stubs; registry rows
-   `legacy@new-rest` (enabled with the legacy wrappers) and
-   `flightsql@new-rest` (enabled with Flight SQL) raise "not
-   implemented" until then.
-
-Steps 1-4 are Phase 1 and make the tool immediately useful: native vs
-legacy@old-rest numbers quantify the old server's REST tax, and the equivalence
-check hardens the harness itself. The rewrite drops in at step 5's
-seams: `legacy@new-rest` the moment the legacy wrappers serve the
-legacy endpoints (the first real drop-in compatibility signal),
+`native@qdbd` and `legacy@old-rest` agree on every fingerprint, which
+cross-checks the legacy parser against the native client before the
+rewrite enters the picture. The two remaining registry rows are enabled
+in `bench.py` when their server side exists: `legacy@new-rest` with the
+legacy wrappers (the first drop-in compatibility signal),
 `flightsql@new-rest` with Flight SQL.
-When new-rest wins on both, the tool has done its job and is removed.
 
 ## Decision log (2026-08-16)
 
