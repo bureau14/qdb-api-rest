@@ -448,24 +448,6 @@ the CSV export/import round trip of the dataset is faithful: run once
 against a qdbd serving the original data directory, once against the
 imported table, compare.
 
-## Verified baseline (2026-08-14, Apple M-series, 48 GB, localhost)
-
-Old REST API, built from `master` against qdbd 3.15.0.dev0, `full` query,
-curl to /dev/null (pre-harness spike; harness numbers will include the
-client-side DataFrame parse on top):
-
-| metric             | value                               |
-| ------------------ | ----------------------------------- |
-| response size      | 833,774,502 bytes                   |
-| TTFB               | 29.28 s                             |
-| total wall         | 29.41 s (transmission only ~0.13 s) |
-| server peak RSS    | ~8.4 GB                             |
-| qdb-side QueryData | 20.3 s (from server log)            |
-
-Reference for `native@qdbd` (sc-19522 measurements, same dataset):
-`stream_query` holds client RSS ~2.2 GB flat vs ~7.7 GB peak inside
-`libqdb_api` for one-shot `qdb_query`.
-
 ## Where the rewrite drops in
 
 `native@qdbd` and `legacy@old-rest` agree on every fingerprint, which

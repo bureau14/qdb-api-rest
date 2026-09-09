@@ -301,4 +301,5 @@ Blocked on:
 
 ## 2026-08-14 -- Old-server baseline measured
 
-- `docs/bench-plan.md`, "Verified baseline".
+- A pre-harness spike; the bench's `legacy@old-rest` result files supersede
+  its numbers (`docs/bench-plan.md`).
