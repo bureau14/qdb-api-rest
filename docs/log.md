@@ -30,8 +30,8 @@ mints an access token the query endpoint accepts; gzip negotiated via
 query recorded in the e2e results.
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
-the 18 legacy goldens replay against a server under test (already
-true). Exit: every legacy golden green against `bin/qdb_rest` at both
+the 18 legacy goldens replay against a server under test. Exit: every
+legacy golden green against `bin/qdb_rest` at both
 spellings; `bench-legacy@new-rest` fingerprints equal `legacy@old-rest`
 on every query under `CAPI_COMPRESSION=none` (enable
 `("legacy", "new-rest")` in `tests/e2e/bench/bench.py`).
@@ -47,13 +47,12 @@ Next:
    (`internal/encoding`, ADR-0009); `POST /api/v2/query` with `Accept` negotiation and the
    flushing writer; the bearer middleware, the minimal login and gzip;
    the `tests/e2e` target that runs the full-table `text/csv`
-   equivalence against `/api/v2/query` (`test-legacy` is the only
-   replay target today). The handler unit must raise
-   `cluster.max_in_buffer_size` for the bench's full-table query: the C
-   API default (256 MiB) cannot return the 5.6M-row `SELECT *`; the old
-   server's e2e flags use 8 GiB (`tests/e2e/Makefile`). An oversized
-   reply (`ErrNetworkInbufTooSmall`) is fatal in the binding, so it
-   costs no reconnect; the v2 engine maps it to a client error.
+   equivalence against `/api/v2/query`. The handler unit raises
+   `cluster.max_in_buffer_size` for the full-table query (the C API
+   default cannot return it; the old server's e2e flags in
+   `tests/e2e/Makefile` show the size) and maps an oversized reply
+   (`ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect) to
+   a client error.
 2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
    `APIBuild` release the static string from `qdb_version()` /
    `qdb_build()` through `qdb_release` with a nil handle, which
@@ -69,8 +68,8 @@ Handoff to M3 (the legacy wrappers):
   concatenation, find and gzip warts -- are recorded in
   `docs/e2e-plan.md`, "The CSV is the expected output".
 - Every legacy route is a wrapper over its v2 counterpart and lives in
-  `internal/httpapi/legacy`, a package that does not exist yet and
-  carries its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
+  `internal/httpapi/legacy`, created with the first wrapper together
+  with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
 - The `find` wart (goldens 12 and 13) has no v2 endpoint until M6; its
   v2 core is a tag-find function in `internal/qdb`, written in M3 and
   reused by M6's tags endpoint (`docs/brief.md`, Milestones).
@@ -79,20 +78,11 @@ Handoff to M3 (the legacy wrappers):
   additionally proves `/api/v1/<path>` answers identically, by replaying
   every login and query golden at both spellings. The probe goldens
   have one spelling (ADR-0008).
-- Client-side C API compression is an explicit config knob, default
-  `none`, so `legacy@new-rest` runs under the bench's pinned mode
-  (`docs/bench-plan.md`, "Two volumes").
-- Golden 07 pins `"type":"count"`; v1 answers `int64` there
-  (`docs/brief.md`, v1 query). The replay normalizes `count` to
-  `int64` on the golden side, or the golden is re-captured with the
-  deviation applied.
-
-Deferred to M9 (release), tracked nowhere else:
-
-- Windows service mode: Event Log for lifecycle events, `log.file` with
-  rotation (`docs/brief.md`, "Observability and logging").
-- `qdb-release` version registration for the `VERSION` file
-  (`docs/brief.md`, "Versioning and release").
+- `legacy@new-rest` runs under the bench's pinned C API compression
+  through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
+- Golden 07's `count` column is answered as `int64`; the replay treats
+  the two as equal (`docs/e2e-plan.md`, "The CSV is the expected
+  output").
 
 Blocked on:
 
