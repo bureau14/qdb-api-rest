@@ -4,13 +4,12 @@ Status: approved. This document specifies the permanent e2e harness
 described in the brief's Testing doctrine (items 2 and 3): golden-data
 equivalence, budgets, and stress against a live qdbd. It is a working
 document: verified facts and dates are recorded here, not in the brief;
-progress is recorded in `docs/log.md`, not here. Decisions were taken
-2026-08-16 (see Decision log at the end).
+progress is recorded in `docs/log.md`, not here. Decisions are in the
+dated decision logs at the end.
 
 ## Purpose
 
-Prove, on every commit and for the life of the product, that the REST
-server:
+Prove, for the life of the product, that the REST server:
 
 1. returns correct results at scale, across all wire formats;
 2. stays inside its performance budgets (time to first byte, bounded
@@ -19,7 +18,9 @@ server:
    in-flight streams survive graceful shutdown.
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage), runs in Buildkite, and contains no Python. The temporary
+lineage) and contains no Python. It runs on developer machines; whether
+it returns to Buildkite is decided at the resilience milestone's entry,
+and the re-adding recipe is in `.buildkite/AGENTS.md`. The temporary
 multi-target performance comparison lives separately in
 `tests/e2e/bench/` (see `docs/bench-plan.md`) and consumes this harness's
 services and dataset.
@@ -65,9 +66,10 @@ Hosting follows qdb-nats-connector: the public builddeps S3 bucket, prefix
 addressed by an in-repo `tests/e2e/datasets.json` (`base_url` +
 `archives[]` of `{name, date, rows, sha256}`; the sha256 is of the archive
 and is verified after download), fetched with plain `curl -fL`, no auth.
-Developer and CI agent obtain the data identically. Until the upload
-happens, `make load DATASETS_LOCAL_DIR=<dir>` copies the archive from a
-local directory instead of downloading.
+Developer and CI agent obtain the data identically;
+`make load DATASETS_LOCAL_DIR=<dir>` takes the archive from a local
+directory instead, for a freshly packaged archive that is not uploaded
+yet.
 
 The archive is produced by `tests/e2e/tools/package-dataset.sh` (`make
 package-dataset SRC=<db.tar.zst> OUT=<dir>`): it starts a throwaway qdbd on
@@ -75,11 +77,8 @@ the extracted data directory (port 2846, never the shared service), reads
 the shard size from `SHOW TABLE`, exports with `qdb_export`, injects
 `shard_size` into the import config, writes `metadata.json`, and prints
 the `datasets.json` entry and the `aws s3 cp` command (upload is a manual
-operator step). Verified 2026-08-19: `qdb_export` reads through the bulk
-reader and a single-shot export of the full table overflows the client
-network input buffer (125 MiB, no flag to raise it); the harness exports
-one shard-sized half-open range at a time and concatenates, which is
-byte-identical to a single export (`common.sh::export_table_csv`).
+operator step). The export runs one shard-sized range at a time
+(`common.sh::export_table_csv` says why).
 
 Loading is a test-owned, idempotent step: `make load` downloads, verifies
 the sha256, and runs `qdb_import -f reproduce.csv --config
@@ -91,7 +90,7 @@ lifetime.
 Round-trip fidelity (nulls, nanosecond timestamps, quoting) is verified
 by `make verify-dataset`: the loaded table is exported again and compared
 byte-for-byte with the CSV it was imported from (verified identical
-2026-08-19, 5,613,032 rows, ~3 s import with `-j 8`). The bench's
+2026-08-19). The bench's
 `native@qdbd` fingerprint against the original data directory remains the
 belt-and-braces check. A mismatch is a `qdb_export`/`qdb_import` bug
 worth surfacing, not a harness problem.
@@ -218,13 +217,13 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-golden |
                           test-legacy | test-legacy-selfcheck | clean | distclean
-                          (later: test-formats | test-budgets | test-stress)
+                          test-formats | test-budgets | test-stress (arrive with the budgets)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), compare_csv, sha256_file
   legacy.sh               golden capture/replay driver
   seed.sql                legacy fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
-  budgets.env             versioned budget numbers (later)
+  budgets.env             versioned budget numbers (arrives with the budgets)
   golden/legacy/          legacy request/response pairs
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench-plan.md)
@@ -234,19 +233,17 @@ tests/e2e/
 The bench's `make old-server` delegates to this Makefile's target; there is
 one recipe for building the old server.
 
-## What is reused from qdb-nats-connector, and what is not
+## Lineage
 
-Reused: `scripts/tests/setup/` (as a submodule), `datasets.json` and the
-`download-golden`/`extract` Makefile recipes (copied, plus sha256
-verification), `common.sh` helpers (copied, then adapted).
-
-Not reused: `tools/generator` (synthetic messages: weighted choices,
-random floats, fixed-interval timestamps) and `qdb-data-loader` (publishes
-to NATS). Wrong shape and wrong sink: our loader is `qdb_import` (later
-`/api/v2/ingest`, as a self-test), and the customer-derived table -- real
-nulls, real string cardinality, real skew -- exercises encoders in ways
-synthetic data hides. Schema variety (multi-table ingest, symbols, blobs,
-tags) comes from the Go `rapid` property tests, generated in-process.
+`scripts/tests/setup/` is qdb-nats-connector's test setup as a
+submodule; `datasets.json`, the `download-golden`/`extract` recipes and
+the `common.sh` helpers are copies from that repository, adapted. Its
+synthetic-message generator and NATS loader are not used: the loader
+here is `qdb_import` (and `/api/v2/ingest` as a self-test once it
+exists), because the customer-derived table -- real nulls, real string
+cardinality, real skew -- exercises encoders in ways synthetic data
+hides. Schema variety (multi-table ingest, symbols, blobs, tags) comes
+from the Go `rapid` property tests, generated in-process.
 
 ## Decision log (2026-08-16)
 
