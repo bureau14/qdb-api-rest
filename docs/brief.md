@@ -20,11 +20,10 @@ customer sites. It serves three things:
 3. An embedded DuckDB OLAP engine (via qdb-duck) exposing full SQL over
    QuasarDB data through a dedicated query endpoint.
 
-Performance is the headline requirement. The current implementation fully
-materializes query results in memory (twice) before writing a single byte;
-the rewrite streams everything: response memory is bounded regardless of
-result size, and time-to-first-byte is independent of result size wherever
-the underlying client API allows it.
+Performance is the headline requirement: the server streams everything,
+so response memory is bounded regardless of result size and
+time-to-first-byte is independent of result size wherever the underlying
+client API allows it.
 
 Operational and SRE concerns are first-class, not an afterthought: the
 binary is cloud-native by default (12-factor configuration, stdout logging,
@@ -84,12 +83,10 @@ protocol surface with those clients explicitly in the loop.
 The goal, concretely: make this interface -- including the embedded
 DuckDB engine -- good enough that the gateway is a reasonable choice for
 high-volume, high-intensity workloads, and, depending on how well it
-performs, perhaps eventually the default choice for all deployments. The
-REST API is a super important component that may grow into an even more
-prominent part of QuasarDB deployments; that is why the performance bar,
-the SRE machinery (the gateway absorbs the reduce phase for all its
-clients), and the horizontal-scale-friendly stateless design are set
-where they are.
+performs, perhaps eventually the default choice for all deployments.
+That prospect sets the performance bar, the SRE machinery (the gateway
+absorbs the reduce phase for all its clients), and the stateless,
+horizontally scalable design.
 
 ## Ecosystem
 
@@ -209,15 +206,12 @@ Two real drivers:
 
 1. **Protocol performance.** The old server materializes entire query
    results as per-cell boxed `interface{}` values, then performs a single
-   reflective `json.Encode` over the whole structure. Its deployed
-   entrypoint never parses the go-swagger server flag group, so the
-   documented HTTP timeouts (60s write, 30s read) are never applied:
-   large results blow memory and hang rather than fail fast. Measured on
-   the reference dataset (see Testing doctrine): a 5.6M-row `SELECT *`
-   produces 834 MB of JSON with a 29 s time-to-first-byte (transmission
-   itself takes ~0.1 s -- everything is materialize-then-encode) and
-   ~8.4 GB of server RSS. Escaping go-swagger matters only because it
-   stands in the way of high-performance protocols.
+   reflective `json.Encode` over the whole structure, and runs without
+   HTTP timeouts, so a large result blows memory and hangs rather than
+   failing fast. The time-to-first-byte of the reference query is the
+   full materialization time (the bench measures it: `docs/bench-plan.md`).
+   Escaping go-swagger matters only because it stands in the way of
+   high-performance protocols.
 2. **Token and credential hygiene.** The old JWT embeds the user's raw
    `secret_key`, encrypted with an RSA key that defaults to a keypair
    hardcoded in the binary: token leak equals credential leak, and every
@@ -437,7 +431,7 @@ decided in ADRs during the v2 milestones; the sketch fixes intent, not
 contract. Multi-table ingestion is a hard requirement: `qdb-api-go`'s
 `Writer` pushes multiple tables in a single batch-push call
 (`qdb_exp_batch_push_with_options`), and the ingest API is designed around
-that from the start (these APIs were designed with that function in mind).
+that call.
 Schema endpoints use the full server-side column-type vocabulary (`blob`,
 `double`, `int64`, `string`, `symbol`, `timestamp`): `symbol` is a
 distinct schema-level type even though query results surface it as
@@ -624,8 +618,8 @@ defaults by test.
   no logrotate convention: service lifecycle and fatal events go to the
   Windows Event Log (the native facility monitoring agents collect from),
   and the application log stream goes to a self-rotating file via
-  `natefinch/lumberjack` (the ecosystem-standard rotation writer; vendored
-  upstream, unmodified -- the old repo's fork of it is retired). An
+  `natefinch/lumberjack` (the ecosystem-standard rotation writer, vendored
+  unmodified). An
   optional `log.file` config key exposes the same sink on any platform for
   users who want it.
 - `/metrics` (Prometheus exposition) as described under Goals.
@@ -664,9 +658,9 @@ readable top to bottom.
 
 ## Development standards
 
-- **Go version**: always the latest release (currently 1.27), tracked via
-  the `toolchain` directive; upgraded promptly when new versions ship.
-  New-in-1.27 features are explicitly fair game where they fit: generic
+- **Go version**: always the latest release, pinned by the `toolchain`
+  directive in `go.mod` and bumped promptly when a new one ships. The
+  features of the pinned release are fair game where they fit; from 1.27: generic
   methods (type parameters on method declarations), the stdlib `uuid`
   package (RFC 9562 -- use it instead of vendoring a third-party UUID
   library, e.g. for token `jti` claims), and `encoding/json/v2` /
@@ -810,13 +804,11 @@ M4's entry.
 
 ## Versioning and release
 
-- Package version pinned 1:1 to the QuasarDB server release, as today.
+- Package version pinned 1:1 to the QuasarDB server release.
 - One version string location in this repo: a `VERSION` file at the repo
-  root, registered with `qdb-release`'s central version manager (the old
-  registration pointed at go-swagger artifacts that no longer exist). The
-  registration must match `qdb-release`'s expected version-string format
-  for this project (`{xyz}-{stage}.{stage_version}`), not just supply a
-  new file path. Build metadata (version, commit, build time, build mode,
+  root, registered with `qdb-release`'s central version manager in that
+  tool's version-string format for this project
+  (`{xyz}-{stage}.{stage_version}`). Build metadata (version, commit, build time, build mode,
   arch level) is injected into the binary via `-ldflags` at build time,
   following qdb-nats-connector's ADR-011 pattern; no version constants
   live in source files, and nothing is sed-patched during the build.
@@ -826,9 +818,8 @@ M4's entry.
 ## Risks and open explorations
 
 1. **Static `libqdb_api.a` availability** per platform: the server build
-   bundles a self-contained `.a` on Linux only, and `qdb-api-go` links it
-   statically there since QDB-19065 (the upstream change the vendoring
-   rule required); every other platform links the shared library and
+   bundles a self-contained `.a` on Linux only, where `qdb-api-go` links
+   it statically; every other platform links the shared library and
    relies on rpath or loader-path setup (`.envrc`).
 2. **qdb-api-go materialization ceiling**: memory is bounded in this
    binary but not in the binding (Architecture: Data plane, the
