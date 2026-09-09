@@ -43,7 +43,6 @@ package qdb
 import "C"
 
 import (
-	"math"
 	"time"
 	"unsafe"
 )
@@ -143,10 +142,10 @@ func (r *QueryPoint) GetDouble() (float64, error) {
 		return float64(C.get_double_from_payload(result)), nil
 	}
 
-	return 0, wrapError(C.qdb_e_operation_not_permitted, "query_point_get_double", "wrong_type", "expected_double")
+	return 0, wrapError(C.qdb_e_incompatible_type, "query_point_get_double", "wrong_type", "expected_double")
 }
 
-// GetBlob : retrieve a double from the interface
+// GetBlob : retrieve a blob from the interface
 func (r *QueryPoint) GetBlob() ([]byte, error) {
 	if r._type == C.qdb_query_result_blob {
 		result := (*C.qdb_point_result_t)(unsafe.Pointer(r))
@@ -154,7 +153,7 @@ func (r *QueryPoint) GetBlob() ([]byte, error) {
 		return getBlobUnsafe(result), nil
 	}
 
-	return []byte{}, wrapError(C.qdb_e_operation_not_permitted, "query_point_get_blob", "wrong_type", "expected_blob")
+	return []byte{}, wrapError(C.qdb_e_incompatible_type, "query_point_get_blob", "wrong_type", "expected_blob")
 }
 
 // GetInt64 : retrieve an int64 from the interface
@@ -164,7 +163,7 @@ func (r *QueryPoint) GetInt64() (int64, error) {
 		return int64(C.get_int64_from_payload(result)), nil
 	}
 
-	return 0, wrapError(C.qdb_e_operation_not_permitted, "query_point_get_int64", "wrong_type", "expected_int64")
+	return 0, wrapError(C.qdb_e_incompatible_type, "query_point_get_int64", "wrong_type", "expected_int64")
 }
 
 // GetString : retrieve a string from the interface
@@ -175,7 +174,7 @@ func (r *QueryPoint) GetString() (string, error) {
 		return getStringUnsafe(result), nil
 	}
 
-	return "", wrapError(C.qdb_e_operation_not_permitted, "query_point_get_string", "wrong_type", "expected_string")
+	return "", wrapError(C.qdb_e_incompatible_type, "query_point_get_string", "wrong_type", "expected_string")
 }
 
 // GetTimestamp : retrieve a timestamp from the interface
@@ -185,7 +184,7 @@ func (r *QueryPoint) GetTimestamp() (time.Time, error) {
 		return TimespecToStructG(C.get_timestamp_from_payload(result)), nil
 	}
 
-	return time.Unix(-1, -1), wrapError(C.qdb_e_operation_not_permitted, "query_point_get_timestamp", "wrong_type", "expected_timestamp")
+	return time.Unix(-1, -1), wrapError(C.qdb_e_incompatible_type, "query_point_get_timestamp", "wrong_type", "expected_timestamp")
 }
 
 // GetCount : retrieve the count from the interface
@@ -195,85 +194,7 @@ func (r *QueryPoint) GetCount() (int64, error) {
 		return int64(C.get_count_from_payload(result)), nil
 	}
 
-	return 0, makeErrorOrNil(C.qdb_e_operation_not_permitted)
-}
-
-// QueryResult : a query result
-type QueryResult struct {
-	result *C.qdb_query_result_t
-}
-
-// ScannedPoints : number of points scanned
-//
-//	The actual number of scanned points may be greater
-func (r QueryResult) ScannedPoints() int64 {
-	return int64(r.result.scanned_point_count)
-}
-
-func queryPointArrayToSlice(row *QueryPoint, length int64) []QueryPoint {
-	// See https://github.com/mattn/go-sqlite3/issues/238 for details.
-
-	return (*[(math.MaxInt32 - 1) / unsafe.Sizeof(QueryPoint{})]QueryPoint)(unsafe.Pointer(row))[:length:length]
-}
-
-func qdbPointResultStarArrayToSlice(rows **C.qdb_point_result_t, length int64) []*QueryPoint {
-	// See https://github.com/mattn/go-sqlite3/issues/238 for details.
-
-	return (*[(math.MaxInt32 - 1) / unsafe.Sizeof((*C.qdb_point_result_t)(nil))]*QueryPoint)(unsafe.Pointer(rows))[:length:length]
-}
-
-func qdbStringArrayToSlice(strings *C.qdb_string_t, length int64) []C.qdb_string_t {
-	// See https://github.com/mattn/go-sqlite3/issues/238 for details.
-
-	return (*[(math.MaxInt32 - 1) / unsafe.Sizeof(C.qdb_string_t{})]C.qdb_string_t)(unsafe.Pointer(strings))[:length:length]
-}
-
-// Columns : create columns from a row
-func (r QueryResult) Columns(row *QueryPoint) QueryRow {
-	count := int64(r.result.column_count)
-
-	return queryPointArrayToSlice(row, count)
-}
-
-// Rows : get rows of a query table result
-func (r QueryResult) Rows() QueryRows {
-	count := int64(r.result.row_count)
-	if count == 0 {
-		return []*QueryPoint{}
-	}
-
-	return qdbPointResultStarArrayToSlice(r.result.rows, count)
-}
-
-// ColumnsNames : get the number of columns names of each row
-func (r QueryResult) ColumnsNames() []string {
-	count := int64(r.result.column_count)
-	result := make([]string, count)
-	rawNames := qdbStringArrayToSlice(r.result.column_names, count)
-	for i := range rawNames {
-		result[i] = C.GoString(rawNames[i].data)
-	}
-
-	return result
-}
-
-// ColumnsCount : get the number of columns of each row
-func (r QueryResult) ColumnsCount() int64 {
-	return int64(r.result.column_count)
-}
-
-// RowCount : the number of returned rows
-func (r QueryResult) RowCount() int64 {
-	if r.result == nil {
-		return 0
-	}
-
-	return int64(r.result.row_count)
-}
-
-// ErrorMessage : the error message in case of failure
-func (r QueryResult) ErrorMessage() string {
-	return C.GoStringN(r.result.error_message.data, C.int(r.result.error_message.length))
+	return 0, wrapError(C.qdb_e_incompatible_type, "query_point_get_count", "wrong_type", "expected_count")
 }
 
 // Query : query object
@@ -282,15 +203,43 @@ type Query struct {
 	query string
 }
 
-// Execute : execute a query
+// Execute runs the query against the cluster.
+//
+// Args:
+//
+//	None
+//
+// Returns:
+//
+//	*QueryResult: Result set, or nil when the statement produces none (e.g. DDL)
+//	error: Query error, if any
+//
+// A non-nil result is owned by the caller and must be released with Close,
+// including when an error is returned alongside it. Close is nil-safe, so it
+// can be deferred before checking the error.
+//
+// The result is a view over C memory: every cell is decoded on access and
+// nothing obtained from it may outlive Close. Callers who want Go-owned,
+// column-oriented data with no Close obligation use Fetch instead, which
+// copies the result into a QueryResultSet and releases it before returning.
+//
+// Example:
+//
+//	result, err := h.Query("SELECT * FROM measurements").Execute()
+//	defer result.Close()
+//	if err != nil {
+//	    return err
+//	}
 func (q Query) Execute() (*QueryResult, error) {
 	query := convertToCharStar(q.query)
 	defer releaseCharStar(query)
-	var r QueryResult
+	r := QueryResult{handle: q.HandleType}
 	err := C.qdb_query(q.handle, query, &r.result)
 	if r.result == nil {
 		return nil, wrapError(err, "query_execute", "query", q.query)
 	}
 
-	return &r, wrapError(err, "query_execute", "query", q.query)
+	// The result carries the server's description of a rejected query, the
+	// parser's message for an invalid one, and it belongs in the error.
+	return &r, wrapError(err, "query_execute", "query", q.query, errorDetailKey, r.ErrorMessage())
 }

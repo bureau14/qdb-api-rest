@@ -65,7 +65,10 @@ GLOBAL_ENV: dict[str, str] = {
 STEP_ENV: dict[str, dict[str, str]] = {}
 
 OS_ENV: dict[str, dict[str, str]] = {
-    "linux": {},
+    "linux": {
+        "CC": "$$QDB_CICD_AGENT_GCC15_CC",
+        "CXX": "$$QDB_CICD_AGENT_GCC15_CXX",
+    },
     "freebsd": {},
     "macos": {},
     "windows": {},
