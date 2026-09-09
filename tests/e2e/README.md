@@ -1,9 +1,9 @@
 # tests/e2e -- end-to-end harness
 
 Golden-data equivalence, budgets and stress for the QuasarDB REST API, run
-against a live qdbd. Specification: `docs/e2e-plan.md`. Make + shell +
-curl + jq + awk; no Python (the bench in `bench/`, `docs/bench-plan.md`, is
-the one exception).
+against a live qdbd. Specification: `docs/e2e-plan.md`; conventions:
+`AGENTS.md`. The bench in `bench/` has its own README and plan
+(`docs/bench-plan.md`).
 
 ## Prerequisites
 
