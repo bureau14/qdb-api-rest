@@ -82,13 +82,9 @@ COUNTER_SETTLE_SECONDS = 1.0
 # --max-in-buffer-size so every run accepts the same result sizes.
 MAX_IN_BUF_SIZE = 8_589_934_592
 STREAM_BATCH_SIZE = 65_536
-# qdbd <-> C API compression, selectable via --capi-compression. The binding
-# defaults are inconsistent (verified 2026-08-24: qdb-api-python's Cluster
-# sets balanced, the old server's NewHandle leaves the C API default, which
-# is none), so the bench pins the mode explicitly on every run; `none`
-# matches the old server, which is not configurable. The volume-1 counters
-# are pre-compression either way (identical out_bytes measured across
-# balanced and uncompressed runs of the same query).
+# qdbd <-> C API compression, selectable via --capi-compression: the C-API
+# holders default differently, so the bench pins the mode on every run
+# (docs/bench-plan.md, "Two volumes").
 COMPRESSION_MODES = ("none", "balanced")
 
 FINGERPRINT_EDGE_ROWS = 5
@@ -711,7 +707,7 @@ def run_main(args):
         # Warmup reps (index < 0) run through the identical measurement
         # path -- fresh child, fresh REST server, counters -- so there is
         # only one code path to trust; qdbd is the thing being warmed (it
-        # takes 2-3 executions to reach steady state, verified 2026-08-24).
+        # takes 2-3 executions of a query to reach steady state).
         for rep in range(-args.warmup, args.reps):
             warm = rep < 0
             label = (f"warmup {rep + args.warmup + 1}/{args.warmup}" if warm

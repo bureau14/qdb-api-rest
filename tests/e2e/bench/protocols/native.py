@@ -13,7 +13,7 @@ TTFB_DEFINITION = "return of the first batch from stream_query"
 
 # The binding's constructor default is Balanced; the bench pins the mode
 # explicitly (cfg.compression) so every run's C-API holder is comparable
-# (docs/bench-plan.md, decision log 2026-08-24).
+# (docs/bench-plan.md, "Two volumes").
 COMPRESSION_MODES = {
     "none": quasardb.Options.Compression.Disabled,
     "balanced": quasardb.Options.Compression.Balanced,
