@@ -55,7 +55,7 @@ later changes every client.
 - A result whose string or blob column exceeds 2 GiB is rejected by the
   binding before encoding starts, never truncated on the wire.
 - In-format compression (lz4, zstd) is an addition behind a request
-  parameter still to be designed, not a change to these types.
+  parameter, not a change to these types.
 
 ## Alternatives rejected
 
@@ -68,4 +68,4 @@ later changes every client.
 | A distinct type for `count`                   | the tag does not survive the binding; clients never told a count from an int64 (`docs/brief.md`, v1 query) |
 | Dictionary-encoded symbols                    | the result set has no dictionary; an extra pass per query for a gain no consumer asked for                 |
 | Batch size as configuration                   | bounds nothing on the server; a knob nobody can set well                                                   |
-| In-format buffer compression in the first cut | independent of HTTP compression, which the milestone carries; the negotiation mechanism is undecided       |
+| In-format buffer compression in the first cut | independent of HTTP compression, which the response already has; the negotiation mechanism is undecided    |

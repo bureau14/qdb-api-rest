@@ -41,7 +41,7 @@ Both listeners are on by default (`:40080` HTTP, `:40443` HTTPS,
 matching the deployed shape); an empty address disables a listener
 (`--listen-https=` / `listen.https: ""`). Minimum TLS version is 1.2,
 set explicitly. Certificates are loaded once at startup; rotation is
-restart-based for now.
+restart-based.
 
 ## Consequences
 
@@ -50,9 +50,9 @@ restart-based for now.
   ceremony.
 - Unconfigured production deployments are visible: every start logs a
   warning with the fingerprint, which also lets careful clients pin it.
-- ACM users are served by the load-balancer-in-front pattern that
-  already works today (the LB terminates TLS and health-checks the
-  status probes); nothing to build or document beyond that sentence.
+- ACM users are served by the load-balancer-in-front pattern (the LB
+  terminates TLS and health-checks the status probes); nothing to build
+  or document beyond that sentence.
 - Hot certificate reload (cert-manager renewals without restart, e.g.
   via `GetCertificate` re-reading on file change) is a purely additive
   later step; nothing in this decision blocks it.

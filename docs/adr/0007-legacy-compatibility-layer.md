@@ -59,11 +59,9 @@ code that satisfies it is written.
 - v2 shapes are chosen on v2's merits; the v1 wrapper pays whatever
   translation that costs. The v2 JSON encoder never emits a sentinel or
   orders keys for a legacy client.
-- The v2 query milestone carries no legacy route; the legacy login
-  returns with the drop-in milestone as a wrapper over
-  `POST /api/v2/auth/login`.
-- The compatibility bar moves later in the schedule; the goldens hold
-  the contract until then.
+- The legacy login is a wrapper over `POST /api/v2/auth/login`, so
+  it exists only once that endpoint does; until the wrappers land, the
+  goldens hold the compatibility contract.
 - Retiring or auditing the legacy surface is one directory.
 - Composing the legacy routes into the server is the entry point's job;
   how they reach the router is decided when the package is written, and

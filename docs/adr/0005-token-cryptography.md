@@ -9,9 +9,8 @@ The brief (Authentication) locks the token design: JWE with modern
 primitives, claims carrying reconnect material, keys derived from
 passphrases via argon2id + HKDF, rolling keys through the
 `auth.token_secrets` list, an ephemeral key when nothing is configured,
-and 12h tokens minted by legacy `/api/v1/login`. This ADR -- the JWE
-library, AEAD, and key derivation choices -- is accepted before
-`internal/auth` lands.
+and 12h tokens minted by legacy `/api/v1/login`. This ADR fixes the JWE
+library, AEAD, and key derivation choices `internal/auth` implements.
 
 The decisive structural fact: the token has exactly one producer and one
 consumer, both this binary. Clients treat it as opaque (brief,
@@ -102,7 +101,7 @@ cryptography itself is stdlib (`crypto/cipher` AES-GCM, `crypto/hkdf`,
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | go-jose/v4 at runtime                     | A general JOSE parser on the request path for a format with one accepted header; its API machinery is surplus when strict matching is ~50 lines. Retained as the test-side cross-check.                      |
 | lestrrat-go/jwx                           | The most featureful option and the heaviest vendor footprint; JWKS, remote key sets, and non-compact serializations have no consumer here. The right tool for verifying foreign tokens, which never happens. |
-| Committed golden test vectors             | Static vectors cover only themselves and rot as claims evolve; a live independent implementation exercises every property-test case. Owner decision 2026-08-31.                                              |
+| Committed golden test vectors             | Static vectors cover only themselves and rot as claims evolve; a live independent implementation exercises every property-test case.                                                                         |
 | `alg: A256KW`                             | A fresh CEK per token sidesteps the GCM per-key IV bound, at +40 bytes and an extra AES operation; the bound is unreachable at token-minting volume. Escape hatch if volume changes class.                   |
 | `enc` ChaCha20-Poly1305 (XC20P)           | Draft-only, never standardized in RFC 7518; tokens would silently stop being JWE. AES-GCM is stdlib and hardware-accelerated on every CI platform.                                                           |
 | `enc: A256CBC-HS512`                      | The MAC-then-encrypt composite family the old server used; two primitives and larger tokens where GCM is one AEAD.                                                                                           |
