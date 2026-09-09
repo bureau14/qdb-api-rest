@@ -195,10 +195,9 @@ prose:
   the wire protocol is compatibility-constrained. (Customers' pain is their
   custom client code, not their install scripts.)
 - **No user management.** Users are managed through QuasarDB itself.
-- **No changes to `qdb-api-go` inside this repo.** Where the binding is the
-  bottleneck (SQL query results arrive fully materialized from the C API's
-  one-shot `qdb_query`, which has no incremental-delivery mode), we stream
-  what we can (serialization) and file/merge upstream changes separately.
+- **No changes to `qdb-api-go` inside this repo.** Where the binding is
+  the bottleneck (Architecture: Data plane, the materialization
+  constraint), upstream changes are filed and merged separately.
 - **No truncate push mode.** The C API's batch-push truncate/backfill mode
   is deliberately not exposed through the REST ingestion API.
 - **No multi-tenancy / public-internet hardening** beyond standard TLS and
@@ -349,13 +348,16 @@ compression and also request-negotiable.
 Known constraint: `qdb-api-go` returns SQL query results fully materialized
 -- the C API's one-shot `qdb_query` has no incremental-delivery mode
 (`qdb_query_continuous` is a live-query subscription that re-delivers
-results on a refresh interval, not a cursor). Streaming therefore initially
+results on a refresh interval, not a cursor). Streaming therefore
 overlaps serialization and transmission with iteration over the
 materialized result -- bounding REST-server memory and giving early first
 byte, but not removing the binding-side materialization. Relieving that
 requires upstream work (a cursor-style query API, or building on the C
 API's unwrapped Arrow paths: `qdb_query_to_arrow`, the bulk reader's
-batched fetch), out of scope here.
+batched fetch), out of scope here. The gateway direction raises the
+stakes: large raw `SELECT`s from thin clients materialize in the
+gateway, so the session budget is the short-term backstop and upstream
+streaming the long-term relief valve.
 
 ### Arrow Flight SQL (minimal)
 
@@ -484,19 +486,17 @@ Operational/SRE concerns are primary. QuasarDB connection reuse is
 non-optional; the pool is an explicit, elaborate mechanism, not a
 convenience wrapper. Decisions:
 
-- **Session budget**: one configured `max_sessions` for the whole server --
-  a predictable ceiling on what this binary imposes on the cluster --
-  partitioned into per-user sub-pools with caps (sessions are
-  authenticated per user; anonymous is one user). Idle user pools are
-  LRU-evicted. The pool key is (cluster,
-  username), never a REST session or a token. A QuasarDB user has exactly
-  one secret key, so every REST session of a user dials identically and all of them
-  share the user's pool. Login finds the existing pool or creates one and
-  never replaces or drains one, so in-flight requests are never raced.
-  The session id claim (Authentication) is a security abstraction, not a
-  pool key. The budget is the whole overload mechanism: a request past
-  it waits for a session or times out at its deadline; there is no
-  separate admission layer, no per-user fair share, no 429.
+- **Session budget**: one configured `max_sessions` for the whole server
+  -- a predictable ceiling on what this binary imposes on the cluster --
+  partitioned into per-user sub-pools with caps. The budget is also the
+  overload mechanism: a request past it waits for a session or times
+  out at its deadline. Sessions are pooled per user, keyed by (cluster,
+  username): a QuasarDB user has exactly one secret key, so every REST
+  session of that user dials identically and shares the pool (anonymous
+  is one user). Login finds the existing pool or creates one and never
+  replaces or drains one, so in-flight requests are never raced; idle
+  user pools are LRU-evicted. The session id claim (Authentication) is a
+  security handle, not a pool key.
 - **Circuit breaker, fail fast**: a breaker per cluster opens on
   consecutive connect/timeout failures; while open, requests fail
   immediately with 503 + `Retry-After` (half-open probes test recovery).
@@ -830,15 +830,10 @@ M4's entry.
    statically there since QDB-19065 (the upstream change the vendoring
    rule required); every other platform links the shared library and
    relies on rpath or loader-path setup (`.envrc`).
-2. **qdb-api-go materialization ceiling**: server-side streaming of native
-   query results requires upstream binding work and possibly C API work
-   (no existing C API function delivers one-shot query results
-   incrementally; candidates are a cursor-style query API or the Arrow
-   paths); until then, memory is bounded in this binary but not in the
-   binding. The gateway direction raises the stakes: large raw `SELECT`s
-   from thin clients materialize in the gateway, making the session
-   budget the short-term backstop and upstream streaming the long-term
-   relief valve.
+2. **qdb-api-go materialization ceiling**: memory is bounded in this
+   binary but not in the binding (Architecture: Data plane, the
+   materialization constraint), and lifting that ceiling is upstream
+   work this project does not control.
 3. **Gateway latency shape**: aggregation-heavy queries get dramatically
    faster from thin clients; small point queries pay one extra
    (in-datacenter, sub-millisecond over persistent channels) hop versus a
