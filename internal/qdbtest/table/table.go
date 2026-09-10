@@ -7,8 +7,10 @@ package table
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
@@ -165,6 +167,18 @@ func Generate(rt *rapid.T) Table {
 	return Table{Name: name, Columns: cols, Index: generateIndex(rt, rows)}
 }
 
+// Select is the query that answers tbl's rows as written: $timestamp
+// first, then the columns in order, rows ascending by $timestamp. A bare
+// SELECT * would also answer the $table column.
+func (tbl Table) Select() string {
+	names := make([]string, 0, len(tbl.Columns)+1)
+	names = append(names, "$timestamp")
+	for _, c := range tbl.Columns {
+		names = append(names, c.Name)
+	}
+	return "SELECT " + strings.Join(names, ", ") + " FROM " + tbl.Name
+}
+
 // columnInfos is tbl's schema as the create call takes it.
 func columnInfos(tbl Table) []qdbapi.TsColumnInfo {
 	infos := make([]qdbapi.TsColumnInfo, len(tbl.Columns))
@@ -202,7 +216,10 @@ func writerOf(tbl Table) (*qdbapi.Writer, error) {
 	return &w, nil
 }
 
-// entries is every entry Create makes: the table and its symtables.
+// entries is every entry Create can leave behind: the table and its
+// symtables. A symtable exists only once a symbol value has been pushed
+// into it, so removing one that was never filled answers alias-not-found,
+// which is the state the cleanup wants.
 func entries(tbl Table) []string {
 	names := []string{tbl.Name}
 	for _, c := range tbl.Columns {
@@ -232,7 +249,8 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	}
 	t.Cleanup(func() {
 		for _, name := range entries(tbl) {
-			if err := call(c, func(s *qdb.Session) error { return s.RemoveTable(name) }); err != nil {
+			err := call(c, func(s *qdb.Session) error { return s.RemoveTable(name) })
+			if err != nil && !errors.Is(err, qdbapi.ErrAliasNotFound) {
 				t.Errorf("remove %s: %v", name, err)
 			}
 		}
