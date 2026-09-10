@@ -101,6 +101,19 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   has one home, `internal/qdbtest`: the URIs, the key files, and
   `Require`, which fails fast with the start hint when a port does not
   answer. Nothing is skipped under `-short`.
+- A test that needs rows draws a table with `internal/qdbtest/table`
+  (`Generate`, then `Create` on a `*qdb.Cluster`) and compares what came
+  back with the `Table` it holds; it never writes its own loader. The
+  fixture pushes through the batch writer, whose null is the type's
+  sentinel (`MinInt64`, `NaN`, the empty string, the nil blob), so a
+  generated value is never a sentinel and a timestamp data column is
+  dense: the null timespec is not settable through the writer, and a
+  null-aware constructor is an upstream request. The fixture is a
+  subpackage because `internal/qdb`'s own tests import `qdbtest`, and a
+  `qdbtest` that imported `internal/qdb` would be a test import cycle.
+  Every fixture table is removed on the test's cleanup, per
+  `rapid.Check` iteration too; run `qdbsh` for `qdbtest_*` entries when a
+  run was killed mid-way.
 - qdbd's session pool is finite and exhaustion is punished: past its
   limit the test cluster logs `out of free sessions` and refuses new
   ones for fifteen minutes. Run the packages
