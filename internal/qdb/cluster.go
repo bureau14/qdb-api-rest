@@ -225,6 +225,24 @@ func (s *Session) fetch(q string) (*qdbapi.QueryResultSet, error) {
 	return s.session.Query(q).Fetch()
 }
 
+// CreateTable creates the table name with cols after the implied
+// $timestamp column, sharded by shard.
+func (s *Session) CreateTable(name string, shard time.Duration, cols ...qdbapi.TsColumnInfo) error {
+	return s.session.Table(name).Create(shard, cols...)
+}
+
+// RemoveTable removes the entry name. A table and a symtable are both
+// entries, so one call removes either.
+func (s *Session) RemoveTable(name string) error {
+	return s.session.Table(name).Remove()
+}
+
+// Push writes every table w holds in one batch. The writer pins the Go
+// memory it hands to the C API for the duration of the call.
+func (s *Session) Push(w *qdbapi.Writer) error {
+	return w.Push(s.session)
+}
+
 // callConfig carries per-call options.
 type callConfig struct {
 	retry bool
