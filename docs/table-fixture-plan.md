@@ -84,7 +84,7 @@ null timespec is `qdb_min_time` in both fields and the writer's
 `NewColumnDataTimestamp`). Timestamp data columns are therefore dense in
 the fixture. A null-aware constructor is an upstream request
 (`internal/AGENTS.md`, Building: no local patch); until it lands, the
-null-timestamp cell has no coverage in the Go tests. See Open questions.
+null-timestamp cell has no coverage in the Go tests.
 
 The index is the `$timestamp` column: a fixed start, a drawn step, strictly
 ascending so every row survives, never null. This mirrors the Python
@@ -93,10 +93,11 @@ carry the nulls (`~/git/qdb-api-python/tests/conftest.py`,
 `_array_with_index_and_table`).
 
 Value ranges: int64 over the full range minus the sentinel; double over
-finite binary64 minus `NaN`; string over any Unicode without `NUL`; symbol
-over `[a-zA-Z0-9]{1,16}` because symbol values become symtable entries
-and the server rejects arbitrary bytes; blob over any bytes; timestamp
-over the nanosecond range the result set accepts.
+finite binary64 minus `NaN`; string and symbol share one generator over
+`[a-zA-Z0-9]{1,16}`, since the binding carries both as string values and
+symbol values become symtable entries the server rejects arbitrary bytes
+in; blob over any bytes; timestamp over the nanosecond range the result
+set accepts.
 
 ## Names and cleanup
 
@@ -107,12 +108,6 @@ that removes the table and every symtable, through the same cluster, and
 reports a removal error through `t.Errorf` so a leak is visible and never
 fatal. Inside `rapid.Check` the cleanup runs at the end of each iteration,
 so the cluster holds one fixture table per running test at any time.
-
-Rejected: no cleanup with random names (the Python idiom; that suite
-purges the cluster on every module's connection, which this suite has no
-equivalent of, so tables would accumulate until `stop-services.sh` wipes
-the data directory); fixed names dropped and recreated (what the Arrow
-loader does; two tests sharing a name cannot run in one process).
 
 ## Where it lives and what it needs from the cluster
 
@@ -165,14 +160,7 @@ of the writer and compares the same way.
 
 ## Open questions
 
-1. Null timestamp data cells: file the upstream request now and leave the
-   gap, or keep an `INSERT`-based side path for that one case until the
-   constructor lands? The plan assumes the gap and the upstream request.
-2. Should `Session.CreateTable` take the binding's `TsColumnInfo`, or a
-   column type of this package's own so that `internal/qdb` keeps the
-   binding's types inside, the way it keeps `QueryResult` inside? The plan
-   assumes the binding's type: `TsColumnInfo` is plain Go, not a view
-   over C memory, and the rule (`internal/AGENTS.md`) is about C memory.
+None.
 
 ## Decision log (2026-09-10)
 
