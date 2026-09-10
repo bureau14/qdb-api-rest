@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-08
+Last updated: 2026-09-10
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
@@ -38,7 +38,9 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- Nothing.
+- The generated table fixture (`docs/table-fixture-plan.md`): the
+  `Session` create, remove and push operations, then
+  `internal/qdbtest/table`, then the Arrow round trip on it.
 
 Next:
 
