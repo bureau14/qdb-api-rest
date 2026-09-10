@@ -38,9 +38,7 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- The generated table fixture (`docs/table-fixture-plan.md`): the
-  `Session` create, remove and push operations, then
-  `internal/qdbtest/table`, then the Arrow round trip on it.
+- Nothing.
 
 Next:
 
@@ -55,11 +53,13 @@ Next:
    `tests/e2e/Makefile` show the size) and maps an oversized reply
    (`ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect) to
    a client error.
-2. File upstream against `qdb-api-go`: `HandleType.APIVersion` and
-   `APIBuild` release the static string from `qdb_version()` /
-   `qdb_build()` through `qdb_release` with a nil handle, which
-   `client.h` documents as API-managed and not to be freed. No local
-   patch (`docs/brief.md`, Vendoring).
+2. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+   Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
+   string from `qdb_version()` / `qdb_build()` through `qdb_release` with
+   a nil handle, which `client.h` documents as API-managed and not to be
+   freed; and a null-aware timestamp column constructor for the batch
+   writer, so the table fixture can write a null timestamp cell
+   (`internal/AGENTS.md`, Tests).
 3. At M4's entry: decide whether the e2e harness returns to CI or the
    budgets run locally (`.buildkite/AGENTS.md` holds the decision and
    the recipe).
@@ -91,6 +91,11 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-10 -- table-fixture-plan.md deleted with the fixture landed
+
+- The fixture rules and the writer's null contract to `internal/AGENTS.md`,
+  Tests; the upstream request to Current state, Next.
 
 ## 2026-09-08 -- m1-plan.md deleted with the Arrow unit landed
 
