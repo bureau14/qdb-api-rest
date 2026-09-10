@@ -140,7 +140,7 @@ def generate_pipeline() -> Pipeline:
                         "by_project": {
                             "quasardb-build": {
                                 "variant": dependency_slug,
-                                "git-ref": qdb_git_ref,
+                                "git-ref": "refs/heads/v3.14.3",
                             },
                         },
                     },
