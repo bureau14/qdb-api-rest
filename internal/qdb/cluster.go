@@ -231,8 +231,7 @@ func (s *Session) CreateTable(name string, shard time.Duration, cols ...qdbapi.T
 	return s.session.Table(name).Create(shard, cols...)
 }
 
-// RemoveTable removes the entry name. A table and a symtable are both
-// entries, so one call removes either.
+// RemoveTable removes the table name.
 func (s *Session) RemoveTable(name string) error {
 	return s.session.Table(name).Remove()
 }
