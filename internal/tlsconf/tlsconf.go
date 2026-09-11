@@ -1,7 +1,7 @@
 // Package tlsconf builds the tls.Config for the HTTPS listener: a PEM
 // certificate/key pair from disk when configured, an ephemeral
 // self-signed certificate otherwise, so TLS works with zero
-// configuration (docs/adr/0001-tls-certificates.md).
+// configuration.
 package tlsconf
 
 import (

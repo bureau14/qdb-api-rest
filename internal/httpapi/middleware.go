@@ -66,7 +66,7 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 
 // withRequestLogging tags the request context with its id, echoes the id,
 // and emits one access line when the handler returns. Only the id rides
-// on the context; lines join on it (ADR-0002).
+// on the context; lines join on it.
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

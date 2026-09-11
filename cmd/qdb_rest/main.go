@@ -40,7 +40,7 @@ var (
 )
 
 // versionText renders the version block shared by all QuasarDB binaries
-// (qdb-nats-connector ADR-011) plus the linked C API version, the one
+// plus the linked C API version, the one
 // line that is not compile-time information.
 func versionText() string {
 	var b strings.Builder
@@ -166,7 +166,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	// 2. The process logger, placed in the root context (ADR-0002); the
+	// 2. The process logger, placed in the root context; the
 	//    root context also ends on SIGINT/SIGTERM, which is what stops
 	//    serving below.
 	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
@@ -187,7 +187,7 @@ func main() {
 	ctx = qdb.WithCluster(ctx, cluster)
 
 	// 4. The token keychain, derived once from the configured
-	//    passphrases (ADR-0005); it travels in the context like the
+	//    passphrases; it travels in the context like the
 	//    cluster. Derivation pays the argon2id cost per passphrase here,
 	//    at startup, never per request.
 	tokens, err := auth.New(ctx, cfg.Auth, time.Now)

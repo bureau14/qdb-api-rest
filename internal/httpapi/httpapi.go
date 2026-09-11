@@ -1,7 +1,7 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
 // /api/v2 resource API and the unauthenticated status probes. It never
 // imports legacy compatibility code; a legacy package wraps this one
-// (ADR-0007) and the entry point composes the two.
+// and the entry point composes the two.
 package httpapi
 
 import (
@@ -12,7 +12,7 @@ import (
 )
 
 // handleLiveness reports that the process is up and serving HTTP. It is
-// never cluster-aware (ADR-0004).
+// never cluster-aware.
 func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
@@ -20,7 +20,7 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 // handleReadiness answers whether this instance can serve traffic. It
 // dials the cluster as the REST API's own user on every probe, with no
 // cached verdict and no effect on the pool, the budget or the breaker
-// (ADR-0004): 200 when the probe succeeds, 503 when it fails, both with an
+// 200 when the probe succeeds, 503 when it fails, both with an
 // empty body. The cause goes to the log line, not the wire.
 func handleReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
