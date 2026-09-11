@@ -1,22 +1,18 @@
-// The encoders share one fixture: a cluster bound to the live qdbd, a
-// query run as the anonymous user, and the comparison of a decoded Arrow
-// column with the generated table (internal/qdbtest/table) that was
-// written. Each format's own decoder lives with that format's test.
+// The encoders share one fixture: a query run as the anonymous user, the
+// table's columns as its select answers them, and the comparison of a
+// decoded Arrow column with the generated table (internal/qdbtest/table)
+// that was written. Each format's own decoder lives with that format's test.
 package encoding
 
 import (
 	"bytes"
 	"context"
-	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
-	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -27,23 +23,6 @@ func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 type failer interface {
 	Helper()
 	Fatalf(string, ...any)
-}
-
-// newCluster binds a cluster to the insecure fixture for the test's life.
-func newCluster(t *testing.T) *qdb.Cluster {
-	t.Helper()
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
-	c := qdb.New(cfg, nil)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := c.Close(ctx); err != nil {
-			t.Errorf("close: %v", err)
-		}
-	})
-	return c
 }
 
 // run executes q as the anonymous user and fails the test on error. The
