@@ -96,9 +96,9 @@ Blocked on:
 
 ## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
 
-- The cell conventions and the body shapes to `internal/AGENTS.md`,
-  Code; the columns-only JSON shape and the `jsontext` appenders to
-  `docs/brief.md`.
+- The seam, the Arrow facts and the rendering rules to
+  `internal/encoding/AGENTS.md`; the columns-only JSON shape and the
+  `jsontext` appenders to `docs/brief.md`.
 
 ## 2026-09-11 -- arrow-query-plan.md deleted; ADR-0009 leaves the tree
 
