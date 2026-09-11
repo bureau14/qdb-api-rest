@@ -44,7 +44,7 @@ Next:
 
 1. The rest of M1, each unit with its own plan before it starts: the
    JSON, NDJSON and CSV encoders over the batch, through the same seam
-   as the Arrow one (`internal/encoding`, ADR-0009); `POST /api/v2/query` with `Accept` negotiation and the
+   as the Arrow one (`internal/encoding`); `POST /api/v2/query` with `Accept` negotiation and the
    flushing writer; the bearer middleware, the minimal login and gzip;
    the `tests/e2e` target that runs the full-table `text/csv`
    equivalence against `/api/v2/query`. The handler unit raises
@@ -92,11 +92,11 @@ Blocked on:
 
 ## Entries
 
-## 2026-09-11 -- arrow-query-plan.md deleted with the Arrow query path landed
+## 2026-09-11 -- arrow-query-plan.md deleted; ADR-0009 leaves the tree
 
-- The query core hands out the batch `qdb_query_arrow` builds; the wire
-  schema to ADR-0009 (rewritten in place), the ownership rule to
-  `internal/AGENTS.md`, Code.
+- The query core hands out the batch `qdb_query_arrow` builds, so the
+  wire schema is the binding's, not a REST decision; the ownership and
+  encoder rules to `internal/AGENTS.md`, Code.
 
 ## 2026-09-10 -- table-fixture-plan.md deleted with the fixture landed
 

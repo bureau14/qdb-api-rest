@@ -47,8 +47,14 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   never negotiate, and never release the batch. The Arrow encoder
   transmits the batch's schema as-is, field metadata included, and
   interprets no column type; the rendering encoders (JSON, NDJSON, CSV)
-  are the only code that must know a type to render a cell. Wire types:
-  ADR-0009.
+  are the only code that must know a type to render a cell. The wire
+  types are the binding's: `int64` (a count included), `float64`, naive
+  `timestamp[ns]`, `utf8` and `binary` carrying `max_width` field
+  metadata, every field nullable, an all-null column keeping its table
+  type. On the wire: the IPC streaming format in record batches of a
+  constant 65536 rows, no in-format buffer compression (HTTP
+  `Accept-Encoding` compression is independent of it); a nil batch is a
+  schema with no fields and no batches, a complete stream.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its

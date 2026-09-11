@@ -9,8 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
-// arrowBatchRows is the number of rows per record batch on the wire: the
-// consumer's granularity, nothing the server bounds, so a constant.
+// arrowBatchRows is the number of rows per record batch on the wire.
 const arrowBatchRows = 65536
 
 // ArrowContentType is the media type of the Arrow IPC streaming format.
@@ -34,13 +33,9 @@ func emptyBatch() arrow.RecordBatch {
 	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
 }
 
-// writeArrow writes rec to w in batches of batchRows rows. The schema goes
-// on the wire as rec carries it, names, types, nullability and field
-// metadata unread (ADR-0009). A slice shares every buffer of rec; only the
-// offsets of a string or blob slice are rebased by the writer, a copy of
-// batchRows int32 values, never of the cells. No in-format buffer
-// compression: the response's compression is negotiated at the HTTP
-// layer, and the two are independent.
+// writeArrow writes rec to w: the schema as rec carries it, one slice of
+// batchRows rows per record batch, the end-of-stream marker. A slice
+// shares rec's buffers.
 func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRows int64) error {
 	if rec == nil {
 		rec = emptyBatch()
@@ -48,8 +43,7 @@ func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRo
 	}
 	ipcw := ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
 	for start := int64(0); start < rec.NumRows(); start += batchRows {
-		// A client that left is noticed at the next batch boundary, not
-		// inside a write: the writer owns the bytes of one batch.
+		// A client that left is noticed at the batch boundary.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -60,7 +54,7 @@ func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRo
 			return err
 		}
 	}
-	// Close writes the end-of-stream marker; with no batches the stream is
-	// the schema and the marker, still a complete stream.
+	// Close writes the end-of-stream marker, which completes the stream
+	// even with no batches.
 	return ipcw.Close()
 }
