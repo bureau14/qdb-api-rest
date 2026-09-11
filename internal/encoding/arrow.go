@@ -9,9 +9,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
-// arrowBatchRows is the number of rows per record batch on the wire.
-const arrowBatchRows = 65536
-
 // ArrowContentType is the media type of the Arrow IPC streaming format.
 const ArrowContentType = "application/vnd.apache.arrow.stream"
 
@@ -24,7 +21,7 @@ func (Arrow) ContentType() string { return ArrowContentType }
 
 // Encode implements Encoder.
 func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	return writeArrow(ctx, w, rec, arrowBatchRows)
+	return writeArrow(ctx, w, rec, chunkRows)
 }
 
 // emptyBatch is the batch of a statement without a result set: no fields,
