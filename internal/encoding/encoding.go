@@ -1,9 +1,6 @@
 // Package encoding turns one query result into bytes in one wire format.
 // Every encoder consumes the same Arrow record batch the query core
-// returns (internal/qdb), so the formats agree by construction on what a
-// row, a value and a null are. Content negotiation, status codes,
-// compression, flushing and logging are the handler's; an encoder knows
-// its media type and its bytes.
+// returns (internal/qdb); an encoder knows its media type and its bytes.
 package encoding
 
 import (

@@ -3,8 +3,7 @@
 // types and null density is created and pushed, read back as the
 // binding's record batch, encoded with a batch size small enough that
 // rows span batches, decoded with the IPC reader, and compared cell by
-// cell with the table that was written. The C API and the binding are not
-// under test; the schema on the wire and the batching are.
+// cell with the table that was written.
 package encoding
 
 import (
@@ -145,7 +144,6 @@ func checkColumn(t failer, want table.Column, got arrow.Array) {
 		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataDoubleUnsafe(want.Data), a.Value, same[float64])
 	case qdbapi.TsColumnTimestamp:
 		a := typed[*array.Timestamp](t, want.Name, got)
-		// Naive nanoseconds: the unit is the database's, no zone is stamped.
 		if dt := a.DataType().(*arrow.TimestampType); dt.Unit != arrow.Nanosecond || dt.TimeZone != "" {
 			t.Fatalf("%s: type %s on the wire", want.Name, a.DataType())
 		}
