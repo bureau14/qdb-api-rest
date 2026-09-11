@@ -339,19 +339,21 @@ IPC additionally supports its own in-format record-batch buffer compression
 (lz4/zstd, part of the IPC spec), which is independent of HTTP-level
 compression and also request-negotiable.
 
-Known constraint: `qdb-api-go` returns SQL query results fully materialized
--- the C API's one-shot `qdb_query` has no incremental-delivery mode
-(`qdb_query_continuous` is a live-query subscription that re-delivers
-results on a refresh interval, not a cursor). Streaming therefore
-overlaps serialization and transmission with iteration over the
-materialized result -- bounding REST-server memory and giving early first
-byte, but not removing the binding-side materialization. Relieving that
-requires upstream work (a cursor-style query API, or building on the C
-API's unwrapped Arrow paths: `qdb_query_to_arrow`, the bulk reader's
-batched fetch), out of scope here. The gateway direction raises the
-stakes: large raw `SELECT`s from thin clients materialize in the
-gateway, so the session budget is the short-term backstop and upstream
-streaming the long-term relief valve.
+Known constraint: the query path is the C API's unwrapped Arrow path,
+`qdb_query_arrow`, which builds the result as Arrow columns without a
+row-major intermediate and hands them to Go zero-copy -- but it is
+one-shot: the whole result is materialized before the first byte, and
+the C API has no incremental-delivery mode (`qdb_query_continuous` is a
+live-query subscription that re-delivers results on a refresh interval,
+not a cursor). Streaming therefore overlaps serialization and
+transmission with iteration over the materialized batch -- bounding
+REST-server memory and giving early first byte, but not removing the
+binding-side materialization. Relieving that requires upstream work (a
+cursor-style query API, or the bulk reader's batched fetch), out of
+scope here. The gateway direction raises the stakes: large raw
+`SELECT`s from thin clients materialize in the gateway, so the session
+budget is the short-term backstop and upstream streaming the long-term
+relief valve.
 
 ### Arrow Flight SQL (minimal)
 
