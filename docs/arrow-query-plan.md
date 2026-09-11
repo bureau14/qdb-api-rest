@@ -35,8 +35,10 @@ Against the live fixture (`internal/qdbtest`), through upstream
 - An all-null column keeps its table type with every slot null; the
   batch never carries an Arrow `Null` field. A result with zero rows is a
   zero-row batch with every column typed.
-- `utf8` and `binary` fields carry `max_width` field metadata written by
-  the C API (`"0"` when the column holds no bytes).
+- The C API attaches field metadata: `utf8` and `binary` fields carry
+  `max_width` (`"0"` when the column holds no bytes). The batch's schema
+  and every metadata entry on it are the binding's to define; this
+  repository transmits them as-is.
 - A statement without a result set (DDL) yields a nil batch and no error.
 - A batch may come together with an error on partial failure; the batch
   must be released either way.
@@ -81,8 +83,35 @@ func run(t failer, c *qdb.Cluster, q string) arrow.RecordBatch
 // Released by the test at the end of the rapid iteration.
 ```
 
-Deleted with the unit: `timestampNanosUTC`, `validity`, `fixedWidth`,
-`variableWidth`, `arrowColumn` and `Record` in `internal/encoding/arrow.go`.
+## Removal
+
+Every piece of code and text that maps or names the columnar result set
+leaves with the unit; nothing is kept for a later caller. The inventory,
+outside `vendor/`:
+
+- `internal/encoding/arrow.go`: everything above `arrowBatchRows`, the
+  type map and the buffer wrappers (`timestampNanosUTC`, `validity`,
+  `fixedWidth`, `variableWidth`, `arrowColumn`, `Record`), and the
+  `Record` call in `writeArrow`.
+- `internal/encoding/encoding.go`: the package comment and the `Encode`
+  parameter.
+- `internal/encoding/arrow_test.go`: `run`'s return type, the
+  `Record(rs)` expectation, the `array.Null` branch of `checkColumn`.
+- `internal/qdb/cluster.go`: `Session.fetch`, `Cluster.Query`'s result
+  variable and return type, `Probe`'s fetch.
+- `internal/qdb/cluster_test.go`: the `fetch` call.
+- `internal/AGENTS.md`: the result rule.
+- `docs/adr/0009-arrow-wire-types.md`: the context, the decision table
+  and the `Record(rs)` consequence.
+
+Exit check, run before the plan is deleted:
+
+```sh
+grep -rn 'QueryResultSet\|QueryColumn\|\.Fetch()\|Record(' \
+    --include='*.go' --include='*.md' --exclude-dir=vendor .
+```
+
+It matches only this plan, which leaves last.
 
 ## Approach
 
@@ -97,11 +126,12 @@ whose buffers are C-allocated and freed by its release callback.
 ### `internal/encoding`
 
 `Encoder.Encode` takes the batch. The Arrow encoder is `writeArrow` over
-it: schema, slices of 65536 rows, the end-of-stream marker. Nothing in
-this unit interprets a column type: the Arrow encoder is a pass-through,
-and an unlisted type reaches the wire as whatever the binding says. The
-row-rendering encoders written later are the first code that must know a
-type to render a cell.
+it: schema, slices of 65536 rows, the end-of-stream marker. The schema
+goes on the wire as the binding delivered it: field names, types,
+nullability and every metadata entry, unread and unchanged. Nothing in
+this unit interprets a column type, and an unlisted type reaches the wire
+as whatever the binding says. The row-rendering encoders written later
+are the first code that must know a type to render a cell.
 
 ### Tests
 
@@ -115,9 +145,10 @@ validity, since it carries the table type; the timestamp check expects
 ### Documents
 
 - ADR-0009, rewritten in place: the wire schema is the batch the binding
-  delivers; timestamps pass through naive; an all-null column keeps its
-  table type; `max_width` passes through; "zero-copy" means the C API's
-  buffers moved into Go, never copied by this repository.
+  delivers, transmitted as-is including its field metadata; timestamps
+  pass through naive; an all-null column keeps its table type;
+  "zero-copy" means the C API's buffers moved into Go, never copied by
+  this repository.
 - `internal/AGENTS.md`: the result rule names the batch and its release;
   the encoder seam names the batch.
 - `docs/brief.md`: the materialization paragraph names `qdb_query_arrow`
@@ -145,12 +176,12 @@ from a result set until the query returns one itself.
 
 ## Decision log (2026-09-10)
 
-| Decision                                    | Why                                                                                      | Rejected                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| ADR-0009 rewritten in place, not superseded | owner decision; the ADR describes one standing contract, and the contract moved          | ADR-0010 superseding 0009                                                   |
-| Timestamps pass through naive               | owner decision; the values are UTC nanoseconds regardless; no relabel layer in this repo | relabel to `Timestamp(ns, "UTC")` in `internal/encoding`; wait for upstream |
-| An all-null column keeps its table type     | owner decision; the binding's behaviour; a schema that does not change with the data     | mapping to Arrow `Null` as before                                           |
-| `max_width` metadata passes through         | owner decision; non-concern for now                                                      | stripping it with a schema rewrite                                          |
-| No column-type interpretation in this unit  | owner decision; the Arrow encoder is a pass-through; rendering encoders decide later     | rejecting types outside the six with an error                               |
-| The `QueryResultSet` path leaves entirely   | owner decision; one way to query                                                         | keeping `Fetch` for the probe                                               |
-| Any error means no result                   | owner decision; a partial batch is released and dropped                                  | surfacing partial rows                                                      |
+| Decision                                     | Why                                                                                      | Rejected                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| ADR-0009 rewritten in place, not superseded  | owner decision; the ADR describes one standing contract, and the contract moved          | ADR-0010 superseding 0009                                                   |
+| Timestamps pass through naive                | owner decision; the values are UTC nanoseconds regardless; no relabel layer in this repo | relabel to `Timestamp(ns, "UTC")` in `internal/encoding`; wait for upstream |
+| An all-null column keeps its table type      | owner decision; the binding's behaviour; a schema that does not change with the data     | mapping to Arrow `Null` as before                                           |
+| Schema and field metadata pass through as-is | owner decision; whatever the C API or the Go API attaches is transmitted unchanged       | stripping or rewriting entries such as `max_width`                          |
+| No column-type interpretation in this unit   | owner decision; the Arrow encoder is a pass-through; rendering encoders decide later     | rejecting types outside the six with an error                               |
+| The `QueryResultSet` path leaves entirely    | owner decision; one way to query                                                         | keeping `Fetch` for the probe                                               |
+| Any error means no result                    | owner decision; a partial batch is released and dropped                                  | surfacing partial rows                                                      |
