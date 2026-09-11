@@ -10,7 +10,7 @@ Last updated: 2026-09-11
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 query        | in progress | auth core, pool core, Arrow encoder landed      |
+| M1 -- v2 query        | in progress | auth core, pool core, the four encoders landed  |
 | M2 -- v2 auth         | not started |                                                 |
 | M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
 | M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
@@ -38,9 +38,7 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- The rendering encoders (`docs/encoders-plan.md`): the cell vocabulary
-  and the CSV encoder, then NDJSON and JSON over it, then the
-  format-equivalence property test over all four formats.
+- Nothing.
 
 Next:
 
@@ -95,6 +93,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
+
+- The cell conventions and the body shapes to `internal/AGENTS.md`,
+  Code; the columns-only JSON shape and the `jsontext` appenders to
+  `docs/brief.md`.
 
 ## 2026-09-11 -- arrow-query-plan.md deleted; ADR-0009 leaves the tree
 
