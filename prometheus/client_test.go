@@ -12,6 +12,19 @@ import (
 
 const clusterURI = "qdb://127.0.0.1:2836"
 
+func getColumnsByType(table qdb.TimeseriesEntry) (map[string]qdb.TsColumnType, error) {
+	colsInfo, err := table.ColumnsInfo()
+	if err != nil { 
+		return nil, err
+	}
+
+	cols := make(map[string]qdb.TsColumnType, len(colsInfo))
+	for _, col := range colsInfo {
+		cols[col.Name()] = col.Type()
+	}
+	return cols, nil
+}
+
 func toUtcTime(milliseconds int64) time.Time {
 	sec := milliseconds / 1000
 	nsec := (milliseconds - (sec * 1000)) * 1000000
@@ -131,22 +144,23 @@ func TestEnsureMetricEmptyTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error: %s", err)
 	}
+
 	table := handle.Timeseries("$qdb.prom.test_metric")
-	table.Remove()
+	_ = table.Remove()
 
 	ts := prom.TimeSeries{
 		Labels: []prom.Label{
-			prom.Label{Name: model.MetricNameLabel, Value: "test_metric"},
-			prom.Label{Name: "test_tag", Value: "hello"},
+			{Name: model.MetricNameLabel, Value: "test_metric"},
+			{Name: "test_tag", Value: "hello"},
 		},
 	}
-	err = c.EnsureTable(ts)
 
+	err = c.EnsureTable(ts)
 	if err != nil {
 		t.Fatalf("Error: %s", err)
 	}
 
-	_, blobCols, _, _, _, err := table.Columns()
+	cols, err := getColumnsByType(table)
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")
@@ -154,15 +168,12 @@ func TestEnsureMetricEmptyTable(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	var hasColumn bool
-	for _, col := range blobCols {
-		if col.Name() == "test_tag" {
-			hasColumn = true
-		}
+	if cols["test_tag"] != qdb.TsColumnBlob {
+		t.Fatalf("Failed to create blob column test_tag")
 	}
 
-	if !hasColumn {
-		t.Fatalf("Failed to create column")
+	if cols["value"] != qdb.TsColumnDouble {
+		t.Fatalf("Failed to create double column value")
 	}
 
 	t.Logf("Success")
@@ -176,7 +187,8 @@ func TestEnsureMetricExistingTable(t *testing.T) {
 	}
 
 	table := handle.Timeseries("$qdb.prom.test_metric")
-	table.Remove()
+	_ = table.Remove()
+
 	err = table.Create(24*time.Hour,
 		qdb.NewTsColumnInfo("tag_one", qdb.TsColumnBlob),
 		qdb.NewTsColumnInfo("tag_two", qdb.TsColumnBlob),
@@ -189,20 +201,19 @@ func TestEnsureMetricExistingTable(t *testing.T) {
 
 	ts := prom.TimeSeries{
 		Labels: []prom.Label{
-			prom.Label{Name: model.MetricNameLabel, Value: "test_metric"},
-			prom.Label{Name: "tag_one", Value: "one"},
-			prom.Label{Name: "tag_two", Value: "two"},
-			prom.Label{Name: "tag_three", Value: "three"},
+			{Name: model.MetricNameLabel, Value: "test_metric"},
+			{Name: "tag_one", Value: "one"},
+			{Name: "tag_two", Value: "two"},
+			{Name: "tag_three", Value: "three"},
 		},
 	}
 
 	err = c.EnsureTable(ts)
-
 	if err != nil {
 		t.Fatalf("Error: %s", err)
 	}
 
-	_, blobCols, _, _, _, err := table.Columns()
+	cols, err := getColumnsByType(table)
 	if err != nil {
 		if err == qdb.ErrAliasNotFound {
 			t.Fatalf("Failed to create table")
@@ -210,21 +221,21 @@ func TestEnsureMetricExistingTable(t *testing.T) {
 		t.Fatalf("Error: %s", err)
 	}
 
-	var colCount int
-	for _, label := range []string{"tag_one", "tag_two", "tag_three", "value"} {
-		var hasColumn bool
-		for _, col := range blobCols {
-			if col.Name() == label {
-				hasColumn = true
-			}
-		}
-		if hasColumn {
-			colCount++
+	expected := map[string]qdb.TsColumnType{
+		"tag_one":   qdb.TsColumnBlob,
+		"tag_two":   qdb.TsColumnBlob,
+		"tag_three": qdb.TsColumnBlob,
+		"value":     qdb.TsColumnDouble,
+	}
+
+	for name, typ := range expected {
+		if cols[name] != typ {
+			t.Fatalf("Missing or incorrect column %s", name)
 		}
 	}
 
-	if colCount != 3 {
-		t.Fatalf("Failed to create all columns")
+	if len(cols) != 4 {
+		t.Fatalf("Unexpected column count: got %d, want 4", len(cols))
 	}
 
 	t.Logf("Success")
