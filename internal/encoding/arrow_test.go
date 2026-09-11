@@ -83,11 +83,8 @@ func TestArrowRoundTrip(t *testing.T) {
 		if batches == 0 {
 			return // no rows: the schema and the marker are the whole stream
 		}
-		// The select answers $timestamp first, then the columns in order,
-		// rows ascending by $timestamp: the index's own order.
-		checkIndex(rt, tbl.Index, cols[0])
-		for i, col := range tbl.Columns {
-			checkColumn(rt, col, cols[i+1])
+		for i, col := range columns(tbl) {
+			checkColumn(rt, col, cols[i])
 		}
 		for _, col := range cols {
 			col.Release()

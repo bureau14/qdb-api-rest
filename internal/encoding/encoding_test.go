@@ -118,11 +118,7 @@ func checkColumn(t failer, want table.Column, got arrow.Array) {
 			t.Fatalf("%s: type %s on the wire", want.Name, a.DataType())
 		}
 		nanos := func(i int) int64 { return int64(a.Value(i)) }
-		var want64 []int64
-		for _, ts := range qdbapi.GetColumnDataTimestampUnsafe(want.Data) {
-			want64 = append(want64, ts.UnixNano())
-		}
-		checkValues(t, want.Name, want.Valid, want64, nanos, same[int64])
+		checkValues(t, want.Name, want.Valid, nanosOf(want.Data), nanos, same[int64])
 	case qdbapi.TsColumnString, qdbapi.TsColumnSymbol:
 		a := typed[*array.String](t, want.Name, got)
 		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataStringUnsafe(want.Data), a.Value, same[string])
@@ -134,17 +130,22 @@ func checkColumn(t failer, want table.Column, got arrow.Array) {
 	}
 }
 
-// checkIndex compares the decoded $timestamp column with the index that
-// was written: nanoseconds since the epoch, every slot valid.
-func checkIndex(t failer, want []time.Time, got arrow.Array) {
-	t.Helper()
-	a := typed[*array.Timestamp](t, "$timestamp", got)
-	if a.Len() != len(want) || a.NullN() != 0 {
-		t.Fatalf("$timestamp: %d rows and %d nulls on the wire, %d rows written", a.Len(), a.NullN(), len(want))
+// nanosOf is a timestamp column's cells as nanoseconds since the epoch.
+func nanosOf(data qdbapi.ColumnData) []int64 {
+	var nanos []int64
+	for _, ts := range qdbapi.GetColumnDataTimestampUnsafe(data) {
+		nanos = append(nanos, ts.UnixNano())
 	}
-	for i, ts := range want {
-		if int64(a.Value(i)) != ts.UnixNano() {
-			t.Fatalf("$timestamp row %d: %d on the wire, %d written", i, a.Value(i), ts.UnixNano())
-		}
+	return nanos
+}
+
+// columns is tbl as its select answers it: $timestamp first, every slot
+// valid, then the columns in order.
+func columns(tbl table.Table) []table.Column {
+	index := qdbapi.NewColumnDataTimestamp(tbl.Index)
+	valid := make([]bool, len(tbl.Index))
+	for i := range valid {
+		valid[i] = true
 	}
+	return append([]table.Column{{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp, Data: &index, Valid: valid}}, tbl.Columns...)
 }
