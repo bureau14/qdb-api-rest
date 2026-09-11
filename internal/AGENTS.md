@@ -33,15 +33,22 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   legacy route wraps its v2 counterpart, never reimplements it. Inside
   the package names say legacy too (`writeLegacyJSON`, never a bare
   `writeJSON`); outside it, no code knows a wart exists.
-- A query result outside `internal/qdb` is the binding's Go-owned
-  `QueryResultSet` and nothing else: `Cluster.Query` returns one, the
-  session is back in its pool before the caller sees a row, and the
-  binding's `QueryResult` (a view over C memory with a Close
-  obligation) never leaves the vendored package.
-- Encoders (`internal/encoding`) share one seam over that result set
-  and know only their media type and their bytes: they never flush,
-  never log, never negotiate. The Arrow encoder is zero-copy over the
-  result set's buffers; its wire types are ADR-0009.
+- A query result outside `internal/qdb` is the Arrow record batch the
+  binding builds through `qdb_query_arrow` and nothing else:
+  `Cluster.Query` returns one, the session is back in its pool before
+  the caller reads a row, and the batch outlives it. Whoever receives
+  the batch owns it and calls `Release` exactly once; its buffers are
+  C-allocated and freed by that release. On any error there is no batch
+  (a partial one is released inside `internal/qdb`); a statement without
+  a result set is a nil batch. The binding's row-major and columnar
+  result paths are never called.
+- Encoders (`internal/encoding`) share one seam over that batch and know
+  only their media type and their bytes: they never flush, never log,
+  never negotiate, and never release the batch. The Arrow encoder
+  transmits the batch's schema as-is, field metadata included, and
+  interprets no column type; the rendering encoders (JSON, NDJSON, CSV)
+  are the only code that must know a type to render a cell. Wire types:
+  ADR-0009.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
