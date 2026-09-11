@@ -108,27 +108,36 @@ const arrowBatchRows = 65536
 // ArrowContentType is the media type of the Arrow IPC streaming format.
 const ArrowContentType = "application/vnd.apache.arrow.stream"
 
-// Arrow encodes a result set as an Arrow IPC stream: the schema, the
-// record in batches, the end-of-stream marker.
+// Arrow encodes a record batch as an Arrow IPC stream: the schema, the
+// batch in slices, the end-of-stream marker.
 type Arrow struct{}
 
 // ContentType implements Encoder.
 func (Arrow) ContentType() string { return ArrowContentType }
 
 // Encode implements Encoder.
-func (Arrow) Encode(ctx context.Context, w io.Writer, rs *qdbapi.QueryResultSet) error {
-	return writeArrow(ctx, w, rs, arrowBatchRows)
+func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
+	return writeArrow(ctx, w, rec, arrowBatchRows)
 }
 
-// writeArrow writes rs to w in batches of batchRows rows. The record is
-// built once over the whole set and sliced per batch: a slice shares every
-// buffer, and only the offsets of a string or blob slice are rebased by the
-// writer, a copy of batchRows int32 values, never of the cells. No
-// in-format buffer compression: the response's compression is negotiated
-// at the HTTP layer, and the two are independent (ADR-0009).
-func writeArrow(ctx context.Context, w io.Writer, rs *qdbapi.QueryResultSet, batchRows int64) error {
-	rec := Record(rs)
-	defer rec.Release()
+// emptyRecord is the batch of a statement without a result set: no fields,
+// no rows, so the stream is a schema and the end-of-stream marker.
+func emptyRecord() arrow.RecordBatch {
+	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
+}
+
+// writeArrow writes rec to w in batches of batchRows rows. The schema goes
+// on the wire as rec carries it, names, types, nullability and field
+// metadata unread (ADR-0009). A slice shares every buffer of rec; only the
+// offsets of a string or blob slice are rebased by the writer, a copy of
+// batchRows int32 values, never of the cells. No in-format buffer
+// compression: the response's compression is negotiated at the HTTP
+// layer, and the two are independent.
+func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRows int64) error {
+	if rec == nil {
+		rec = emptyRecord()
+		defer rec.Release()
+	}
 	ipcw := ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
 	for start := int64(0); start < rec.NumRows(); start += batchRows {
 		// A client that left is noticed at the next batch boundary, not

@@ -196,21 +196,20 @@ func TestArrowRoundTrip(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, c, tbl)
-		rs := run(rt, c, tbl.Select())
+		rec := Record(run(rt, c, tbl.Select()))
+		defer rec.Release()
 
 		// A batch size below the row count is what exercises slicing and
 		// the offset rebasing of string and blob columns.
 		batchRows := int64(rapid.IntRange(1, 16).Draw(rt, "batch rows"))
 		var buf bytes.Buffer
-		if err := writeArrow(context.Background(), &buf, rs, batchRows); err != nil {
+		if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
 			rt.Fatalf("encode: %v", err)
 		}
 
 		schema, cols, batches := decode(rt, buf.Bytes())
-		want := Record(rs)
-		defer want.Release()
-		if !schema.Equal(want.Schema()) {
-			rt.Fatalf("schema on the wire %s != %s", schema, want.Schema())
+		if !schema.Equal(rec.Schema()) {
+			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
 		}
 		if wantBatches := int((int64(len(tbl.Index)) + batchRows - 1) / batchRows); batches != wantBatches {
 			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, len(tbl.Index), batchRows)
@@ -230,9 +229,9 @@ func TestArrowRoundTrip(t *testing.T) {
 	})
 }
 
-// TestArrowNilResultSet: a statement without a result set is a complete
+// TestArrowNilRecord: a statement without a result set is a complete
 // stream with no fields and no batches.
-func TestArrowNilResultSet(t *testing.T) {
+func TestArrowNilRecord(t *testing.T) {
 	var buf bytes.Buffer
 	if err := (Arrow{}).Encode(context.Background(), &buf, nil); err != nil {
 		t.Fatalf("encode: %v", err)
