@@ -222,9 +222,9 @@ func TestArrowRoundTrip(t *testing.T) {
 	})
 }
 
-// TestArrowNilRecord: a statement without a result set is a complete
+// TestArrowNilBatch: a statement without a result set is a complete
 // stream with no fields and no batches.
-func TestArrowNilRecord(t *testing.T) {
+func TestArrowNilBatch(t *testing.T) {
 	var buf bytes.Buffer
 	if err := (Arrow{}).Encode(context.Background(), &buf, nil); err != nil {
 		t.Fatalf("encode: %v", err)

@@ -28,9 +28,9 @@ func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) err
 	return writeArrow(ctx, w, rec, arrowBatchRows)
 }
 
-// emptyRecord is the batch of a statement without a result set: no fields,
+// emptyBatch is the batch of a statement without a result set: no fields,
 // no rows, so the stream is a schema and the end-of-stream marker.
-func emptyRecord() arrow.RecordBatch {
+func emptyBatch() arrow.RecordBatch {
 	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
 }
 
@@ -43,7 +43,7 @@ func emptyRecord() arrow.RecordBatch {
 // layer, and the two are independent.
 func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRows int64) error {
 	if rec == nil {
-		rec = emptyRecord()
+		rec = emptyBatch()
 		defer rec.Release()
 	}
 	ipcw := ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
