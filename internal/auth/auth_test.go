@@ -204,7 +204,7 @@ func TestBadConfigRefused(t *testing.T) {
 }
 
 // Changing any argon2id cost re-derives key and kid: a cost bump behaves
-// as a key rotation (ADR-0005).
+// as a key rotation.
 func TestCostChangeRollsKeys(t *testing.T) {
 	// White-box on derive: the kid fingerprints passphrase, salt and
 	// costs together, so a cost bump must roll it.

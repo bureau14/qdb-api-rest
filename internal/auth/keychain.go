@@ -1,4 +1,4 @@
-// Package auth mints and verifies the gateway's tokens (ADR-0005):
+// Package auth mints and verifies the gateway's tokens:
 // compact JWE, dir + A256GCM, under keys derived from the configured
 // passphrases. This binary is the token's only producer and consumer;
 // clients treat tokens as opaque strings.
@@ -22,7 +22,7 @@ import (
 // here: keys derive from config alone, so there are no per-user records
 // to decorrelate. It still buys domain separation from other argon2id
 // users, and bumping the version suffix re-derives every key and kid --
-// a key rotation (ADR-0005).
+// a key rotation.
 var salt = []byte("qdb-rest/token-secrets/v1")
 
 // b64 is the JOSE alphabet: base64url, unpadded, and canonical -- the
@@ -38,7 +38,7 @@ type key struct {
 }
 
 // expand derives one purpose's bytes from stretched key material; the
-// info string is the domain separator (ADR-0005: the encryption key and
+// info string is the domain separator (the encryption key and
 // the kid never derive from each other).
 func expand(prk []byte, info string, n int) ([]byte, error) {
 	return hkdf.Expand(sha256.New, prk, info, n)
@@ -81,7 +81,7 @@ func derive(passphrase string, cost config.Argon2id) (key, error) {
 
 // keychain holds the derived keys: mint is the first configured
 // passphrase's key, verify accepts every configured passphrase's, by
-// kid (rolling keys, ADR-0005).
+// kid (rolling keys).
 type keychain struct {
 	mint   key
 	verify map[string]key

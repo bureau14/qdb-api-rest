@@ -1,7 +1,7 @@
 package auth
 
 // go-jose is the independent JWE implementation these tests validate
-// against (ADR-0005): a self-consistent-but-wrong encoder passes its own
+// against: a self-consistent-but-wrong encoder passes its own
 // roundtrip and fails only against another implementation. Test-only
 // dependency; it never links into the binary.
 //

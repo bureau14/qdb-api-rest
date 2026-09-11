@@ -52,7 +52,7 @@ var ErrTokenExpired = errors.New("token expired")
 const maxTokenLength = 4096
 
 // header is the one protected header this package mints; the verifier
-// rejects any other shape (ADR-0005).
+// rejects any other shape.
 type header struct {
 	Alg string `json:"alg"`
 	Enc string `json:"enc"`
@@ -88,8 +88,7 @@ type Tokens struct {
 
 // New derives the keychain from the configured passphrases, once. With
 // no passphrase configured it generates an ephemeral key and warns:
-// tokens then survive neither a restart nor a second instance
-// (ADR-0005).
+// tokens then survive neither a restart nor a second instance.
 func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, error) {
 	if len(a.TokenSecrets) == 0 {
 		observe.Logger(ctx).WarnContext(ctx,
@@ -117,7 +116,7 @@ func (t *Tokens) Mint(c Claims) (string, error) {
 	k := t.keys.mint
 	protected := b64.EncodeToString([]byte(headerFor(k.kid)))
 	// Fresh random IV per token; at minting volume (one per login or
-	// refresh) reuse is unreachable (ADR-0005).
+	// refresh) reuse is unreachable.
 	iv := make([]byte, k.aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
 		return "", err
