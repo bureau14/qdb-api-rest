@@ -55,6 +55,28 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   constant 65536 rows, no in-format buffer compression (HTTP
   `Accept-Encoding` compression is independent of it); a nil batch is a
   schema with no fields and no batches, a complete stream.
+- The rendering encoders share one cell vocabulary
+  (`internal/encoding/cell.go`), the binding's type bound once per
+  column. Wire type names are QuasarDB's words: `int64`, `double`,
+  `string`, `blob`, `timestamp`; a symbol answers as a `string` and a
+  count as an `int64`. A cell renders the same way in every format that
+  can carry it: `int64` a bare number; `float64` through
+  `jsontext.AppendFloat` (the bytes `encoding/json` writes), NaN and the
+  infinities the format's null; `timestamp` RFC 3339 in UTC with nine
+  fixed fractional digits (`2026-06-11T00:00:00.000683000Z`); `utf8` a
+  JSON string through `jsontext.AppendQuote`, invalid UTF-8 replaced by
+  U+FFFD; `binary` standard base64 with padding. An Arrow type outside
+  the five is an encode error naming the column, never a panic. JSON
+  (`application/json`) is `{"columns":[{"name":..,"type":..,"data":[..]},..]}`,
+  keys in that order, no `tables` wrapper (the table a row came from is
+  a column, `$table`), a nil batch `{"columns":[]}`, no trailing
+  newline. NDJSON (`application/x-ndjson`) is one object per row, keys
+  in column order, LF-terminated lines; no rows is an empty body. CSV
+  (`text/csv`) is `encoding/csv`'s RFC 4180: a header row, LF, a field
+  quoted only by the standard writer's rule, the empty field for null
+  and for the empty string alike; a nil batch is an empty body, no rows
+  the header alone. Byte identity with `qdb_export`'s CSV is a
+  non-concern: the e2e full-table comparison normalizes.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
