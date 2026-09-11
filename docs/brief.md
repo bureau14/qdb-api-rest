@@ -322,12 +322,12 @@ One binary, two listeners:
 `POST /api/v2/query` is a streamed response in a content-negotiated format
 (ClickHouse-HTTP-style):
 
-| Accept                                | Encoding                                                           |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| `application/json` (default)          | Columnar tables/columns shape, v2's own, streamed as it serializes |
-| `application/x-ndjson`                | One JSON object per row                                            |
-| `text/csv`                            | RFC 4180                                                           |
-| `application/vnd.apache.arrow.stream` | Arrow IPC stream, columnar batches                                 |
+| Accept                                | Encoding                                                                   |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `application/json` (default)          | Columnar, one object per column, v2's own shape, streamed as it serializes |
+| `application/x-ndjson`                | One JSON object per row                                                    |
+| `text/csv`                            | RFC 4180                                                                   |
+| `application/vnd.apache.arrow.stream` | Arrow IPC stream, columnar batches                                         |
 
 All formats are produced by one query-execution core with N encoders. v2
 uses proper nulls per format instead of the legacy sentinel strings.
@@ -666,9 +666,9 @@ readable top to bottom.
   methods (type parameters on method declarations), the stdlib `uuid`
   package (RFC 9562 -- use it instead of vendoring a third-party UUID
   library, e.g. for token `jti` claims), and `encoding/json/v2` /
-  `encoding/json/jsontext` where their streaming or strictness helps an
-  encoder (candidate for `internal/encoding`; adopting them there is an
-  ADR-worthy decision, not a default).
+  `encoding/json/jsontext` where their streaming, strictness or
+  appenders help an encoder (`internal/encoding` renders cells through
+  the `jsontext` appenders).
 - **CI**: Buildkite, all platforms; all tests run in Buildkite
   (qdb-nats-connector is the reference for how this should feel). The
   pipeline is authored from scratch for this repo, not carried over from
