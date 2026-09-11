@@ -38,16 +38,20 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- Nothing.
+- The rendering encoders (`docs/encoders-plan.md`): the cell vocabulary
+  and the CSV encoder, then NDJSON and JSON over it, then the
+  format-equivalence property test over all four formats.
 
 Next:
 
-1. The rest of M1, each unit with its own plan before it starts: the
-   JSON, NDJSON and CSV encoders over the batch, through the same seam
-   as the Arrow one (`internal/encoding`); `POST /api/v2/query` with `Accept` negotiation and the
-   flushing writer; the bearer middleware, the minimal login and gzip;
-   the `tests/e2e` target that runs the full-table `text/csv`
-   equivalence against `/api/v2/query`. The handler unit raises
+1. The rest of M1, each unit with its own plan before it starts:
+   `POST /api/v2/query` with `Accept` negotiation and the flushing
+   writer; the bearer middleware, the minimal login and gzip; the
+   `tests/e2e` target that runs the full-table `text/csv` equivalence
+   against `/api/v2/query`, normalizing `reproduce.csv`'s `qdb_export`
+   shape (no header, quoted strings, naive timestamps) before
+   `compare_csv`, since byte identity with `qdb_export` is a
+   non-concern (`internal/AGENTS.md`, Code). The handler unit raises
    `cluster.max_in_buffer_size` for the full-table query (the C API
    default cannot return it; the old server's e2e flags in
    `tests/e2e/Makefile` show the size) and maps an oversized reply
