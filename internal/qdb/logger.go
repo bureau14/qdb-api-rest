@@ -9,8 +9,7 @@ import (
 
 // bindingLogger adapts the process logger to qdb-api-go's package-level
 // Logger interface, which carries no context: the binding logs through a
-// global, so the adapter holds the logger it is given (ADR-0002 allows a
-// stored logger exactly where no context is available). The binding's
+// global, so the adapter holds the logger it is given. The binding's
 // Info lines are its own housekeeping, noise at a gateway's request
 // volume, so Info maps to Debug; its Panic is not fatal here and maps to
 // Error.

@@ -14,9 +14,6 @@ import (
 )
 
 // evictInterval is how often user pools that hold no session are evicted.
-// It is a constant, well under any sensible idle_timeout, not a config
-// knob; each pool's own reaper closes its idle sessions on the binding's
-// default tick.
 const evictInterval = 10 * time.Second
 
 // userPool is one user's bounded set of sessions plus when it last held
@@ -41,7 +38,7 @@ type Cluster struct {
 	budget *budget
 	// breaker is the per-cluster circuit breaker Call gates on; dials and
 	// calls that find the cluster unavailable feed it, the readiness probe
-	// never does (ADR-0004).
+	// never does.
 	breaker *breaker
 
 	mu    sync.Mutex           // protects users
@@ -199,13 +196,11 @@ func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 // Session is one authenticated client session as this package sees it: the
 // narrow wrapper around the binding's session and the only way code
 // touches one. Every method runs one C API operation, so the surface the
-// server depends on is enumerable here. The one thing a caller outside
-// this package may hold afterwards is a query's Arrow record batch, whose
-// buffers are C-allocated, owned by the batch and freed by its release;
-// nothing else that leaves this package refers to C memory or to the
-// session. A Session is built per checkout: Call wraps the session the
-// user's pool leased, Probe the one it dialed itself. One goroutine uses a
-// Session at a time.
+// server depends on is enumerable here. The one thing a caller may hold
+// afterwards is a query's record batch, which owns its C-allocated
+// buffers and frees them on release. A Session is built per checkout:
+// Call wraps the session the user's pool leased, Probe the one it dialed
+// itself. One goroutine uses a Session at a time.
 type Session struct {
 	session qdbapi.Session
 }
@@ -265,11 +260,9 @@ type callConfig struct {
 type CallOption func(*callConfig)
 
 // WithReadRetry permits one transparent retry on a fresh session after a
-// retryable failure. Retry is per call, never the default, because
-// idempotence is a fact only the call site knows: ingestion must never
-// retry (a batch push offers no way to prove non-application), and a
-// streamed response must not retry once bytes have left the server.
-// Idempotent reads opt in.
+// retryable failure. Retry is per call, never the default: idempotence is
+// a fact only the call site knows. Idempotent reads opt in; ingestion and
+// a response that has started streaming never do.
 func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }
@@ -344,7 +337,7 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOptio
 // user (outside the pool, the budget and the breaker), runs
 // status.readiness_query, and closes the session on its own goroutine. The
 // dial proves the cluster is reachable and the REST API's own user
-// authenticates; the query proves the session serves one (ADR-0004).
+// authenticates; the query proves the session serves one.
 func (c *Cluster) Probe(ctx context.Context) error {
 	hdl, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
@@ -353,7 +346,6 @@ func (c *Cluster) Probe(ctx context.Context) error {
 	s := newSession(hdl)
 	rec, qerr := s.fetch(c.readinessQuery)
 	s.closeAsync()
-	// The rows prove nothing beyond their arrival.
 	if rec != nil {
 		rec.Release()
 	}
@@ -406,9 +398,8 @@ func (c *Cluster) takeIdle() []*qdbapi.SessionPool {
 }
 
 // evictOnce closes the idle user pools, which stops their reapers. A taken
-// pool holds nothing, so its close returns at once; the one exception is a
-// caller that took the pool from poolFor microseconds before, whose dial
-// the close then waits for.
+// pool holds nothing, so its close returns at once unless a caller took
+// it from poolFor in between and its dial is in flight.
 func (c *Cluster) evictOnce() {
 	for _, p := range c.takeIdle() {
 		_ = p.Close(context.Background())
