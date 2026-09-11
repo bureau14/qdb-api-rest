@@ -106,7 +106,7 @@ type Status struct {
 }
 
 // Argon2id sets the cost of deriving token keys from passphrases: what
-// one attacker guess pays (ADR-0005). Every instance behind a load
+// one attacker guess pays. Every instance behind a load
 // balancer must run the same values; changing any of them re-derives
 // every key and behaves as a key rotation.
 type Argon2id struct {
@@ -115,7 +115,7 @@ type Argon2id struct {
 	Parallelism int `yaml:"parallelism" help:"argon2id lanes"`
 }
 
-// Auth holds the token passphrases (ADR-0005): a rolling list, the first
+// Auth holds the token passphrases: a rolling list, the first
 // entry mints, the rest are verified against. Empty means an ephemeral
 // key is generated at startup; tokens then survive neither a restart nor
 // a second instance behind a load balancer.
@@ -133,9 +133,7 @@ func (a Auth) LogValue() slog.Value {
 		slog.Int("argon2id_parallelism", a.Argon2id.Parallelism))
 }
 
-// Config is the full server configuration. Tests fold layers and compare
-// whole values with reflect.DeepEqual (the passphrase list keeps Config
-// from being ==-comparable).
+// Config is the full server configuration.
 type Config struct {
 	Listen  Listen  `yaml:"listen"`
 	TLS     TLS     `yaml:"tls"`
@@ -530,11 +528,8 @@ func positive(key string, d time.Duration) error {
 // validateCluster checks only what the binding does not: the vocabulary
 // this config maps onto the binding's enums, the socket timeout (zero
 // leaves the Go API's default; otherwise whole seconds, at least one, the
-// C API's own granularity), and the buffer size (an int64 here, a uint
-// there). The
-// URI scheme and the C API knob ranges are judged by the C API when a
-// session is dialed; a key or a user given both inline and as a file is
-// read from the file.
+// C API's own granularity) and the buffer size (an int64 here, a uint
+// there). The C API judges the URI scheme and the knob ranges at dial.
 func validateCluster(c Cluster) error {
 	if err := oneOf("cluster.compression", c.Compression); err != nil {
 		return err
