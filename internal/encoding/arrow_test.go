@@ -1,10 +1,10 @@
 // The Arrow encoder is pinned by one round trip against the live qdbd
 // fixture: a generated table (internal/qdbtest/table) of drawn column
-// types and null density is created and pushed, read back as a result
-// set, encoded with a batch size small enough that rows span batches,
-// decoded with the IPC reader, and compared cell by cell with the table
-// that was written. The C API and the binding are not under test; the
-// type map, the buffers and the batching are.
+// types and null density is created and pushed, read back as the
+// binding's record batch, encoded with a batch size small enough that
+// rows span batches, decoded with the IPC reader, and compared cell by
+// cell with the table that was written. The C API and the binding are not
+// under test; the schema on the wire and the batching are.
 package encoding
 
 import (
@@ -52,14 +52,15 @@ func newCluster(t *testing.T) *qdb.Cluster {
 	return c
 }
 
-// run executes q as the anonymous user and fails the test on error.
-func run(t failer, c *qdb.Cluster, q string) *qdbapi.QueryResultSet {
+// run executes q as the anonymous user and fails the test on error. The
+// caller releases the batch.
+func run(t failer, c *qdb.Cluster, q string) arrow.RecordBatch {
 	t.Helper()
-	rs, err := c.Query(context.Background(), qdb.User{}, q)
+	rec, err := c.Query(context.Background(), qdb.User{}, q)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
-	return rs
+	return rec
 }
 
 // decode reads every batch of an IPC stream and concatenates it per column,
@@ -121,23 +122,14 @@ func checkValues[V any](t failer, name string, valid []bool, want []V, got func(
 func same[V comparable](a, b V) bool { return a == b }
 
 // checkColumn compares one decoded column with the column that was
-// written: the Arrow type of the type map, every validity bit, every
+// written: the Arrow type of the table type, every validity bit, every
 // value. Null slots are compared by validity only: their value bytes
-// carry no meaning on either side.
+// carry no meaning on either side. A column null in every row keeps its
+// table type, so it takes the same path.
 func checkColumn(t failer, want table.Column, got arrow.Array) {
 	t.Helper()
 	if got.Len() != len(want.Valid) {
 		t.Fatalf("%s: %d rows on the wire, %d written", want.Name, got.Len(), len(want.Valid))
-	}
-	// A column null in every row comes back as the Null type, which has no
-	// validity bitmap: the type is the statement that every slot is null.
-	if _, ok := got.(*array.Null); ok {
-		for i, valid := range want.Valid {
-			if valid {
-				t.Fatalf("%s row %d: Null type on the wire, a value written", want.Name, i)
-			}
-		}
-		return
 	}
 	for i, valid := range want.Valid {
 		if got.IsValid(i) != valid {
@@ -153,7 +145,8 @@ func checkColumn(t failer, want table.Column, got arrow.Array) {
 		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataDoubleUnsafe(want.Data), a.Value, same[float64])
 	case qdbapi.TsColumnTimestamp:
 		a := typed[*array.Timestamp](t, want.Name, got)
-		if !arrow.TypeEqual(a.DataType(), timestampNanosUTC) {
+		// Naive nanoseconds: the unit is the database's, no zone is stamped.
+		if dt := a.DataType().(*arrow.TimestampType); dt.Unit != arrow.Nanosecond || dt.TimeZone != "" {
 			t.Fatalf("%s: type %s on the wire", want.Name, a.DataType())
 		}
 		nanos := func(i int) int64 { return int64(a.Value(i)) }
@@ -174,7 +167,7 @@ func checkColumn(t failer, want table.Column, got arrow.Array) {
 }
 
 // checkIndex compares the decoded $timestamp column with the index that
-// was written: nanosecond UTC timestamps, every slot valid.
+// was written: nanoseconds since the epoch, every slot valid.
 func checkIndex(t failer, want []time.Time, got arrow.Array) {
 	t.Helper()
 	a := typed[*array.Timestamp](t, "$timestamp", got)
@@ -189,14 +182,14 @@ func checkIndex(t failer, want []time.Time, got arrow.Array) {
 }
 
 // TestArrowRoundTrip: what the encoder puts on the wire decodes to the
-// result set it was given, whatever the types, the nulls and the row
+// batch it was given, whatever the types, the nulls and the row
 // count, across batch boundaries.
 func TestArrowRoundTrip(t *testing.T) {
 	c := newCluster(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, c, tbl)
-		rec := Record(run(rt, c, tbl.Select()))
+		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
 
 		// A batch size below the row count is what exercises slicing and

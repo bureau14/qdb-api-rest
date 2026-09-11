@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
@@ -197,11 +198,14 @@ func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 
 // Session is one authenticated client session as this package sees it: the
 // narrow wrapper around the binding's session and the only way code
-// touches one. Every method runs one C API operation and returns Go-owned
-// memory, so the surface the server depends on is enumerable here and
-// nothing outside this package holds C memory. A Session is built per
-// checkout: Call wraps the session the user's pool leased, Probe the one it
-// dialed itself. One goroutine uses a Session at a time.
+// touches one. Every method runs one C API operation, so the surface the
+// server depends on is enumerable here. The one thing a caller outside
+// this package may hold afterwards is a query's Arrow record batch, whose
+// buffers are C-allocated, owned by the batch and freed by its release;
+// nothing else that leaves this package refers to C memory or to the
+// session. A Session is built per checkout: Call wraps the session the
+// user's pool leased, Probe the one it dialed itself. One goroutine uses a
+// Session at a time.
 type Session struct {
 	session qdbapi.Session
 }
@@ -218,11 +222,21 @@ func (s *Session) closeAsync() {
 	go func() { _ = s.session.Close() }()
 }
 
-// fetch runs q and returns its result copied into Go memory, the C result
-// released by the binding before it returns. A statement that produces no
-// result set (DDL) yields a nil set.
-func (s *Session) fetch(q string) (*qdbapi.QueryResultSet, error) {
-	return s.session.Query(q).Fetch()
+// fetch runs q through the C API's Arrow path and returns the record batch
+// the binding moved out of it, which holds no reference to the session.
+// The caller owns the batch and releases it once. An error means no
+// result: a batch handed back with an error (a partial failure) is
+// released here and nil is returned. A statement that produces no result
+// set (DDL) yields a nil batch.
+func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
+	rec, err := s.session.Query(q).FetchArrow()
+	if err != nil {
+		if rec != nil {
+			rec.Release()
+		}
+		return nil, err
+	}
+	return rec, nil
 }
 
 // CreateTable creates the table name with cols after the implied
@@ -308,20 +322,22 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 	return err
 }
 
-// Query runs q as u and returns its result, Go-owned: the session is back
-// in its pool before the caller sees a row, so a slow response never
-// holds one. A statement that produces no result set yields a nil set.
-func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOption) (*qdbapi.QueryResultSet, error) {
-	var rs *qdbapi.QueryResultSet
+// Query runs q as u and returns its result as an Arrow record batch the
+// caller owns and releases once. The batch outlives the session, which is
+// back in its pool before the caller reads a row, so a slow response never
+// holds one. On any error there is no batch. A statement that produces no
+// result set yields a nil batch.
+func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOption) (arrow.RecordBatch, error) {
+	var rec arrow.RecordBatch
 	err := c.Call(ctx, u, func(s *Session) error {
 		var err error
-		rs, err = s.fetch(q)
+		rec, err = s.fetch(q)
 		return err
 	}, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return rs, nil
+	return rec, nil
 }
 
 // Probe answers readiness. It dials a fresh session as the REST API's own
@@ -335,8 +351,12 @@ func (c *Cluster) Probe(ctx context.Context) error {
 		return err
 	}
 	s := newSession(hdl)
-	_, qerr := s.fetch(c.readinessQuery)
+	rec, qerr := s.fetch(c.readinessQuery)
 	s.closeAsync()
+	// The rows prove nothing beyond their arrival.
+	if rec != nil {
+		rec.Release()
+	}
 	return qerr
 }
 

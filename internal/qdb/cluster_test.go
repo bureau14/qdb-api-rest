@@ -83,7 +83,10 @@ func TestPerUserCapAndSharing(t *testing.T) {
 			// The cap is checked while the session is held, so through
 			// Call: Query has already returned it by the time it answers.
 			err := c.Call(context.Background(), anonymous, func(s *Session) error {
-				_, err := s.fetch("SELECT 1")
+				rec, err := s.fetch("SELECT 1")
+				if rec != nil {
+					rec.Release()
+				}
 				if st := c.poolFor(anonymous).Stats(); st.InUse > 2 {
 					t.Errorf("per-user cap exceeded: %+v", st)
 				}
