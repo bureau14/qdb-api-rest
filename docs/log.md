@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
@@ -43,8 +43,8 @@ In flight:
 Next:
 
 1. The rest of M1, each unit with its own plan before it starts: the
-   JSON, NDJSON and CSV encoders over the same seam as the Arrow one
-   (`internal/encoding`, ADR-0009); `POST /api/v2/query` with `Accept` negotiation and the
+   JSON, NDJSON and CSV encoders over the batch, through the same seam
+   as the Arrow one (`internal/encoding`, ADR-0009); `POST /api/v2/query` with `Accept` negotiation and the
    flushing writer; the bearer middleware, the minimal login and gzip;
    the `tests/e2e` target that runs the full-table `text/csv`
    equivalence against `/api/v2/query`. The handler unit raises
