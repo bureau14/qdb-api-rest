@@ -49,7 +49,7 @@ Next:
    against `/api/v2/query`, normalizing `reproduce.csv`'s `qdb_export`
    shape (no header, quoted strings, naive timestamps) before
    `compare_csv`, since byte identity with `qdb_export` is a
-   non-concern (`internal/AGENTS.md`, Code). The handler unit raises
+   non-concern (`internal/encoding/AGENTS.md`, Rendering). The handler unit raises
    `cluster.max_in_buffer_size` for the full-table query (the C API
    default cannot return it; the old server's e2e flags in
    `tests/e2e/Makefile` show the size) and maps an oversized reply

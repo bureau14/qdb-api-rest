@@ -1,0 +1,66 @@
+# internal/encoding -- Agent Instructions
+
+Scope: the wire encoders. Package-wide Go rules, logging and the test
+fixtures: `internal/AGENTS.md`.
+
+## The seam
+
+- Every encoder implements `Encoder` over the Arrow record batch the
+  query core returns (`internal/AGENTS.md`, Code, the result rule) and
+  knows only its media type and its bytes: it never flushes, never logs,
+  never negotiates, and never releases the batch. A buffered writer
+  inside `Encode` is flushed once at the end; the HTTP flush is the
+  handler's.
+- Every encoder looks at the ctx once per `chunkRows` rows, one shared
+  constant: the record batch size on the Arrow wire, the stride between
+  ctx checks on the rendered wires.
+- The wire types are the binding's: `int64` (a count included),
+  `float64`, naive `timestamp[ns]`, `utf8` and `binary` carrying
+  `max_width` field metadata, every field nullable, an all-null column
+  keeping its table type. An Arrow type outside the five is an encode
+  error naming the column (`UnsupportedTypeError`), never a panic.
+
+## Arrow
+
+- The Arrow encoder transmits the batch's schema as-is, field metadata
+  included, and interprets no column type. On the wire: the IPC
+  streaming format in record batches of `chunkRows` rows, no in-format
+  buffer compression (HTTP `Accept-Encoding` compression is independent
+  of it); a nil batch is a schema with no fields and no batches, a
+  complete stream.
+
+## Rendering
+
+- JSON, NDJSON and CSV are the only code that must know a type to
+  render a cell. Each binds the five types once per column in its own
+  file (`json.go`, `csv.go`); `cell.go` holds only the text the
+  formats share: the timestamp, the float and the base64 blob.
+- Wire type names are QuasarDB's words: `int64`, `double`, `string`,
+  `blob`, `timestamp`; a symbol answers as a `string` and a count as an
+  `int64`.
+- A cell renders the same way in every format that can carry it:
+  `int64` a bare number; `float64` through `jsontext.AppendFloat` (the
+  bytes `encoding/json` writes), NaN and the infinities the format's
+  null; `timestamp` RFC 3339 in UTC with nine fixed fractional digits
+  (`2026-06-11T00:00:00.000683000Z`); `utf8` a JSON string through
+  `jsontext.AppendQuote`, invalid UTF-8 replaced by U+FFFD; `binary`
+  standard base64 with padding.
+- JSON (`application/json`) is
+  `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, keys in that
+  order, no `tables` wrapper (the table a row came from is a column,
+  `$table`), a nil batch `{"columns":[]}`, no trailing newline.
+- NDJSON (`application/x-ndjson`) is one object per row, keys in column
+  order, LF-terminated lines; no rows is an empty body.
+- CSV (`text/csv`) is `encoding/csv`'s RFC 4180: a header row, LF, a
+  field quoted only by the standard writer's rule, the empty field for
+  null and for the empty string alike; a nil batch is an empty body, no
+  rows the header alone. Byte identity with `qdb_export`'s CSV is a
+  non-concern: the e2e full-table comparison normalizes.
+
+## Tests
+
+- One round trip per wire family against the live fixture
+  (`arrow_test.go`, `render_test.go`): a generated table, queried once,
+  encoded, decoded with the standard library, compared cell by cell
+  with what was written. What the table fixture cannot write is pinned
+  byte for byte on one hand-built batch in `render_test.go`.
