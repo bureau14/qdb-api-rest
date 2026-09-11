@@ -2,7 +2,7 @@
 // (schema, index, rows) with Generate, creates it in the live qdbd
 // fixture with Create, queries it through the cluster, and compares what
 // came back with the Table it holds. The table is removed on the test's
-// cleanup. Plan: docs/table-fixture-plan.md.
+// cleanup. Rules: internal/AGENTS.md, Tests.
 package table
 
 import (
