@@ -3,9 +3,12 @@ package encoding
 import (
 	"bufio"
 	"context"
+	"encoding/json/jsontext"
 	"io"
+	"strconv"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
 const (
@@ -15,6 +18,102 @@ const (
 	// object per row.
 	NDJSONContentType = "application/x-ndjson"
 )
+
+// jsonColumn is one column bound to its JSON rendering: its name, its
+// type in QuasarDB's words (int64, double, string, blob, timestamp), and
+// the appender of cell i as a JSON value, null included.
+type jsonColumn struct {
+	name string
+	kind string
+	cell func(dst []byte, i int) []byte
+}
+
+func appendNull(dst []byte) []byte {
+	return append(dst, "null"...)
+}
+
+// appendQuoted appends s as a JSON string with the minimal RFC 8785
+// escaping. The C API does not validate a utf8 column: invalid bytes
+// become U+FFFD, the error that reports them is dropped, and the body
+// stays valid JSON.
+func appendQuoted(dst []byte, s string) []byte {
+	dst, _ = jsontext.AppendQuote(dst, s)
+	return dst
+}
+
+// jsonCell binds column a to its JSON rendering. The type switch runs
+// once per column, so a cell is one call. A symbol arrives as utf8 and
+// answers as a string; a count arrives as int64 and answers as one: the
+// wire words are the binding's types.
+func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
+	c := jsonColumn{name: f.Name}
+	switch a := a.(type) {
+	case *array.Int64:
+		c.kind = "int64"
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			return strconv.AppendInt(dst, a.Value(i), 10)
+		}
+	case *array.Float64:
+		c.kind = "double"
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) || floatIsNull(a.Value(i)) {
+				return appendNull(dst)
+			}
+			return appendFloat(dst, a.Value(i))
+		}
+	case *array.Timestamp:
+		c.kind = "timestamp"
+		ns := nanos(a)
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			dst = append(dst, '"')
+			dst = appendTimestamp(dst, ns(i))
+			return append(dst, '"')
+		}
+	case *array.String:
+		c.kind = "string"
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			return appendQuoted(dst, a.Value(i))
+		}
+	case *array.Binary:
+		c.kind = "blob"
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			dst = append(dst, '"')
+			dst = appendBase64(dst, a.Value(i))
+			return append(dst, '"')
+		}
+	default:
+		return jsonColumn{}, &UnsupportedTypeError{Column: f.Name, Type: f.Type}
+	}
+	return c, nil
+}
+
+// jsonColumns binds every column of rec; a nil rec has none.
+func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
+	if rec == nil {
+		return nil, nil
+	}
+	cols := make([]jsonColumn, rec.NumCols())
+	for i, f := range rec.Schema().Fields() {
+		c, err := jsonCell(f, rec.Column(i))
+		if err != nil {
+			return nil, err
+		}
+		cols[i] = c
+	}
+	return cols, nil
+}
 
 // The two JSON encoders append every cell straight into the buffered
 // writer's spare capacity (AvailableBuffer) and hand the bytes back, so
@@ -32,7 +131,7 @@ func (NDJSON) ContentType() string { return NDJSONContentType }
 
 // Encode implements Encoder.
 func (NDJSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	cols, err := bindColumns(rec)
+	cols, err := jsonColumns(rec)
 	if err != nil {
 		return err
 	}
@@ -45,7 +144,7 @@ func (NDJSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) er
 
 // writeNDJSON writes the rows. Each key is escaped once and reused with
 // its colon for every row.
-func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []column, rows int64) error {
+func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int64) error {
 	keys := make([][]byte, len(cols))
 	for i, c := range cols {
 		keys[i] = append(appendQuoted(nil, c.name), ':')
@@ -60,7 +159,7 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []column, rows int64
 				b = append(b, ',')
 			}
 			b = append(b, keys[i]...)
-			b = c.json(b, int(row))
+			b = c.cell(b, int(row))
 		}
 		b = append(b, "}\n"...)
 		if _, err := w.Write(b); err != nil {
@@ -85,7 +184,7 @@ func (JSON) ContentType() string { return JSONContentType }
 
 // Encode implements Encoder.
 func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	cols, err := bindColumns(rec)
+	cols, err := jsonColumns(rec)
 	if err != nil {
 		return err
 	}
@@ -98,7 +197,7 @@ func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) erro
 
 // writeJSON writes the columns, each array walked once, so the body
 // streams column-major over the batch.
-func writeJSON(ctx context.Context, w *bufio.Writer, cols []column, rows int64) error {
+func writeJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int64) error {
 	if _, err := w.WriteString(`{"columns":[`); err != nil {
 		return err
 	}
@@ -118,7 +217,7 @@ func writeJSON(ctx context.Context, w *bufio.Writer, cols []column, rows int64) 
 
 // writeJSONColumn writes one column object: name, type, then the data
 // array of every row.
-func writeJSONColumn(ctx context.Context, w *bufio.Writer, c column, rows int64) error {
+func writeJSONColumn(ctx context.Context, w *bufio.Writer, c jsonColumn, rows int64) error {
 	b := append(w.AvailableBuffer(), `{"name":`...)
 	b = appendQuoted(b, c.name)
 	b = append(b, `,"type":"`...)
@@ -135,7 +234,7 @@ func writeJSONColumn(ctx context.Context, w *bufio.Writer, c column, rows int64)
 		if row > 0 {
 			b = append(b, ',')
 		}
-		if _, err := w.Write(c.json(b, int(row))); err != nil {
+		if _, err := w.Write(c.cell(b, int(row))); err != nil {
 			return err
 		}
 	}
