@@ -92,6 +92,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-11 -- arrow-query-plan.md deleted with the Arrow query path landed
+
+- The query core hands out the batch `qdb_query_arrow` builds; the wire
+  schema to ADR-0009 (rewritten in place), the ownership rule to
+  `internal/AGENTS.md`, Code.
+
 ## 2026-09-10 -- table-fixture-plan.md deleted with the fixture landed
 
 - The fixture rules and the writer's null contract to `internal/AGENTS.md`,
