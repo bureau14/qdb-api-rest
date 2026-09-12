@@ -96,15 +96,16 @@ Blocked on:
 
 ## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
 
-- The seam, the Arrow facts and the rendering rules to
-  `internal/encoding/AGENTS.md`; the columns-only JSON shape and the
-  `jsontext` appenders to `docs/brief.md`.
+- The rendering rules to `internal/encoding/AGENTS.md`, which now holds
+  every encoder rule; the columns-only JSON shape and the `jsontext`
+  appenders to `docs/brief.md`.
 
 ## 2026-09-11 -- arrow-query-plan.md deleted; ADR-0009 leaves the tree
 
 - The query core hands out the batch `qdb_query_arrow` builds, so the
-  wire schema is the binding's, not a REST decision; the ownership and
-  encoder rules to `internal/AGENTS.md`, Code.
+  wire schema is the binding's, not a REST decision; the ownership rule
+  to `internal/AGENTS.md`, Code, the encoder rules to
+  `internal/encoding/AGENTS.md`.
 
 ## 2026-09-10 -- table-fixture-plan.md deleted with the fixture landed
 
