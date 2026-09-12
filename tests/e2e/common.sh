@@ -242,55 +242,6 @@ export_table_csv() {
     rm -f "$csv.chunk"
 }
 
-# ---------------------------------------------------------- CSV comparison
-
-# Row-by-row CSV compare with numeric tolerance (CSV_ABS_TOLERANCE, default
-# 0.001) on fields numeric on both sides; everything else byte-exact. O(1)
-# memory: awk streams <actual> and pulls the matching <golden> row by getline.
-# Prints the first 10 differences on failure. Usage: compare_csv <actual> <golden> <label>
-compare_csv() {
-    local actual="$1" golden="$2" label="$3" diff_output
-    if diff_output=$(awk -v golden="$golden" -v tol="${CSV_ABS_TOLERANCE:-0.001}" '
-        function abs(x)    { return x < 0 ? -x : x }
-        function is_num(s) { return s ~ /^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/ }
-        BEGIN { FS = ","; diffs = 0; shown = 0; max_show = 10 }
-        {
-            if ((getline gline < golden) <= 0) {
-                if (shown < max_show) { printf("row %d: present in actual, missing in golden\n", NR); shown++ }
-                diffs++; next
-            }
-            if ($0 == gline) next
-            gn = split(gline, g, ",")
-            if (NF != gn) {
-                if (shown < max_show) { printf("row %d: field count differs (actual=%d, golden=%d)\n", NR, NF, gn); shown++ }
-                diffs++; next
-            }
-            for (i = 1; i <= NF; i++) {
-                if ($i == g[i]) continue
-                if (is_num($i) && is_num(g[i])) {
-                    if (abs(($i + 0) - (g[i] + 0)) <= tol) continue
-                    if (shown < max_show) { printf("row %d col %d: |%s - %s| > %s\n", NR, i, $i, g[i], tol); shown++ }
-                } else {
-                    if (shown < max_show) { printf("row %d col %d: [%s] != [%s]\n", NR, i, $i, g[i]); shown++ }
-                }
-                diffs++
-            }
-        }
-        END {
-            if ((getline gline < golden) > 0) {
-                if (shown < max_show) { printf("row %d: golden has more rows than actual\n", NR + 1); shown++ }
-                diffs++
-            }
-            close(golden)
-            exit (diffs > 0) ? 1 : 0
-        }' "$actual"); then
-        log_info "[OK] $label"
-        return 0
-    fi
-    log_error "[FAIL] $label"
-    printf '%s\n' "$diff_output" >&2
-    return 1
-}
 
 # sha256 of a file, portable (coreutils sha256sum or BSD shasum).
 sha256_file() {

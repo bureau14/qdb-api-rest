@@ -7,7 +7,7 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   paths, ports and flags; scripts receive them as arguments or exported
   variables. Add targets there, not new top-level scripts.
 - `common.sh` holds every shared helper (logging, pidfiles, qdbsh wrapper,
-  chunked `qdb_export`, awk CSV compare). Source it; do not duplicate.
+  chunked `qdb_export`). Source it; do not duplicate.
   Always call `qdbsh` through the wrapper (it redirects qdbsh's log files
   out of the tree).
 - qdbd is a service (`scripts/tests/setup/start-services.sh`, a git
