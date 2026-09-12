@@ -24,6 +24,7 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -225,7 +226,7 @@ func checkRendered(t failer, want []table.Column, got []wireColumn) {
 // wire decodes to the table it was given, whatever the types, the nulls
 // and the row count.
 func TestRenderedRoundTrip(t *testing.T) {
-	c := table.Cluster(t)
+	c := cluster.New(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, c, tbl)

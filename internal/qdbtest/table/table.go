@@ -11,15 +11,12 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"testing"
 	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
-	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
 // T is the slice of testing.TB the fixture needs; *testing.T and *rapid.T
@@ -29,24 +26,6 @@ type T interface {
 	Fatalf(string, ...any)
 	Errorf(string, ...any)
 	Cleanup(func())
-}
-
-// Cluster binds a cluster to the insecure fixture for t's life: the
-// cluster the generated tables are created in.
-func Cluster(t testing.TB) *qdb.Cluster {
-	t.Helper()
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
-	c := qdb.New(cfg, nil)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := c.Close(ctx); err != nil {
-			t.Errorf("close: %v", err)
-		}
-	})
-	return c
 }
 
 // Column is one generated column: its cells as the writer's own
