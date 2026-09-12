@@ -110,9 +110,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   sentinel (`MinInt64`, `NaN`, the empty string, the nil blob), so a
   generated value is never a sentinel and a timestamp data column is
   dense: the null timespec is not settable through the writer, and a
-  null-aware constructor is an upstream request. The fixture is a
-  subpackage because `internal/qdb`'s own tests import `qdbtest`, and a
-  `qdbtest` that imported `internal/qdb` would be a test import cycle.
+  null-aware constructor is an upstream request. The table fixture and
+  the cluster fixture (`internal/qdbtest/cluster`, `New`) are
+  subpackages because `internal/qdb`'s own tests import `qdbtest`, and
+  a `qdbtest` that imported `internal/qdb` would be a test import cycle.
   Every fixture table is removed on the test's cleanup, per
   `rapid.Check` iteration too; run `qdbsh` for `qdbtest_*` entries when a
   run was killed mid-way.
