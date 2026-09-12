@@ -18,7 +18,7 @@ fixtures: `internal/AGENTS.md`.
   `float64`, naive `timestamp[ns]`, `utf8` and `binary` carrying
   `max_width` field metadata, every field nullable, an all-null column
   keeping its table type. An Arrow type outside the five is an encode
-  error naming the column (`UnsupportedTypeError`), never a panic.
+  error naming the column (`ErrUnsupportedType`), never a panic.
 
 ## Arrow
 
@@ -35,7 +35,7 @@ fixtures: `internal/AGENTS.md`.
   render a cell. Each format renders every type the way its own readers
   expect, and the code for a format lives in that format's file only
   (`json.go`, `csv.go`); the two share nothing but the package's
-  `UnsupportedTypeError` and the timestamp text, RFC 3339 in UTC with
+  `ErrUnsupportedType` and the timestamp text, RFC 3339 in UTC with
   nine fixed fractional digits (`2026-06-11T00:00:00.000683000Z`),
   which is a fact about the wire, not about a format.
 - JSON and NDJSON: `int64` a bare number; `float64` through

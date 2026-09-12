@@ -66,7 +66,7 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 			return base64.StdEncoding.EncodeToString(a.Value(i))
 		}, nil
 	}
-	return nil, &UnsupportedTypeError{Column: f.Name, Type: f.Type}
+	return nil, unsupportedType(f)
 }
 
 // CSV encodes a record batch as RFC 4180 through encoding/csv: a header

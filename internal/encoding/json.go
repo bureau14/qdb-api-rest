@@ -119,7 +119,7 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			return appendBase64(dst, a.Value(i))
 		}
 	default:
-		return jsonColumn{}, &UnsupportedTypeError{Column: f.Name, Type: f.Type}
+		return jsonColumn{}, unsupportedType(f)
 	}
 	return c, nil
 }

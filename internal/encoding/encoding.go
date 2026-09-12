@@ -5,7 +5,6 @@ package encoding
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -43,18 +42,6 @@ func numRows(rec arrow.RecordBatch) int64 {
 		return 0
 	}
 	return rec.NumRows()
-}
-
-// UnsupportedTypeError is the encode error for a column whose Arrow type
-// has no rendering: the binding's vocabulary can grow, and the wire
-// refuses loudly rather than guess.
-type UnsupportedTypeError struct {
-	Column string
-	Type   arrow.DataType
-}
-
-func (e *UnsupportedTypeError) Error() string {
-	return fmt.Sprintf("encoding: column %q has type %s, which has no rendering", e.Column, e.Type)
 }
 
 // timestampLayout is how every text format writes a timestamp: RFC 3339
