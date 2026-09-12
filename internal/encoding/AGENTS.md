@@ -57,8 +57,7 @@ fixtures: `internal/AGENTS.md`.
   its own bytes; `binary` as standard base64; the empty field for null,
   for NaN and the infinities, and for the empty string alike. A nil
   batch is an empty body, no rows the header alone. Byte identity with
-  `qdb_export`'s CSV is a non-concern: the e2e full-table comparison
-  normalizes.
+  `qdb_export`'s CSV is a non-concern.
 
 ## Tests
 

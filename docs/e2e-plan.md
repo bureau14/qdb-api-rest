@@ -11,7 +11,7 @@ dated decision logs at the end.
 
 Prove, for the life of the product, that the REST server:
 
-1. returns correct results at scale, across all wire formats;
+1. serves the legacy surface byte for byte (the goldens);
 2. stays inside its performance budgets (time to first byte, bounded
    memory, throughput);
 3. behaves honestly under stress: fast, explicit failure under overload,
@@ -95,15 +95,10 @@ byte-for-byte with the CSV it was imported from (verified identical
 belt-and-braces check. A mismatch is a `qdb_export`/`qdb_import` bug
 worth surfacing, not a harness problem.
 
-## The CSV is the expected output
+## Legacy goldens
 
-For the large-table equivalence check, no second expected artifact
-exists: `POST /api/v2/query` with `Accept: text/csv` on
-`SELECT * FROM "reproduce"` is compared against `reproduce.csv` with the
-awk `compare_csv` tolerance comparator (numeric fields within tolerance,
-everything else exact; QuasarDB's deterministic ordering makes row order
-comparable). Cross-format equivalence (JSON, NDJSON, Arrow IPC, Flight
-SQL) is covered by the Go generative property tests, not by golden files.
+Cross-format equivalence (JSON, NDJSON, CSV, Arrow IPC, Flight SQL) is
+covered by the Go generative property tests, never by golden files.
 
 Legacy byte-shape equivalence (`/api/login`, `/api/query`, status
 probes) uses small golden request/response pairs captured from the
@@ -192,13 +187,12 @@ DataFrame fingerprint (`legacy@old-rest == legacy@new-rest` in
 
 All against the 5,613,032-row table, all shell + curl + awk:
 
-1. **Correctness at scale**: full-table equivalence per format (above).
-2. **Budgets as CI gates** (brief item 3): time to first byte under a
+1. **Budgets as CI gates** (brief item 3): time to first byte under a
    fixed bound (`curl -w '%{time_starttransfer}'`), server RSS delta
    bounded and independent of result size (`ps -o rss=` sampled during
    the request), sustained throughput floor per format. Budget numbers
    are versioned in the repo and revised deliberately, never silently.
-3. **Concurrency**: N parallel clients (`xargs -P` + curl) against the
+2. **Concurrency**: N parallel clients (`xargs -P` + curl) against the
    full query; assert the session budget bounds memory and load (a
    request past the budget waits for a session or times out at its
    deadline, never goodput collapse), and that in-flight streams
@@ -213,9 +207,9 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-golden |
                           test-legacy | test-legacy-selfcheck | clean | distclean
-                          test-formats | test-budgets | test-stress (arrive with the budgets)
+                          test-budgets | test-stress (arrive with the budgets)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
-                          count_qdb_rows, export_table_csv (chunked), compare_csv, sha256_file
+                          count_qdb_rows, export_table_csv (chunked), sha256_file
   legacy.sh               golden capture/replay driver
   seed.sql                legacy fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
@@ -243,16 +237,15 @@ from the Go `rapid` property tests, generated in-process.
 
 ## Decision log (2026-08-16)
 
-| Decision                                              | Why                                                                                | Rejected                                                                  |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Permanent e2e separate from temporary bench           | different lifetimes; the bench dies once new-rest beats old-rest                   | one combined assessment framework; shared abstractions up front           |
-| qdbd via shared `start-services.sh`                   | ADR-007 service model; one owner for qdbd flags/license                            | bench-private `start-qdbd.sh` / `stop-all.sh`                             |
-| Dataset as CSV + import config, loaded by qdb_import  | shared qdbd means the front door is the only way in; CSV doubles as ingest fixture | qdbd data-directory tarball (`db.tar.zst`); fresh extract per launch      |
-| S3, nats-connector style, `datasets.json` + curl      | developer and CI fetch identically; proven                                         | `.buildkite/tools/artifacts.py` (per-build ephemeral layout); env-var URI |
-| Idempotent `make load` behind a COUNT(*) check        | data is a test resource, not an operator chore                                     | manual pre-loading; per-run loading                                       |
-| CSV is the expected output for full-table equivalence | no second 834 MB artifact; ordering is deterministic                               | full-table golden responses per format                                    |
-| Stress in shell/curl/awk                              | keeps the permanent path free of Python and heavyweight builds                     | Python or the bench harness in CI                                         |
-| Copy nats helpers, not its generator/loader           | helpers fit; generator/loader have the wrong shape and sink                        | nats YAML generator as fixture source                                     |
+| Decision                                             | Why                                                                                | Rejected                                                                  |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Permanent e2e separate from temporary bench          | different lifetimes; the bench dies once new-rest beats old-rest                   | one combined assessment framework; shared abstractions up front           |
+| qdbd via shared `start-services.sh`                  | ADR-007 service model; one owner for qdbd flags/license                            | bench-private `start-qdbd.sh` / `stop-all.sh`                             |
+| Dataset as CSV + import config, loaded by qdb_import | shared qdbd means the front door is the only way in; CSV doubles as ingest fixture | qdbd data-directory tarball (`db.tar.zst`); fresh extract per launch      |
+| S3, nats-connector style, `datasets.json` + curl     | developer and CI fetch identically; proven                                         | `.buildkite/tools/artifacts.py` (per-build ephemeral layout); env-var URI |
+| Idempotent `make load` behind a COUNT(*) check       | data is a test resource, not an operator chore                                     | manual pre-loading; per-run loading                                       |
+| Stress in shell/curl/awk                             | keeps the permanent path free of Python and heavyweight builds                     | Python or the bench harness in CI                                         |
+| Copy nats helpers, not its generator/loader          | helpers fit; generator/loader have the wrong shape and sink                        | nats YAML generator as fixture source                                     |
 
 ## Decision log (2026-08-19)
 
@@ -270,3 +263,9 @@ from the Go `rapid` property tests, generated in-process.
 | Decision                                     | Why                                                                                                 | Rejected                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Lazy login + `CASES=` selection in legacy.sh | auth-free cases (status probes) replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
+
+## Decision log (2026-09-12)
+
+| Decision                                    | Why                                                              | Rejected                                          |
+| ------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| No full-table `text/csv` equivalence target | not a target; cross-format correctness is the Go property test's | the awk tolerance comparator over `reproduce.csv` |

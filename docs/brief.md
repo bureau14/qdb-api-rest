@@ -708,8 +708,7 @@ tests exist only where a pure function has genuine logic worth pinning.
    customer-derived 5,613,032-row table (story sc-19522) distributed as
    CSV + `qdb_import` config, sha256-pinned, S3-hosted the way the
    nats-connector golden datasets are, and loaded idempotently by
-   `make load`; the input CSV doubles as the expected output for
-   full-table `text/csv` equivalence (awk tolerance-compare). Includes
+   `make load`. Includes
    _legacy equivalence_: small golden request/response pairs captured
    from the old server replayed against the new one. Plan:
    `docs/e2e-plan.md`.

@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
@@ -21,10 +21,9 @@ Last updated: 2026-09-11
 | M9 -- Release         | not started |                                                 |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
-upstream that links `libqdb_api.a` statically on Linux. Exit:
-`make -C tests/e2e` full-table `text/csv` equivalence green against
-`bin/qdb_rest`; the format-equivalence property test (JSON, NDJSON,
-CSV, Arrow IPC) green on all eight platforms; `POST /api/v2/auth/login`
+upstream that links `libqdb_api.a` statically on Linux. Exit: the
+format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
+on all eight platforms; `POST /api/v2/auth/login`
 mints an access token the query endpoint accepts; gzip negotiated via
 `Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
 query recorded in the e2e results.
@@ -42,19 +41,8 @@ In flight:
 
 Next:
 
-1. The rest of M1, each unit with its own plan before it starts:
-   `POST /api/v2/query` with `Accept` negotiation and the flushing
-   writer; the bearer middleware, the minimal login and gzip; the
-   `tests/e2e` target that runs the full-table `text/csv` equivalence
-   against `/api/v2/query`, normalizing `reproduce.csv`'s `qdb_export`
-   shape (no header, quoted strings, naive timestamps) before
-   `compare_csv`, since byte identity with `qdb_export` is a
-   non-concern (`internal/encoding/AGENTS.md`, Rendering). The handler unit raises
-   `cluster.max_in_buffer_size` for the full-table query (the C API
-   default cannot return it; the old server's e2e flags in
-   `tests/e2e/Makefile` show the size) and maps an oversized reply
-   (`ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect) to
-   a client error.
+1. The rest of M1 after the query unit, with its own plan before it
+   starts: the minimal `POST /api/v2/auth/login` and gzip.
 2. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
@@ -64,13 +52,16 @@ Next:
    (`internal/AGENTS.md`, Tests).
 3. At M4's entry: decide whether the e2e harness returns to CI or the
    budgets run locally (`.buildkite/AGENTS.md` holds the decision and
-   the recipe).
+   the recipe). The full-table query needs `cluster.max_in_buffer_size`
+   raised (the C API default cannot return it; the old server's flags
+   in `tests/e2e/Makefile` show the size); an oversized reply is
+   `ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect.
 
 Handoff to M3 (the legacy wrappers):
 
 - The legacy byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
-  `docs/e2e-plan.md`, "The CSV is the expected output".
+  `docs/e2e-plan.md`, "Legacy goldens".
 - Every legacy route is a wrapper over its v2 counterpart and lives in
   `internal/httpapi/legacy`, created with the first wrapper together
   with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
@@ -85,14 +76,19 @@ Handoff to M3 (the legacy wrappers):
 - `legacy@new-rest` runs under the bench's pinned C API compression
   through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
 - Golden 07's `count` column is answered as `int64`; the replay treats
-  the two as equal (`docs/e2e-plan.md`, "The CSV is the expected
-  output").
+  the two as equal (`docs/e2e-plan.md`, "Legacy goldens").
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-09-12 -- the full-table text/csv equivalence leaves the harness
+
+- Owner decision: not a target; cross-format correctness is the Go
+  property test's (`docs/brief.md`, Testing doctrine). The awk
+  comparator and the section that specified it leave `docs/e2e-plan.md`.
 
 ## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
 
