@@ -37,7 +37,8 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- Nothing.
+- `POST /api/v2/query`, its `Accept` negotiation and the bearer
+  middleware: `docs/query-plan.md`.
 
 Next:
 
