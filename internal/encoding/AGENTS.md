@@ -32,19 +32,19 @@ fixtures: `internal/AGENTS.md`.
 ## Rendering
 
 - JSON, NDJSON and CSV are the only code that must know a type to
-  render a cell. Each binds the five types once per column in its own
-  file (`json.go`, `csv.go`); `cell.go` holds only the text the
-  formats share: the timestamp, the float and the base64 blob.
-- Wire type names are QuasarDB's words: `int64`, `double`, `string`,
-  `blob`, `timestamp`; a symbol answers as a `string` and a count as an
-  `int64`.
-- A cell renders the same way in every format that can carry it:
-  `int64` a bare number; `float64` through `jsontext.AppendFloat` (the
-  bytes `encoding/json` writes), NaN and the infinities the format's
-  null; `timestamp` RFC 3339 in UTC with nine fixed fractional digits
-  (`2026-06-11T00:00:00.000683000Z`); `utf8` a JSON string through
-  `jsontext.AppendQuote`, invalid UTF-8 replaced by U+FFFD; `binary`
-  standard base64 with padding.
+  render a cell. Each format renders every type the way its own readers
+  expect, and the code for a format lives in that format's file only
+  (`json.go`, `csv.go`); the two share nothing but the package's
+  `UnsupportedTypeError` and the timestamp text, RFC 3339 in UTC with
+  nine fixed fractional digits (`2026-06-11T00:00:00.000683000Z`),
+  which is a fact about the wire, not about a format.
+- JSON and NDJSON: `int64` a bare number; `float64` through
+  `jsontext.AppendFloat`, the bytes `encoding/json` writes, NaN and the
+  infinities `null`; `utf8` through `jsontext.AppendQuote`, invalid
+  UTF-8 replaced by U+FFFD; `binary` a string of standard base64 with
+  padding; the timestamp a string. Wire type names are QuasarDB's
+  words: `int64`, `double`, `string`, `blob`, `timestamp`; a symbol
+  answers as a `string` and a count as an `int64`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, keys in that
   order, no `tables` wrapper (the table a row came from is a column,
@@ -52,10 +52,13 @@ fixtures: `internal/AGENTS.md`.
 - NDJSON (`application/x-ndjson`) is one object per row, keys in column
   order, LF-terminated lines; no rows is an empty body.
 - CSV (`text/csv`) is `encoding/csv`'s RFC 4180: a header row, LF, a
-  field quoted only by the standard writer's rule, the empty field for
-  null and for the empty string alike; a nil batch is an empty body, no
-  rows the header alone. Byte identity with `qdb_export`'s CSV is a
-  non-concern: the e2e full-table comparison normalizes.
+  field quoted only by the standard writer's rule. `int64` and
+  `float64` (`strconv`, shortest round trip) as plain text; `utf8` as
+  its own bytes; `binary` as standard base64; the empty field for null,
+  for NaN and the infinities, and for the empty string alike. A nil
+  batch is an empty body, no rows the header alone. Byte identity with
+  `qdb_export`'s CSV is a non-concern: the e2e full-table comparison
+  normalizes.
 
 ## Tests
 

@@ -2,9 +2,12 @@ package encoding
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"io"
+	"math"
 	"strconv"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -14,8 +17,13 @@ import (
 const CSVContentType = "text/csv"
 
 // csvCell binds column a to its CSV text: the field of cell i, the
-// empty field for null. The type switch runs once per column, so a cell
-// is one call. The per-cell string is the cost of the standard writer's
+// empty field for null. Each type renders the way CSV readers expect: an
+// integer and a shortest round-trip float as plain text, a timestamp in
+// timestampLayout, a string as its own bytes (the writer quotes what
+// needs quoting), a blob as standard base64. NaN and the infinities are
+// the empty field: CSV has no null token, and NaN is the writer's own
+// null for doubles. The type switch runs once per column, so a cell is
+// one call; the per-cell string is the cost of the standard writer's
 // interface, accepted.
 func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 	switch a := a.(type) {
@@ -28,18 +36,18 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 		}, nil
 	case *array.Float64:
 		return func(i int) string {
-			if a.IsNull(i) || floatIsNull(a.Value(i)) {
+			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
 				return ""
 			}
-			return string(appendFloat(nil, a.Value(i)))
+			return strconv.FormatFloat(a.Value(i), 'g', -1, 64)
 		}, nil
 	case *array.Timestamp:
-		ns := nanos(a)
+		nanos := nanosReader(a)
 		return func(i int) string {
 			if a.IsNull(i) {
 				return ""
 			}
-			return string(appendTimestamp(nil, ns(i)))
+			return time.Unix(0, nanos(i)).UTC().Format(timestampLayout)
 		}, nil
 	case *array.String:
 		// The empty string is the empty field, like null: encoding/csv
@@ -55,7 +63,7 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 			if a.IsNull(i) {
 				return ""
 			}
-			return string(appendBase64(nil, a.Value(i)))
+			return base64.StdEncoding.EncodeToString(a.Value(i))
 		}, nil
 	}
 	return nil, &UnsupportedTypeError{Column: f.Name, Type: f.Type}

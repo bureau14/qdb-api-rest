@@ -3,9 +3,12 @@ package encoding
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json/jsontext"
 	"io"
+	"math"
 	"strconv"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -41,6 +44,32 @@ func appendQuoted(dst []byte, s string) []byte {
 	return dst
 }
 
+// appendFloat appends a finite f as a JSON number, the bytes
+// encoding/json writes: shortest round trip, plain notation for
+// exponents in [-6, 21). The appender would write NaN and the infinities
+// as strings; they are not JSON, and NaN is the writer's own null for
+// doubles, so the caller renders them as null.
+func appendFloat(dst []byte, f float64) []byte {
+	return jsontext.AppendFloat(dst, f, 64)
+}
+
+// appendTimestamp appends nanos since the epoch as a JSON string in
+// timestampLayout.
+func appendTimestamp(dst []byte, nanos int64) []byte {
+	dst = append(dst, '"')
+	dst = time.Unix(0, nanos).UTC().AppendFormat(dst, timestampLayout)
+	return append(dst, '"')
+}
+
+// appendBase64 appends b as a JSON string in the standard alphabet with
+// padding, as encoding/json renders bytes: what every client library
+// decodes without configuration.
+func appendBase64(dst []byte, b []byte) []byte {
+	dst = append(dst, '"')
+	dst = base64.StdEncoding.AppendEncode(dst, b)
+	return append(dst, '"')
+}
+
 // jsonCell binds column a to its JSON rendering. The type switch runs
 // once per column, so a cell is one call. A symbol arrives as utf8 and
 // answers as a string; a count arrives as int64 and answers as one: the
@@ -59,21 +88,19 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	case *array.Float64:
 		c.kind = "double"
 		c.cell = func(dst []byte, i int) []byte {
-			if a.IsNull(i) || floatIsNull(a.Value(i)) {
+			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
 				return appendNull(dst)
 			}
 			return appendFloat(dst, a.Value(i))
 		}
 	case *array.Timestamp:
 		c.kind = "timestamp"
-		ns := nanos(a)
+		nanos := nanosReader(a)
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
 				return appendNull(dst)
 			}
-			dst = append(dst, '"')
-			dst = appendTimestamp(dst, ns(i))
-			return append(dst, '"')
+			return appendTimestamp(dst, nanos(i))
 		}
 	case *array.String:
 		c.kind = "string"
@@ -89,9 +116,7 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			if a.IsNull(i) {
 				return appendNull(dst)
 			}
-			dst = append(dst, '"')
-			dst = appendBase64(dst, a.Value(i))
-			return append(dst, '"')
+			return appendBase64(dst, a.Value(i))
 		}
 	default:
 		return jsonColumn{}, &UnsupportedTypeError{Column: f.Name, Type: f.Type}

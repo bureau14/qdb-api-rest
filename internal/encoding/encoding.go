@@ -5,9 +5,11 @@ package encoding
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
 // Encoder writes one record batch to w in one wire format.
@@ -41,4 +43,30 @@ func numRows(rec arrow.RecordBatch) int64 {
 		return 0
 	}
 	return rec.NumRows()
+}
+
+// UnsupportedTypeError is the encode error for a column whose Arrow type
+// has no rendering: the binding's vocabulary can grow, and the wire
+// refuses loudly rather than guess.
+type UnsupportedTypeError struct {
+	Column string
+	Type   arrow.DataType
+}
+
+func (e *UnsupportedTypeError) Error() string {
+	return fmt.Sprintf("encoding: column %q has type %s, which has no rendering", e.Column, e.Type)
+}
+
+// timestampLayout is how every text format writes a timestamp: RFC 3339
+// in UTC with nine fixed fractional digits, lossless to the nanosecond,
+// parsed by every reader, and fixed width writes faster than a trimmed
+// one. The binding's timestamp is naive; QuasarDB stores every timestamp
+// in UTC.
+const timestampLayout = "2006-01-02T15:04:05.000000000Z"
+
+// nanosReader returns the reader of a's values as nanoseconds since the
+// epoch, whatever unit the field declares.
+func nanosReader(a *array.Timestamp) func(i int) int64 {
+	unit := int64(a.DataType().(*arrow.TimestampType).Unit.Multiplier())
+	return func(i int) int64 { return int64(a.Value(i)) * unit }
 }
