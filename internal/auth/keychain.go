@@ -87,11 +87,12 @@ type keychain struct {
 	verify map[string]key
 }
 
-// validateAuth refuses what derivation cannot use, naming the config
+// validateAuth refuses what this package cannot use, naming the config
 // key: every passphrase non-empty and unique (a repeated entry would
 // derive the same key twice), the costs at least one pass over one MiB,
-// the lane count within the argon2 API's uint8. As the consumer of
-// these values this package owns the checks; config only parses shape.
+// the lane count within the argon2 API's uint8, the access TTL positive.
+// As the consumer of these values this package owns the checks; config
+// only parses shape.
 func validateAuth(a config.Auth) error {
 	seen := map[string]bool{}
 	for i, s := range a.TokenSecrets {
@@ -111,6 +112,9 @@ func validateAuth(a config.Auth) error {
 	}
 	if a.Argon2id.Parallelism < 1 || a.Argon2id.Parallelism > 255 {
 		return fmt.Errorf("auth.argon2id.parallelism must be within 1..255, got %d", a.Argon2id.Parallelism)
+	}
+	if a.AccessTTL <= 0 {
+		return fmt.Errorf("auth.access_ttl must be positive, got %s", a.AccessTTL)
 	}
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
@@ -82,8 +83,9 @@ func parseHeader(raw []byte) (header, error) {
 // keychain. One verifier serves every typ profile (brief,
 // Authentication).
 type Tokens struct {
-	keys keychain
-	now  func() time.Time
+	keys      keychain
+	accessTTL time.Duration
+	now       func() time.Time
 }
 
 // New derives the keychain from the configured passphrases, once. With
@@ -98,7 +100,27 @@ func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, err
 	if err != nil {
 		return nil, err
 	}
-	return &Tokens{keys: kc, now: now}, nil
+	return &Tokens{keys: kc, accessTTL: a.AccessTTL, now: now}, nil
+}
+
+// AccessTTL is how long an access token minted now stays valid.
+func (t *Tokens) AccessTTL() time.Duration { return t.accessTTL }
+
+// MintAccess seals an access token for a user that just logged in: a
+// fresh session id and jti, auth_time equal to iat because this is an
+// original login and never a refresh, exp one access TTL out.
+func (t *Tokens) MintAccess(username, secretKey string) (string, error) {
+	now := t.now().Unix()
+	return t.Mint(Claims{
+		Username:  username,
+		SecretKey: secretKey,
+		SessionID: uuid.NewV7().String(),
+		Typ:       "access",
+		JTI:       uuid.NewV7().String(),
+		AuthTime:  now,
+		IssuedAt:  now,
+		ExpiresAt: now + int64(t.accessTTL/time.Second),
+	})
 }
 
 // Mint seals claims into a compact JWE under the current key: protected

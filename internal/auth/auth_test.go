@@ -37,7 +37,7 @@ type failer interface {
 // tokensFor builds a verifier over the given passphrases at test cost.
 func tokensFor(t failer, secrets []string) *Tokens {
 	t.Helper()
-	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, Argon2id: testCost}, func() time.Time { return epoch })
+	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, AccessTTL: 15 * time.Minute, Argon2id: testCost}, func() time.Time { return epoch })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,15 +191,45 @@ func TestEphemeralIsolated(t *testing.T) {
 // New refuses what derivation cannot use, naming the config key.
 func TestBadConfigRefused(t *testing.T) {
 	for name, a := range map[string]config.Auth{
-		"empty passphrase":     {TokenSecrets: []string{""}, Argon2id: testCost},
-		"duplicate passphrase": {TokenSecrets: []string{"a", "a"}, Argon2id: testCost},
-		"zero time":            {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 0, MemoryMiB: 1, Parallelism: 1}},
-		"zero memory":          {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 0, Parallelism: 1}},
-		"lanes overflow":       {TokenSecrets: []string{"a"}, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 256}},
+		"empty passphrase":     {TokenSecrets: []string{""}, AccessTTL: time.Minute, Argon2id: testCost},
+		"duplicate passphrase": {TokenSecrets: []string{"a", "a"}, AccessTTL: time.Minute, Argon2id: testCost},
+		"zero time":            {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 0, MemoryMiB: 1, Parallelism: 1}},
+		"zero memory":          {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 0, Parallelism: 1}},
+		"lanes overflow":       {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 256}},
+		"zero access ttl":      {TokenSecrets: []string{"a"}, Argon2id: testCost},
 	} {
 		if _, err := New(ctx(), a, func() time.Time { return epoch }); err == nil || !strings.Contains(err.Error(), "auth.") {
 			t.Errorf("%s: want a refusal naming the key, got %v", name, err)
 		}
+	}
+}
+
+// MintAccess seals an original login: access typ, fresh handles, the
+// login time equal to the issue time, expiry one TTL out under the
+// keychain's clock; and the token verifies.
+func TestMintAccess(t *testing.T) {
+	tk := tokensFor(t, nil)
+	token, err := tk.MintAccess("alice", "s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := tk.Verify(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Username != "alice" || c.SecretKey != "s3cret" || c.Typ != "access" {
+		t.Fatalf("claims %+v", c)
+	}
+	if c.SessionID == "" || c.JTI == "" || c.SessionID == c.JTI {
+		t.Fatalf("handles not fresh: sid %q jti %q", c.SessionID, c.JTI)
+	}
+	if c.IssuedAt != epoch.Unix() || c.AuthTime != c.IssuedAt || c.ExpiresAt != epoch.Add(tk.AccessTTL()).Unix() {
+		t.Fatalf("times %+v", c)
+	}
+	// Two logins never share a session id.
+	again, _ := tk.MintAccess("alice", "s3cret")
+	if d, _ := tk.Verify(again); d.SessionID == c.SessionID {
+		t.Fatal("two logins share a sid")
 	}
 }
 
