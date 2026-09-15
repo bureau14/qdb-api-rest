@@ -145,4 +145,5 @@ export CURRENT_DATETIME=`date +"%Y-%m-%d %H:%M:%S %z"`
 
 git config --global --add safe.directory ${BASE_DIR}
 export GIT_HASH=`git rev-parse HEAD`
+export GIT_CURRENT_COMMIT_TIME=`git show -s --format=%ci HEAD`
 
