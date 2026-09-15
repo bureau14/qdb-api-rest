@@ -10,7 +10,7 @@ Last updated: 2026-09-15
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 query        | in progress | query endpoint landed; login and gzip remain    |
+| M1 -- v2 query        | in progress | query and login landed; gzip remains            |
 | M2 -- v2 auth         | not started |                                                 |
 | M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
 | M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
@@ -41,8 +41,8 @@ In flight:
 
 Next:
 
-1. The rest of M1 after the query unit, with its own plan before it
-   starts: the minimal `POST /api/v2/auth/login` and gzip.
+1. The last M1 unit, with its own plan before it starts: gzip response
+   compression negotiated via `Accept-Encoding` on the v2 routes.
 2. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
@@ -83,6 +83,17 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-15 -- login-plan.md deleted with the login endpoint landed
+
+- The wire contract and the credential check to ADR-0011; the handler
+  rules to `internal/httpapi/AGENTS.md`.
+
+## 2026-09-15 -- ADR-0011 accepted: v2 login
+
+- Owner decisions: credentials proven by one direct dial outside the
+  pools, breaker-gated and unbudgeted; RFC 6749 token response;
+  `auth.access_ttl` now, default 15m.
 
 ## 2026-09-15 -- query-plan.md deleted with the query endpoint landed
 
