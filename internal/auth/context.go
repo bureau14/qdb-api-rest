@@ -21,3 +21,24 @@ func TokensFrom(ctx context.Context) *Tokens {
 	}
 	return t
 }
+
+// Claims travel in the request context once the bearer middleware has
+// verified a token: the edge places them, the handler reads them and
+// builds the cluster user from them.
+type claimsKey struct{}
+
+// WithClaims returns ctx carrying c.
+func WithClaims(ctx context.Context, c Claims) context.Context {
+	return context.WithValue(ctx, claimsKey{}, c)
+}
+
+// ClaimsFrom returns the Claims carried by ctx and panics without them:
+// a handler behind the bearer middleware always finds them, so their
+// absence is a route registered without it.
+func ClaimsFrom(ctx context.Context) Claims {
+	c, ok := ctx.Value(claimsKey{}).(Claims)
+	if !ok {
+		panic("auth: no claims in context")
+	}
+	return c
+}
