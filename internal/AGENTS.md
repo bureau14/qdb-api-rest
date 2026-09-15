@@ -44,6 +44,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   result paths are never called.
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or a cell rendering.
+- The v2 handlers, the problem body and the bearer middleware live in
+  `internal/httpapi`; open `internal/httpapi/AGENTS.md` before touching
+  a handler, an error mapping or a route.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), never a bare `Stats`; a bare
   `Stats` exists only as the type that composes every `FooStats` of its
