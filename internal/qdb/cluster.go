@@ -273,6 +273,19 @@ func callerLeft(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
+// feedBreaker tells the breaker what a cluster interaction proved. Only
+// an unreachable cluster is a failure; nil or an answer -- a rejected
+// request, a refused credential, a failure in the caller's own Go code
+// -- means the cluster is up, whatever it said. The caller's own context
+// ending says nothing about the cluster and never reaches here.
+func (c *Cluster) feedBreaker(err error) {
+	if qdbapi.IsClusterUnavailable(err) {
+		c.breaker.recordFailure()
+		return
+	}
+	c.breaker.recordSuccess()
+}
+
 // Call runs f against a session authenticated as u. The breaker gates the
 // call; u's pool leases a session (dialing one on demand), runs f, and
 // decides the session's fate from f's error (the binding's IsBadSession,
@@ -294,19 +307,10 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
 		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error { return f(newSession(s)) })
-		switch {
-		case callerLeft(err):
-			// The caller's own context ending says nothing about the
-			// cluster; the breaker never hears of it.
+		if callerLeft(err) {
 			return err
-		case qdbapi.IsClusterUnavailable(err):
-			c.breaker.recordFailure()
-		default:
-			// nil, or an answer: the cluster is up, whatever it said. A
-			// rejected request and a failure in f's own Go code both land
-			// here.
-			c.breaker.recordSuccess()
 		}
+		c.feedBreaker(err)
 		if !cc.retry || !qdbapi.IsRetryable(err) {
 			return err
 		}
@@ -331,6 +335,29 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOptio
 		return nil, err
 	}
 	return rec, nil
+}
+
+// Authenticate proves u's credentials by one direct dial, outside the
+// user pools: a pool holds the credentials it was created with, so a
+// lease could only confirm those. The breaker gates and hears of the
+// dial; the budget does not, the session living for one handshake and
+// closing on its own goroutine. A refused dial is an answer, the
+// caller's error; an unreachable cluster is IsClusterUnavailable.
+func (c *Cluster) Authenticate(ctx context.Context, u User) error {
+	remaining, ok := c.breaker.allow()
+	if !ok {
+		return &BreakerOpenError{RetryAfter: remaining}
+	}
+	hdl, err := c.connect(ctx, u.credentials(), false)
+	if callerLeft(err) {
+		return err
+	}
+	c.feedBreaker(err)
+	if err != nil {
+		return err
+	}
+	newSession(hdl).closeAsync()
+	return nil
 }
 
 // Probe answers readiness. It dials a fresh session as the REST API's own

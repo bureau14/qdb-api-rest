@@ -154,15 +154,76 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 // as the REST API's own user and runs the query.
 func TestSecureDialAsOwnUser(t *testing.T) {
 	qdbtest.Require(t, qdbtest.SecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.SecureURI
-	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
-	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
-	c := New(cfg, nil)
+	c := New(secureConfig(), nil)
 	defer closeCluster(t, c)
 
 	if err := c.Probe(context.Background()); err != nil {
 		t.Fatalf("probe against the secure cluster: %v", err)
+	}
+}
+
+// secureConfig is the default config pointed at the secure cluster, the
+// REST API's own user being the fixture's test user.
+func secureConfig() config.Config {
+	cfg := config.Default()
+	cfg.Cluster.URI = qdbtest.SecureURI
+	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
+	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
+	return cfg
+}
+
+// TestAuthenticate: the secure cluster accepts its user and refuses a
+// wrong secret, the refusal being an answer that leaves the breaker
+// closed and no pool behind; the anonymous user passes the insecure one.
+func TestAuthenticate(t *testing.T) {
+	qdbtest.Require(t, qdbtest.SecureURI)
+	c := New(secureConfig(), nil)
+	defer closeCluster(t, c)
+
+	ctx := context.Background()
+	name, secret := qdbtest.User(t)
+	u := User{Username: name, SecretKey: secret}
+	if err := c.Authenticate(ctx, u); err != nil {
+		t.Fatalf("the fixture user refused: %v", err)
+	}
+	err := c.Authenticate(ctx, User{Username: u.Username, SecretKey: "bm90LWEta2V5"})
+	if err == nil || qdbapi.IsClusterUnavailable(err) {
+		t.Fatalf("want a refusal from a reachable cluster, got %v", err)
+	}
+	if got := c.Stats(); got.Users != 0 {
+		t.Fatalf("a login left %d pool(s) behind", got.Users)
+	}
+	if _, ok := c.breaker.allow(); !ok {
+		t.Fatal("a refused credential opened the breaker")
+	}
+
+	qdbtest.Require(t, qdbtest.InsecureURI)
+	i := New(insecureConfig(nil), nil)
+	defer closeCluster(t, i)
+	if err := i.Authenticate(ctx, anonymous); err != nil {
+		t.Fatalf("anonymous refused by the insecure cluster: %v", err)
+	}
+}
+
+// TestAuthenticateFailsFastWhenOpen: an unreachable cluster opens the
+// breaker through logins too, and the next login fails at once.
+func TestAuthenticateFailsFastWhenOpen(t *testing.T) {
+	cfg := config.Default()
+	cfg.Cluster.URI = "qdb://127.0.0.1:1"
+	cfg.Pool.Breaker.Failures = 2
+	cfg.Pool.Breaker.OpenFor = time.Minute
+	c := New(cfg, nil)
+	defer closeCluster(t, c)
+
+	ctx := context.Background()
+	for range cfg.Pool.Breaker.Failures {
+		if err := c.Authenticate(ctx, anonymous); err == nil {
+			t.Fatal("want a dial error against an unreachable cluster")
+		}
+	}
+	var open *BreakerOpenError
+	if err := c.Authenticate(ctx, anonymous); !errors.As(err, &open) {
+		t.Fatalf("breaker did not open: %v", err)
 	}
 }
 

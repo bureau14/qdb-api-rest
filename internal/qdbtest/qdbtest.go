@@ -7,7 +7,9 @@
 package qdbtest
 
 import (
+	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -44,3 +46,21 @@ func ClusterPublicKeyFile() string { return filepath.Join(repoRoot(), "cluster_p
 // UserSecurityFile is the user security file of the secure cluster's
 // test user.
 func UserSecurityFile() string { return filepath.Join(repoRoot(), "user_private.key") }
+
+// User reads the secure cluster's test user out of its user security
+// file: the username and the secret key.
+func User(t testing.TB) (username, secretKey string) {
+	t.Helper()
+	raw, err := os.ReadFile(UserSecurityFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var u struct {
+		Username  string `json:"username"`
+		SecretKey string `json:"secret_key"`
+	}
+	if err := json.Unmarshal(raw, &u); err != nil {
+		t.Fatal(err)
+	}
+	return u.Username, u.SecretKey
+}
