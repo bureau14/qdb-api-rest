@@ -11,8 +11,7 @@ Plans).
 
 In: `POST /api/v2/query`; `Accept` negotiation over the four encoders
 in `internal/encoding`; the error body every v2 endpoint will use; the
-bearer middleware. Out: `POST /api/v2/auth/login` and gzip (the next
-M1 unit), the legacy wrapper (M3), `/metrics` (M4).
+bearer middleware.
 
 ## Request
 
@@ -24,24 +23,17 @@ curl -X POST http://127.0.0.1:40080/api/v2/query \
      --data-binary 'SELECT * FROM "reproduce" LIMIT 10'
 ```
 
-- `Content-Type`: `text/plain` (any charset parameter is accepted; the
-  C API reads UTF-8) or `application/sql` (IANA-registered). Absent
-  counts as `text/plain`. Anything else answers 415, so a client that
-  sends v1's `{"query": ...}` by habit is told why, not handed a qdbd
-  parse error.
+- `Content-Type`: `text/plain` or `application/sql`; absent counts as
+  `text/plain`; anything else answers 415. The body bytes reach the C
+  API unchanged: no transcoding, and a charset parameter is neither
+  honored nor checked.
 - The body is capped at 1 MiB (`http.MaxBytesReader`); over it, 413. A
   QuasarDB query is a line of text.
-- An empty body is 400. The text is otherwise not inspected: no
-  trimming, no prefix routing, no statement splitting.
+- The body is not inspected: no trimming, no prefix routing. An empty
+  or blank body reaches the cluster like any other query, and the
+  cluster's answer is the caller's 400.
 - One way in: no `?query=`, no GET. A GET form can be added later
   without touching this one.
-
-The shape is ClickHouse's and Trino's. Rejected: a JSON envelope
-(`{"query": ...}`, v1's shape). The query is the resource's whole
-input, and every field such an envelope grows next to it (a format, a
-database) restates an HTTP header or the server's configuration.
-Rejected: `?query=`: URL length limits and URL logging, and a second
-way in.
 
 ## Response
 
@@ -80,7 +72,7 @@ media type and a fixed vocabulary, what modern REST frameworks emit
 by default, and one a client parses without knowing this API.
 
 ```
-{"status":400,"title":"Bad Request","detail":"empty query"}
+{"status":400,"title":"Bad Request","detail":"query_execute (operation=query_execute, query=SELECT FROM): The provided query is invalid. expected FROM"}
 ```
 
 `title` is the status text; `type` is omitted (`about:blank`, the
@@ -89,7 +81,7 @@ request id is already a header. One helper writes them. The mapping:
 
 | Condition                                              | Status                                          |
 | ------------------------------------------------------ | ----------------------------------------------- |
-| empty or unreadable body                               | 400                                             |
+| unreadable body                                        | 400                                             |
 | body over the cap                                      | 413                                             |
 | `Content-Type` not text                                | 415                                             |
 | no bearer, bad bearer, expired bearer                  | 401, `WWW-Authenticate: Bearer`                 |
@@ -163,7 +155,7 @@ as a result by anything that does not know this API.
   run directly over `Cluster.Query` of the same table. The encoders'
   own tests already prove the bytes decode; the handler test proves
   routing, negotiation and headers. The error mapping on the same
-  table: empty body, JSON body, invalid query, no token, bad token.
+  table: JSON body, invalid query, no token, bad token.
 - `internal/httpapi/bearer_test.go`: a minted access token passes; a
   refresh `typ`, garbage, and an expired token (fake clock) answer 401
   with the right `WWW-Authenticate`.
@@ -198,9 +190,9 @@ as a result by anything that does not know this API.
 
 | Decision                                                                      | Why                                                                                               | Rejected                                                                      |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| The query is the request body                                                 | ClickHouse and Trino; an envelope's other fields restate an HTTP header                           | `{"query": ...}` envelope; `?query=`                                          |
+| The query is the request body                                                 | the query is the resource's whole input; a format or a database belongs in a header or the config | a JSON envelope; `?query=`                                                    |
 | Format by `Accept` only, unmatched means JSON                                 | one mechanism; the brief's table                                                                  | `?format=`; 406                                                               |
-| Errors are RFC 9457 problem details                                           | registered media type, fixed vocabulary, what modern frameworks emit                              | `{"message"}` (v1's); a house envelope                                        |
+| Errors are RFC 9457 problem details                                           | registered media type, fixed vocabulary, what modern frameworks emit                              | a house envelope                                                              |
 | Status by who failed: cluster answered 400, unreachable 503, this process 500 | a run of 5xx ejects a backend from a load balancer; the binding already classifies unavailability | 500 for every cluster error; 200 with an error body; an `ErrorType` table now |
 | The bearer middleware is in this unit                                         | little work, and the endpoint is never unauthenticated on the base branch                         | a later unit, anonymous until then                                            |
 | No flushing writer                                                            | the encoder's and `net/http`'s buffers already stream; a `Flush` per write only adds frames       | a writer that flushes per encoder write                                       |
