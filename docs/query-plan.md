@@ -14,45 +14,7 @@ in `internal/encoding`; the error body every v2 endpoint will use; the
 bearer middleware. Out: `POST /api/v2/auth/login` and gzip (the next
 M1 unit), the legacy wrapper (M3), `/metrics` (M4).
 
-## What the neighbours do
-
-How the query reaches the server, and how the client picks a format:
-
-| Database          | Endpoint                          | The query travels as                                      | Format chosen by                                                 |
-| ----------------- | --------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
-| ClickHouse        | `POST /`                          | the raw body (or `?query=`); `Content-Type` not inspected | `FORMAT` clause, `default_format`, `X-ClickHouse-Format`         |
-| Trino             | `POST /v1/statement`              | the raw body                                              | JSON only, paged through `nextUri`                               |
-| InfluxDB 3        | `POST /api/v3/query_sql`          | JSON `{"db","q","format","params"}`, or GET parameters    | the `format` field: json, jsonl, csv, parquet, pretty            |
-| Elasticsearch SQL | `POST /_sql`                      | JSON `{"query","fetch_size"}`                             | `?format=` over `Accept`; csv, json, tsv, txt, yaml, cbor, smile |
-| Druid             | `POST /druid/v2/sql`              | JSON `{"query","resultFormat","header","context"}`        | the `resultFormat` field                                         |
-| QuestDB           | `GET /exec?query=`, `/exp?query=` | a URL parameter                                           | the path: `/exec` is JSON, `/exp` is CSV                         |
-| TimescaleDB       | none                              | the PostgreSQL wire protocol only                         |                                                                  |
-
-Two families. In one the query is the body (ClickHouse, Trino). In the
-other the query is one field of a JSON envelope whose other fields
-carry what HTTP already has a header for: InfluxDB's `format`, Druid's
-`resultFormat`, Elasticsearch's `format` all restate `Accept`. The
-envelope grew those fields because a JSON body cannot carry a second
-thing any other way; the body family never needed them.
-
-How they fail:
-
-| Database          | Status                                               | Body                                                                                                                                              |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ClickHouse        | 500 for everything                                   | plain text plus `X-ClickHouse-Exception-Code`; a mid-stream error lands inside the body, so a 200 "doesn't guarantee that a query was successful" |
-| Druid             | 400 for a bad query, 500 otherwise                   | `{"error","errorMessage","errorClass","host"}`; a mid-stream error cuts the response, a missing final newline marks the truncation                |
-| Trino             | 200 with an `error` object; any other status: failed | `{"message","errorCode","errorName","errorType"}`                                                                                                 |
-| Elasticsearch     | 4xx / 5xx                                            | `{"error":{"type","reason"},"status"}`                                                                                                            |
-| InfluxDB (v2 API) | 4xx / 5xx                                            | `{"code","message"}`                                                                                                                              |
-| RFC 9457          | any                                                  | `application/problem+json`: `{"type","title","status","detail","instance"}`; `type` absent means `about:blank`, the status code's own meaning     |
-
-Every product carries its own envelope; none of them is canonical. RFC
-9457 is the one error shape with a registered media type and a fixed
-vocabulary, and it is what a REST-style API answers with today.
-
-## Proposal
-
-### Request
+## Request
 
 `POST /api/v2/query`. The body is the query text and nothing else:
 
@@ -74,19 +36,20 @@ curl -X POST http://127.0.0.1:40080/api/v2/query \
 - One way in: no `?query=`, no GET. A GET form can be added later
   without touching this one.
 
-Rejected: a JSON envelope (`{"query": ...}`, v1's shape and the
-InfluxDB/Druid/Elasticsearch shape). The query is the resource's whole
-input, and every other envelope field in the survey duplicates an HTTP
-header. Rejected: ClickHouse's `?query=`: URL length limits and URL
-logging, and a second way in.
+The shape is ClickHouse's and Trino's. Rejected: a JSON envelope
+(`{"query": ...}`, v1's shape). The query is the resource's whole
+input, and every field such an envelope grows next to it (a format, a
+database) restates an HTTP header or the server's configuration.
+Rejected: `?query=`: URL length limits and URL logging, and a second
+way in.
 
-### Response
+## Response
 
 - `Accept` selects the encoder: `application/json` (columnar, the
   brief's own shape), `application/x-ndjson`, `text/csv`,
   `application/vnd.apache.arrow.stream`. The listed media ranges are
   read in order and the first one an encoder matches wins; `*/*`, an
-  absent header, and no match all mean JSON (owner, 2026-09-12). `q`
+  absent header, and no match all mean JSON. `q`
   weights are not read: a client that wants a format names it. Edge
   left open: `text/csv;q=0` selects CSV.
 - Status 200, `Content-Type` from the encoder, body chunked (its size
@@ -98,7 +61,7 @@ logging, and a second way in.
   before its first write only on a column type it cannot render, and
   after it only on a write error, which is the client leaving. A
   mid-stream failure is therefore a cut stream, logged, never a
-  status: Druid's contract, and the one HTTP can keep.
+  status: the one contract HTTP can keep.
 - No flushing writer. The encoder writes through its own 4 KiB
   buffer; `net/http` frames each write as a chunk once 2 KiB have
   accumulated and puts it on the wire through a 4 KiB connection
@@ -109,9 +72,12 @@ logging, and a second way in.
   once. The only writer wrapper the handler needs is a byte counter, so
   it knows whether a problem body may still be written.
 
-### Errors
+## Errors
 
-`application/problem+json` (RFC 9457) on every v2 endpoint:
+Every v2 error is an RFC 9457 problem details body,
+`application/problem+json`: the one error shape with a registered
+media type and a fixed vocabulary, what modern REST frameworks emit
+by default, and one a client parses without knowing this API.
 
 ```
 {"status":400,"title":"Bad Request","detail":"empty query"}
@@ -121,23 +87,34 @@ logging, and a second way in.
 status code's meaning, nothing more); `instance` is omitted, the
 request id is already a header. One helper writes them. The mapping:
 
-| Condition                                    | Status                                          |
-| -------------------------------------------- | ----------------------------------------------- |
-| empty or unreadable body                     | 400                                             |
-| body over the cap                            | 413                                             |
-| `Content-Type` not text                      | 415                                             |
-| no bearer, bad bearer, expired bearer        | 401, `WWW-Authenticate: Bearer`                 |
-| breaker open                                 | 503, `Retry-After` in whole seconds, rounded up |
-| the caller's context ended                   | nothing on the wire; one debug line             |
-| any error the cluster or the binding returns | 500, `detail` the binding's message             |
-| a column the encoder cannot render           | 500                                             |
+| Condition                                              | Status                                          |
+| ------------------------------------------------------ | ----------------------------------------------- |
+| empty or unreadable body                               | 400                                             |
+| body over the cap                                      | 413                                             |
+| `Content-Type` not text                                | 415                                             |
+| no bearer, bad bearer, expired bearer                  | 401, `WWW-Authenticate: Bearer`                 |
+| the cluster answered, whatever it said                 | 400, `detail` the binding's message             |
+| the cluster unreachable or timed out; the breaker open | 503, `Retry-After` in whole seconds, rounded up |
+| the caller's context ended                             | nothing on the wire; one debug line             |
+| the REST API itself failed                             | 500                                             |
 
-One default for everything the cluster says, an invalid query included:
-error handling stays simple, and a table from the binding's `ErrorType`
-to a 4xx is a later refinement, one row at a time when a client needs
-it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
+The status says who failed, because load balancers and service meshes
+act on it: a run of 5xx ejects a backend, and a client typing invalid
+queries must never eject a healthy gateway. So an answer from the
+cluster is the caller's problem, 400, an invalid query, an unknown
+table, a denied access and an oversized reply
+(`ErrNetworkInbufTooSmall`) alike: the breaker draws the same line
+(`internal/qdb/cluster.go`, `Call`). An unreachable cluster is 503,
+honest because the readiness probe fails in the same moment, and the
+binding's `IsClusterUnavailable` already names the condition. 500 is
+reserved for this process: a column the encoder cannot render, a
+panic. Refining 400 into 403 or 404 per `ErrorType` is a later, one-row
+change when a client needs it. A 200 carrying an error body is
+rejected: the status line is the one signal every client, `curl -f`
+and every retry policy reads, and a problem body under 200 is parsed
+as a result by anything that does not know this API.
 
-### Bearer middleware
+## Bearer middleware
 
 - `Authorization: Bearer <token>`, the scheme case-insensitive (RFC
   9110), one token. No `?token=`, no cookie: v2 never carries a token in
@@ -161,7 +138,7 @@ it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
 - Applied per route (`requireBearer(handler)`), never to the mux: the
   probes and the login are unauthenticated.
 
-### The handler, step by step
+## The handler, step by step
 
 1. The mux pattern fixes method and path.
 2. `Content-Type` checked, body capped and read.
@@ -170,14 +147,15 @@ it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
 5. `Cluster.Query(ctx, u, q, qdb.WithReadRetry())`: a read is
    idempotent and no byte has been sent, so one retry on a fresh
    session is safe.
-6. An error is mapped by the table above; a `BreakerOpenError` sets
-   `Retry-After`.
+6. An error is mapped by the table above: `BreakerOpenError` and
+   `IsClusterUnavailable` to 503, the breaker's `RetryAfter` on the
+   header, anything else the cluster said to 400.
 7. `Content-Type` set, the batch released on return, `Encode` over the
    counting writer.
 8. An `Encode` error with zero bytes out is a problem response; with
    bytes out it is a log line.
 
-### Tests
+## Tests
 
 - `internal/httpapi/query_test.go`, live fixture: one `SELECT *` over a
   `qdbtest/table` per media type through `NewHandler`, asserting the
@@ -191,7 +169,7 @@ it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
   with the right `WWW-Authenticate`.
 - Nothing for the counting writer or the problem helper.
 
-### Where the facts go when this lands
+## Where the facts go when this lands
 
 - The wire contract (request body, negotiation, the problem shape, the
   bearer rule) to ADR-0010 "v2 query: request, negotiation and errors".
@@ -203,7 +181,7 @@ it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
 - `docs/log.md`: In flight cleared, one entry for the ADR, one for this
   plan's deletion.
 
-### Commits
+## Commits
 
 1. `feat(observe): user and session keys`
 2. `feat(auth): the claims travel in the request context`
@@ -218,20 +196,20 @@ it (owner, 2026-09-12). `ErrNetworkInbufTooSmall` is one such 500.
 
 ## Decision log (2026-09-12)
 
-| Decision                                      | Why                                                                                         | Rejected                                |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------- |
-| The query is the request body                 | ClickHouse and Trino; every envelope field elsewhere restates an HTTP header                | `{"query": ...}` envelope; `?query=`    |
-| Format by `Accept` only, unmatched means JSON | one mechanism; the brief's table; owner                                                     | `?format=`; 406                         |
-| Errors are RFC 9457 problem details           | the one error shape with a registered media type; canonical REST                            | `{"message"}` (v1's); a house envelope  |
-| One 500 for everything the cluster returns    | error handling stays simple; refine per code when a client needs it; owner                  | an `ErrorType` to status table now      |
-| The bearer middleware is in this unit         | little work, and the endpoint is never unauthenticated on the base branch; owner            | a later unit, anonymous until then      |
-| No flushing writer                            | the encoder's and `net/http`'s buffers already stream; a `Flush` per write only adds frames | a writer that flushes per encoder write |
-| No full-table `text/csv` e2e target           | not a target; owner                                                                         | the awk comparator over `reproduce.csv` |
+| Decision                                                                      | Why                                                                                               | Rejected                                                                      |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| The query is the request body                                                 | ClickHouse and Trino; an envelope's other fields restate an HTTP header                           | `{"query": ...}` envelope; `?query=`                                          |
+| Format by `Accept` only, unmatched means JSON                                 | one mechanism; the brief's table                                                                  | `?format=`; 406                                                               |
+| Errors are RFC 9457 problem details                                           | registered media type, fixed vocabulary, what modern frameworks emit                              | `{"message"}` (v1's); a house envelope                                        |
+| Status by who failed: cluster answered 400, unreachable 503, this process 500 | a run of 5xx ejects a backend from a load balancer; the binding already classifies unavailability | 500 for every cluster error; 200 with an error body; an `ErrorType` table now |
+| The bearer middleware is in this unit                                         | little work, and the endpoint is never unauthenticated on the base branch                         | a later unit, anonymous until then                                            |
+| No flushing writer                                                            | the encoder's and `net/http`'s buffers already stream; a `Flush` per write only adds frames       | a writer that flushes per encoder write                                       |
+| No full-table `text/csv` e2e target                                           | not a target                                                                                      | the awk comparator over `reproduce.csv`                                       |
 
 ## Open questions
 
 1. `Content-Type`: strict (415 for anything but text) as proposed, or
-   not inspected at all, as ClickHouse does?
+   not inspected at all?
 2. The 1 MiB body cap: keep, or no cap?
 3. The contract's permanent home: ADR-0010 as proposed, or a section in
    the brief?
