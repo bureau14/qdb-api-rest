@@ -59,6 +59,10 @@ func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 const (
 	KeyError     = "error"
 	KeyRequestID = "request_id"
+	// KeyUser is the caller's username as the token carries it, empty for
+	// anonymous; KeySession is the REST session id claim.
+	KeyUser    = "user"
+	KeySession = "session"
 )
 
 // Err renders err under KeyError; a nil err yields an empty attr, which
