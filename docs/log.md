@@ -5,12 +5,12 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-12
+Last updated: 2026-09-15
 
 | Milestone             | State       | Note                                            |
 | --------------------- | ----------- | ----------------------------------------------- |
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 query        | in progress | auth core, pool core, the four encoders landed  |
+| M1 -- v2 query        | in progress | query endpoint landed; login and gzip remain    |
 | M2 -- v2 auth         | not started |                                                 |
 | M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
 | M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
@@ -37,8 +37,7 @@ on every query under `CAPI_COMPRESSION=none` (enable
 
 In flight:
 
-- `POST /api/v2/query`, its `Accept` negotiation and the bearer
-  middleware: `docs/query-plan.md`.
+- Nothing.
 
 Next:
 
@@ -84,6 +83,16 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-15 -- query-plan.md deleted with the query endpoint landed
+
+- The wire contract to ADR-0010; the handler rules and the error mapping
+  to `internal/httpapi/AGENTS.md`.
+
+## 2026-09-15 -- ADR-0010 accepted: v2 query request, negotiation and errors
+
+- The query is the body, `Accept` picks the encoder, errors are RFC 9457
+  problems with the status saying who failed, bearer access tokens only.
 
 ## 2026-09-12 -- the full-table text/csv equivalence leaves the harness
 
