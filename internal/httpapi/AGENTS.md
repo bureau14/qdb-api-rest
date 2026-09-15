@@ -2,7 +2,8 @@
 
 Scope: the v2 HTTP handlers, the middleware and the probes. Package-wide
 Go rules, logging and the test fixtures: `internal/AGENTS.md`. The wire
-contract of the query endpoint and the v2 error shape: ADR-0010.
+contract of the query endpoint and the v2 error shape: ADR-0010; of the
+login: ADR-0011.
 
 ## Handlers
 
@@ -15,12 +16,22 @@ contract of the query endpoint and the v2 error shape: ADR-0010.
 - The status is decided before the first byte. `Cluster.Query` is
   called with `WithReadRetry` because nothing has been sent yet; a
   handler that has started streaming never retries.
-- The error mapping is by who failed, ADR-0010's table: a
-  `*qdb.BreakerOpenError` or `qdb.IsClusterUnavailable` is 503 (the
-  breaker's `RetryAfter` on the header, nothing otherwise); any other
-  cluster error is the caller's 400 with the binding's message as the
-  detail; the caller's own context ending gets nothing on the wire and
-  one debug line; 500 is reserved for this process.
+- The error mapping is by who failed, ADR-0010's table, in one place,
+  `writeClusterError`: a `*qdb.BreakerOpenError` or
+  `qdb.IsClusterUnavailable` is 503 (the breaker's `RetryAfter` on the
+  header, nothing otherwise); any other cluster error is the caller's,
+  at the status the handler passes (400 for a query, 401 for a login)
+  with the binding's message as the detail; the caller's own context
+  ending gets nothing on the wire and one debug line; 500 is reserved
+  for this process.
+- Every body is read through `readBody`, one cap for all of them.
+- The login proves credentials by `Cluster.Authenticate`, one direct
+  dial outside the pools, and mints only for credentials the cluster
+  accepted; a refusal is 401 with no `WWW-Authenticate`, since no
+  bearer scheme was used. The response is RFC 6749's token response
+  (`access_token`, `token_type`, `expires_in`); the TTL is
+  `auth.access_ttl` through `Tokens.AccessTTL`, never a clock read in
+  the handler.
 - The batch is released on return; a nil batch (a statement without a
   result set) has nothing to release and encodes as empty.
 - No flushing writer: the encoder's own buffer and `net/http`'s chunking
@@ -35,7 +46,7 @@ contract of the query endpoint and the v2 error shape: ADR-0010.
 ## Middleware
 
 - `withRequestLogging` wraps the mux once; `requireBearer` wraps a
-  route. The probes stay outside it.
+  route. The probes and the login stay outside it.
 - The edge enriches, handlers do not: `requireBearer` places the claims
   on the ctx and tags the logger with `observe.KeyUser` (the username
   as the token carries it, empty for anonymous) and `observe.KeySession`
@@ -44,10 +55,11 @@ contract of the query endpoint and the v2 error shape: ADR-0010.
 ## Tests
 
 - The handler tests run through `NewHandler` with a context carrying a
-  discarding logger, the fixture cluster (`qdbtest/cluster`) and a
-  keychain from `config.Default().Auth`, which is ephemeral and pays no
-  argon2id cost; tokens are minted directly, there is no login to go
-  through.
+  discarding logger, a fixture cluster (`qdbtest/cluster`, insecure by
+  default, `newServerOn` for the secure one or an unreachable URI) and
+  a keychain from `config.Default().Auth`, which is ephemeral and pays
+  no argon2id cost; the query tests mint their token directly, only
+  the login tests go through the login.
 - The query property draws a table per iteration and compares each
   format's body byte for byte with the encoder run directly over
   `Cluster.Query`; the encoders' own tests prove the bytes decode.
