@@ -37,25 +37,35 @@ type server struct {
 	token   string // an anonymous access token
 }
 
-// newServer binds the fixture cluster and mints one anonymous access
-// token, the caller every query here runs as.
+// newServer binds the insecure fixture cluster and mints one anonymous
+// access token, the caller every query here runs as.
 func newServer(t *testing.T) server {
 	t.Helper()
-	c := cluster.New(t)
+	return newServerOn(t, cluster.New(t))
+}
+
+// newServerOn is newServer over any cluster.
+func newServerOn(t *testing.T, c *qdb.Cluster) server {
+	t.Helper()
 	tk := tokensAt(t, time.Now())
 	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
 	return server{ctx: ctx, c: c, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
 }
 
-// query posts body as the query with the given headers, nil meaning none.
-func (s server) query(body string, headers map[string]string) *httptest.ResponseRecorder {
-	req := httptest.NewRequestWithContext(s.ctx, http.MethodPost, "/api/v2/query", strings.NewReader(body))
+// post sends body to path with the given headers, nil meaning none.
+func (s server) post(path, body string, headers map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(s.ctx, http.MethodPost, path, strings.NewReader(body))
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp := httptest.NewRecorder()
 	s.handler.ServeHTTP(resp, req)
 	return resp
+}
+
+// query posts body as the query.
+func (s server) query(body string, headers map[string]string) *httptest.ResponseRecorder {
+	return s.post("/api/v2/query", body, headers)
 }
 
 // direct runs q over the cluster and encodes it with e, the bytes the

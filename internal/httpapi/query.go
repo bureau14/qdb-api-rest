@@ -15,9 +15,26 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// maxQueryBytes caps the request body: a QuasarDB query is a line of
-// text, and one line bounds what a request can make the server read.
-const maxQueryBytes = 1 << 20
+// maxBodyBytes caps every request body: a QuasarDB query is a line of
+// text and a login is two fields, and one line bounds what a request can
+// make the server read.
+const maxBodyBytes = 1 << 20
+
+// readBody reads a capped request body whole, answering 413 over the cap
+// and 400 when it cannot be read; false means the response is written.
+func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	var tooLarge *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooLarge):
+		writeProblem(w, http.StatusRequestEntityTooLarge, err.Error())
+		return nil, false
+	case err != nil:
+		writeProblem(w, http.StatusBadRequest, "unreadable body: "+err.Error())
+		return nil, false
+	}
+	return body, true
+}
 
 // isQueryText reports whether a Content-Type names query text: text/plain
 // or application/sql, absent counting as text/plain. A charset parameter
@@ -50,22 +67,23 @@ func retryAfter(d time.Duration) string {
 	return strconv.FormatInt(int64((d+time.Second-1)/time.Second), 10)
 }
 
-// writeQueryError maps a failed query onto the wire by who failed: the
-// breaker open or the cluster unreachable is 503, anything the cluster
-// answered is the caller's 400, and a caller whose context has ended
-// gets nothing at all.
-func writeQueryError(ctx context.Context, w http.ResponseWriter, err error) {
+// writeClusterError maps a failed cluster call onto the wire by who
+// failed: the breaker open or the cluster unreachable is 503, anything
+// the cluster answered is the caller's problem at answered (400 for a
+// query, 401 for a login), and a caller whose context has ended gets
+// nothing at all.
+func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
 	switch {
 	case ctx.Err() != nil:
-		observe.Logger(ctx).DebugContext(ctx, "query abandoned by the caller", observe.Err(err))
+		observe.Logger(ctx).DebugContext(ctx, "request abandoned by the caller", observe.Err(err))
 	case errors.As(err, &open):
 		w.Header().Set("Retry-After", retryAfter(open.RetryAfter))
 		writeProblem(w, http.StatusServiceUnavailable, err.Error())
 	case qdb.IsClusterUnavailable(err):
 		writeProblem(w, http.StatusServiceUnavailable, err.Error())
 	default:
-		writeProblem(w, http.StatusBadRequest, err.Error())
+		writeProblem(w, answered, err.Error())
 	}
 }
 
@@ -81,14 +99,8 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The body is capped and read whole; it is never inspected.
-	q, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxQueryBytes))
-	var tooLarge *http.MaxBytesError
-	switch {
-	case errors.As(err, &tooLarge):
-		writeProblem(w, http.StatusRequestEntityTooLarge, err.Error())
-		return
-	case err != nil:
-		writeProblem(w, http.StatusBadRequest, "unreadable body: "+err.Error())
+	q, ok := readBody(w, r)
+	if !ok {
 		return
 	}
 	enc := negotiate(r.Header.Get("Accept"))
@@ -99,7 +111,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	// fresh session is safe.
 	rec, err := qdb.ClusterFrom(ctx).Query(ctx, u, string(q), qdb.WithReadRetry())
 	if err != nil {
-		writeQueryError(ctx, w, err)
+		writeClusterError(ctx, w, err, http.StatusBadRequest)
 		return
 	}
 	// A statement without a result set is a nil batch, which every
