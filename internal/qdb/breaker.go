@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
 
 // breakerState is the circuit breaker's position.
@@ -97,4 +99,12 @@ type BreakerOpenError struct {
 
 func (e *BreakerOpenError) Error() string {
 	return fmt.Sprintf("qdb: circuit breaker open, retry after %s", e.RetryAfter)
+}
+
+// IsClusterUnavailable reports whether err is the cluster being
+// unreachable, timing out or too busy to answer: the binding's own
+// classification, the same one that feeds the breaker. The HTTP layer
+// maps it to 503.
+func IsClusterUnavailable(err error) bool {
+	return qdbapi.IsClusterUnavailable(err)
 }

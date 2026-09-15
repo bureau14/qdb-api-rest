@@ -1,5 +1,6 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
-// /api/v2 resource API and the unauthenticated status probes. It never
+// /api/v2 resource API, its bearer middleware and the unauthenticated
+// status probes. It never
 // imports legacy compatibility code; a legacy package wraps this one
 // and the entry point composes the two.
 package httpapi
@@ -51,5 +52,6 @@ func registerStatusRoutes(mux *http.ServeMux) {
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	registerStatusRoutes(mux)
+	registerQueryRoutes(mux)
 	return withRequestLogging(mux)
 }
