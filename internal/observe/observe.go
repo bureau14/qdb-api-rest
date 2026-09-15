@@ -60,8 +60,9 @@ const (
 	KeyError     = "error"
 	KeyRequestID = "request_id"
 	// KeyUser is the caller's username as the token carries it, empty for
-	// anonymous; KeySession is the REST session id claim.
-	KeyUser    = "user"
+	// anonymous.
+	KeyUser = "user"
+	// KeySession is the REST session id claim.
 	KeySession = "session"
 )
 
