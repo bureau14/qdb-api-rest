@@ -52,8 +52,12 @@ func requireBearer(next http.Handler) http.Handler {
 		// No header at all is a bare challenge; a malformed one counts
 		// as a presented, invalid token.
 		token, present := bearerToken(r)
-		if token == "" {
-			unauthorized(w, present, "missing bearer token")
+		switch {
+		case !present:
+			unauthorized(w, false, "missing bearer token")
+			return
+		case token == "":
+			unauthorized(w, true, "malformed bearer credentials")
 			return
 		}
 		// Verify distinguishes a tampered or foreign token from a genuine
