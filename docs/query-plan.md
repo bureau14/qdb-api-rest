@@ -111,9 +111,10 @@ as a result by anything that does not know this API.
 - `Authorization: Bearer <token>`, the scheme case-insensitive (RFC
   9110), one token. No `?token=`, no cookie: v2 never carries a token in
   a URL, and cookie auth is the future dashboard's concern.
-- The token is verified with the keychain from the ctx; `typ` must be
-  `access`. A refresh token is not a credential for the data plane; the
-  legacy 12h token is an access token.
+- The token is verified with the keychain from the ctx, and its `typ`
+  claim, the token's kind, must be `access`: a refresh token is a
+  credential for `POST /api/v2/auth/refresh` only, never for the data
+  plane. The legacy 12h token is an access token.
 - Missing header: 401 with `WWW-Authenticate: Bearer`. Present but
   invalid or expired: 401 with
   `WWW-Authenticate: Bearer error="invalid_token"` (RFC 6750); the
@@ -197,13 +198,7 @@ as a result by anything that does not know this API.
 | The bearer middleware is in this unit                                         | little work, and the endpoint is never unauthenticated on the base branch                         | a later unit, anonymous until then                                            |
 | No flushing writer                                                            | the encoder's and `net/http`'s buffers already stream; a `Flush` per write only adds frames       | a writer that flushes per encoder write                                       |
 | No full-table `text/csv` e2e target                                           | not a target                                                                                      | the awk comparator over `reproduce.csv`                                       |
-
-## Open questions
-
-1. `Content-Type`: strict (415 for anything but text) as proposed, or
-   not inspected at all?
-2. The 1 MiB body cap: keep, or no cap?
-3. The contract's permanent home: ADR-0010 as proposed, or a section in
-   the brief?
-4. The `typ` check in the middleware now (one line), or when M2 mints
-   refresh tokens?
+| `Content-Type` is checked: text or 415                                        | one comparison turns a JSON body into a clear 415 instead of a cluster parse error                | not inspecting the header                                                     |
+| The body is capped at 1 MiB                                                   | one line bounds what a request can make the server read; a query is a line of text                | no cap                                                                        |
+| The wire contract goes to ADR-0010                                            | endpoint shapes are decided in ADRs during the v2 milestones (`docs/AGENTS.md`, ADRs)             | a section in the brief                                                        |
+| `typ` must be `access` from the first day                                     | one line; a refresh token is never a data-plane credential                                        | deferring the check to M2                                                     |
