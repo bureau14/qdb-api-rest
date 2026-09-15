@@ -13,3 +13,5 @@ what stays in plan decision-log tables: `docs/AGENTS.md`, "ADRs".
 | [0007](0007-legacy-compatibility-layer.md)          | Legacy compatibility layer: v2 first, v1 wraps v2, one package         | accepted |
 | [0008](0008-legacy-path-spelling.md)                | Legacy paths: /api/v1 canonical, unversioned aliases, never a redirect | accepted |
 | [0010](0010-v2-query-request-negotiation-errors.md) | v2 query: request, negotiation and errors                              | accepted |
+| [0011](0011-v2-login.md)                            | v2 login: request, token response and credential check                 | accepted |
+| [0011](0011-v2-login.md)                            | v2 login: request, token response and credential check                 | accepted |
