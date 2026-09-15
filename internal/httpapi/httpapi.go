@@ -52,6 +52,7 @@ func registerStatusRoutes(mux *http.ServeMux) {
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	registerStatusRoutes(mux)
+	registerAuthRoutes(mux)
 	registerQueryRoutes(mux)
 	return withRequestLogging(mux)
 }
