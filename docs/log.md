@@ -5,27 +5,27 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
-| Milestone             | State       | Note                                            |
-| --------------------- | ----------- | ----------------------------------------------- |
-| M0 -- Foundation      | done        | exit signed off 2026-08-25                      |
-| M1 -- v2 query        | in progress | query and login landed; gzip remains            |
-| M2 -- v2 auth         | not started |                                                 |
-| M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy` |
-| M4 -- Resilience      | not started | entry decides whether e2e returns to CI         |
-| M5 -- Flight SQL      | not started |                                                 |
-| M6 -- Exploration     | not started |                                                 |
-| M7 -- Ingestion       | not started |                                                 |
-| M8 -- Embedded DuckDB | not started |                                                 |
-| M9 -- Release         | not started |                                                 |
+| Milestone             | State       | Note                                                                 |
+| --------------------- | ----------- | -------------------------------------------------------------------- |
+| M0 -- Foundation      | done        | exit signed off 2026-08-25                                           |
+| M1 -- v2 query        | in progress | query, login and compression landed; the TTFB and RSS numbers remain |
+| M2 -- v2 auth         | not started |                                                                      |
+| M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy`                      |
+| M4 -- Resilience      | not started | entry decides whether e2e returns to CI                              |
+| M5 -- Flight SQL      | not started |                                                                      |
+| M6 -- Exploration     | not started |                                                                      |
+| M7 -- Ingestion       | not started |                                                                      |
+| M8 -- Embedded DuckDB | not started |                                                                      |
+| M9 -- Release         | not started |                                                                      |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
 upstream that links `libqdb_api.a` statically on Linux. Exit: the
 format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
 on all eight platforms; `POST /api/v2/auth/login`
-mints an access token the query endpoint accepts; gzip negotiated via
-`Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
+mints an access token the query endpoint accepts; gzip and zstd
+negotiated via `Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
 query recorded in the e2e results.
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
@@ -41,8 +41,9 @@ In flight:
 
 Next:
 
-1. The last M1 unit, with its own plan before it starts: gzip response
-   compression negotiated via `Accept-Encoding` on the v2 routes.
+1. The M1 exit numbers: time-to-first-byte and server RSS for the
+   5.6M-row query, recorded in the e2e results (`docs/e2e-plan.md`,
+   Stress definition, item 1).
 2. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
@@ -83,6 +84,17 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-16 -- compression-plan.md deleted with response compression landed
+
+- The wire rule to ADR-0012; the middleware rules to
+  `internal/httpapi/AGENTS.md`.
+
+## 2026-09-16 -- ADR-0012 accepted: v2 response compression
+
+- Owner decisions: client order decides, no `q`; fastest level, one
+  compressor per response; zstd lands with gzip since `arrow-go` already
+  vendors and links it (brief: zstd leaves M4, open question 3 closed).
 
 ## 2026-09-15 -- login-plan.md deleted with the login endpoint landed
 
