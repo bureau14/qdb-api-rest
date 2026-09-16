@@ -54,7 +54,7 @@ func TestLoginThenQuery(t *testing.T) {
 // 400.
 func TestLoginVerdicts(t *testing.T) {
 	s := newServerOn(t, cluster.NewSecure(t))
-	name, secret := qdbtest.User(t)
+	name, secret := qdbtest.SecureUser(t)
 	tokenOf(t, s.login(fmt.Sprintf(`{"username":%q,"secret_key":%q}`, name, secret)))
 	cases := map[string]struct {
 		resp   *httptest.ResponseRecorder

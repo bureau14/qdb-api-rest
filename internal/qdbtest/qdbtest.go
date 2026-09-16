@@ -47,9 +47,12 @@ func ClusterPublicKeyFile() string { return filepath.Join(repoRoot(), "cluster_p
 // test user.
 func UserSecurityFile() string { return filepath.Join(repoRoot(), "user_private.key") }
 
-// User reads the secure cluster's test user out of its user security
-// file: the username and the secret key.
-func User(t testing.TB) (username, secretKey string) {
+// SecureUser is the secure cluster's test user as a login body wants it,
+// username and secret key. They are read out of the user security file
+// only because that is the one place the start script leaves them; the
+// server itself never parses one (callers send the pair, the own user
+// is a path the C API opens).
+func SecureUser(t testing.TB) (username, secretKey string) {
 	t.Helper()
 	raw, err := os.ReadFile(UserSecurityFile())
 	if err != nil {

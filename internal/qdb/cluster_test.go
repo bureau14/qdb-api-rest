@@ -181,7 +181,7 @@ func TestAuthenticate(t *testing.T) {
 	defer closeCluster(t, c)
 
 	ctx := context.Background()
-	name, secret := qdbtest.User(t)
+	name, secret := qdbtest.SecureUser(t)
 	u := User{Username: name, SecretKey: secret}
 	if err := c.Authenticate(ctx, u); err != nil {
 		t.Fatalf("the fixture user refused: %v", err)
