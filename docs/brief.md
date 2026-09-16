@@ -758,8 +758,8 @@ entry/exit criteria defined when it starts.
 - **M1 -- v2 query**: auth core (JWE, key derivation, rolling keys),
   connection pool core (budget, breaker, retry), `POST /api/v2/query`
   streamed through all four encoders, bearer authentication,
-  `POST /api/v2/auth/login` (access token only), gzip response
-  compression.
+  `POST /api/v2/auth/login` (access token only), gzip and zstd
+  response compression.
 - **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
@@ -770,7 +770,7 @@ entry/exit criteria defined when it starts.
   `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
   replaces the old binary at a customer site with no client changes;
   the first shippable binary.
-- **M4 -- Resilience**: `/metrics`, zstd, the graceful-drain and
+- **M4 -- Resilience**: `/metrics`, the graceful-drain and
   concurrency stress, performance budgets as gates with their numbers
   versioned in the repo.
 - **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
@@ -841,7 +841,5 @@ M4's entry.
    sliding refresh; legacy endpoint stays at 12 h).
 2. Whether v2 ingestion should also accept the legacy tables/columns JSON
    shape for symmetry, or Arrow IPC/NDJSON/CSV only.
-3. zstd via pure-Go `klauspost/compress` is assumed acceptable for
-   vendoring (it is pure Go, no cgo) -- confirm.
-4. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
+3. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
    name).
