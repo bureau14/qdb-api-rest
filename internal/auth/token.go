@@ -106,9 +106,8 @@ func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, err
 // AccessTTL is how long an access token minted now stays valid.
 func (t *Tokens) AccessTTL() time.Duration { return t.accessTTL }
 
-// MintAccess seals an access token for a user that just logged in: a
-// fresh session id and jti, auth_time equal to iat because this is an
-// original login and never a refresh, exp one access TTL out.
+// MintAccess seals the access token of a login: session id and jti fresh
+// per login, auth_time and iat both now, exp now plus the access TTL.
 func (t *Tokens) MintAccess(username, secretKey string) (string, error) {
 	now := t.now().Unix()
 	return t.Mint(Claims{
