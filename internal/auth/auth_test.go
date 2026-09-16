@@ -204,32 +204,33 @@ func TestBadConfigRefused(t *testing.T) {
 	}
 }
 
-// MintAccess seals an original login: access typ, fresh handles, the
-// login time equal to the issue time, expiry one TTL out under the
-// keychain's clock; and the token verifies.
+// MintAccess fills in what a login fixes: the drawn user, access typ,
+// both times now, exp one TTL later; the two handles are fresh per call.
 func TestMintAccess(t *testing.T) {
 	tk := tokensFor(t, nil)
-	token, err := tk.MintAccess("alice", "s3cret")
-	if err != nil {
-		t.Fatal(err)
+	mintAccess := func() Claims {
+		token, err := tk.MintAccess("alice", "s3cret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := tk.Verify(token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
 	}
-	c, err := tk.Verify(token)
-	if err != nil {
-		t.Fatal(err)
+	first, second := mintAccess(), mintAccess()
+	if first.SessionID == "" || first.JTI == "" || first.SessionID == second.SessionID || first.JTI == second.JTI {
+		t.Fatalf("handles not fresh: %+v vs %+v", first, second)
 	}
-	if c.Username != "alice" || c.SecretKey != "s3cret" || c.Typ != "access" {
-		t.Fatalf("claims %+v", c)
+	// Everything but the handles is determined by the login and the clock.
+	first.SessionID, first.JTI = "", ""
+	want := Claims{
+		Username: "alice", SecretKey: "s3cret", Typ: "access",
+		AuthTime: epoch.Unix(), IssuedAt: epoch.Unix(), ExpiresAt: epoch.Add(tk.AccessTTL()).Unix(),
 	}
-	if c.SessionID == "" || c.JTI == "" || c.SessionID == c.JTI {
-		t.Fatalf("handles not fresh: sid %q jti %q", c.SessionID, c.JTI)
-	}
-	if c.IssuedAt != epoch.Unix() || c.AuthTime != c.IssuedAt || c.ExpiresAt != epoch.Add(tk.AccessTTL()).Unix() {
-		t.Fatalf("times %+v", c)
-	}
-	// Two logins never share a session id.
-	again, _ := tk.MintAccess("alice", "s3cret")
-	if d, _ := tk.Verify(again); d.SessionID == c.SessionID {
-		t.Fatal("two logins share a sid")
+	if !reflect.DeepEqual(first, want) {
+		t.Fatalf("got %+v, want %+v", first, want)
 	}
 }
 
