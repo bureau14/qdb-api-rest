@@ -50,8 +50,8 @@ those.
 
 ### Errors
 
-5. **Every error is an RFC 9457 problem** (ADR-0010), the status saying
-   who failed:
+5. **Errors map to RFC 9457 problems** (ADR-0010) as follows, the status
+   saying who failed:
 
    | Condition                             | Status                              |
    | ------------------------------------- | ----------------------------------- |
