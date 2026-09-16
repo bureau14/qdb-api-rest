@@ -86,10 +86,10 @@ auth:
   # and do not span multiple instances.
   # token_secrets:
   #   - "${QDB_REST_TOKEN_SECRET}"
-  # Validity of an access token from its login.
-  access_ttl: 15m
   argon2id:
     # Token key-derivation cost; must be identical on every instance.
     time: 3
     memory_mib: 64
     parallelism: 4
+  # Validity of an access token from its login.
+  access_ttl: 15m
