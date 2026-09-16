@@ -140,3 +140,31 @@ func TestQueryErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestQueryCompressed: for a generated table, each coding answers the
+// encoder's own bytes under Content-Encoding, and identity stays bare.
+func TestQueryCompressed(t *testing.T) {
+	s := newServer(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		tbl := table.Generate(rt)
+		table.Create(rt, s.c, tbl)
+		want := s.direct(rt, encoding.JSON{}, tbl.Select())
+		for _, c := range []coding{identityCoding, gzipCoding, zstdCoding} {
+			resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept-Encoding": string(c)})
+			if resp.Code != http.StatusOK {
+				rt.Fatalf("%s: status %d: %s", c, resp.Code, resp.Body.String())
+			}
+			// Identity is never labelled; a compressed body names its coding.
+			wantLabel := string(c)
+			if c == identityCoding {
+				wantLabel = ""
+			}
+			if got := resp.Header().Get("Content-Encoding"); got != wantLabel {
+				rt.Fatalf("%s: Content-Encoding = %q", c, got)
+			}
+			if !bytes.Equal(decompress(rt, c, resp.Body.Bytes()), want) {
+				rt.Fatalf("%s: body differs from the encoder's own bytes", c)
+			}
+		}
+	})
+}
