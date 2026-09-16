@@ -273,16 +273,16 @@ func callerLeft(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// feedBreaker tells the breaker what a cluster interaction proved. Only
-// an unreachable cluster is a failure; nil or an answer -- a rejected
-// request, a refused credential, a failure in the caller's own Go code
-// -- means the cluster is up, whatever it said. The caller's own context
-// ending says nothing about the cluster and never reaches here.
+// feedBreaker tells the breaker what a cluster interaction proved.
 func (c *Cluster) feedBreaker(err error) {
+	// Only an unreachable cluster is a failure.
 	if qdbapi.IsClusterUnavailable(err) {
 		c.breaker.recordFailure()
 		return
 	}
+	// nil or an answer -- a rejected request, a refused credential, a
+	// failure in the caller's own Go code -- means the cluster is up,
+	// whatever it said.
 	c.breaker.recordSuccess()
 }
 
