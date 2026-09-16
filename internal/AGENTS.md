@@ -104,7 +104,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   from `scripts/tests/setup/start-services.sh`, insecure `2836` / secure
   `2838`), so a bare `go test ./...` needs those services up. The fixture
   has one home, `internal/qdbtest`: the URIs, the key files, the
-  secure cluster's test user (`User`), and `Require`, which fails fast
+  secure cluster's test user (`SecureUser`), and `Require`, which fails fast
   with the start hint when a port does not answer. Nothing is skipped
   under `-short`.
 - A test that needs rows draws a table with `internal/qdbtest/table`
@@ -115,8 +115,8 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   generated value is never a sentinel and a timestamp data column is
   dense: the null timespec is not settable through the writer, and a
   null-aware constructor is an upstream request. The table fixture and
-  the cluster fixture (`internal/qdbtest/cluster`, `New` for the
-  insecure cluster, `NewSecure` for the secure one) are subpackages because `internal/qdb`'s own tests import `qdbtest`, and
+  the cluster fixture (`internal/qdbtest/cluster`, `NewInsecure` and
+  `NewSecure`) are subpackages because `internal/qdb`'s own tests import `qdbtest`, and
   a `qdbtest` that imported `internal/qdb` would be a test import cycle.
   Every fixture table is removed on the test's cleanup, per
   `rapid.Check` iteration too; run `qdbsh` for `qdbtest_*` entries when a

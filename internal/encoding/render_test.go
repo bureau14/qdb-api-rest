@@ -226,7 +226,7 @@ func checkRendered(t failer, want []table.Column, got []wireColumn) {
 // wire decodes to the table it was given, whatever the types, the nulls
 // and the row count.
 func TestRenderedRoundTrip(t *testing.T) {
-	c := cluster.New(t)
+	c := cluster.NewInsecure(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, c, tbl)

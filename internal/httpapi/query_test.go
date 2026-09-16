@@ -41,7 +41,7 @@ type server struct {
 // access token, the caller every query here runs as.
 func newServer(t *testing.T) server {
 	t.Helper()
-	return newServerOn(t, cluster.New(t))
+	return newServerOn(t, cluster.NewInsecure(t))
 }
 
 // newServerOn is newServer over any cluster.

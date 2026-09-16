@@ -59,7 +59,7 @@ func decode(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
 // batch it was given, whatever the types, the nulls and the row
 // count, across batch boundaries.
 func TestArrowRoundTrip(t *testing.T) {
-	c := cluster.New(t)
+	c := cluster.NewInsecure(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, c, tbl)
