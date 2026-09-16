@@ -92,5 +92,5 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 // registerAuthRoutes serves the login, unauthenticated: it is where a
 // caller, anonymous included, gets the token every other v2 route wants.
 func registerAuthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v2/auth/login", handleLogin)
+	mux.Handle("POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
 }

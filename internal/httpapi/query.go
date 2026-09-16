@@ -139,5 +139,5 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 // registerQueryRoutes serves the v2 query endpoint behind the bearer
 // middleware. The mux pattern fixes method and path.
 func registerQueryRoutes(mux *http.ServeMux) {
-	mux.Handle("POST /api/v2/query", requireBearer(http.HandlerFunc(handleQuery)))
+	mux.Handle("POST /api/v2/query", withCompression(requireBearer(http.HandlerFunc(handleQuery))))
 }
