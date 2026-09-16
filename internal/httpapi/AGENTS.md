@@ -45,8 +45,16 @@ login: ADR-0011.
 
 ## Middleware
 
-- `withRequestLogging` wraps the mux once; `requireBearer` wraps a
-  route. The probes and the login stay outside it.
+- `withRequestLogging` wraps the mux once; `requireBearer` and
+  `withCompression` wrap a route. The probes stay outside both; the
+  login is compressed but unauthenticated.
+- Compression (ADR-0012): `Accept-Encoding` read in the client's order,
+  first of `gzip`, `zstd`, `identity` wins, no `q`; the writer holds the
+  status back until the first body byte, then labels and compresses, so
+  a bodiless status goes out bare and a problem body compresses like a
+  result. Fastest level, one compressor per response, no knob. The
+  handler's `countingWriter` counts bytes into the compressor and the
+  access line counts bytes on the wire.
 - The edge enriches, handlers do not: `requireBearer` places the claims
   on the ctx and tags the logger with `observe.KeyUser` (the username
   as the token carries it, empty for anonymous) and `observe.KeySession`
