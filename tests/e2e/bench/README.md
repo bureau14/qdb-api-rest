@@ -18,8 +18,8 @@ dataset. Specification, metric definitions, lifetime and retirement condition:
 ```
 make check venv old-server        # parity check, bench venv, old binary
 make bench-native@qdbd            # -> results/native@qdbd.json
-make bench-legacy@old-rest        # -> results/legacy@old-rest.json
-make bench-legacy@new-rest        # not enabled (docs/bench-plan.md)
+make bench-v1@old-rest        # -> results/v1@old-rest.json
+make bench-v1@new-rest        # not enabled (docs/bench-plan.md)
 make bench-flightsql@new-rest     # not enabled (docs/bench-plan.md)
 make report                       # compare all results/*.json
 ```

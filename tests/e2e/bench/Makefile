@@ -7,8 +7,8 @@
 #   make venv                      bench venv; rebuilds the quasardb wheel on key change
 #   make old-server                build the old REST server (delegates to tests/e2e)
 #   make bench-native@qdbd         -> results/native@qdbd.json
-#   make bench-legacy@old-rest     -> results/legacy@old-rest.json
-#   make bench-legacy@new-rest     not enabled (docs/bench-plan.md)
+#   make bench-v1@old-rest     -> results/v1@old-rest.json
+#   make bench-v1@new-rest     not enabled (docs/bench-plan.md)
 #   make bench-flightsql@new-rest  not enabled (docs/bench-plan.md)
 #   make report                    merge and print results/*.json
 #
@@ -46,7 +46,7 @@ WARMUP  ?= 3
 REPS    ?= 5
 QUERIES ?=
 # qdbd <-> C API compression for every run's C-API holder. `none` is the
-# only value legacy@old-rest can honor (the old server hardcodes the C API
+# only value v1@old-rest can honor (the old server hardcodes the C API
 # default); keep runs consistent or the comparison is polluted.
 CAPI_COMPRESSION ?= none
 
@@ -95,7 +95,7 @@ venv: check
 old-server:
 	@$(MAKE) -C $(E2E_DIR) old-server
 
-# A run is one (protocol, server) pair: bench-native@qdbd, bench-legacy@old-rest, ...
+# A run is one (protocol, server) pair: bench-native@qdbd, bench-v1@old-rest, ...
 bench-%: venv
 	@cd $(BENCH_DIR) && $(VENV)/bin/python bench.py run --run '$*' \
 	    --cluster $(QDB_URI) --qdb-dir $(QDB_DIR) \

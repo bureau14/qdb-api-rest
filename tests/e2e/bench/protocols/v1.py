@@ -1,4 +1,4 @@
-"""Legacy protocol: what a customer's Python script does against /api.
+"""v1 protocol: what a customer's Python script does against /api.
 
 Anonymous login, POST /api/query, plain json.loads -- that parse cost is
 the honest price a real client pays on this path and belongs in the

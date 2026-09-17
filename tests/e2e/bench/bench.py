@@ -40,11 +40,11 @@ import pandas as pd
 # (docs/bench-plan.md, "Protocols, servers, runs").
 REGISTRY = (
     ("native", "qdbd"),
-    ("legacy", "old-rest"),
-    ("legacy", "new-rest"),
+    ("v1", "old-rest"),
+    ("v1", "new-rest"),
     ("flightsql", "new-rest"),
 )
-ENABLED = {("native", "qdbd"), ("legacy", "old-rest")}
+ENABLED = {("native", "qdbd"), ("v1", "old-rest")}
 
 # The query set is data: adding a query is one line. Reduce-family rules
 # (docs/bench-plan.md, "Queries"): agg_topk is the agg_wide text plus the
@@ -233,7 +233,7 @@ def fingerprint_finish(state):
         entry = {"kind": acc["kind"], "nulls": acc["nulls"]}
         if acc["nulls"] == state["rows"]:
             # An all-null column has no observable type on the wire (the
-            # legacy JSON types it "none", the native client picks a dtype);
+            # the v1 JSON types it "none", the native client picks a dtype);
             # fingerprint it type-free so protocols cannot disagree.
             cols[name] = {"kind": "null", "nulls": acc["nulls"]}
             continue
@@ -403,7 +403,7 @@ def wait_for_port(port, seconds=60):
 def start_server(cmd, port, log_path, pid_path):
     if port_open(port):
         die(f"port {port} is already in use; stop the stray server first")
-    env = dict(os.environ, TZ="UTC")  # legacy JSON renders server-local time
+    env = dict(os.environ, TZ="UTC")  # the v1 JSON renders server-local time
     with open(log_path, "ab") as log_file:
         proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file, env=env)
     pathlib.Path(pid_path).write_text(f"{proc.pid}\n")
@@ -688,7 +688,7 @@ def run_main(args):
     if args.reps < 1 or args.warmup < 0:
         die(f"need reps >= 1 and warmup >= 0 (got reps={args.reps}, warmup={args.warmup})")
     if server == "old-rest" and args.capi_compression != "none":
-        die(f"legacy@old-rest cannot honor --capi-compression={args.capi_compression}: "
+        die(f"v1@old-rest cannot honor --capi-compression={args.capi_compression}: "
             "the old server hardcodes the C API default (none); "
             "run with CAPI_COMPRESSION=none")
     query_ids = args.queries.split(",") if args.queries else list(QUERIES)
@@ -832,7 +832,7 @@ def report_compatibility(runs, query_ids):
                 for line in diff[:10]:
                     print(f"    {query_id} {name} vs {reference_name}: {line}")
         print(f"  {query_id}: " + "  ".join(cells))
-    old, new = "legacy@old-rest", "legacy@new-rest"
+    old, new = "v1@old-rest", "v1@new-rest"
     if old in runs and new in runs:
         equal = all(
             not fingerprint_diff(
@@ -870,8 +870,8 @@ def report_performance(runs, query_ids):
                 for name, m in rows
             ],
         ))
-    baseline = "legacy@old-rest"
-    for challenger in ("legacy@new-rest", "flightsql@new-rest"):
+    baseline = "v1@old-rest"
+    for challenger in ("v1@new-rest", "flightsql@new-rest"):
         if challenger not in runs or baseline not in runs:
             continue
         print(f"  -- {challenger} vs {baseline} (wall-clock speedup)")
@@ -932,7 +932,7 @@ def report_main(args):
 #
 # The fingerprint invariants are the only piece of the bench with logic
 # worth pinning in isolation; everything else is tested end to end by the
-# cross-protocol comparison (native@qdbd == legacy@old-rest in `report`).
+# cross-protocol comparison (native@qdbd == v1@old-rest in `report`).
 
 
 def selftest_frame():
@@ -1006,7 +1006,7 @@ def parse_args(argv):
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="measure one (protocol, server) pair")
-    run.add_argument("--run", required=True, help="<protocol>@<server>, e.g. legacy@old-rest")
+    run.add_argument("--run", required=True, help="<protocol>@<server>, e.g. v1@old-rest")
     run.add_argument("--cluster", required=True)
     run.add_argument("--qdb-dir", required=True)
     run.add_argument("--old-rest-bin", required=True)
@@ -1025,7 +1025,7 @@ def parse_args(argv):
     run.add_argument("--queries", default="", help="comma list; empty = all")
     run.add_argument("--results-dir", required=True)
     run.add_argument("--no-gzip", action="store_true",
-                     help="drop Accept-Encoding on legacy requests")
+                     help="drop Accept-Encoding on v1 requests")
     run.add_argument("--capi-compression", choices=COMPRESSION_MODES, required=True,
                      help="qdbd <-> C API compression for the run's C-API holder "
                           "(the native child's handle, or the REST server's config); "
