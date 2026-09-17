@@ -212,9 +212,10 @@ tokens vary per call. The driver's `capture|replay` modes drive both
 sides; `make capture-v1` is an operator step, `make test-v1`
 replays against the server under test, `make test-v1-selfcheck`
 replays against the old server to prove the goldens are deterministic.
-Both replays compare with the same files. Every login and query golden
-also replays at its `/api/v1/<path>` spelling against the server under
-test; the probe goldens replay at the unversioned path only (ADR-0008).
+Both replays compare with the same files. The drop-in milestone's exit
+additionally replays every login and query golden at its
+`/api/v1/<path>` spelling against the server under test; the probe
+goldens have the unversioned path only (ADR-0008).
 Full-table golden responses are deliberately not captured (834 MB of
 JSON is not a fixture).
 
@@ -366,7 +367,7 @@ from the Go `rapid` property tests, generated in-process.
 | qdb-test-setup as a git submodule, not a copy   | one owner for qdbd flags/license; same as nats-connector and old master; updates by SHA                                                      | copying the scripts (drift, duplicated owner)         |
 | Goldens from the old server built from `master` | wire code == v3.14.2 by diff; same C API as the server under test; `3.14.x` needs an old qdb-api-go checkout and would pair different C APIs | released 3.14.2 binary; `3.14.x` source build         |
 | `TZ=UTC` pinned by the harness                  | legacy timestamps are local-time; goldens must be machine-portable                                                                           | capture in host zone                                  |
-| Seeded fixture plus `reproduce`                 | controllable types/nulls/tags; real data for count/head/aggregate                                                                            | `reproduce` only (no blob, no tags, no null control)  |
+| Seeded fixture plus `reproduce`                 | controllable types/nulls/tags; real data for the head of a real table                                                                        | `reproduce` only (no blob, no tags, no null control)  |
 | `sha256` per archive in `datasets.json`         | brief says sha256-pinned; nats relies on dated names only                                                                                    | dated filename alone                                  |
 | Chunked `qdb_export` in the harness             | client input buffer caps single-shot export; chunks are byte-identical                                                                       | raising the buffer (no flag); a different export tool |
 

@@ -31,7 +31,7 @@ Buildkite on all eight platforms (`docs/e2e-plan.md`, Goldens).
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
 the 16 v1 goldens replay against a server under test. Exit: every
 v1 golden green against `bin/qdb_rest` at both
-spellings, in Buildkite on all eight platforms; `bench-v1@new-rest` fingerprints equal `v1@old-rest`
+spellings, in Buildkite on all eight platforms; `v1@new-rest` fingerprints equal `v1@old-rest`
 on every query under `CAPI_COMPRESSION=none` (enable
 `("v1", "new-rest")` in `tests/e2e/bench/bench.py`).
 

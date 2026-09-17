@@ -93,7 +93,7 @@ Valid runs (the registry is this table, nothing else):
 | --------------------- | ------------------------------------------------------------------------------- | ---------------------- |
 | `native@qdbd`         | the reference the gateway is chasing; validates dataset and qdbd health         | qdbd and the dataset   |
 | `v1@old-rest`         | the production server's baseline                                                | the old server         |
-| `v1@new-rest`         | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers    |
+| `v1@new-rest`         | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the v1 wrappers        |
 | `flightsql@new-rest`  | the gateway thesis                                                              | Flight SQL             |
 | `http-arrow@new-rest` | the first number for the rewrite: the v2 query path, Arrow over plain HTTP      | the v2 login and query |
 
@@ -139,7 +139,7 @@ Supporting:
     (`resource.getrusage`), the "low-CPU client machine" proxy.
   - `report` derives `reduction = qdbd_out_bytes / client_bytes`.
 - `wart_count`: occurrences of `"(void)"` / `"(undefined)"` seen by
-  the legacy parser before normalization (informational; makes a silent
+  the v1 parser before normalization (informational; makes a silent
   wart drop visible in `report` even though fingerprints are compared
   post-normalization).
 - qdbd peak RSS is NOT a metric (identical qdbd under every run; its
@@ -367,14 +367,14 @@ make -C tests/e2e load                    # once: dataset into qdbd (idempotent)
 cd tests/e2e/bench
 make check venv old-server                # parity check, bench venv, old binary
 make bench-native@qdbd                    # -> results/native@qdbd.json
-make bench-v1@old-rest                # -> results/v1@old-rest.json
+make bench-v1@old-rest                    # -> results/v1@old-rest.json
 make bench-http-arrow@new-rest            # needs the v2 login and query
-make bench-v1@new-rest                # needs the legacy wrappers
+make bench-v1@new-rest                    # needs the v1 wrappers
 make bench-flightsql@new-rest             # needs Flight SQL
 make report                               # merges results/*.json
 ```
 
-`bench.py run --protocol v1 --server new-rest` writes
+`bench.py run --run v1@new-rest` writes
 `results/v1@new-rest.json`: per-repetition metrics, the mean,
 environment (git shas of this repo/master/qdb-api-python, C API hash,
 machine, timestamp), and the result fingerprint. `bench.py report` reads
@@ -466,11 +466,11 @@ imported table, compare.
 ## Where the rewrite drops in
 
 `native@qdbd` and `v1@old-rest` agree on every fingerprint, which
-cross-checks the legacy parser against the native client before the
+cross-checks the v1 parser against the native client before the
 rewrite enters the picture. The remaining registry rows are enabled
 in `bench.py` when their server side exists: `http-arrow@new-rest` with
 the v2 login and query (the first performance signal),
-`v1@new-rest` with the legacy wrappers (the first drop-in
+`v1@new-rest` with the v1 wrappers (the first drop-in
 compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-08-16)

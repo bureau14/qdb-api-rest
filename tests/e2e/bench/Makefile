@@ -7,8 +7,8 @@
 #   make venv                      bench venv; rebuilds the quasardb wheel on key change
 #   make old-server                build the old REST server (delegates to tests/e2e)
 #   make bench-native@qdbd         -> results/native@qdbd.json
-#   make bench-v1@old-rest     -> results/v1@old-rest.json
-#   make bench-v1@new-rest     not enabled (docs/bench-plan.md)
+#   make bench-v1@old-rest         -> results/v1@old-rest.json
+#   make bench-v1@new-rest         not enabled (docs/bench-plan.md)
 #   make bench-flightsql@new-rest  not enabled (docs/bench-plan.md)
 #   make report                    merge and print results/*.json
 #

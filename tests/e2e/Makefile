@@ -5,9 +5,9 @@
 #   make verify-dataset             export the loaded table, byte-compare with the CSV
 #   make seed                       small fixture tables + tags
 #   make old-server                 build the old REST server from master
-#   make capture-v1             (operator) capture goldens from the old server
-#   make test-v1-selfcheck      replay goldens against the old server
-#   make test-v1                replay goldens against the server under test
+#   make capture-v1                 (operator) capture goldens from the old server
+#   make test-v1-selfcheck          replay goldens against the old server
+#   make test-v1                    replay goldens against the server under test
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
