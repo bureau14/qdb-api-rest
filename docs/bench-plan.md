@@ -43,6 +43,13 @@ isolation, persist normalized fingerprints and timings, compare
 afterwards -- so they share the harness; only `report` reads the result
 files differently for each.
 
+The bench is the one home of every measured number in the project --
+wall clock, time to first byte, RSS, throughput, byte volumes. The e2e
+harness and CI assert behaviour and measure nothing (ADR-0013), so no
+milestone criterion or CI gate is a number from here; a person reads
+`report`. The semantic compatibility check costs nothing extra: it is a
+by-product of the `legacy@new-rest` run that measures the same pair.
+
 This is a local developer tool, deliberately **not** wired into Buildkite:
 it builds `qdb-api-python` from a local checkout and the old server from
 a `master` worktree, and skips cross-platform ceremony.
@@ -67,11 +74,12 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 - **server** = the process that answers; owns `server_cmd()`, port,
   pidfile (qdbd is the shared service and has none).
 
-| protocol    | client                                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `native`    | `quasardb` Python package over `qdb://`, streaming via `stream_query`, the native reference the gateway is chasing |
-| `legacy`    | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                              |
-| `flightsql` | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                   |
+| protocol     | client                                                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `native`     | `quasardb` Python package over `qdb://`, streaming via `stream_query`, the native reference the gateway is chasing         |
+| `legacy`     | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                                      |
+| `flightsql`  | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                           |
+| `http-arrow` | `POST /api/v2/auth/login` + `POST /api/v2/query` with `Accept: application/vnd.apache.arrow.stream`, read by `pyarrow.ipc` |
 
 | server     | what                                          | ports         |
 | ---------- | --------------------------------------------- | ------------- |
@@ -81,12 +89,13 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 
 Valid runs (the registry is this table, nothing else):
 
-| run                  | answers                                                                         | needs                |
-| -------------------- | ------------------------------------------------------------------------------- | -------------------- |
-| `native@qdbd`        | the reference the gateway is chasing; validates dataset and qdbd health         | qdbd and the dataset |
-| `legacy@old-rest`    | the production server's baseline                                                | the old server       |
-| `legacy@new-rest`    | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers  |
-| `flightsql@new-rest` | the gateway thesis                                                              | Flight SQL           |
+| run                   | answers                                                                         | needs                  |
+| --------------------- | ------------------------------------------------------------------------------- | ---------------------- |
+| `native@qdbd`         | the reference the gateway is chasing; validates dataset and qdbd health         | qdbd and the dataset   |
+| `legacy@old-rest`     | the production server's baseline                                                | the old server         |
+| `legacy@new-rest`     | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers    |
+| `flightsql@new-rest`  | the gateway thesis                                                              | Flight SQL             |
+| `http-arrow@new-rest` | the first number for the rewrite: the v2 query path, Arrow over plain HTTP      | the v2 login and query |
 
 Exactly **one run per invocation**. No simultaneous runs: this keeps the
 code focused and makes RSS attribution unambiguous (only one REST server
@@ -107,7 +116,7 @@ Supporting:
 
 - `ttfb_seconds` -- per-protocol definition, printed with the number:
   - `legacy`: first response body byte.
-  - `flightsql`: arrival of the first Arrow record batch.
+  - `flightsql`, `http-arrow`: arrival of the first Arrow record batch.
   - `native`: return of the first batch from `stream_query`.
 - `client_peak_rss_bytes`: sampled from outside the measurement child.
 - `server_peak_rss_bytes`: REST-server process (absent for `native@qdbd`).
@@ -342,7 +351,12 @@ Server binaries are built by `make old-server` (delegates to
 --max-in-buffer-size 8589934592 --log-file <path>`. `--local` overrides
 `--port`, so the old server always answers on 40080. The deployed binary
 has no HTTP timeouts (server flag group never parsed), so no timeout
-equalization is needed.
+equalization is needed. New-server launch flags that matter:
+`--cluster-max-in-buffer-size` at the old server's value (the C API
+default cannot return the full table; an oversized reply is
+`ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect),
+`--cluster-compression` from `CAPI_COMPRESSION`, and the HTTPS listener
+off.
 
 ## CLI and flow
 
@@ -354,6 +368,7 @@ cd tests/e2e/bench
 make check venv old-server                # parity check, bench venv, old binary
 make bench-native@qdbd                    # -> results/native@qdbd.json
 make bench-legacy@old-rest                # -> results/legacy@old-rest.json
+make bench-http-arrow@new-rest            # needs the v2 login and query
 make bench-legacy@new-rest                # needs the legacy wrappers
 make bench-flightsql@new-rest             # needs Flight SQL
 make report                               # merges results/*.json
@@ -452,10 +467,11 @@ imported table, compare.
 
 `native@qdbd` and `legacy@old-rest` agree on every fingerprint, which
 cross-checks the legacy parser against the native client before the
-rewrite enters the picture. The two remaining registry rows are enabled
-in `bench.py` when their server side exists: `legacy@new-rest` with the
-legacy wrappers (the first drop-in compatibility signal),
-`flightsql@new-rest` with Flight SQL.
+rewrite enters the picture. The remaining registry rows are enabled
+in `bench.py` when their server side exists: `http-arrow@new-rest` with
+the v2 login and query (the first performance signal),
+`legacy@new-rest` with the legacy wrappers (the first drop-in
+compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-08-16)
 
@@ -498,3 +514,10 @@ legacy wrappers (the first drop-in compatibility signal),
 | `native@qdbd` measures `stream_query()` only                                                   | owner decision (Leon); the streaming path is the native reference the gateway is chasing, and one mode halves every native run                                                          | keeping the one-shot `qdb_query` sub-mode                                                                                    |
 | C API compression pinned per run via `CAPI_COMPRESSION`, default `none` (owner decision, Leon) | binding defaults diverge (python balanced, old server none) and polluted the aggregation comparison; the old server is not configurable, so `none` is the only mode every run can share | per-binding defaults (proven inconsistent); balanced everywhere (old-rest cannot honor it)                                   |
 | 3 warmups + 5 measured reps per query, median reported (owner decision, Leon)                  | qdbd needs 2-3 executions to reach steady state and run ordering leaked into the old means; the median shrugs off one straggler                                                         | mean of 3 with no warmup (the polluted status quo); cheap warmup outside the measurement path (second code path to mistrust) |
+
+## Decision log (2026-09-17)
+
+| Decision                                      | Why                                                                                             | Rejected                                              |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| The bench is the one home of measured numbers | ADR-0013: TTFB and RSS are numbers a person reads, not gates                                    | TTFB and RSS recorded or gated by the e2e harness     |
+| `http-arrow@new-rest` as a run                | needs only the v2 login and query, so the rewrite's first number does not wait for the wrappers | waiting for `legacy@new-rest` or `flightsql@new-rest` |
