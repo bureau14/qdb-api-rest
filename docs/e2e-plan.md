@@ -122,7 +122,8 @@ headers, body, auth mode, compare mode) next to the expected `status`,
 `headers` (only the headers that belong to a contract, lowercased,
 sorted; absence is recorded as absence) and `body`. One driver captures
 and replays both suites. Compare modes: `bytes`; `gunzip` (the
-decompressed bytes); `login-shape`, because a login answers a token that
+decompressed bytes); `arrow` (the decoded content, see "The v2
+suite"); `login-shape`, because a login answers a token that
 differs per call (`{"token": <non-empty string>}` on v1, RFC 6749's
 fields on v2).
 
@@ -157,10 +158,20 @@ and the rows of the ADR-0010 and ADR-0011 error tables a client can
 provoke from outside (no bearer, malformed bearer, unsupported media
 type, oversized body, invalid query, refused credentials).
 
-What is byte-stable is golden-compared. Arrow IPC is not: the value
-slots under nulls come from C-allocated buffers handed through
-zero-copy, so the suite checks its status and `content-type` only, and
-its content is the property test's. zstd is covered by the Go round-trip
+Text bodies are compared as bytes, Arrow IPC as decoded content
+(ADR-0013): the format leaves null slots and padding undefined, so an
+Arrow body has no stable bytes, and decoding normalizes both. Every
+query case has an Arrow twin with compare mode `arrow`: the body is
+piped through `tools/arrowcsv`, a pure-Go tool (`arrow-go`'s IPC reader
+and the CSV encoder of `internal/encoding`; no cgo, built by the
+Makefile with the same toolchain as the server) that writes the schema
+-- field names, types, timestamp unit -- to one file and the batches as
+one CSV to another. The schema is compared with a small `schema` golden
+in the twin's directory; the CSV is compared byte for byte with the
+`body` of the CSV case the twin names in its `request.json`, so an
+Arrow case adds no large golden. The large `reproduce` case is what
+drives a multi-batch stream, over real null timestamps the Go table
+fixture cannot write; one twin runs under gzip. zstd is covered by the Go round-trip
 test; it joins the suite only if the `zstd` CLI is present on every
 agent.
 
@@ -299,6 +310,7 @@ tests/e2e/
                           once the v2 suite arrives)
   seed.sql                legacy fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
+  tools/arrowcsv/         Go: Arrow IPC stream -> schema + CSV (arrives with the v2 suite)
   golden/legacy/          legacy request/response pairs, overlays (*.v1)
   golden/v2/              v2 request/response pairs (arrives with the v2 suite)
   .old-master/            git worktree of master for the old server (gitignored)
@@ -358,10 +370,11 @@ from the Go `rapid` property tests, generated in-process.
 
 ## Decision log (2026-09-17)
 
-| Decision                                          | Why                                                                                     | Rejected                                              |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| The harness measures nothing; budgets leave       | ADR-0013: a number is the bench's, CI gates are yes/no                                  | `test-budgets`, `budgets.env`, TTFB and RSS gates     |
-| One driver for both suites                        | capture, replay and compare are the same mechanics; only the login and the paths differ | a second script per suite                             |
-| Expected bodies in git, large ones in the archive | small bodies are reviewable diffs; a large one still gives a failure something to diff  | everything in git; a sha256 in place of the body      |
-| One dataset in CI, cases bound their own size     | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback) |
-| A deviation is an overlay next to the capture     | ADR-0013; the selfcheck against the old server keeps proving the capture                | a comparator rule for golden 07                       |
+| Decision                                          | Why                                                                                     | Rejected                                                                        |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| The harness measures nothing; budgets leave       | ADR-0013: a number is the bench's, CI gates are yes/no                                  | `test-budgets`, `budgets.env`, TTFB and RSS gates                               |
+| Arrow compared decoded, against the CSV golden    | ADR-0013; no stable bytes, and the audited CSV golden already says what the data is     | status and `content-type` only; a separate Arrow golden; pyarrow in the harness |
+| One driver for both suites                        | capture, replay and compare are the same mechanics; only the login and the paths differ | a second script per suite                                                       |
+| Expected bodies in git, large ones in the archive | small bodies are reviewable diffs; a large one still gives a failure something to diff  | everything in git; a sha256 in place of the body                                |
+| One dataset in CI, cases bound their own size     | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback)                           |
+| A deviation is an overlay next to the capture     | ADR-0013; the selfcheck against the old server keeps proving the capture                | a comparator rule for golden 07                                                 |
