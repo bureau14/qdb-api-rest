@@ -1,4 +1,4 @@
--- Legacy golden fixture (docs/e2e-plan.md, "Dataset"). Run by `make seed`
+-- Golden fixture (docs/e2e-plan.md, "Dataset"). Run by `make seed`
 -- through common.sh::run_qdbsh_file: one qdbsh statement per line, `--` comments
 -- and blank lines skipped, first failure aborts. Idempotent: every table is
 -- dropped and recreated (DROP on a missing table and re-attaching a tag are
@@ -49,16 +49,16 @@ attach_tag tag_01 $qdb.tagroot
 attach_tag tag_02 $qdb.tagroot
 attach_tag tag_03 $qdb.tagroot
 
--- Every legacy column type plus both null sentinels: row 1 fully populated,
+-- Every v1 column type plus both null sentinels: row 1 fully populated,
 -- row 2 all null, row 3 mixed (nanosecond timestamp, negative int, string with
 -- quote/comma/HTML characters -- the encoder has SetEscapeHTML(false)).
-DROP TABLE legacy_types
-CREATE TABLE legacy_types ($timestamp TIMESTAMP, b BLOB, i INT64, d DOUBLE, s STRING, y SYMBOL(legacy_sym), t TIMESTAMP)
-INSERT INTO legacy_types ($timestamp, b, i, d, s, y, t) VALUES (2020-01-01T00:00:00Z, 'blob-1', 1, 1.5, 'str-1', 'sym-1', 2021-01-01T12:00:00Z)
-INSERT INTO legacy_types ($timestamp, i) VALUES (2020-01-02T00:00:00Z, NULL)
-INSERT INTO legacy_types ($timestamp, b, i, s, y) VALUES (2020-01-03T00:00:00.123456789Z, 'blob-3', -3, 's"quote,comma <&>', 'sym-3')
+DROP TABLE seed_types
+CREATE TABLE seed_types ($timestamp TIMESTAMP, b BLOB, i INT64, d DOUBLE, s STRING, y SYMBOL(seed_sym), t TIMESTAMP)
+INSERT INTO seed_types ($timestamp, b, i, d, s, y, t) VALUES (2020-01-01T00:00:00Z, 'blob-1', 1, 1.5, 'str-1', 'sym-1', 2021-01-01T12:00:00Z)
+INSERT INTO seed_types ($timestamp, i) VALUES (2020-01-02T00:00:00Z, NULL)
+INSERT INTO seed_types ($timestamp, b, i, s, y) VALUES (2020-01-03T00:00:00.123456789Z, 'blob-3', -3, 's"quote,comma <&>', 'sym-3')
 
--- A column that is null in every row keeps the legacy type "none".
-DROP TABLE legacy_allnull
-CREATE TABLE legacy_allnull ($timestamp TIMESTAMP, i INT64)
-INSERT INTO legacy_allnull ($timestamp, i) VALUES (2020-01-01, NULL)
+-- A column that is null in every row keeps the v1 type "none".
+DROP TABLE seed_allnull
+CREATE TABLE seed_allnull ($timestamp TIMESTAMP, i INT64)
+INSERT INTO seed_allnull ($timestamp, i) VALUES (2020-01-01, NULL)

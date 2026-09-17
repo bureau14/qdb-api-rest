@@ -60,7 +60,7 @@ qdbsh() {
 export LD_LIBRARY_PATH="$QDB_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$QDB_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 
-# Legacy JSON renders timestamps in the server's local time zone. Goldens are
+# The v1 JSON renders timestamps in the server's local time zone. Goldens are
 # captured and replayed under UTC so they are portable across machines.
 export TZ=UTC
 

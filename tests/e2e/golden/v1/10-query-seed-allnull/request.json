@@ -5,7 +5,7 @@
     "Content-Type": "application/json"
   },
   "body": {
-    "query": "SELECT i FROM legacy_allnull"
+    "query": "SELECT i FROM seed_allnull"
   },
   "auth": "bearer",
   "compare": "bytes"
