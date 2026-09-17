@@ -27,11 +27,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   what the consumer already rejects loudly.
 - Legacy compatibility code -- the v1 wire surface: wrapper handlers,
   wart encoders, legacy token extraction -- lives in
-  `internal/httpapi/legacy` and nowhere else (ADR-0007). That package
+  `internal/httpapi/v1` and nowhere else (ADR-0007). That package
   imports `internal/httpapi` for the v2 core and the binary's entry
   point composes the two, so `internal/httpapi` never imports it; a
   legacy route wraps its v2 counterpart, never reimplements it. Inside
-  the package names say legacy too (`writeLegacyJSON`, never a bare
+  the package names say v1 too (`writeV1JSON`, never a bare
   `writeJSON`); outside it, no code knows a wart exists.
 - A query result outside `internal/qdb` is the Arrow record batch the
   binding builds through `qdb_query_arrow` and nothing else:

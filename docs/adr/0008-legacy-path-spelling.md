@@ -44,7 +44,7 @@ spelling, or documentation, code and tests drift between two.
   the current-protocol spelling, not aliases of a legacy one. The probe
   goldens replay at the unversioned path only; the both-spellings check
   covers the protocol endpoints.
-- Route registration in the legacy package lists each handler twice;
+- Route registration in the v1 package lists each handler twice;
   that duplication is the whole aliasing mechanism.
 
 ## Alternatives rejected

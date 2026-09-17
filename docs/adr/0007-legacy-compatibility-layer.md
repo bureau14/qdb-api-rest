@@ -29,7 +29,7 @@ this and was discarded.
 
 The early-drop-in argument (ship the compatible binary first to de-risk
 the compatibility story) is already served by the goldens: the red bar
-`make -C tests/e2e test-legacy` exists and stays red until the wrappers
+`make -C tests/e2e test-v1` exists and stays red until the wrappers
 land, so the compatibility contract is enforced regardless of when the
 code that satisfies it is written. The suite joins the Buildkite build
 step once the wrappers make it green (ADR-0013).
@@ -48,12 +48,12 @@ step once the wrappers make it green (ADR-0013).
    `?token=` extraction. Translation overhead is an accepted price;
    a separate v1 implementation is justified only when wrapping is
    impossible or at least doubles the route's measured cost.
-3. **One package.** Legacy code lives in `internal/httpapi/legacy`, a
+3. **One package.** Legacy code lives in `internal/httpapi/v1`, a
    package that imports `internal/httpapi` for the v2 core. The binary's
    entry point composes the two; `internal/httpapi` never imports the
-   legacy package, so an import cycle makes the wrap direction a
+   v1 package, so an import cycle makes the wrap direction a
    compiler fact, not a convention. Inside the package, names say
-   legacy; outside it, nothing knows a wart exists. The package carries
+   v1; outside it, nothing knows a wart exists. The package carries
    its own `AGENTS.md` for the wire facts the goldens pin.
 
 ## Consequences
@@ -71,11 +71,11 @@ step once the wrappers make it green (ADR-0013).
 
 ## Alternatives rejected
 
-| Alternative                                                | Why not                                                                                                                                          |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Legacy first, to de-risk the drop-in early                 | forces a direct implementation that is unwound or seeds v2 with warts; leaves no seam to isolate; tried and discarded                            |
-| Parallel v1 and v2 implementations                         | two query paths, two encoders, two auth extractions drifting apart; warts in two places                                                          |
-| `legacy_*.go` files inside `internal/httpapi`              | visible to a reader, invisible to the compiler: a bare helper can grow legacy behaviour and nothing forbids the reverse dependency               |
-| A top-level `internal/legacy` package                      | only the HTTP plane has a legacy surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
-| An `internal/httpapi/v2` package for the current protocol  | the current protocol is the package; a `v2` path element is confusable with a module major-version suffix                                        |
-| The router imports the legacy package and registers itself | makes `internal/httpapi` depend on legacy; the wrap direction becomes a convention again                                                         |
+| Alternative                                               | Why not                                                                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Legacy first, to de-risk the drop-in early                | forces a direct implementation that is unwound or seeds v2 with warts; leaves no seam to isolate; tried and discarded                            |
+| Parallel v1 and v2 implementations                        | two query paths, two encoders, two auth extractions drifting apart; warts in two places                                                          |
+| `legacy_*.go` files inside `internal/httpapi`             | visible to a reader, invisible to the compiler: a bare helper can grow legacy behaviour and nothing forbids the reverse dependency               |
+| A top-level `internal/legacy` package                     | only the HTTP plane has a legacy surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
+| An `internal/httpapi/v2` package for the current protocol | the current protocol is the package; a `v2` path element is confusable with a module major-version suffix                                        |
+| The router imports the v1 package and registers itself    | makes `internal/httpapi` depend on v1; the wrap direction becomes a convention again                                                             |

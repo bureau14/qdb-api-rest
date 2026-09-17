@@ -1,7 +1,7 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
 // /api/v2 resource API, its bearer middleware and the unauthenticated
 // status probes. It never
-// imports legacy compatibility code; a legacy package wraps this one
+// imports legacy compatibility code; the v1 package wraps this one
 // and the entry point composes the two.
 package httpapi
 
