@@ -206,10 +206,10 @@ Blocked on:
   the remaining v2 surface, resilience, Flight SQL, ingestion and DuckDB
   become M3..M8 with one green bar each. `docs/brief.md`, Milestones.
 
-## 2026-09-02 -- ADR-0007 accepted: legacy compatibility layer
+## 2026-09-02 -- ADR-0007 accepted: v1 compatibility layer
 
 - v2 first; every v1 route wraps its v2 counterpart; legacy code in
-  `internal/httpapi/legacy` only. The direct legacy login leaves the
+  `internal/httpapi/v1` only. The direct legacy login leaves the
   tree and returns as a wrapper in M2.
 
 ## 2026-09-02 -- ADR-0008 records the /api/v1 spelling decision
@@ -352,8 +352,8 @@ Blocked on:
 
 ## 2026-08-20 -- Bench Phase 1 accepted
 
-- `native@qdbd` and `legacy@old-rest` fingerprints agree on every query;
-  the tool is ready for `legacy@new-rest`. Contract decisions:
+- `native@qdbd` and `v1@old-rest` fingerprints agree on every query;
+  the tool is ready for `v1@new-rest`. Contract decisions:
   `docs/bench-plan.md`, decision log 2026-08-20.
 
 ## 2026-08-19 -- Bench measures two data volumes
@@ -363,8 +363,8 @@ Blocked on:
 
 ## 2026-08-19 -- e2e harness in place; M1 red bar exists
 
-- Dataset loaded and round-trip verified, legacy goldens captured from
-  `master`, `make test-legacy` fails fast without a server under test.
+- Dataset loaded and round-trip verified, v1 goldens captured from
+  `master`, `make test-v1` fails fast without a server under test.
   `docs/e2e-plan.md`, decision log 2026-08-19.
 
 ## 2026-08-16 -- Planning frozen
@@ -374,5 +374,5 @@ Blocked on:
 
 ## 2026-08-14 -- Old-server baseline measured
 
-- A pre-harness spike; the bench's `legacy@old-rest` result files supersede
+- A pre-harness spike; the bench's `v1@old-rest` result files supersede
   its numbers (`docs/bench-plan.md`).
