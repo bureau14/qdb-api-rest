@@ -31,10 +31,10 @@ all of this should feel.
   expect.
 - qdbd runs in CI: the build step starts it via
   `scripts/tests/setup/start-services.sh` before building, and
-  `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` is not in
-  CI (owner decision 2026-08-24). Re-adding it: its dataset load and
-  `make` targets in a step of their own; the services and dists it
-  needs are already present.
+  `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` joins the
+  build step after the Go tests (ADR-0013; the step is specified in
+  `docs/e2e-plan.md`, "In Buildkite"); until its step script exists it
+  is not in CI. The services and dists it needs are already present.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.

@@ -14,9 +14,17 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   submodule: never edit it here). Tests fail fast if it is down; they never
   start or stop it. The harness starts and stops only REST servers, via
   pidfiles.
+- A golden is an audited expected response, compared byte for byte; no
+  canonicalization, no tolerance, no timing or measured number asserted
+  anywhere in this directory (ADR-0013). Capture is an operator step and
+  never runs in CI.
 - Goldens under `golden/legacy/`: `request.json` is written by hand, the
   captured `status`/`headers`/`body` are written only by
-  `make capture-golden` and committed as-is. To add a case, add a directory
+  `make capture-golden` and committed as-is. A deliberate deviation of
+  v1 from the old server is a hand-written overlay next to the capture
+  (`body.v1`, `status.v1`, `headers.v1`), only for a deviation listed in
+  `docs/brief.md`, "Deliberate deviations"; a captured file is never
+  edited and the comparator never grows a special case. To add a case, add a directory
   with a `request.json`, run `make capture-golden CASES=<case>`, eyeball the
   body, commit. Recapturing everything is an operator decision; diff the
   result before committing.

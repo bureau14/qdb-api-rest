@@ -319,7 +319,7 @@ one-line change.
 tests/e2e/bench/
   Makefile               check | venv | old-server | new-server | bench-<protocol>@<server> | report | clean
   bench.py               run + report subcommands (see CLI)
-  protocols/             native.py, legacy.py, flightsql.py   (fetch)
+  protocols/             native.py, legacy.py, flightsql.py, http_arrow.py   (fetch)
   servers/               old_rest.py, new_rest.py             (server_cmd)
   results/               <protocol>@<server>.json (gitignored), consumed by report
   README.md              usage; links back to this plan

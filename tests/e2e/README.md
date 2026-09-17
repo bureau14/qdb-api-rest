@@ -1,6 +1,6 @@
 # tests/e2e -- end-to-end harness
 
-Golden-data equivalence, budgets and stress for the QuasarDB REST API, run
+Golden-data equivalence and stress for the QuasarDB REST API, run
 against a live qdbd. Specification: `docs/e2e-plan.md`; conventions:
 `AGENTS.md`. The bench in `bench/` has its own README and plan
 (`docs/bench-plan.md`).
