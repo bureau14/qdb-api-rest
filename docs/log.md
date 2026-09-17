@@ -43,7 +43,8 @@ Next:
 
 1. The e2e harness unit, which closes M1 (`docs/e2e-plan.md`, Goldens
    and "In Buildkite"): one driver for both suites; the `v2` suite
-   captured and audited; the `body.v1` overlay for golden 07; the
+   captured and audited, the Arrow twins through `tools/arrowcsv`; the
+   `body.v1` overlay for golden 07; the
    archive repackaged with `expected/`; `scripts/cicd/40.test-e2e.sh`
    in the build step; the `make load` time on the slowest agent. The
    base is ahead of origin: push and trigger the build through the API
