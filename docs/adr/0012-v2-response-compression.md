@@ -8,7 +8,7 @@ Date: 2026-09-16
 The brief fixes that response compression is negotiated via
 `Accept-Encoding`, identity by default and never forced, in zstd and
 gzip (`docs/brief.md`, Goals and Data plane), and leaves the wire rule
-to an ADR. Every v2 endpoint inherits the rule, and the legacy layer
+to an ADR. Every v2 endpoint inherits the rule, and the v1 layer
 (ADR-0007) wraps v2 handlers, so the mechanism must be one a wrapper
 can apply with a different matcher. zstd is already vendored and linked:
 `arrow-go`'s IPC package imports `klauspost/compress/zstd`, so offering
@@ -39,7 +39,7 @@ it costs one import and no vendored bytes.
 ## Consequences
 
 - Every later v2 route opts in by wrapping its handler; the rule never
-  grows a second shape. M3's legacy wart (substring `gzip`, every route)
+  grows a second shape. M3's v1 wart (substring `gzip`, every route)
   exports what it needs of the writer when it exists.
 - The access line counts wire bytes: compression sits inside the
   request logger.

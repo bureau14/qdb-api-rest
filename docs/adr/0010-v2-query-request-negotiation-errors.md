@@ -81,7 +81,7 @@ so a change after release is a protocol change.
    token in a URL.
 9. **The token's `typ` must be `access`.** A refresh token is a
    credential for `POST /api/v2/auth/refresh` only, never for the data
-   plane; the legacy 12h token is an access token.
+   plane; the v1 12h token is an access token.
 10. **The middleware is applied per route, never to the mux**: the
     probes and the login are unauthenticated. There are no anonymous
     requests; an anonymous caller logs in with empty credentials and

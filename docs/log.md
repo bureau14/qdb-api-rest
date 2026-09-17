@@ -213,8 +213,8 @@ Blocked on:
 
 ## 2026-09-02 -- ADR-0007 accepted: v1 compatibility layer
 
-- v2 first; every v1 route wraps its v2 counterpart; legacy code in
-  `internal/httpapi/v1` only. The direct legacy login leaves the
+- v2 first; every v1 route wraps its v2 counterpart; v1 code in
+  `internal/httpapi/v1` only. The direct v1 login leaves the
   tree and returns as a wrapper in M2.
 
 ## 2026-09-02 -- ADR-0008 records the /api/v1 spelling decision
@@ -225,26 +225,26 @@ Blocked on:
 ## 2026-09-02 -- milestones reordered: v2 data plane before drop-in compat
 
 - Owner decision: v1 routes wrap v2, so v2 is built first and the
-  legacy endpoints follow as thin wrappers in their own package
-  (`docs/brief.md`, Milestones; ADR-0007). The direct legacy-query
+  v1 endpoints follow as thin wrappers in their own package
+  (`docs/brief.md`, Milestones; ADR-0007). The direct v1-query
   implementation and its plan were discarded; the verified wire facts
   moved to `docs/e2e-plan.md`.
 
-## 2026-09-02 -- legacy /api/v1/tags dropped from scope
+## 2026-09-02 -- /api/v1/tags dropped from scope
 
 - Owner decision: unused; removed from the compat surface, the goldens
   and the code. `docs/brief.md`, Compatibility contract.
 
 ## 2026-09-01 -- canonical spelling is /api/v1
 
-- Owner decision: internal references always spell legacy endpoints
+- Owner decision: internal references always spell v1 endpoints
   `/api/v1/<path>`; the unversioned aliases are compatibility-only.
   ADR-0008.
 
 ## 2026-09-01 -- ADR-0005 accepted: token cryptography
 
 - Hand-rolled dir+A256GCM compact JWE, argon2id + HKDF derivation,
-  go-jose as the test-side cross-check. `internal/auth` and legacy
+  go-jose as the test-side cross-check. `internal/auth` and v1
   `/api/v1/login` land with it.
 
 ## 2026-09-01 -- ADR-0006 accepted: clock injection
@@ -254,7 +254,7 @@ Blocked on:
 
 ## 2026-08-31 -- v1 aliases minted; v1 routes wrap v2
 
-- Owner decision: every legacy endpoint also served at `/api/v1/<path>`,
+- Owner decision: every v1 endpoint also served at `/api/v1/<path>`,
   unversioned paths assume v1, new endpoints under `/api/v2/*` only; v1
   routes wrap v2 implementations, no parallel code. `docs/brief.md`,
   Compatibility contract.

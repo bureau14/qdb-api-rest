@@ -9,13 +9,13 @@ The brief (Authentication) locks the token design: JWE with modern
 primitives, claims carrying reconnect material, keys derived from
 passphrases via argon2id + HKDF, rolling keys through the
 `auth.token_secrets` list, an ephemeral key when nothing is configured,
-and 12h tokens minted by legacy `/api/v1/login`. This ADR fixes the JWE
+and 12h tokens minted by v1 `/api/v1/login`. This ADR fixes the JWE
 library, AEAD, and key derivation choices `internal/auth` implements.
 
 The decisive structural fact: the token has exactly one producer and one
 consumer, both this binary. Clients treat it as opaque (brief,
 Compatibility contract), and old-server tokens do not survive the
-upgrade, so no foreign or legacy-format token is ever parsed. JOSE
+upgrade, so no foreign or old-format token is ever parsed. JOSE
 libraries exist for algorithm agility and interop with tokens minted
 elsewhere; here that generality sits on the request path as pure attack
 surface -- the historical JWE/JWS CVE record (algorithm confusion,
@@ -72,7 +72,7 @@ cryptography itself is stdlib (`crypto/cipher` AES-GCM, `crypto/hkdf`,
    security argument itself rests on the AEAD, the header allowlist,
    and key handling.
 5. **One verifier** serves all three `typ` profiles (access, refresh,
-   legacy 12h). TTLs are configuration defaults, not part of this
+   v1 12h). TTLs are configuration defaults, not part of this
    decision.
 
 ## Consequences
@@ -90,7 +90,7 @@ cryptography itself is stdlib (`crypto/cipher` AES-GCM, `crypto/hkdf`,
   and in dependency-audit scope without linking into `bin/qdb_rest`).
 - Future protocol changes are rotation-shaped: new header values enter
   the verifier allowlist while old ones age out within one refresh
-  cycle or the 12h legacy window; clients never coordinate, because
+  cycle or the 12h v1 window; clients never coordinate, because
   tokens are opaque.
 - Interop stays open: `dir` + `A256GCM` compact JWE is readable by any
   JOSE library should another service ever need to verify tokens.

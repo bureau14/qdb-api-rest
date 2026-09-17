@@ -49,7 +49,7 @@ qdbd is a persistent background service, never started by a test:
 
 Canonical dataset: table `reproduce`, **5,613,032 rows**, 14 columns
 (strings, int64, double, timestamps, real null distribution), ~834 MB as
-legacy JSON. Origin: the sc-19522 customer memory-optimization case.
+v1 JSON. Origin: the sc-19522 customer memory-optimization case.
 
 Distribution format: **CSV plus `qdb_import` config**, produced once by
 `qdb_export --ts reproduce -f reproduce.csv --config reproduce.import.json`
@@ -282,7 +282,7 @@ query=SELECT FROM): The provided query is invalid. expected FROM`).
 Two compatibility layers, deliberately: this harness checks **byte-shape**
 (golden pairs, permanent, Buildkite; replay needs the committed goldens
 and never the old server); the temporary, local bench checks **semantic**
-compatibility through a real client -- the same legacy-protocol Python
+compatibility through a real client -- the same v1-protocol Python
 code run against the old and the new server, compared by normalized
 DataFrame fingerprint (`v1@old-rest == v1@new-rest` in
 `docs/bench-plan.md`).
@@ -367,7 +367,7 @@ from the Go `rapid` property tests, generated in-process.
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | qdb-test-setup as a git submodule, not a copy   | one owner for qdbd flags/license; same as nats-connector and old master; updates by SHA                                                      | copying the scripts (drift, duplicated owner)         |
 | Goldens from the old server built from `master` | wire code == v3.14.2 by diff; same C API as the server under test; `3.14.x` needs an old qdb-api-go checkout and would pair different C APIs | released 3.14.2 binary; `3.14.x` source build         |
-| `TZ=UTC` pinned by the harness                  | legacy timestamps are local-time; goldens must be machine-portable                                                                           | capture in host zone                                  |
+| `TZ=UTC` pinned by the harness                  | v1 timestamps are local-time; goldens must be machine-portable                                                                               | capture in host zone                                  |
 | Seeded fixture plus `reproduce`                 | controllable types/nulls/tags; real data for the head of a real table                                                                        | `reproduce` only (no blob, no tags, no null control)  |
 | `sha256` per archive in `datasets.json`         | brief says sha256-pinned; nats relies on dated names only                                                                                    | dated filename alone                                  |
 | Chunked `qdb_export` in the harness             | client input buffer caps single-shot export; chunks are byte-identical                                                                       | raising the buffer (no flag); a different export tool |

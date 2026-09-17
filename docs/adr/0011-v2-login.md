@@ -10,7 +10,7 @@ credentials into the access token every v2 data-plane request carries
 (ADR-0010, Bearer). The brief fixes the token itself (ADR-0005), the
 claims (`docs/brief.md`, Authentication) and leaves the endpoint shape
 to an ADR. Two things make the shape hard to change later: clients
-parse the response, and the legacy `/api/v1/login` wraps this endpoint
+parse the response, and `/api/v1/login` wraps this endpoint
 (ADR-0007), so its behaviour bounds what the wrapper can promise.
 
 The old server minted a token without asking the cluster: bad
@@ -73,7 +73,7 @@ those.
 
 - A login costs one cluster handshake; a login storm is bounded by the
   breaker and the C API's socket timeout, not by `pool.max_sessions`.
-- The legacy wrapper (ADR-0007) inherits the credential check: the old
+- The v1 wrapper (ADR-0007) inherits the credential check: the old
   server's blind 200 for bad credentials on a secured cluster is not
   reproduced. On an insecure cluster the handshake accepts anything, so
   the goldens hold.

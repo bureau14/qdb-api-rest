@@ -25,12 +25,12 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   vocabulary of enumerated keys -- never a value's semantic bounds.
   Never duplicate a rule at a second layer, and add no eager check for
   what the consumer already rejects loudly.
-- Legacy compatibility code -- the v1 wire surface: wrapper handlers,
-  wart encoders, legacy token extraction -- lives in
+- v1 compatibility code -- the v1 wire surface: wrapper handlers,
+  wart encoders, v1 token extraction -- lives in
   `internal/httpapi/v1` and nowhere else (ADR-0007). That package
   imports `internal/httpapi` for the v2 core and the binary's entry
   point composes the two, so `internal/httpapi` never imports it; a
-  legacy route wraps its v2 counterpart, never reimplements it. Inside
+  v1 route wraps its v2 counterpart, never reimplements it. Inside
   the package names say v1 too (`writeV1JSON`, never a bare
   `writeJSON`); outside it, no code knows a wart exists.
 - A query result outside `internal/qdb` is the Arrow record batch the
@@ -78,7 +78,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   the logger (`observe`) and the cluster (`qdb.WithCluster` /
   `qdb.ClusterFrom`, which panics without one, like `Logger`). Handlers
   read them from the request context; nothing is injected through
-  constructors that the context already carries. Composing the legacy
+  constructors that the context already carries. Composing the v1
   routes (ADR-0007) is the entry point's job: composition, not state.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down; the caller's ctx stays untagged.

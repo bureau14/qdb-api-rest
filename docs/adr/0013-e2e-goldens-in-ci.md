@@ -29,7 +29,7 @@ capture from the old server cannot describe.
    exactly the audited response. The e2e stress answers whether the
    binary behaves under load and across a drain, asserted as behaviour,
    never as a timing. The assessment bench answers how fast, how much
-   memory, and whether a real legacy client reads the same data from
+   memory, and whether a real v1 client reads the same data from
    the old and the new server. The first three run in Buildkite on
    every platform and gate; the bench runs on a developer machine and
    gates nothing.

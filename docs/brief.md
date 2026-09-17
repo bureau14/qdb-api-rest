@@ -13,7 +13,7 @@ A single, dependency-vendored Go binary that is QuasarDB's HTTP front door at
 customer sites. It serves three things:
 
 1. A versioned, streaming-first REST API (`/api/v2/*`) for query, ingestion,
-   and database exploration. (The legacy unversioned API is retroactively
+   and database exploration. (The old server's unversioned API is retroactively
    "v1"; see Compatibility contract.)
 2. An Arrow Flight SQL endpoint (gRPC) for Arrow-native clients (ADBC,
    JDBC), minimal by design.
@@ -97,7 +97,7 @@ horizontally scalable design.
 | `qdb-duck`                      | Native DuckDB extension that attaches QuasarDB clusters (catalog integration, handle pool). Embedded into this binary via go-duckdb to provide the full-SQL endpoint.                                                 |
 | `qdb-grafana-plugin`            | External consumer of `/api/v1/login` and `/api/v1/query` through their unversioned aliases. Defines the backwards-compatibility surface together with customer code.                                                  |
 | `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects; this project designs the protocol with them in the loop. |
-| `qdb-dashboard`                 | Legacy ClojureScript SPA, unused by customers. Retired; no feature-parity obligation.                                                                                                                                 |
+| `qdb-dashboard`                 | The old ClojureScript SPA, unused by customers. Retired; no feature-parity obligation.                                                                                                                                |
 | `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                 |
 | `qdb-docker`                    | Today bundles the REST binary into the `qdb-dashboard` component image; this project adds a first-class standalone image.                                                                                             |
 | `qdb-release`                   | Central version manager. The rewrite must register its version-string location(s) there.                                                                                                                              |
@@ -184,7 +184,7 @@ prose:
   direction (see Architecture: Dashboard); the routing seam and
   cookie-compatible auth are preserved for it.
 - **No Prometheus remote read/write, no CSV table export, no
-  `/api/option/*`.** The legacy endpoints that v1 does not carry are
+  `/api/option/*`.** The old server's endpoints that v1 does not carry are
   listed under Compatibility contract, "Explicitly dropped". (The
   `/metrics` exposition endpoint is unrelated to the Prometheus
   remote-storage integration.)
@@ -229,15 +229,15 @@ ecosystems and is trivial to deploy.
 
 ## Compatibility contract
 
-Versioning stance: the legacy unversioned API is retroactively **v1** --
+Versioning stance: the old server's unversioned API is retroactively **v1** --
 frozen, warts and all, served forever. New endpoints are minted under
-`/api/v2/*` only. The canonical spelling of every legacy endpoint is
+`/api/v2/*` only. The canonical spelling of every v1 endpoint is
 `/api/v1/<path>`; the historical unversioned path is an alias served by
 the same handler, never a redirect (ADR-0008).
 
 v1 routes carry no parallel implementation: a v1 route wraps its v2
 counterpart, translating request and response shapes around the v2
-core, and legacy code lives in its own package (ADR-0007).
+core, and v1 code lives in its own package (ADR-0007).
 
 The contract covers two endpoints, the login and the query, and nothing
 else; the status probes are outside it (Observability and logging).
@@ -276,7 +276,7 @@ section is the specification.
   server's `"(void)"` and `"(undefined)"` sentinel strings are not
   reproduced; the C API types every null cell `qdb_query_result_none`,
   so no query could produce them.
-- Warts preserved verbatim on this legacy endpoint (and only here):
+- Warts preserved verbatim on this v1 endpoint (and only here):
   - A query whose text begins with the literal prefix `find` is routed to
     the tag-find API and returns tables with names only, no columns. The
     match is a raw, case-sensitive, untrimmed prefix test
@@ -315,7 +315,7 @@ cluster-status equivalents.
 
 One binary, two listeners:
 
-- **HTTP listener** (existing ports): REST control plane, legacy compat
+- **HTTP listener** (existing ports): REST control plane, v1 compat
   endpoints, `/api/v2` data plane. HTTP/1.1 and HTTP/2.
 - **gRPC listener** (dedicated port, default 40493): Arrow Flight SQL. Not
   multiplexed onto the HTTP port: gRPC and plain HTTP/2 are
@@ -338,7 +338,7 @@ One binary, two listeners:
 | `application/vnd.apache.arrow.stream` | Arrow IPC stream, columnar batches                                         |
 
 All formats are produced by one query-execution core with N encoders. v2
-uses proper nulls per format instead of the legacy sentinel strings.
+uses proper nulls per format instead of the old server's sentinel strings.
 
 Compression, spelled out once: response compression is negotiated via
 `Accept-Encoding` (zstd, gzip; identity default, never forced); ingestion
@@ -530,7 +530,7 @@ pretending otherwise:
   surfaced as "logged in since" by `GET /api/v2/session`).
 - **Access tokens** are short-lived (minutes); **refresh tokens** are
   long-lived and sliding. `/api/v2/auth/refresh` returns a fresh pair. One
-  verifier handles both, plus the 12h tokens minted by legacy
+  verifier handles both, plus the 12h tokens minted by v1
   `/api/v1/login`.
 - **Keys from passphrases**: config holds human-friendly passphrases;
   actual keys are derived once at startup via argon2id (memory-hard: an
@@ -660,7 +660,7 @@ internal/auth/         JWE tokens, key derivation, the caller's user
 internal/qdb/          session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
 internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
-internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the legacy wire shape (ADR-0007)
+internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the v1 wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
@@ -751,9 +751,9 @@ fourth.
    it): one Python harness, one headline KPI -- wall-clock time until
    the client holds a fully materialized DataFrame -- measured for
    exactly one (protocol, server) pair per run: the native `quasardb`
-   Python client against qdbd, the legacy `/api/v1/query` JSON protocol
+   Python client against qdbd, the `/api/v1/query` JSON protocol
    (parsed client-side) against the old _and_ the new server, and Arrow
-   Flight SQL against the new server. Running the unchanged legacy client
+   Flight SQL against the new server. Running the unchanged v1 client
    code against both servers is the drop-in compatibility check
    (semantic, via normalized result fingerprints; byte-shape lives in
    item 2). The Arrow IPC stream of `POST /api/v2/query` against the
@@ -789,7 +789,7 @@ entry/exit criteria defined when it starts.
 - **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
-- **M3 -- Drop-in compat**: the legacy endpoints as thin wrappers over
+- **M3 -- Drop-in compat**: the v1 endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with the
   `v1` golden suite green in Buildkite; the tag-find core in `internal/qdb` that the
@@ -817,11 +817,11 @@ entry/exit criteria defined when it starts.
   remote read/write.
 
 Ordering rationale. A v1 route wraps its v2 counterpart, so the v2 core
-must exist before any legacy route is written (ADR-0007). M1 carries a
+must exist before any v1 route is written (ADR-0007). M1 carries a
 minimal login so the query endpoint is exercisable end to end; M2
 completes v2 auth before anything ships, so the first shippable binary
 exposes no v2 endpoint whose shape or lifetime is still moving, and the
-legacy login wraps a finished counterpart. Flight SQL precedes exploration and
+v1 login wraps a finished counterpart. Flight SQL precedes exploration and
 ingestion because the gateway thesis is why the project exists, the
 Arrow encoder is fresh from M1, and the bench retires as soon as Flight
 SQL is measured. The e2e goldens run in Buildkite from M1, so every
@@ -862,8 +862,8 @@ milestone closes on CI evidence of the built binary (ADR-0013).
 ## Open questions
 
 1. Access/refresh token TTL defaults (proposal: 15 min access, 7 day
-   sliding refresh; legacy endpoint stays at 12 h).
-2. Whether v2 ingestion should also accept the legacy tables/columns JSON
+   sliding refresh; v1 endpoint stays at 12 h).
+2. Whether v2 ingestion should also accept the v1 tables/columns JSON
    shape for symmetry, or Arrow IPC/NDJSON/CSV only.
 3. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
    name).

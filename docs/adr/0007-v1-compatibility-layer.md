@@ -5,26 +5,26 @@ Date: 2026-09-02
 
 ## Context
 
-The brief's Compatibility contract freezes the legacy unversioned API as
+The brief's Compatibility contract freezes the old server's unversioned API as
 v1 -- served forever, warts included, pinned by the e2e goldens byte
 for byte except the deviations the Compatibility contract lists -- and
 mints everything new under `/api/v2/*`. The two surfaces
 serve different purposes: v1 exists so an unchanged client keeps
 working; v2 is the product. Two rules follow from that and were taken
 separately: a v1 route carries no parallel implementation and wraps its
-v2 counterpart (owner decision, 2026-08-31), and legacy code stays out
+v2 counterpart (owner decision, 2026-08-31), and v1 code stays out
 of current-protocol code.
 
-Both rules are unsatisfiable while the legacy surface is built first. A
+Both rules are unsatisfiable while the v1 surface is built first. A
 wrapper needs something to wrap: with no v2 core in the tree, a v1 route
 can only be a direct implementation -- its own query execution, its own
 JSON encoder carrying the key order and the null typing, its own
 token extraction -- which is later either unwound or, worse, becomes the
 seed the v2 core grows out of, carrying the warts into the current
 protocol. Isolation is impossible for the same reason: when the only
-code in the tree is legacy code, "legacy" and "the codebase" name the
+code in the tree is v1 code, "v1" and "the codebase" name the
 same thing and there is no seam to keep. The direct `/api/v1/query`
-implementation begun under the legacy-first order demonstrated exactly
+implementation begun under the v1-first order demonstrated exactly
 this and was discarded.
 
 The early-drop-in argument (ship the compatible binary first to de-risk
@@ -37,18 +37,18 @@ step once the wrappers make it green (ADR-0013).
 ## Decision
 
 1. **v2 first.** The v2 data plane -- query execution core, encoders,
-   auth endpoints -- is built before any legacy route. No legacy route
+   auth endpoints -- is built before any v1 route. No v1 route
    is written before the v2 counterpart it wraps exists; the milestone
    order in the brief (v2 query before drop-in compat) follows from
    this, not the reverse.
 2. **v1 wraps v2.** Every v1 route is a wrapper around its v2
-   counterpart's core: it parses the legacy request shape, calls the v2
-   core, and translates the result into the legacy wire shape -- key
+   counterpart's core: it parses the v1 request shape, calls the v2
+   core, and translates the result into the v1 wire shape -- key
    order, null typing, error bodies, the `find` prefix, the header and
    `?token=` extraction. Translation overhead is an accepted price;
    a separate v1 implementation is justified only when wrapping is
    impossible or at least doubles the route's measured cost.
-3. **One package.** Legacy code lives in `internal/httpapi/v1`, a
+3. **One package.** v1 code lives in `internal/httpapi/v1`, a
    package that imports `internal/httpapi` for the v2 core. The binary's
    entry point composes the two; `internal/httpapi` never imports the
    v1 package, so an import cycle makes the wrap direction a
@@ -60,22 +60,22 @@ step once the wrappers make it green (ADR-0013).
 
 - v2 shapes are chosen on v2's merits; the v1 wrapper pays whatever
   translation that costs. The v2 JSON encoder never orders keys or
-  types a column for a legacy client.
-- The legacy login is a wrapper over `POST /api/v2/auth/login`, so
+  types a column for a v1 client.
+- The v1 login is a wrapper over `POST /api/v2/auth/login`, so
   it exists only once that endpoint does; until the wrappers land, the
   goldens hold the compatibility contract.
-- Retiring or auditing the legacy surface is one directory.
-- Composing the legacy routes into the server is the entry point's job;
+- Retiring or auditing the v1 surface is one directory.
+- Composing the v1 routes into the server is the entry point's job;
   how they reach the router is decided when the package is written, and
   it is composition, not the state the context carries (ADR-0002).
 
 ## Alternatives rejected
 
-| Alternative                                               | Why not                                                                                                                                          |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Legacy first, to de-risk the drop-in early                | forces a direct implementation that is unwound or seeds v2 with warts; leaves no seam to isolate; tried and discarded                            |
-| Parallel v1 and v2 implementations                        | two query paths, two encoders, two auth extractions drifting apart; warts in two places                                                          |
-| `v1_*.go` files inside `internal/httpapi`                 | visible to a reader, invisible to the compiler: a bare helper can grow legacy behaviour and nothing forbids the reverse dependency               |
-| A top-level `internal/v1` package                         | only the HTTP plane has a legacy surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
-| An `internal/httpapi/v2` package for the current protocol | the current protocol is the package; a `v2` path element is confusable with a module major-version suffix                                        |
-| The router imports the v1 package and registers itself    | makes `internal/httpapi` depend on v1; the wrap direction becomes a convention again                                                             |
+| Alternative                                               | Why not                                                                                                                                      |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1 first, to de-risk the drop-in early                    | forces a direct implementation that is unwound or seeds v2 with warts; leaves no seam to isolate; tried and discarded                        |
+| Parallel v1 and v2 implementations                        | two query paths, two encoders, two auth extractions drifting apart; warts in two places                                                      |
+| `v1_*.go` files inside `internal/httpapi`                 | visible to a reader, invisible to the compiler: a bare helper can grow v1 behaviour and nothing forbids the reverse dependency               |
+| A top-level `internal/v1` package                         | only the HTTP plane has a v1 surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
+| An `internal/httpapi/v2` package for the current protocol | the current protocol is the package; a `v2` path element is confusable with a module major-version suffix                                    |
+| The router imports the v1 package and registers itself    | makes `internal/httpapi` depend on v1; the wrap direction becomes a convention again                                                         |

@@ -23,15 +23,15 @@ thesis: **wall-clock time until a Python client holds a fully materialized
 pandas DataFrame** for a large query result. The harness serves two
 concerns with one piece of code:
 
-1. **Drop-in compatibility**: the _same_ legacy-protocol client code
+1. **Drop-in compatibility**: the _same_ v1-protocol client code
    (login, `POST /api/query`, JSON parse, wart normalization) runs
    unchanged against the old server and the new server and must produce
    the same data. This is the "a customer's Python script keeps working"
    claim, checked semantically (normalized DataFrame fingerprints).
-   Byte-shape compatibility of the legacy endpoints is the permanent e2e
+   Byte-shape compatibility of the v1 endpoints is the permanent e2e
    harness's job (`docs/e2e-plan.md`), not this tool's.
 2. **Performance**: the new REST API beats the old REST API on client wall
-   clock -- both for the unchanged legacy protocol (what a customer gets by
+   clock -- both for the unchanged v1 protocol (what a customer gets by
    swapping the binary) and for Arrow Flight SQL (what they get by moving
    to the gateway protocol). Increased server-side compute is explicitly
    acceptable -- the gateway trades co-located CPU for client latency.
@@ -441,7 +441,7 @@ def server_cmd(cfg) -> list[str]
 Because runs are separate invocations, equivalence is checked over
 **persisted fingerprints**, not live DataFrames. The fingerprint of a
 result, computed after per-protocol normalization (timestamps to UTC ns,
-legacy sentinels to proper nulls, column order sorted):
+the old server's sentinels to proper nulls, column order sorted):
 
 - shape and column names;
 - per-column null counts;
@@ -457,7 +457,7 @@ tolerance.
 
 Caveat, stated once: because normalization runs before fingerprinting,
 `v1@old-rest == v1@new-rest` proves data equivalence through a
-real client, not byte-shape identity of the legacy JSON (a dropped wart
+real client, not byte-shape identity of the v1 JSON (a dropped wart
 would still pass). Byte-shape is the permanent e2e golden pairs' job;
 the informational `wart_count` keeps a silent drop visible here.
 
@@ -478,14 +478,14 @@ compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-08-16)
 
-| Decision                                 | Why                                                                                                    | Rejected                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| One-time tool, no abstraction investment | comparison is done once new-rest beats old-rest                                                        | permanent-grade infra in the bench; shared abstractions up front             |
-| qdbd + dataset come from the e2e harness | service model (ADR-007); loading is a test resource with a longer lifetime than the bench              | `start-qdbd.sh`, `stop-all.sh`, `fetch-dataset.sh`, per-run fresh extraction |
-| `bench.py` owns REST-server lifecycle    | it needs the pid and restarts per run anyway; resolves the old plan's contradiction                    | `start-old-rest.sh` / `start-new-rest.sh` as operator steps                  |
-| Run = (protocol, server) pair            | one legacy client module runs unchanged against old and new server: compat and perf from the same code | three opaque "targets" (conflates client code with the server it hits)       |
-| Makefile as the only config source       | one place for paths/ports, passed as explicit flags                                                    | `env.sh` sourced by many scripts                                             |
-| Python only here, never in CI            | qdb-api-python build + master worktree are heavyweight and temporary                                   | bench harness as the CI performance-budget mechanism                         |
+| Decision                                 | Why                                                                                                | Rejected                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| One-time tool, no abstraction investment | comparison is done once new-rest beats old-rest                                                    | permanent-grade infra in the bench; shared abstractions up front             |
+| qdbd + dataset come from the e2e harness | service model (ADR-007); loading is a test resource with a longer lifetime than the bench          | `start-qdbd.sh`, `stop-all.sh`, `fetch-dataset.sh`, per-run fresh extraction |
+| `bench.py` owns REST-server lifecycle    | it needs the pid and restarts per run anyway; resolves the old plan's contradiction                | `start-old-rest.sh` / `start-new-rest.sh` as operator steps                  |
+| Run = (protocol, server) pair            | one v1 client module runs unchanged against old and new server: compat and perf from the same code | three opaque "targets" (conflates client code with the server it hits)       |
+| Makefile as the only config source       | one place for paths/ports, passed as explicit flags                                                | `env.sh` sourced by many scripts                                             |
+| Python only here, never in CI            | qdb-api-python build + master worktree are heavyweight and temporary                               | bench harness as the CI performance-budget mechanism                         |
 
 ## Decision log (2026-08-19)
 
@@ -500,15 +500,15 @@ compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-08-20)
 
-| Decision                                                         | Why                                                                                                  | Rejected                                                           |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Reduce-family SQL as pinned in "Queries"                         | `GROUP BY id` (~1.5M groups) is the only key that loads the reducer; 1h x `accountId` is the control | 1s buckets (qdbd-bound, hides protocol deltas on localhost)        |
-| `fetch` returns an iterator of DataFrames                        | stream mode must not concat; one fingerprint accumulator serves one-shot and streaming alike         | `-> DataFrame` with a stream special case in the harness           |
-| `telemetry` dict parameter on `fetch`                            | wire-level metrics (`response_bytes`, `wart_count`, `gzip`) have no other home                       | parsing them out of protocol return values                         |
-| Legacy HTTP gzip on by default, only mode in standard runs       | customer-realistic (`requests` sends `Accept-Encoding: gzip`); recorded per result, `--no-gzip` flag | gzip off (raw-wire baseline), measuring both (doubles legacy reps) |
-| Native client input buffer = old server's `--max-in-buffer-size` | every run must accept the same result sizes; the binding default (256 MiB) fails `agg_wide`/`full`   | binding defaults per client                                        |
-| Counters read key-by-key on a direct node connection             | `stats.by_node` scans every stat key (~3k requests/read) and drowns small queries                    | `quasardb.stats.by_node` full scan                                 |
-| All-null columns fingerprint type-free                           | no observable wire type: legacy JSON types them `none`, the native client picks a dtype              | per-protocol dtype exceptions in the comparison                    |
+| Decision                                                         | Why                                                                                                  | Rejected                                                       |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Reduce-family SQL as pinned in "Queries"                         | `GROUP BY id` (~1.5M groups) is the only key that loads the reducer; 1h x `accountId` is the control | 1s buckets (qdbd-bound, hides protocol deltas on localhost)    |
+| `fetch` returns an iterator of DataFrames                        | stream mode must not concat; one fingerprint accumulator serves one-shot and streaming alike         | `-> DataFrame` with a stream special case in the harness       |
+| `telemetry` dict parameter on `fetch`                            | wire-level metrics (`response_bytes`, `wart_count`, `gzip`) have no other home                       | parsing them out of protocol return values                     |
+| v1 HTTP gzip on by default, only mode in standard runs           | customer-realistic (`requests` sends `Accept-Encoding: gzip`); recorded per result, `--no-gzip` flag | gzip off (raw-wire baseline), measuring both (doubles v1 reps) |
+| Native client input buffer = old server's `--max-in-buffer-size` | every run must accept the same result sizes; the binding default (256 MiB) fails `agg_wide`/`full`   | binding defaults per client                                    |
+| Counters read key-by-key on a direct node connection             | `stats.by_node` scans every stat key (~3k requests/read) and drowns small queries                    | `quasardb.stats.by_node` full scan                             |
+| All-null columns fingerprint type-free                           | no observable wire type: v1 JSON types them `none`, the native client picks a dtype                  | per-protocol dtype exceptions in the comparison                |
 
 ## Decision log (2026-08-24)
 
