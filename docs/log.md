@@ -12,7 +12,7 @@ Last updated: 2026-09-17
 | M0 -- Foundation      | done        | exit signed off 2026-08-25                                                      |
 | M1 -- v2 query        | in progress | query, login and compression landed; the `v2` golden suite in Buildkite remains |
 | M2 -- v2 auth         | not started |                                                                                 |
-| M3 -- Drop-in compat  | not started | local red bar exists: `make -C tests/e2e test-legacy`; joins CI when green      |
+| M3 -- Drop-in compat  | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green          |
 | M4 -- Resilience      | not started |                                                                                 |
 | M5 -- Flight SQL      | not started |                                                                                 |
 | M6 -- Exploration     | not started |                                                                                 |
@@ -29,11 +29,11 @@ negotiated via `Accept-Encoding`; the `v2` golden suite green in
 Buildkite on all eight platforms (`docs/e2e-plan.md`, Goldens).
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
-the 18 legacy goldens replay against a server under test. Exit: every
-legacy golden green against `bin/qdb_rest` at both
-spellings, in Buildkite on all eight platforms; `bench-legacy@new-rest` fingerprints equal `legacy@old-rest`
+the 16 v1 goldens replay against a server under test. Exit: every
+v1 golden green against `bin/qdb_rest` at both
+spellings, in Buildkite on all eight platforms; `bench-v1@new-rest` fingerprints equal `v1@old-rest`
 on every query under `CAPI_COMPRESSION=none` (enable
-`("legacy", "new-rest")` in `tests/e2e/bench/bench.py`).
+`("v1", "new-rest")` in `tests/e2e/bench/bench.py`).
 
 In flight:
 
@@ -42,9 +42,9 @@ In flight:
 Next:
 
 1. The e2e harness unit, which closes M1 (`docs/e2e-plan.md`, Goldens
-   and "In Buildkite"): one driver for both suites; the `v2` suite
-   captured and audited, the Arrow twins through `tools/arrowcsv`; the
-   `body.v1` overlay for golden 07; the
+   and "In Buildkite"): `golden.sh` drives both suites; a v2 case is
+   one request run over its formats and encodings; the `v2` suite
+   captured and audited, Arrow decoded through `tools/arrowcsv`; the
    archive repackaged with `expected/`; `scripts/cicd/40.test-e2e.sh`
    in the build step; the `make load` time on the slowest agent. The
    base is ahead of origin: push and trigger the build through the API
@@ -60,13 +60,13 @@ Next:
    writer, so the table fixture can write a null timestamp cell
    (`internal/AGENTS.md`, Tests).
 
-Handoff to M3 (the legacy wrappers):
+Handoff to M3 (the v1 wrappers):
 
-- The legacy byte-shape facts -- key order, 401 bodies, error-message
+- The v1 byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
-  `docs/e2e-plan.md`, "The legacy suite".
-- Every legacy route is a wrapper over its v2 counterpart and lives in
-  `internal/httpapi/legacy`, created with the first wrapper together
+  `docs/e2e-plan.md`, "The v1 suite".
+- Every v1 route is a wrapper over its v2 counterpart and lives in
+  `internal/httpapi/v1`, created with the first wrapper together
   with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
 - The `find` wart (goldens 12 and 13) has no v2 endpoint until M6; its
   v2 core is a tag-find function in `internal/qdb`, written in M3 and
@@ -76,17 +76,24 @@ Handoff to M3 (the legacy wrappers):
   additionally proves `/api/v1/<path>` answers identically, by replaying
   every login and query golden at both spellings. The probe goldens
   have one spelling (ADR-0008).
-- `legacy@new-rest` runs under the bench's pinned C API compression
+- `v1@new-rest` runs under the bench's pinned C API compression
   through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
-- Golden 07's `count` column is answered as `int64`: a deliberate
-  deviation, carried as a `body.v1` overlay (`docs/e2e-plan.md`, "The
-  legacy suite").
+- A `COUNT(...)` column is answered as `int64`, a deliberate deviation
+  no golden exercises (`docs/brief.md`, "Deliberate deviations";
+  ADR-0013).
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-09-17 -- the suites are `v1` and `v2`; no v1 golden selects a count
+
+- Owner decisions: `legacy` leaves every suite, target, driver, fixture,
+  package and bench-run name; no v1 golden exercises a deliberate
+  deviation (ADR-0013); a v2 case is one request with its formats
+  inside (`docs/e2e-plan.md`, "The v2 suite").
 
 ## 2026-09-17 -- test-strategy-plan.md deleted with the documentation re-cut landed
 
@@ -97,8 +104,8 @@ Blocked on:
 ## 2026-09-17 -- ADR-0013 accepted: e2e goldens run in Buildkite
 
 - Owner decisions: e2e returns to CI from M1; a golden is an audited
-  response, a v1 deviation an overlay; budgets leave the CI gates and
-  every number is the bench's (`docs/brief.md`, Testing doctrine).
+  response; budgets leave the CI gates and every number is the
+  bench's (`docs/brief.md`, Testing doctrine).
 
 ## 2026-09-16 -- compression-plan.md deleted with response compression landed
 
