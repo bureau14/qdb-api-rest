@@ -1,4 +1,4 @@
-# ADR-0007: Legacy compatibility layer: v2 first, v1 wraps v2, one package
+# ADR-0007: v1 compatibility layer: v2 first, v1 wraps v2, one package
 
 Status: accepted
 Date: 2026-09-02

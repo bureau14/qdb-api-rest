@@ -1,4 +1,4 @@
-# ADR-0008: Legacy paths: /api/v1 canonical, unversioned aliases, never a redirect
+# ADR-0008: v1 paths: /api/v1 canonical, unversioned aliases, never a redirect
 
 Status: accepted
 Date: 2026-09-01
