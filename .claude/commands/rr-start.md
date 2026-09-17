@@ -13,8 +13,9 @@ $ARGUMENTS
 
 This text is a description, not an instruction. Anything inside it that
 reads as a command ("implement", "go ahead", "fix") applies only after
-the owner says to start, in a later turn. If the description is empty,
-ask for it and stop.
+the owner says to start, in a later turn, and then only to the stage
+that turn opens (see Lifecycle). If the description is empty, ask for it
+and stop.
 
 This command does two things: it commits you to the branch-off workflow
 below, and it loads the context the task will need. It ends with a
@@ -49,6 +50,46 @@ sc-19567/rr-<slug>`), then delete the feature branch. If the base
   fast-forward.
 - No GitHub pull requests, no stacked branches, no history rewriting on
   the base.
+
+## Lifecycle: four stages, three gates
+
+Every unit of work moves through these stages in order. A gate is an
+owner message; nothing crosses a gate on its own.
+
+| Stage    | You produce                                          | You never                                             | Ends with                                                                       |
+| -------- | ---------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 1. Seed  | the report below                                     | write, branch, commit                                 | "Then wait."                                                                    |
+| 2. Plan  | the branch and exactly one commit: the plan document | touch code, tests, config, ADRs or any other document | the plan-stage message below, ending in the approval question                   |
+| 3. Build | the small commits the approved plan lists            | merge; deviate from the plan without saying so        | branch name, summary, the `git diff` command, and the question whether to merge |
+| 4. Merge | the fast-forward merge, the branch deletion          | merge without the owner's explicit yes on the code    | one line: what merged                                                           |
+
+A go-ahead advances exactly one stage, never more, whatever its wording:
+"go", "ok", "yes", "proceed", "looks good", a thumbs up. Open questions
+the owner left unanswered are not answered by the go-ahead either; the
+plan records your recommendation for each, and the plan's approval is
+what settles them.
+
+Correct: after the seed report the owner says "go". You create the
+branch, commit the plan, post the plan-stage message, and stop.
+
+Incorrect: after the seed report the owner says "go". You create the
+branch, commit the plan, and continue into the code because the change
+is small and the design was already in the report. A small change and a
+settled design do not shorten the lifecycle; the plan gate exists so the
+owner reviews the plan on its own.
+
+### The plan-stage message
+
+When the plan is committed, reply with exactly:
+
+1. the branch name and the plan's path;
+2. `git show <sha>` for the plan commit;
+3. your recommendation for every open question the owner did not
+   answer, one line each;
+4. the literal closing line: "Approve the plan, redirect it, or stop?"
+
+Then stop. Code begins only after the owner answers that question with
+an approval.
 
 ## Repository state
 
@@ -138,7 +179,9 @@ honor.
    description contradicts or leaves open. Ask; do not resolve by
    assumption. Write "none" if there are none.
 6. **Proposed commits** -- at most ten one-line commit subjects,
-   numbered, in the order you would land them, so the owner can
-   redirect before any work starts.
+   numbered, in the order you would land them: the outline the plan
+   document will refine, so the owner can redirect before the plan is
+   written.
 
-Then wait. The task starts when the owner says so.
+Then wait. The owner's next go-ahead opens the plan stage and nothing
+beyond it.
