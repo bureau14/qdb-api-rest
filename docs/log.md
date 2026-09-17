@@ -29,7 +29,7 @@ negotiated via `Accept-Encoding`; the `v2` golden suite green in
 Buildkite on all eight platforms (`docs/e2e-plan.md`, Goldens).
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
-the 16 v1 goldens replay against a server under test. Exit: every
+the 14 v1 goldens replay against a server under test. Exit: every
 v1 golden green against `bin/qdb_rest` at both
 spellings, in Buildkite on all eight platforms; `v1@new-rest` fingerprints equal `v1@old-rest`
 on every query under `CAPI_COMPRESSION=none` (enable
@@ -74,8 +74,7 @@ Handoff to M3 (the v1 wrappers):
 - The goldens and the bench client exercise only the unversioned
   aliases (the old server knows no other spelling); the exit criterion
   additionally proves `/api/v1/<path>` answers identically, by replaying
-  every login and query golden at both spellings. The probe goldens
-  have one spelling (ADR-0008).
+  every golden at both spellings (ADR-0008).
 - `v1@new-rest` runs under the bench's pinned C API compression
   through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
 - A `COUNT(...)` column is answered as `int64`, a deliberate deviation
@@ -87,6 +86,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-17 -- the status probes are outside the compatibility contract
+
+- Owner decision: v1 is the login and the query; the probes keep both
+  paths with no old-server promise and no golden (`docs/brief.md`,
+  Compatibility contract and Observability and logging).
 
 ## 2026-09-17 -- the suites are `v1` and `v2`; no v1 golden selects a count
 

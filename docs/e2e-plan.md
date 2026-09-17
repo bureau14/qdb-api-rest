@@ -199,8 +199,8 @@ it joins `encodings` only if the `zstd` CLI is present on every agent.
 
 ### The v1 suite
 
-Byte-shape equivalence of the v1 endpoints (`/api/login`, `/api/query`,
-status probes) uses small golden request/response pairs captured from
+Byte-shape equivalence of the v1 endpoints (`/api/login`, `/api/query`)
+uses small golden request/response pairs captured from
 the old server under `tests/e2e/golden/v1/<NN-slug>/`: a hand-written
 `request.json` (method, path, pre-encoded query string, headers, JSON
 body, auth mode `none|bearer|urlparam`, compare mode
@@ -214,8 +214,9 @@ replays against the server under test, `make test-v1-selfcheck`
 replays against the old server to prove the goldens are deterministic.
 Both replays compare with the same files. The drop-in milestone's exit
 additionally replays every login and query golden at its
-`/api/v1/<path>` spelling against the server under test; the probe
-goldens have the unversioned path only (ADR-0008).
+`/api/v1/<path>` spelling against the server under test (ADR-0008).
+No golden covers a status probe: the probes are outside the
+compatibility contract (`docs/brief.md`, Observability and logging).
 Full-table golden responses are deliberately not captured (834 MB of
 JSON is not a fixture).
 
@@ -373,9 +374,9 @@ from the Go `rapid` property tests, generated in-process.
 
 ## Decision log (2026-08-20)
 
-| Decision                                     | Why                                                                                                 | Rejected                                                 |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Lazy login + `CASES=` selection in golden.sh | auth-free cases (status probes) replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
+| Decision                                     | Why                                                                                 | Rejected                                                 |
+| -------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Lazy login + `CASES=` selection in golden.sh | auth-free cases replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
 
 ## Decision log (2026-09-12)
 

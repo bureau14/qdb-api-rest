@@ -23,7 +23,7 @@ it costs one import and no vendored bytes.
    that wants a coding names it, the rule `Accept` follows (ADR-0010).
 2. **Compression is a writer below the encoders**, applied per route
    like the bearer middleware: the login and the query. The probes stay
-   outside; their bodies are empty and their headers golden-pinned. The
+   outside; their bodies are empty. The
    encoders are untouched and Arrow IPC's in-format buffer compression
    stays off.
 3. **A compressed response is labelled at its first body byte**:

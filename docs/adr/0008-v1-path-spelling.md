@@ -5,8 +5,8 @@ Date: 2026-09-01
 
 ## Context
 
-The old server served its API unversioned (`/api/login`, `/api/query`,
-`/api/status/*`) and the brief freezes that surface as v1 while minting
+The old server served its API unversioned (`/api/login`, `/api/query`)
+and the brief freezes that surface as v1 while minting
 everything new under `/api/v2/*`. Existing clients -- the Grafana plugin
 and customer code -- send the unversioned paths and cannot be changed;
 the goldens captured from the old server pin those paths with direct
@@ -30,7 +30,8 @@ spelling, or documentation, code and tests drift between two.
    under `/api/v2/*` only. The status probes (`/api/status/*`) are the
    one exception: they are an operational surface for load balancers
    and orchestrators, not part of the application protocol, so they
-   are neither legacy nor aliased under `/api/v1/`.
+   are neither v1 nor aliased under `/api/v1/`, and the compatibility
+   contract does not cover them.
 
 ## Consequences
 
@@ -41,9 +42,8 @@ spelling, or documentation, code and tests drift between two.
   spellings.
 - The status probes keep their unversioned paths as the paths load
   balancers are configured with; their `/api/v2/status/*` mirrors are
-  the current-protocol spelling, not aliases of a legacy one. The probe
-  goldens replay at the unversioned path only; the both-spellings check
-  covers the protocol endpoints.
+  the current-protocol spelling, not aliases of a v1 one. No golden
+  covers a probe.
 - Route registration in the v1 package lists each handler twice;
   that duplication is the whole aliasing mechanism.
 

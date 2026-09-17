@@ -146,8 +146,7 @@ prose:
    Correctness is gated in CI; performance is measured by the
    assessment bench (Testing doctrine).
 2. **Backwards compatibility** for the endpoints customers and the Grafana
-   plugin actually use: `/api/v1/login`, `/api/v1/query`, and the status
-   probes.
+   plugin actually use: `/api/v1/login` and `/api/v1/query`.
    Byte-shape compatible, warts included (see Compatibility contract).
 3. **A proper versioned API** (`/api/v2/*`) with a real resource model:
    query, table listing and schema inspection, table creation, ingestion
@@ -240,7 +239,9 @@ v1 routes carry no parallel implementation: a v1 route wraps its v2
 counterpart, translating request and response shapes around the v2
 core, and legacy code lives in its own package (ADR-0007).
 
-The following endpoints behave byte-shape identically to the old
+The contract covers two endpoints, the login and the query, and nothing
+else; the status probes are outside it (Observability and logging).
+The two endpoints behave byte-shape identically to the old
 server, except for the deliberate deviations listed at the end of this
 section. Golden responses captured from the old server are part of the
 e2e test suite; no golden exercises a deviation (ADR-0013). This
@@ -284,28 +285,18 @@ section is the specification.
     routed too.
 - Errors 400/500: `{"message": "..."}`.
 
-### GET /api/status/liveness, GET /api/status/readiness
-
-- Unauthenticated, empty body. Load balancers at customer sites
-  health-check these paths; keep them verbatim (also mirrored under
-  `/api/v2/status/*`). Success is `200`; readiness failure is `503`,
-  the one deliberate break with the old server's `500` (ADR-0004).
-  Readiness dials the cluster as the REST API's own user on every probe
-  (ADR-0004).
-
 ### Deliberate deviations
 
 Every place where v1 answers differently from the old server, and
 nowhere else. No v1 golden exercises an entry of this list (ADR-0013).
 
-| Deviation                                                                  | Specified in                       |
-| -------------------------------------------------------------------------- | ---------------------------------- |
-| a `COUNT(...)` column is typed `int64`, where the old server said `count`  | POST /api/v1/query, above          |
-| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced     | POST /api/v1/query, above          |
-| tokens minted by the old server are rejected                               | POST /api/v1/login, above          |
-| bad credentials on a secured cluster are `401` at login, not a blind `200` | ADR-0011                           |
-| readiness failure is `503`, where the old server said `500`                | the status probes, above; ADR-0004 |
-| the dropped endpoints answer `404`                                         | Explicitly dropped, below          |
+| Deviation                                                                  | Specified in              |
+| -------------------------------------------------------------------------- | ------------------------- |
+| a `COUNT(...)` column is typed `int64`, where the old server said `count`  | POST /api/v1/query, above |
+| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced     | POST /api/v1/query, above |
+| tokens minted by the old server are rejected                               | POST /api/v1/login, above |
+| bad credentials on a secured cluster are `401` at login, not a blind `200` | ADR-0011                  |
+| the dropped endpoints answer `404`                                         | Explicitly dropped, below |
 
 ### Explicitly dropped
 
@@ -642,6 +633,14 @@ defaults by test.
   optional `log.file` config key exposes the same sink on any platform for
   users who want it.
 - `/metrics` (Prometheus exposition) as described under Goals.
+- Status probes: `GET /api/status/liveness` and
+  `GET /api/status/readiness`, mirrored under `/api/v2/status/*`,
+  unauthenticated, empty body, `200` or `503`; readiness dials the
+  cluster as the REST API's own user on every probe (ADR-0004). They are
+  an operational surface, outside the compatibility contract: the
+  unversioned paths are kept because load balancers at customer sites
+  are configured with them, not because the old server's answers are
+  reproduced.
 
 ### Dashboard (future, out of initial scope)
 

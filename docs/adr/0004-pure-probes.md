@@ -52,8 +52,9 @@ path and no dependency on its state.
 - The prober's cadence never drives resilience, and an open breaker
   never masks a cluster that has recovered.
 - A `/metrics` scrape is safe during an outage and under overload.
-- The old server's `200/500` readiness contract is broken deliberately
-  (brief: "Compatibility contract").
+- The probes are outside the compatibility contract (brief,
+  Observability and logging): readiness answers `503` where the old
+  server answered `500`.
 
 ## Alternatives rejected
 
