@@ -15,3 +15,4 @@ what stays in plan decision-log tables: `docs/AGENTS.md`, "ADRs".
 | [0010](0010-v2-query-request-negotiation-errors.md) | v2 query: request, negotiation and errors                              | accepted |
 | [0011](0011-v2-login.md)                            | v2 login: request, token response and credential check                 | accepted |
 | [0012](0012-v2-response-compression.md)             | v2 response compression                                                | accepted |
+| [0013](0013-e2e-goldens-in-ci.md)                   | e2e goldens run in Buildkite; measured numbers are the bench's         | accepted |
