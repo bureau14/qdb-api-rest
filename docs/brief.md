@@ -239,9 +239,11 @@ v1 routes carry no parallel implementation: a v1 route wraps its v2
 counterpart, translating request and response shapes around the v2
 core, and legacy code lives in its own package (ADR-0007).
 
-The following endpoints must behave byte-shape identically to the old
-server. Golden responses captured from the old server are part of the e2e
-test suite; this section is the specification.
+The following endpoints behave byte-shape identically to the old
+server, except for the deliberate deviations listed at the end of this
+section. Golden responses captured from the old server are part of the
+e2e test suite, a deviation as an overlay next to the capture
+(ADR-0013); this section is the specification.
 
 ### POST /api/v1/login
 
@@ -289,6 +291,20 @@ test suite; this section is the specification.
   the one deliberate break with the old server's `500` (ADR-0004).
   Readiness dials the cluster as the REST API's own user on every probe
   (ADR-0004).
+
+### Deliberate deviations
+
+Every place where v1 answers differently from the old server, and
+nowhere else. The e2e overlays exist for this list only (ADR-0013).
+
+| Deviation                                                                  | Specified in                       |
+| -------------------------------------------------------------------------- | ---------------------------------- |
+| a `COUNT(...)` column is typed `int64`, where the old server said `count`  | POST /api/v1/query, above          |
+| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced     | POST /api/v1/query, above          |
+| tokens minted by the old server are rejected                               | POST /api/v1/login, above          |
+| bad credentials on a secured cluster are `401` at login, not a blind `200` | ADR-0011                           |
+| readiness failure is `503`, where the old server said `500`                | the status probes, above; ADR-0004 |
+| the dropped endpoints answer `404`                                         | Explicitly dropped, below          |
 
 ### Explicitly dropped
 
