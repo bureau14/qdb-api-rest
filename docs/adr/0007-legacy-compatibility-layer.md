@@ -6,8 +6,9 @@ Date: 2026-09-02
 ## Context
 
 The brief's Compatibility contract freezes the legacy unversioned API as
-v1 -- served forever, warts included, pinned byte-for-byte by the e2e
-goldens -- and mints everything new under `/api/v2/*`. The two surfaces
+v1 -- served forever, warts included, pinned by the e2e goldens byte
+for byte except the deviations the Compatibility contract lists -- and
+mints everything new under `/api/v2/*`. The two surfaces
 serve different purposes: v1 exists so an unchanged client keeps
 working; v2 is the product. Two rules follow from that and were taken
 separately: a v1 route carries no parallel implementation and wraps its
@@ -17,7 +18,7 @@ of current-protocol code.
 Both rules are unsatisfiable while the legacy surface is built first. A
 wrapper needs something to wrap: with no v2 core in the tree, a v1 route
 can only be a direct implementation -- its own query execution, its own
-JSON encoder carrying the sentinel strings and the key order, its own
+JSON encoder carrying the key order and the null typing, its own
 token extraction -- which is later either unwound or, worse, becomes the
 seed the v2 core grows out of, carrying the warts into the current
 protocol. Isolation is impossible for the same reason: when the only
@@ -30,7 +31,8 @@ The early-drop-in argument (ship the compatible binary first to de-risk
 the compatibility story) is already served by the goldens: the red bar
 `make -C tests/e2e test-legacy` exists and stays red until the wrappers
 land, so the compatibility contract is enforced regardless of when the
-code that satisfies it is written.
+code that satisfies it is written. The suite joins the Buildkite build
+step once the wrappers make it green (ADR-0013).
 
 ## Decision
 
@@ -42,8 +44,8 @@ code that satisfies it is written.
 2. **v1 wraps v2.** Every v1 route is a wrapper around its v2
    counterpart's core: it parses the legacy request shape, calls the v2
    core, and translates the result into the legacy wire shape -- key
-   order, sentinel strings, error bodies, the `find` prefix, the header
-   and `?token=` extraction. Translation overhead is an accepted price;
+   order, null typing, error bodies, the `find` prefix, the header and
+   `?token=` extraction. Translation overhead is an accepted price;
    a separate v1 implementation is justified only when wrapping is
    impossible or at least doubles the route's measured cost.
 3. **One package.** Legacy code lives in `internal/httpapi/legacy`, a
@@ -57,8 +59,8 @@ code that satisfies it is written.
 ## Consequences
 
 - v2 shapes are chosen on v2's merits; the v1 wrapper pays whatever
-  translation that costs. The v2 JSON encoder never emits a sentinel or
-  orders keys for a legacy client.
+  translation that costs. The v2 JSON encoder never orders keys or
+  types a column for a legacy client.
 - The legacy login is a wrapper over `POST /api/v2/auth/login`, so
   it exists only once that endpoint does; until the wrappers land, the
   goldens hold the compatibility contract.
