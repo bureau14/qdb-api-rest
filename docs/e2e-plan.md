@@ -122,7 +122,7 @@ headers, body, auth mode, compare mode) next to the expected `status`,
 `headers` (only the headers that belong to a contract, lowercased,
 sorted; absence is recorded as absence) and `body`. One driver captures
 and replays both suites. Compare modes: `bytes`; `gunzip` (the
-decompressed bytes); `token-shape`, because a login answers a token that
+decompressed bytes); `login-shape`, because a login answers a token that
 differs per call (`{"token": <non-empty string>}` on v1, RFC 6749's
 fields on v2).
 
