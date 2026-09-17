@@ -243,8 +243,8 @@ core, and legacy code lives in its own package (ADR-0007).
 The following endpoints behave byte-shape identically to the old
 server, except for the deliberate deviations listed at the end of this
 section. Golden responses captured from the old server are part of the
-e2e test suite, a deviation as an overlay next to the capture
-(ADR-0013); this section is the specification.
+e2e test suite; no golden exercises a deviation (ADR-0013). This
+section is the specification.
 
 ### POST /api/v1/login
 
@@ -296,7 +296,7 @@ e2e test suite, a deviation as an overlay next to the capture
 ### Deliberate deviations
 
 Every place where v1 answers differently from the old server, and
-nowhere else. The e2e overlays exist for this list only (ADR-0013).
+nowhere else. No v1 golden exercises an entry of this list (ADR-0013).
 
 | Deviation                                                                  | Specified in                       |
 | -------------------------------------------------------------------------- | ---------------------------------- |
@@ -661,7 +661,7 @@ internal/auth/         JWE tokens, key derivation, the caller's user
 internal/qdb/          session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
 internal/encoding/     format encoders: json, ndjson, csv, arrow
 internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
-internal/httpapi/legacy/  v1 wrappers over the v2 core; the only package that knows the legacy wire shape (ADR-0007)
+internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the legacy wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
@@ -731,10 +731,10 @@ fourth.
    (qdbd is a persistent service, never started by a test). A golden is
    an audited expected response: a run somebody judged correct and
    committed, compared byte for byte ever after. Two suites: `v2`,
-   captured from the server under test and audited, and `legacy`,
+   captured from the server under test and audited, and `v1`,
    small request/response pairs captured from the old server and
-   replayed against the v1 endpoints, a deliberate deviation as an
-   overlay next to the capture (Compatibility contract). An endpoint
+   replayed against the v1 endpoints, none of them exercising a
+   deliberate deviation (Compatibility contract). An endpoint
    lands with its goldens. The canonical dataset is a customer-derived
    5,613,032-row table (story sc-19522) distributed as CSV +
    `qdb_import` config, sha256-pinned, S3-hosted the way the
@@ -793,7 +793,7 @@ entry/exit criteria defined when it starts.
 - **M3 -- Drop-in compat**: the legacy endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with the
-  `legacy` golden suite green in Buildkite; the tag-find core in `internal/qdb` that the
+  `v1` golden suite green in Buildkite; the tag-find core in `internal/qdb` that the
   `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
   replaces the old binary at a customer site with no client changes;
   the first shippable binary.
