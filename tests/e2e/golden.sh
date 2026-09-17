@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Legacy golden pairs: capture from the old server, replay against any server.
+# v1 golden pairs: capture from the old server, replay against any server.
 #
-#   legacy.sh capture <base_url> [case ...]   write status/headers/body into golden/legacy/<case>/
-#   legacy.sh replay  <base_url> [case ...]   write them to actual/legacy/<case>/ and compare
+#   golden.sh capture <base_url> [case ...]   write status/headers/body into golden/v1/<case>/
+#   golden.sh replay  <base_url> [case ...]   write them to actual/v1/<case>/ and compare
 #
-# A case is a directory under golden/legacy/ holding a hand-written
+# A case is a directory under golden/v1/ holding a hand-written
 # request.json:
 #   method   GET | POST
 #   path     e.g. /api/query
@@ -23,11 +23,11 @@
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-MODE="${1:?usage: legacy.sh capture|replay <base_url> [case ...]}"
-BASE_URL="${2:?usage: legacy.sh capture|replay <base_url> [case ...]}"
+MODE="${1:?usage: golden.sh capture|replay <base_url> [case ...]}"
+BASE_URL="${2:?usage: golden.sh capture|replay <base_url> [case ...]}"
 shift 2
-GOLDEN_DIR="$E2E_DIR/golden/legacy"
-ACTUAL_DIR="$E2E_DIR/actual/legacy"
+GOLDEN_DIR="$E2E_DIR/golden/v1"
+ACTUAL_DIR="$E2E_DIR/actual/v1"
 
 require_command curl
 require_command jq
@@ -140,8 +140,8 @@ main() {
         fi
     done < <(list_cases "$@")
     if [[ "$MODE" == replay ]]; then
-        if (( failed > 0 )); then die "legacy replay: $failed of $total cases FAILED"; fi
-        log_info "legacy replay: all $total cases passed"
+        if (( failed > 0 )); then die "v1 replay: $failed of $total cases FAILED"; fi
+        log_info "v1 replay: all $total cases passed"
     fi
 }
 

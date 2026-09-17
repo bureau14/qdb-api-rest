@@ -19,12 +19,12 @@ against a live qdbd. Specification: `docs/e2e-plan.md`; conventions:
 ```
 make load                    # dataset into qdbd (download, sha256, import; idempotent)
 make verify-dataset          # export the loaded table and byte-compare with the CSV
-make seed                    # small legacy fixture tables + tags (idempotent)
+make seed                    # small fixture tables + tags (idempotent)
 make old-server              # build the old REST server from master (worktree in .old-master/)
-make capture-golden          # operator: (re)capture goldens from the old server
-make test-legacy-selfcheck   # replay goldens against the old server (harness determinism)
-make test-legacy QDB_REST_BIN=<new server binary> [REST_ARGS=...]
-make test-legacy REST_URL=http://127.0.0.1:40090     # against an already running server
+make capture-v1              # operator: (re)capture goldens from the old server
+make test-v1-selfcheck       # replay goldens against the old server (harness determinism)
+make test-v1 QDB_REST_BIN=<new server binary> [REST_ARGS=...]
+make test-v1 REST_URL=http://127.0.0.1:40090     # against an already running server
 ```
 
 All capture/replay targets accept `CASES='<case> ...'` to run a subset of
@@ -36,9 +36,9 @@ The dataset archive is produced by
 `DATASETS_LOCAL_DIR=<dir>` makes `make load` take the archive from a local
 directory instead of S3).
 
-## Legacy goldens
+## v1 goldens
 
-`golden/legacy/<NN-slug>/request.json` is hand-written; `status`, `headers`
+`golden/v1/<NN-slug>/request.json` is hand-written; `status`, `headers`
 and `body` next to it are captured from the old server and committed.
-Request and compare modes: the header of `legacy.sh`. Editing rules:
+Request and compare modes: the header of `golden.sh`. Editing rules:
 `AGENTS.md`; provenance and verified facts: `docs/e2e-plan.md`.

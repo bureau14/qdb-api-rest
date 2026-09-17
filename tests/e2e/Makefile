@@ -3,11 +3,11 @@
 #
 #   make load                       dataset into the running qdbd (idempotent)
 #   make verify-dataset             export the loaded table, byte-compare with the CSV
-#   make seed                       small legacy fixture tables + tags
+#   make seed                       small fixture tables + tags
 #   make old-server                 build the old REST server from master
-#   make capture-golden             (operator) capture goldens from the old server
-#   make test-legacy-selfcheck      replay goldens against the old server
-#   make test-legacy                replay goldens against the server under test
+#   make capture-v1             (operator) capture goldens from the old server
+#   make test-v1-selfcheck      replay goldens against the old server
+#   make test-v1                replay goldens against the server under test
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -52,13 +52,13 @@ REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
 COMMON := source $(E2E_DIR)/common.sh
-LEGACY := $(E2E_DIR)/legacy.sh
+GOLDEN := $(E2E_DIR)/golden.sh
 # Golden case selection for capture/replay targets; empty means all cases.
-# Example: make test-legacy CASES='20-status-liveness 21-status-readiness'
+# Example: make test-v1 CASES='20-status-liveness 21-status-readiness'
 CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
-        old-server capture-golden test-legacy test-legacy-selfcheck clean distclean
+        old-server capture-v1 test-v1 test-v1-selfcheck clean distclean
 
 help:
 	@sed -n '2,12p' $(firstword $(MAKEFILE_LIST))
@@ -150,24 +150,24 @@ define start_old_server
 	start_server $(OLD_REST_PID) $(OLD_REST_LOG) $(OLD_REST_PORT) $(OLD_REST_BIN) $(OLD_REST_ARGS)
 endef
 
-capture-golden: services-check load seed
+capture-v1: services-check load seed
 	@$(start_old_server); trap 'stop_server $(OLD_REST_PID)' EXIT; \
-	$(LEGACY) capture $(OLD_REST_URL) $(CASES); \
+	$(GOLDEN) capture $(OLD_REST_URL) $(CASES); \
 	log_info "goldens captured; review with: git -C $(REPO_ROOT) status --short tests/e2e/golden"
 
-test-legacy-selfcheck: services-check load seed
+test-v1-selfcheck: services-check load seed
 	@$(start_old_server); trap 'stop_server $(OLD_REST_PID)' EXIT; \
-	$(LEGACY) replay $(OLD_REST_URL) $(CASES)
+	$(GOLDEN) replay $(OLD_REST_URL) $(CASES)
 
 # ---------------------------------------------------------- server under test
 
-test-legacy: services-check load seed
+test-v1: services-check load seed
 	@$(COMMON); \
-	if [[ -n "$(REST_URL)" ]]; then $(LEGACY) replay "$(REST_URL)" $(CASES); exit $$?; fi; \
+	if [[ -n "$(REST_URL)" ]]; then $(GOLDEN) replay "$(REST_URL)" $(CASES); exit $$?; fi; \
 	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL=<url>"; \
 	start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
 	trap 'stop_server $(REST_PID)' EXIT; \
-	$(LEGACY) replay http://127.0.0.1:$(REST_PORT) $(CASES)
+	$(GOLDEN) replay http://127.0.0.1:$(REST_PORT) $(CASES)
 
 # ------------------------------------------------------------------ cleanup
 

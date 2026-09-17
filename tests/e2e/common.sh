@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers for the qdb-api-rest e2e harness (docs/e2e-plan.md).
 # Lineage: qdb-nats-connector examples/common.sh (ADR-007), adapted.
-# Sourced by legacy.sh, tools/*.sh and the Makefile's inline shell.
+# Sourced by golden.sh, tools/*.sh and the Makefile's inline shell.
 #
 # Reads top to bottom: logging, environment, process control, qdb helpers,
 # CSV comparison. Nothing here starts qdbd -- it is a persistent service
