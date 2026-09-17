@@ -1,7 +1,0 @@
-{
-  "method": "GET",
-  "path": "/api/status/liveness",
-  "headers": {},
-  "auth": "none",
-  "compare": "bytes"
-}

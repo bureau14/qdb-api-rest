@@ -54,7 +54,7 @@ REST_LOG     := $(E2E_DIR)/rest.log
 COMMON := source $(E2E_DIR)/common.sh
 GOLDEN := $(E2E_DIR)/golden.sh
 # Golden case selection for capture/replay targets; empty means all cases.
-# Example: make test-v1 CASES='20-status-liveness 21-status-readiness'
+# Example: make test-v1 CASES='01-login-anonymous 08-query-seed-select'
 CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
