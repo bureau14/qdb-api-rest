@@ -13,7 +13,7 @@ Prove, for the life of the product, that the built binary, driven over
 HTTP like a client:
 
 1. returns exactly the audited response, on the v2 surface and on the
-   legacy surface (the goldens);
+   v1 surface (the goldens);
 2. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
@@ -42,7 +42,7 @@ qdbd is a persistent background service, never started by a test:
 - The REST server under test is the only process the harness starts and
   stops, via pidfile helpers copied from nats-connector's `common.sh`.
   Every server the harness starts, and every golden capture, runs under
-  `TZ=UTC`: the legacy JSON renders timestamps in the server's local
+  `TZ=UTC`: the v1 JSON renders timestamps in the server's local
   time zone, so goldens are portable only with the zone pinned.
 
 ## Dataset
@@ -103,7 +103,7 @@ selects the whole table: a full-table response is the bench's business.
 To verify with the first CI run (2026-09-17: unmeasured): the wall-clock
 time of `make load` on the slowest agent. The fallback, if it is
 unacceptable, is a second, smaller archive of whole shards loaded under
-its own table name, with the three `reproduce` legacy goldens recaptured
+its own table name, with the two `reproduce` v1 goldens recaptured
 against it.
 
 ## Goldens
@@ -120,12 +120,11 @@ A case is a directory `tests/e2e/golden/<suite>/<NN-slug>/`: a
 hand-written `request.json` (method, path, pre-encoded query string,
 headers, body, auth mode, compare mode) next to the expected `status`,
 `headers` (only the headers that belong to a contract, lowercased,
-sorted; absence is recorded as absence) and `body`. One driver captures
-and replays both suites. Compare modes: `bytes`; `gunzip` (the
-decompressed bytes); `arrow` (the decoded content, see "The v2
-suite"); `login-shape`, because a login answers a token that
-differs per call (`{"token": <non-empty string>}` on v1, RFC 6749's
-fields on v2).
+sorted; absence is recorded as absence) and `body`. One driver,
+`golden.sh`, captures and replays both suites. Compare modes: `bytes`;
+`gunzip` (the decompressed bytes); `login-shape`, because a login
+answers a token that differs per call (`{"token": <non-empty string>}`
+on v1, RFC 6749's fields on v2).
 
 An expected body small enough for review lives in git next to its
 `request.json`; a body too large for git lives in the dataset archive
@@ -149,37 +148,60 @@ entry.
 Captured from the server under test (`make capture-v2`, an operator
 step) and audited before it is committed: a data case against qdbsh or
 `qdb_export` output for the same range, a shape or error case against
-the ADR that owns the wire contract. Cases: the login (anonymous, and
-the secure cluster's user on the secure cluster); the query in JSON,
-NDJSON and CSV over the seeded fixture (every type, nulls, the awkward
-string) and over a `reproduce` range of roughly 200k rows, so every
-text encoder crosses its 65536-row chunk boundary several times; gzip;
-and the rows of the ADR-0010 and ADR-0011 error tables a client can
-provoke from outside (no bearer, malformed bearer, unsupported media
-type, oversized body, invalid query, refused credentials).
+the ADR that owns the wire contract.
 
-Text bodies are compared as bytes, Arrow IPC as decoded content
-(ADR-0013): the format leaves null slots and padding undefined, so an
-Arrow body has no stable bytes, and decoding normalizes both. Every
-query case has an Arrow twin with compare mode `arrow`: the body is
-piped through `tools/arrowcsv`, a pure-Go tool (`arrow-go`'s IPC reader
-and the CSV encoder of `internal/encoding`; no cgo, built by the
-Makefile with the same toolchain as the server) that writes the schema
--- field names, types, timestamp unit -- to one file and the batches as
-one CSV to another. The schema is compared with a small `schema` golden
-in the twin's directory; the CSV is compared byte for byte with the
-`body` of the CSV case the twin names in its `request.json`, so an
-Arrow case adds no large golden. The large `reproduce` case is what
-drives a multi-batch stream, over real null timestamps the Go table
-fixture cannot write; one twin runs under gzip. zstd is covered by the Go round-trip
-test; it joins the suite only if the `zstd` CLI is present on every
-agent.
+A v2 query answers the same data in every format and under every
+content coding, so a query case is one request run as a matrix, never a
+directory per format. Its `request.json` lists the `formats` (`json`,
+`ndjson`, `csv`, `arrow`) and the `encodings` (`identity`, `gzip`) it
+runs under; the driver issues one request per pair, setting `Accept`
+and `Accept-Encoding` itself:
 
-### The legacy suite
+```
+golden/v2/10-query-seed-types/
+  request.json   query, auth, formats, encodings
+  status         one, shared by every run of the matrix
+  body.json
+  body.ndjson
+  body.csv       also what the decoded Arrow stream must equal
+  schema.arrow   field names, types, timestamp unit
+golden/v2/30-query-no-bearer/
+  request.json  status  headers  body      no formats: one run
+```
 
-Legacy byte-shape equivalence (`/api/login`, `/api/query`, status
-probes) uses small golden request/response pairs captured from the
-old server under `tests/e2e/golden/legacy/<NN-slug>/`: a hand-written
+- The `status` is the same for every run of the matrix.
+- `Content-Type` is asserted from the format and `Content-Encoding`
+  from the encoding; neither is stored per run. A case without
+  `formats` (a login, an error) stores its `headers` like a v1 case.
+- A text body is compared byte for byte with `body.<format>`.
+- A compressed run is decompressed and compared with the same
+  `body.<format>`, so a content coding adds no golden.
+- Arrow IPC is compared as decoded content (ADR-0013): the format
+  leaves null slots and padding undefined, so an Arrow body has no
+  stable bytes, and decoding normalizes both. The body is piped through
+  `tools/arrowcsv`, a pure-Go tool (`arrow-go`'s IPC reader and the CSV
+  encoder of `internal/encoding`; no cgo, built by the Makefile with
+  the same toolchain as the server) that writes the schema to one file
+  and the batches as one CSV to another. The schema is compared with
+  `schema.arrow`, the CSV byte for byte with `body.csv`, so Arrow adds
+  no large golden.
+
+Cases: the login (anonymous, and the secure cluster's user on the
+secure cluster); the query over the seeded fixture (every type, nulls,
+the awkward string) and over a `reproduce` range of roughly 200k rows,
+so every text encoder crosses its 65536-row chunk boundary several
+times and the Arrow stream is multi-batch, over real null timestamps
+the Go table fixture cannot write; and the rows of the ADR-0010 and
+ADR-0011 error tables a client can provoke from outside (no bearer,
+malformed bearer, unsupported media type, oversized body, invalid
+query, refused credentials). zstd is covered by the Go round-trip test;
+it joins `encodings` only if the `zstd` CLI is present on every agent.
+
+### The v1 suite
+
+Byte-shape equivalence of the v1 endpoints (`/api/login`, `/api/query`,
+status probes) uses small golden request/response pairs captured from
+the old server under `tests/e2e/golden/v1/<NN-slug>/`: a hand-written
 `request.json` (method, path, pre-encoded query string, headers, JSON
 body, auth mode `none|bearer|urlparam`, compare mode
 `bytes|gunzip|login-shape`) next to the captured `status`, `headers`
@@ -187,13 +209,14 @@ body, auth mode `none|bearer|urlparam`, compare mode
 is recorded as absence) and `body` (raw bytes; decompressed for
 `gunzip`). `login-shape` checks `{"token": <non-empty string>}` because
 tokens vary per call. The driver's `capture|replay` modes drive both
-sides; `make capture-golden` is an operator step, `make test-legacy`
-replays against the server under test, `make test-legacy-selfcheck`
+sides; `make capture-v1` is an operator step, `make test-v1`
+replays against the server under test, `make test-v1-selfcheck`
 replays against the old server to prove the goldens are deterministic.
-Every login and query golden also replays at its `/api/v1/<path>`
-spelling against the server under test; the probe goldens replay at
-the unversioned path only (ADR-0008). Full-table golden responses are
-deliberately not captured (834 MB of JSON is not a fixture).
+Both replays compare with the same files. Every login and query golden
+also replays at its `/api/v1/<path>` spelling against the server under
+test; the probe goldens replay at the unversioned path only (ADR-0008).
+Full-table golden responses are deliberately not captured (834 MB of
+JSON is not a fixture).
 
 Goldens are captured from the old server **built from `master`** in a
 worktree (`make old-server`), linked against this repo's `qdb/` tree --
@@ -204,11 +227,10 @@ server.
 
 Fixture for the goldens (`make seed`, `tests/e2e/seed.sql`, idempotent):
 the nine tagged tables from old master's rest-setup (`foo/bar/baz_01..03`,
-tags `tag_01..03` on `$qdb.tagroot`), `legacy_types` (blob, int64,
+tags `tag_01..03` on `$qdb.tagroot`), `seed_types` (blob, int64,
 double, string, symbol, timestamp; one full, one all-null, one mixed row
 with a nanosecond timestamp and `"`, `,`, `<&>` in a string) and
-`legacy_allnull` (pins `"type":"none"`). `reproduce` supplies count,
-`LIMIT 10` and a `GROUP BY side` aggregate.
+`seed_allnull` (pins `"type":"none"`). `reproduce` supplies `LIMIT 10`.
 
 Two places where the goldens and the contract (`docs/brief.md`,
 Compatibility contract) meet:
@@ -217,22 +239,14 @@ Compatibility contract) meet:
   strings never appear because the C API types every null cell
   `qdb_query_result_none` (verified 2026-08-19 over raw selects,
   `IN RANGE`, `GROUP BY`, aggregates and arithmetic on nulls).
-- Golden 07 carries `"type":"count"` where v1 answers `"type":"int64"`:
-  a deliberate deviation, so the case carries a `body.v1` overlay.
-
-A deliberate deviation (`docs/brief.md`, Compatibility contract,
-"Deliberate deviations") is an overlay: the captured `status`, `headers`
-and `body` stay exactly what the old server said, so
-`make test-legacy-selfcheck` keeps proving them, and a hand-written
-`body.v1`, `status.v1` or `headers.v1` next to the capture is what the
-replay against the server under test prefers. Every deviation is a
-reviewable diff between two files, the full list is
-`ls golden/legacy/*/*.v1`, and the comparator stays `cmp`. An overlay
-exists only for a deviation the brief lists.
+- No golden exercises a deliberate deviation (ADR-0013; the list is
+  `docs/brief.md`, Compatibility contract, "Deliberate deviations"). A
+  `COUNT(...)` column is the one a query could reach -- the old server
+  types it `count`, v1 `int64` -- so no golden query selects a `COUNT`.
 
 The byte-shape facts the goldens pin (verified 2026-09-02 from the old
 server's models and producers on `master`; the v1 wrappers in
-`internal/httpapi/legacy` reproduce them, ADR-0007):
+`internal/httpapi/v1` reproduce them, ADR-0007):
 
 - Key order and omission follow the old models' struct order: column
   objects serialize `data`, `name`, `type` (`name` and `type`
@@ -268,7 +282,7 @@ Two compatibility layers, deliberately: this harness checks **byte-shape**
 and never the old server); the temporary, local bench checks **semantic**
 compatibility through a real client -- the same legacy-protocol Python
 code run against the old and the new server, compared by normalized
-DataFrame fingerprint (`legacy@old-rest == legacy@new-rest` in
+DataFrame fingerprint (`v1@old-rest == v1@new-rest` in
 `docs/bench-plan.md`).
 
 ## In Buildkite
@@ -276,7 +290,7 @@ DataFrame fingerprint (`legacy@old-rest == legacy@new-rest` in
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
 the binary `20.build.sh` built: `make load seed`, then the suites. A
-suite enters the step when it is green: `test-v2` first, `test-legacy`
+suite enters the step when it is green: `test-v2` first, `test-v1`
 when the wrappers land, the stress with the resilience milestone. The
 script follows qdb-nats-connector's `50.test-e2e.sh`: GNU make discovery
 (`gmake` on FreeBSD, `mingw32-make` on Windows), the Windows DLL
@@ -300,19 +314,19 @@ scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...);
 tests/e2e/
   datasets.json           base_url + archives[{name,date,rows,sha256}]
   Makefile                services-check | download-golden | extract | load | verify-dataset |
-                          seed | package-dataset | old-server | capture-golden |
-                          test-legacy | test-legacy-selfcheck | clean | distclean
+                          seed | package-dataset | old-server | capture-v1 |
+                          test-v1 | test-v1-selfcheck | clean | distclean
                           capture-v2 | test-v2 (arrive with the v2 suite)
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
-  legacy.sh               golden capture/replay driver (one driver for both suites
-                          once the v2 suite arrives)
-  seed.sql                legacy fixture (qdbsh statements)
+  golden.sh               golden capture/replay driver (drives both suites once the
+                          v2 suite arrives)
+  seed.sql                golden fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
   tools/arrowcsv/         Go: Arrow IPC stream -> schema + CSV (arrives with the v2 suite)
-  golden/legacy/          legacy request/response pairs, overlays (*.v1)
-  golden/v2/              v2 request/response pairs (arrives with the v2 suite)
+  golden/v1/              v1 request/response pairs, captured from the old server
+  golden/v2/              v2 cases, one per request, formats inside (arrives with the v2 suite)
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench-plan.md)
   AGENTS.md, README.md    conventions, usage
@@ -360,7 +374,7 @@ from the Go `rapid` property tests, generated in-process.
 
 | Decision                                     | Why                                                                                                 | Rejected                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Lazy login + `CASES=` selection in legacy.sh | auth-free cases (status probes) replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
+| Lazy login + `CASES=` selection in golden.sh | auth-free cases (status probes) replay against a server without `/api/login`; single-case debugging | eager login (couples every replay to the login endpoint) |
 
 ## Decision log (2026-09-12)
 
@@ -377,4 +391,6 @@ from the Go `rapid` property tests, generated in-process.
 | One driver for both suites                        | capture, replay and compare are the same mechanics; only the login and the paths differ | a second script per suite                                                       |
 | Expected bodies in git, large ones in the archive | small bodies are reviewable diffs; a large one still gives a failure something to diff  | everything in git; a sha256 in place of the body                                |
 | One dataset in CI, cases bound their own size     | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback)                           |
-| A deviation is an overlay next to the capture     | ADR-0013; the selfcheck against the old server keeps proving the capture                | a comparator rule for golden 07                                                 |
+| No v1 golden exercises a deliberate deviation     | ADR-0013; both replays compare with the same captured files, the comparator stays `cmp` | a comparator rule per deviation; a golden that selects a `COUNT`                |
+| One v2 case per request, formats inside           | the same query answers the same data in every format and coding; one status, one CSV    | a directory per (query, format); a twin naming another case's body              |
+| The suites are `v1` and `v2`                      | the names of the API versions they pin; `legacy` named one of them after its history    | `legacy` as a suite, target, driver, fixture or package name                    |
