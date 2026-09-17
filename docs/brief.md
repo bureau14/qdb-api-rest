@@ -143,7 +143,8 @@ prose:
    HTTP/2. Compression (zstd, gzip) is strictly client-negotiated via
    `Accept-Encoding` -- identity is the default, the server never forces
    it, so datacenter clients pay nothing and WAN clients opt in.
-   Performance budgets enforced in CI.
+   Correctness is gated in CI; performance is measured by the
+   assessment bench (Testing doctrine).
 2. **Backwards compatibility** for the endpoints customers and the Grafana
    plugin actually use: `/api/v1/login`, `/api/v1/query`, and the status
    probes.
@@ -708,8 +709,14 @@ readable top to bottom.
 Strong preference for generative and end-to-end tests over unit tests. Unit
 tests exist only where a pure function has genuine logic worth pinning.
 
+Four layers, one question each (ADR-0013). The first three run in
+Buildkite on every platform and gate; the fourth runs on a developer
+machine and gates nothing. A question whose answer is yes or no belongs
+to the first three; a question whose answer is a number belongs to the
+fourth.
+
 1. **Generative property tests** (`pgregory.net/rapid`, quickcheck-style),
-   run against a live qdbd:
+   run against a live qdbd -- is the logic right, for any input?
    - _Format equivalence_: for randomly generated schemas, data, and
      queries, the decoded results of JSON, NDJSON, CSV, Arrow IPC, and
      Flight SQL are identical.
@@ -717,26 +724,28 @@ tests exist only where a pure function has genuine logic worth pinning.
      v2 ingest endpoints (each input format) reads back exactly.
    - _Auth properties_: token roundtrip, expiry, key-rotation continuity,
      refresh behavior -- generated over key/claim space.
-2. **Golden-data e2e** (pattern from qdb-nats-connector ADR-007): Make +
-   shell + curl + awk orchestration against a live qdbd started by the
-   shared `scripts/tests/setup/start-services.sh` (qdbd is a persistent
-   service, never started by a test). The canonical dataset is a
-   customer-derived 5,613,032-row table (story sc-19522) distributed as
-   CSV + `qdb_import` config, sha256-pinned, S3-hosted the way the
+2. **Golden e2e** (pattern from qdb-nats-connector ADR-007) -- does the
+   built binary, driven over HTTP like a client, return exactly the
+   audited response? Make + shell + curl orchestration against a live
+   qdbd started by the shared `scripts/tests/setup/start-services.sh`
+   (qdbd is a persistent service, never started by a test). A golden is
+   an audited expected response: a run somebody judged correct and
+   committed, compared byte for byte ever after. Two suites: `v2`,
+   captured from the server under test and audited, and `legacy`,
+   small request/response pairs captured from the old server and
+   replayed against the v1 endpoints, a deliberate deviation as an
+   overlay next to the capture (Compatibility contract). An endpoint
+   lands with its goldens. The canonical dataset is a customer-derived
+   5,613,032-row table (story sc-19522) distributed as CSV +
+   `qdb_import` config, sha256-pinned, S3-hosted the way the
    nats-connector golden datasets are, and loaded idempotently by
-   `make load`. Includes
-   _legacy equivalence_: small golden request/response pairs captured
-   from the old server replayed against the new one. Plan:
-   `docs/e2e-plan.md`.
-3. **Performance budgets and stress as CI gates**, in the same harness:
-   for the full 5.6M-row query -- time-to-first-byte under a fixed
-   bound, server RSS delta bounded and independent of result size,
-   sustained throughput floor per format (Flight SQL path included);
-   plus a concurrency stress (N parallel clients) asserting that the
-   session budget bounds memory and load (excess waits or times out,
-   no goodput collapse), and that in-flight streams complete across a
-   graceful-shutdown drain. Budgets are versioned numbers in the repo, revised
-   deliberately, never silently.
+   `make load`. Plan: `docs/e2e-plan.md`.
+3. **Stress as behaviour**, in the same harness: a concurrency stress
+   (N parallel clients) asserting that the session budget bounds memory
+   and load (excess waits or times out, no goodput collapse), and that
+   in-flight streams complete across a graceful-shutdown drain. Every
+   assertion is pass or fail on behaviour; none is a timing or a
+   measured number.
 4. **Local assessment benchmark** (`tests/e2e/bench/`; developer
    machines, deliberately not CI; **temporary** -- retired once the
    rewrite demonstrably beats the old server, no abstractions built for
@@ -748,7 +757,9 @@ tests exist only where a pure function has genuine logic worth pinning.
    Flight SQL against the new server. Running the unchanged legacy client
    code against both servers is the drop-in compatibility check
    (semantic, via normalized result fingerprints; byte-shape lives in
-   item 2). Supporting metrics: time to first byte (per-protocol
+   item 2). The Arrow IPC stream of `POST /api/v2/query` against the
+   new server is a fifth pair, the first number the rewrite gets. The
+   bench is the one home of every measured number. Supporting metrics: time to first byte (per-protocol
    definition), client peak RSS, REST-server peak RSS, and the two data
    volumes (qdbd -> reducer, reducer -> client) plus client CPU that
    make the map/reduce offload visible for aggregate/top-k queries.
