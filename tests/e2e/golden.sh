@@ -102,7 +102,7 @@ run_case() {
 compare_case() {
     local case="$1" gold="$GOLDEN_DIR/$1" act="$ACTUAL_DIR/$1" compare
     compare=$(jq -r .compare "$gold/request.json")
-    [[ -f "$gold/status" ]] || { log_error "[FAIL] $case: no golden captured (run make capture-golden)"; return 1; }
+    [[ -f "$gold/status" ]] || { log_error "[FAIL] $case: no golden captured (run make capture-v1)"; return 1; }
     if ! cmp -s "$gold/status" "$act/status"; then
         log_error "[FAIL] $case: status $(cat "$act/status") != golden $(cat "$gold/status")"; return 1
     fi
