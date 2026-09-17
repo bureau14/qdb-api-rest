@@ -87,7 +87,8 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 | `old-rest` | `master` worktree build                       | 40080         |
 | `new-rest` | this branch                                   | 40090 / 40493 |
 
-Valid runs (the registry is this table, nothing else):
+Valid runs (the registry in `bench.py` is this table, nothing else; the
+`http-arrow@new-rest` row joins it with its protocol module):
 
 | run                   | answers                                                                         | needs                  |
 | --------------------- | ------------------------------------------------------------------------------- | ---------------------- |
@@ -283,7 +284,7 @@ Materialization family (the original KPI):
 
 | id      | query                                   | purpose                       |
 | ------- | --------------------------------------- | ----------------------------- |
-| `count` | `SELECT COUNT(*) FROM "reproduce"`      | sanity + tiny-result latency  |
+| `count` | `SELECT COUNT(id) FROM "reproduce"`     | sanity + tiny-result latency  |
 | `head`  | `SELECT * FROM "reproduce" LIMIT 65536` | mid-size, TTFB shape          |
 | `full`  | `SELECT * FROM "reproduce"`             | the headline 5.6M-row KPI run |
 
@@ -317,9 +318,10 @@ one-line change.
 
 ```
 tests/e2e/bench/
-  Makefile               check | venv | old-server | new-server | bench-<protocol>@<server> | report | clean
+  Makefile               help | check | venv | old-server | bench-<protocol>@<server> | report |
+                         selftest | clean | distclean
   bench.py               run + report subcommands (see CLI)
-  protocols/             native.py, v1.py, flightsql.py, http_arrow.py   (fetch)
+  protocols/             native.py, v1.py, flightsql.py   (fetch); http_arrow.py arrives with its run
   servers/               old_rest.py, new_rest.py             (server_cmd)
   results/               <protocol>@<server>.json (gitignored), consumed by report
   README.md              usage; links back to this plan
@@ -345,8 +347,9 @@ port, measures, terminates. `qdbd` has no server module.
 
 Server binaries are built by `make old-server` (delegates to
 `tests/e2e`'s target: git worktree of `master` in `tests/e2e/.old-master`,
-`go build` against the repo's `qdb/`) and `make new-server` (this branch);
-`bench.py` receives the binary paths as flags. Old-server launch flags that matter (verified):
+`go build` against the repo's `qdb/`); the new server is whatever
+binary `NEW_REST_BIN` names, built by the root Makefile. `bench.py`
+receives the binary paths as flags. Old-server launch flags that matter (verified):
 `--local -c qdb://127.0.0.1:2836 --pool-size 4 --parallelism-count 4
 --max-in-buffer-size 8589934592 --log-file <path>`. `--local` overrides
 `--port`, so the old server always answers on 40080. The deployed binary
@@ -467,7 +470,7 @@ imported table, compare.
 
 `native@qdbd` and `v1@old-rest` agree on every fingerprint, which
 cross-checks the v1 parser against the native client before the
-rewrite enters the picture. The remaining registry rows are enabled
+rewrite enters the picture. The remaining rows are enabled
 in `bench.py` when their server side exists: `http-arrow@new-rest` with
 the v2 login and query (the first performance signal),
 `v1@new-rest` with the v1 wrappers (the first drop-in
