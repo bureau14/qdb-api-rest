@@ -75,7 +75,7 @@ step once the wrappers make it green (ADR-0013).
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Legacy first, to de-risk the drop-in early                | forces a direct implementation that is unwound or seeds v2 with warts; leaves no seam to isolate; tried and discarded                            |
 | Parallel v1 and v2 implementations                        | two query paths, two encoders, two auth extractions drifting apart; warts in two places                                                          |
-| `legacy_*.go` files inside `internal/httpapi`             | visible to a reader, invisible to the compiler: a bare helper can grow legacy behaviour and nothing forbids the reverse dependency               |
-| A top-level `internal/legacy` package                     | only the HTTP plane has a legacy surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
+| `v1_*.go` files inside `internal/httpapi`                 | visible to a reader, invisible to the compiler: a bare helper can grow legacy behaviour and nothing forbids the reverse dependency               |
+| A top-level `internal/v1` package                         | only the HTTP plane has a legacy surface (Flight SQL and DuckDB are new); a top-level package suggests a cross-cutting layer that does not exist |
 | An `internal/httpapi/v2` package for the current protocol | the current protocol is the package; a `v2` path element is confusable with a module major-version suffix                                        |
 | The router imports the v1 package and registers itself    | makes `internal/httpapi` depend on v1; the wrap direction becomes a convention again                                                             |
