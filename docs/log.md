@@ -87,6 +87,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-17 -- test-strategy-plan.md deleted with the documentation re-cut landed
+
+- The decisions to ADR-0013; the layers, the deviations and the
+  milestones to `docs/brief.md`; the mechanics to `docs/e2e-plan.md`
+  and `docs/bench-plan.md`.
+
 ## 2026-09-17 -- ADR-0013 accepted: e2e goldens run in Buildkite
 
 - Owner decisions: e2e returns to CI from M1; a golden is an audited

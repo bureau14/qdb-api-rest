@@ -134,6 +134,15 @@ failure still has a body to diff against.
 Cross-format equivalence (JSON, NDJSON, CSV, Arrow IPC, Flight SQL) is
 covered by the Go generative property tests, never by golden files.
 
+An endpoint lands with its goldens, so the suites grow with the
+milestones (`docs/brief.md`, Milestones): the auth and session cases,
+the exploration cases and the `/api/v2/sql` cases join `v2` with their
+endpoints; ingestion is qdb-nats-connector's flow exactly -- ingest
+through the API, `qdb_export`, byte-compare with the golden CSV. Flight
+SQL has no shell client; whether it gets a small Go tool in this
+harness or stays with the property tests is decided at that milestone's
+entry.
+
 ### The v2 suite
 
 Captured from the server under test (`make capture-v2`, an operator
