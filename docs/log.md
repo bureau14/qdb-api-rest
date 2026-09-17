@@ -5,33 +5,33 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
-| Milestone             | State       | Note                                                                 |
-| --------------------- | ----------- | -------------------------------------------------------------------- |
-| M0 -- Foundation      | done        | exit signed off 2026-08-25                                           |
-| M1 -- v2 query        | in progress | query, login and compression landed; the TTFB and RSS numbers remain |
-| M2 -- v2 auth         | not started |                                                                      |
-| M3 -- Drop-in compat  | not started | red bar exists: `make -C tests/e2e test-legacy`                      |
-| M4 -- Resilience      | not started | entry decides whether e2e returns to CI                              |
-| M5 -- Flight SQL      | not started |                                                                      |
-| M6 -- Exploration     | not started |                                                                      |
-| M7 -- Ingestion       | not started |                                                                      |
-| M8 -- Embedded DuckDB | not started |                                                                      |
-| M9 -- Release         | not started |                                                                      |
+| Milestone             | State       | Note                                                                            |
+| --------------------- | ----------- | ------------------------------------------------------------------------------- |
+| M0 -- Foundation      | done        | exit signed off 2026-08-25                                                      |
+| M1 -- v2 query        | in progress | query, login and compression landed; the `v2` golden suite in Buildkite remains |
+| M2 -- v2 auth         | not started |                                                                                 |
+| M3 -- Drop-in compat  | not started | local red bar exists: `make -C tests/e2e test-legacy`; joins CI when green      |
+| M4 -- Resilience      | not started |                                                                                 |
+| M5 -- Flight SQL      | not started |                                                                                 |
+| M6 -- Exploration     | not started |                                                                                 |
+| M7 -- Ingestion       | not started |                                                                                 |
+| M8 -- Embedded DuckDB | not started |                                                                                 |
+| M9 -- Release         | not started |                                                                                 |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
 upstream that links `libqdb_api.a` statically on Linux. Exit: the
 format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
 on all eight platforms; `POST /api/v2/auth/login`
 mints an access token the query endpoint accepts; gzip and zstd
-negotiated via `Accept-Encoding`; time-to-first-byte and server RSS for the 5.6M-row
-query recorded in the e2e results.
+negotiated via `Accept-Encoding`; the `v2` golden suite green in
+Buildkite on all eight platforms (`docs/e2e-plan.md`, Goldens).
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
 the 18 legacy goldens replay against a server under test. Exit: every
 legacy golden green against `bin/qdb_rest` at both
-spellings; `bench-legacy@new-rest` fingerprints equal `legacy@old-rest`
+spellings, in Buildkite on all eight platforms; `bench-legacy@new-rest` fingerprints equal `legacy@old-rest`
 on every query under `CAPI_COMPRESSION=none` (enable
 `("legacy", "new-rest")` in `tests/e2e/bench/bench.py`).
 
@@ -41,28 +41,29 @@ In flight:
 
 Next:
 
-1. The M1 exit numbers: time-to-first-byte and server RSS for the
-   5.6M-row query, recorded in the e2e results (`docs/e2e-plan.md`,
-   Stress definition, item 1).
-2. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+1. The e2e harness unit, which closes M1 (`docs/e2e-plan.md`, Goldens
+   and "In Buildkite"): one driver for both suites; the `v2` suite
+   captured and audited; the `body.v1` overlay for golden 07; the
+   archive repackaged with `expected/`; `scripts/cicd/40.test-e2e.sh`
+   in the build step; the `make load` time on the slowest agent. The
+   base is ahead of origin: push and trigger the build through the API
+   (`.buildkite/AGENTS.md`).
+2. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+   time to first byte and RSS for the 5.6M-row query
+   (`docs/bench-plan.md`, "Protocols, servers, runs").
+3. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
    freed; and a null-aware timestamp column constructor for the batch
    writer, so the table fixture can write a null timestamp cell
    (`internal/AGENTS.md`, Tests).
-3. At M4's entry: decide whether the e2e harness returns to CI or the
-   budgets run locally (`.buildkite/AGENTS.md` holds the decision and
-   the recipe). The full-table query needs `cluster.max_in_buffer_size`
-   raised (the C API default cannot return it; the old server's flags
-   in `tests/e2e/Makefile` show the size); an oversized reply is
-   `ErrNetworkInbufTooSmall`, fatal in the binding, so no reconnect.
 
 Handoff to M3 (the legacy wrappers):
 
 - The legacy byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
-  `docs/e2e-plan.md`, "Legacy goldens".
+  `docs/e2e-plan.md`, "The legacy suite".
 - Every legacy route is a wrapper over its v2 counterpart and lives in
   `internal/httpapi/legacy`, created with the first wrapper together
   with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
@@ -76,14 +77,21 @@ Handoff to M3 (the legacy wrappers):
   have one spelling (ADR-0008).
 - `legacy@new-rest` runs under the bench's pinned C API compression
   through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
-- Golden 07's `count` column is answered as `int64`; the replay treats
-  the two as equal (`docs/e2e-plan.md`, "Legacy goldens").
+- Golden 07's `count` column is answered as `int64`: a deliberate
+  deviation, carried as a `body.v1` overlay (`docs/e2e-plan.md`, "The
+  legacy suite").
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-09-17 -- ADR-0013 accepted: e2e goldens run in Buildkite
+
+- Owner decisions: e2e returns to CI from M1; a golden is an audited
+  response, a v1 deviation an overlay; budgets leave the CI gates and
+  every number is the bench's (`docs/brief.md`, Testing doctrine).
 
 ## 2026-09-16 -- compression-plan.md deleted with response compression landed
 
