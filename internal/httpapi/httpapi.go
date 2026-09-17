@@ -33,11 +33,10 @@ func handleReadiness(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// registerStatusRoutes serves the probes at their legacy paths, which
-// load balancers at customer sites health-check, and at their /api/v2
-// mirrors. Liveness answers 200 with an empty body and no Content-Type,
-// the shape pinned by the status-probe goldens; readiness dials the
-// cluster.
+// registerStatusRoutes serves the probes at their unversioned paths,
+// which load balancers at customer sites health-check, and at their
+// /api/v2 mirrors. Liveness answers 200 with an empty body and no
+// Content-Type; readiness dials the cluster.
 func registerStatusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status/liveness", handleLiveness)
 	mux.HandleFunc("GET /api/status/readiness", handleReadiness)

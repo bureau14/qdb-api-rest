@@ -113,8 +113,7 @@ func (c *compressingWriter) Unwrap() http.ResponseWriter {
 // client asked for, problem bodies included; identity passes the writer
 // through untouched. Every response of the route varies on the header,
 // so a cache never serves one client's coding to another. Applied per
-// route, never to the mux: the probes answer empty bodies with
-// golden-pinned headers.
+// route, never to the mux: the probes answer empty bodies.
 func withCompression(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Accept-Encoding")
