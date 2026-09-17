@@ -15,11 +15,11 @@ budgets a CI gate on shared agents, and left the harness out of
 Buildkite altogether, so no milestone closed on CI evidence of the
 binary as a client sees it.
 
-The legacy goldens were defined as "what the old server said". v1
-deviates from the old server deliberately in a few places (brief,
-Compatibility contract, "Deliberate deviations"), and v2 has no old
-server to capture from, so that definition neither holds for v1 nor
-extends to v2.
+The v1 goldens were defined as "what the old server said". v2 has no
+old server to capture from, so that definition does not extend to v2;
+and v1 deviates from the old server deliberately in a few places
+(brief, Compatibility contract, "Deliberate deviations"), which a
+capture from the old server cannot describe.
 
 ## Decision
 
@@ -41,13 +41,14 @@ extends to v2.
    at, judged correct and committed; later runs are compared with it
    byte for byte, with no canonicalization and no tolerance. A v2
    golden is captured from the server under test and audited against an
-   independent source. A legacy golden is captured from the old server,
+   independent source. A v1 golden is captured from the old server,
    whose behaviour is the specification. Capture never runs in CI; a
    golden changes only in a reviewed commit.
-4. **A deliberate deviation is an overlay file.** The capture from the
-   old server stays untouched; a hand-written `body.v1`, `status.v1` or
-   `headers.v1` next to it is what the server under test is compared
-   with. An overlay exists only for a deviation the brief lists.
+4. **No v1 golden exercises a deliberate deviation.** A v1 golden is
+   what the old server said and nothing else: the same files are
+   replayed against the old server and against the server under test.
+   A case whose answer v1 deliberately changes is not a golden; the
+   brief specifies the deviation.
 5. **Text is compared as bytes, Arrow IPC as decoded content.** JSON,
    NDJSON and CSV bodies are compared byte for byte; gzip after
    decompression. The Arrow format leaves the value of a null slot and
@@ -59,7 +60,7 @@ extends to v2.
    with a small schema golden and with the audited CSV golden of the
    same query. The Arrow case asserts that the binary's Arrow stream
    carries exactly what its audited CSV response carries.
-6. **A suite enters CI when it is green.** The legacy suite is a local
+6. **A suite enters CI when it is green.** The `v1` suite is a local
    red bar until the wrappers land, then joins the build step.
 7. **An endpoint lands with its goldens.** Every milestone's exit
    criteria name the suite that is green in Buildkite.
@@ -69,13 +70,13 @@ extends to v2.
 - Every milestone closes on CI evidence of the binary; the first
   shippable binary is CI-proven as a drop-in at the byte level.
 - The old server is needed in two places only, both local operator
-  steps: capturing legacy goldens and the bench's old-server runs.
+  steps: capturing v1 goldens and the bench's old-server runs.
   Replay needs the committed goldens and nothing else.
 - Byte-shape compatibility is CI's; semantic compatibility at full
   size through a real client stays a by-product of the bench run that
   measures the same pair.
-- The list of v1 deviations is a directory listing of `.v1` files, and
-  each one is a diff between two files; the comparator is `cmp`.
+- The comparator is `cmp` and knows nothing about a case. The list of
+  v1 deviations is the brief's table; no golden query selects a `COUNT`.
 - CI loads the dataset on every platform; e2e cases bound their own
   result size, and no e2e case selects the whole table.
 - A performance regression is caught by a person running the bench, not
@@ -96,7 +97,7 @@ extends to v2.
 | Performance budgets as CI gates                   | shared agents make a timing bound flaky or meaningless; materialization puts most of it outside this binary                                 |
 | Numbers recorded by the e2e harness               | a second home for what the bench measures; nothing gates on them                                                                            |
 | A comparator rule per deviation                   | hides the deviation in shell code and grows with every one                                                                                  |
-| Editing a captured body in place                  | the selfcheck against the old server stops proving the capture                                                                              |
+| Editing a captured body to what v1 answers        | the replay against the old server stops proving the capture                                                                                 |
 | A sha256 in place of a large expected body        | a failure has nothing to diff against                                                                                                       |
 | A canonicalizing or tolerance comparator          | output is deterministic; an unexpected byte is a bug worth seeing                                                                           |
 | Arrow IPC compared as raw bytes                   | the format leaves null slots and padding undefined; stable bytes would be an accident of one C API release                                  |
@@ -104,4 +105,4 @@ extends to v2.
 | pyarrow or pandas as the decoder in the harness   | no pyarrow wheels on FreeBSD, a venv on every agent, Python in the permanent path; pandas turns a nullable int64 into float64               |
 | A decoder independent of the CSV encoder          | a second rendering needs a second audited golden; the CSV golden is audited on its own, so a renderer bug cannot hide behind the comparison |
 | e2e kept out of CI until the resilience milestone | every earlier milestone, the first shippable binary included, would close on local evidence only                                            |
-| The red legacy suite in CI before the wrappers    | a permanently red step teaches everyone to ignore the build                                                                                 |
+| The red `v1` suite in CI before the wrappers      | a permanently red step teaches everyone to ignore the build                                                                                 |
