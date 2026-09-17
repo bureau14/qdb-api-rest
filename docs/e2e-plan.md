@@ -1,29 +1,30 @@
 # End-to-End Test Harness -- Plan
 
 Status: approved. This document specifies the permanent e2e harness
-described in the brief's Testing doctrine (items 2 and 3): golden-data
-equivalence, budgets, and stress against a live qdbd. It is a working
+described in the brief's Testing doctrine (items 2 and 3): golden e2e
+and stress against a live qdbd. It is a working
 document: verified facts and dates are recorded here, not in the brief;
 progress is recorded in `docs/log.md`, not here. Decisions are in the
 dated decision logs at the end.
 
 ## Purpose
 
-Prove, for the life of the product, that the REST server:
+Prove, for the life of the product, that the built binary, driven over
+HTTP like a client:
 
-1. serves the legacy surface byte for byte (the goldens);
-2. stays inside its performance budgets (time to first byte, bounded
-   memory, throughput);
-3. behaves honestly under stress: fast, explicit failure under overload,
+1. returns exactly the audited response, on the v2 surface and on the
+   legacy surface (the goldens);
+2. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
+Every assertion is pass or fail. The harness measures nothing: time to
+first byte, memory and throughput are the bench's (ADR-0013;
+`docs/bench-plan.md`), which lives separately in `tests/e2e/bench/` and
+consumes this harness's services and dataset.
+
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) and contains no Python. It runs on developer machines; whether
-it returns to Buildkite is decided at the resilience milestone's entry,
-and the re-adding recipe is in `.buildkite/AGENTS.md`. The temporary
-multi-target performance comparison lives separately in
-`tests/e2e/bench/` (see `docs/bench-plan.md`) and consumes this harness's
-services and dataset.
+lineage) and contains no Python. It runs identically on developer
+machines and in Buildkite on every platform (see "In Buildkite").
 
 ## Service model
 
@@ -59,6 +60,7 @@ from the original qdbd data directory (`shard_size` added to the config so
 reproduce.csv            data, no header (qdb_export convention)
 reproduce.import.json    qdb_import parser/column config, with shard_size
 metadata.json            row count, sha256 of the csv, generation date
+expected/<suite>/<case>/ expected responses too large for git (see Goldens)
 ```
 
 Hosting follows qdb-nats-connector: the public builddeps S3 bucket, prefix
@@ -95,10 +97,65 @@ byte-for-byte with the CSV it was imported from (verified identical
 belt-and-braces check. A mismatch is a `qdb_export`/`qdb_import` bug
 worth surfacing, not a harness problem.
 
-## Legacy goldens
+CI loads the same archive developers do; there is one dataset. Cases
+bound their own result size with `IN RANGE` or `LIMIT`, and no case
+selects the whole table: a full-table response is the bench's business.
+To verify with the first CI run (2026-09-17: unmeasured): the wall-clock
+time of `make load` on the slowest agent. The fallback, if it is
+unacceptable, is a second, smaller archive of whole shards loaded under
+its own table name, with the three `reproduce` legacy goldens recaptured
+against it.
+
+## Goldens
+
+A golden is an audited expected response: a run somebody looked at,
+judged correct, and committed; every later run is compared with it byte
+for byte (ADR-0013). No canonicalization and no tolerance: the text
+encoders are deterministic on every platform, QuasarDB returns rows in
+a stable order, and an unexpected byte is a bug worth seeing. Capture
+never runs in CI; a golden changes only in a commit whose diff the owner
+reviews.
+
+A case is a directory `tests/e2e/golden/<suite>/<NN-slug>/`: a
+hand-written `request.json` (method, path, pre-encoded query string,
+headers, body, auth mode, compare mode) next to the expected `status`,
+`headers` (only the headers that belong to a contract, lowercased,
+sorted; absence is recorded as absence) and `body`. One driver captures
+and replays both suites. Compare modes: `bytes`; `gunzip` (the
+decompressed bytes); `token-shape`, because a login answers a token that
+differs per call (`{"token": <non-empty string>}` on v1, RFC 6749's
+fields on v2).
+
+An expected body small enough for review lives in git next to its
+`request.json`; a body too large for git lives in the dataset archive
+under `expected/<suite>/<case>/`, qdb-nats-connector's layout, so a
+failure still has a body to diff against.
 
 Cross-format equivalence (JSON, NDJSON, CSV, Arrow IPC, Flight SQL) is
 covered by the Go generative property tests, never by golden files.
+
+### The v2 suite
+
+Captured from the server under test (`make capture-v2`, an operator
+step) and audited before it is committed: a data case against qdbsh or
+`qdb_export` output for the same range, a shape or error case against
+the ADR that owns the wire contract. Cases: the login (anonymous, and
+the secure cluster's user on the secure cluster); the query in JSON,
+NDJSON and CSV over the seeded fixture (every type, nulls, the awkward
+string) and over a `reproduce` range of roughly 200k rows, so every
+text encoder crosses its 65536-row chunk boundary several times; gzip;
+and the rows of the ADR-0010 and ADR-0011 error tables a client can
+provoke from outside (no bearer, malformed bearer, unsupported media
+type, oversized body, invalid query, refused credentials).
+
+What is byte-stable is golden-compared. Arrow IPC is not: the value
+slots under nulls come from C-allocated buffers handed through
+zero-copy, so the suite checks its status and `content-type` only, and
+its content is the property test's. zstd is covered by the Go round-trip
+test; it joins the suite only if the `zstd` CLI is present on every
+agent.
+
+### The legacy suite
 
 Legacy byte-shape equivalence (`/api/login`, `/api/query`, status
 probes) uses small golden request/response pairs captured from the
@@ -109,7 +166,7 @@ body, auth mode `none|bearer|urlparam`, compare mode
 (only `content-type` and `content-encoding`, lowercased, sorted; absence
 is recorded as absence) and `body` (raw bytes; decompressed for
 `gunzip`). `login-shape` checks `{"token": <non-empty string>}` because
-tokens vary per call. `tests/e2e/legacy.sh capture|replay` drives both
+tokens vary per call. The driver's `capture|replay` modes drive both
 sides; `make capture-golden` is an operator step, `make test-legacy`
 replays against the server under test, `make test-legacy-selfcheck`
 replays against the old server to prove the goldens are deterministic.
@@ -140,8 +197,18 @@ Compatibility contract) meet:
   strings never appear because the C API types every null cell
   `qdb_query_result_none` (verified 2026-08-19 over raw selects,
   `IN RANGE`, `GROUP BY`, aggregates and arithmetic on nulls).
-- Golden 07 carries `"type":"count"` where v1 answers `"type":"int64"`;
-  the replay treats the two as equal for that column.
+- Golden 07 carries `"type":"count"` where v1 answers `"type":"int64"`:
+  a deliberate deviation, so the case carries a `body.v1` overlay.
+
+A deliberate deviation (`docs/brief.md`, Compatibility contract,
+"Deliberate deviations") is an overlay: the captured `status`, `headers`
+and `body` stay exactly what the old server said, so
+`make test-legacy-selfcheck` keeps proving them, and a hand-written
+`body.v1`, `status.v1` or `headers.v1` next to the capture is what the
+replay against the server under test prefers. Every deviation is a
+reviewable diff between two files, the full list is
+`ls golden/legacy/*/*.v1`, and the comparator stays `cmp`. An overlay
+exists only for a deviation the brief lists.
 
 The byte-shape facts the goldens pin (verified 2026-09-02 from the old
 server's models and producers on `master`; the v1 wrappers in
@@ -177,26 +244,34 @@ query=SELECT FROM): The provided query is invalid. expected FROM`).
   everything else is identity.
 
 Two compatibility layers, deliberately: this harness checks **byte-shape**
-(golden pairs, permanent, CI); the temporary bench checks **semantic**
+(golden pairs, permanent, Buildkite; replay needs the committed goldens
+and never the old server); the temporary, local bench checks **semantic**
 compatibility through a real client -- the same legacy-protocol Python
 code run against the old and the new server, compared by normalized
 DataFrame fingerprint (`legacy@old-rest == legacy@new-rest` in
 `docs/bench-plan.md`).
 
+## In Buildkite
+
+`scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
+platform's build step, against the qdbd `start-services.sh` started and
+the binary `20.build.sh` built: `make load seed`, then the suites. A
+suite enters the step when it is green: `test-v2` first, `test-legacy`
+when the wrappers land, the stress with the resilience milestone. The
+script follows qdb-nats-connector's `50.test-e2e.sh`: GNU make discovery
+(`gmake` on FreeBSD, `mingw32-make` on Windows), the Windows DLL
+co-location next to the binary, and a dump of the REST server's and
+qdbd's logs on failure. `curl`, `jq` and `gunzip` are what that pipeline
+already requires on the same agents.
+
 ## Stress definition
 
-All against the 5,613,032-row table, all shell + curl + awk:
-
-1. **Budgets as CI gates** (brief item 3): time to first byte under a
-   fixed bound (`curl -w '%{time_starttransfer}'`), server RSS delta
-   bounded and independent of result size (`ps -o rss=` sampled during
-   the request), sustained throughput floor per format. Budget numbers
-   are versioned in the repo and revised deliberately, never silently.
-2. **Concurrency**: N parallel clients (`xargs -P` + curl) against the
-   full query; assert the session budget bounds memory and load (a
-   request past the budget waits for a session or times out at its
-   deadline, never goodput collapse), and that in-flight streams
-   complete across a graceful shutdown drain.
+Shell + curl, asserted as behaviour, never as a timing or a measured
+number (ADR-0013): N parallel clients (`xargs -P` + curl) against a
+large `reproduce` range; assert that the session budget bounds load (a
+request past the budget waits for a session or times out at its
+deadline, every admitted request completes with the golden body), and
+that in-flight streams complete across a graceful shutdown drain.
 
 ## Layout
 
@@ -207,14 +282,16 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-golden |
                           test-legacy | test-legacy-selfcheck | clean | distclean
-                          test-budgets | test-stress (arrive with the budgets)
+                          capture-v2 | test-v2 (arrive with the v2 suite)
+                          test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
-  legacy.sh               golden capture/replay driver
+  legacy.sh               golden capture/replay driver (one driver for both suites
+                          once the v2 suite arrives)
   seed.sql                legacy fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
-  budgets.env             versioned budget numbers (arrives with the budgets)
-  golden/legacy/          legacy request/response pairs
+  golden/legacy/          legacy request/response pairs, overlays (*.v1)
+  golden/v2/              v2 request/response pairs (arrives with the v2 suite)
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench-plan.md)
   AGENTS.md, README.md    conventions, usage
@@ -269,3 +346,13 @@ from the Go `rapid` property tests, generated in-process.
 | Decision                                    | Why                                                              | Rejected                                          |
 | ------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
 | No full-table `text/csv` equivalence target | not a target; cross-format correctness is the Go property test's | the awk tolerance comparator over `reproduce.csv` |
+
+## Decision log (2026-09-17)
+
+| Decision                                          | Why                                                                                     | Rejected                                              |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| The harness measures nothing; budgets leave       | ADR-0013: a number is the bench's, CI gates are yes/no                                  | `test-budgets`, `budgets.env`, TTFB and RSS gates     |
+| One driver for both suites                        | capture, replay and compare are the same mechanics; only the login and the paths differ | a second script per suite                             |
+| Expected bodies in git, large ones in the archive | small bodies are reviewable diffs; a large one still gives a failure something to diff  | everything in git; a sha256 in place of the body      |
+| One dataset in CI, cases bound their own size     | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback) |
+| A deviation is an overlay next to the capture     | ADR-0013; the selfcheck against the old server keeps proving the capture                | a comparator rule for golden 07                       |
