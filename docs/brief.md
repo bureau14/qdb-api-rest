@@ -667,7 +667,7 @@ internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
-tests/e2e/             golden-data harness (make + shell + curl + awk, live qdbd); bench/ inside is temporary
+tests/e2e/             golden e2e harness (make + shell + curl, live qdbd; runs in Buildkite); bench/ inside is temporary and local
 vendor/                vendored dependencies (committed)
 ```
 
@@ -786,20 +786,19 @@ entry/exit criteria defined when it starts.
   connection pool core (budget, breaker, retry), `POST /api/v2/query`
   streamed through all four encoders, bearer authentication,
   `POST /api/v2/auth/login` (access token only), gzip and zstd
-  response compression.
+  response compression, the `v2` golden suite in Buildkite.
 - **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
 - **M3 -- Drop-in compat**: the legacy endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
-  `/api/v1/query` (and their unversioned compat aliases) with golden
-  equivalence tests; the tag-find core in `internal/qdb` that the
+  `/api/v1/query` (and their unversioned compat aliases) with the
+  `legacy` golden suite green in Buildkite; the tag-find core in `internal/qdb` that the
   `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
   replaces the old binary at a customer site with no client changes;
   the first shippable binary.
 - **M4 -- Resilience**: `/metrics`, the graceful-drain and
-  concurrency stress, performance budgets as gates with their numbers
-  versioned in the repo.
+  concurrency stress as behaviour assertions in Buildkite.
 - **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
   `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests;
   the bench retires once the new server wins on both of its rows.
@@ -826,9 +825,8 @@ exposes no v2 endpoint whose shape or lifetime is still moving, and the
 legacy login wraps a finished counterpart. Flight SQL precedes exploration and
 ingestion because the gateway thesis is why the project exists, the
 Arrow encoder is fresh from M1, and the bench retires as soon as Flight
-SQL is measured. M4's budgets-as-gates require the e2e harness in CI,
-or an explicit rule that they run locally; that decision is taken at
-M4's entry.
+SQL is measured. The e2e goldens run in Buildkite from M1, so every
+milestone closes on CI evidence of the built binary (ADR-0013).
 
 ## Versioning and release
 
