@@ -5,7 +5,7 @@
     "Content-Type": "application/json"
   },
   "body": {
-    "query": "SELECT COUNT(*) FROM \"reproduce\""
+    "query": "SELECT * FROM foo_01"
   },
   "auth": "urlparam",
   "compare": "bytes"

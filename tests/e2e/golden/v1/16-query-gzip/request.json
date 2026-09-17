@@ -6,7 +6,7 @@
     "Accept-Encoding": "gzip"
   },
   "body": {
-    "query": "SELECT COUNT(*) FROM \"reproduce\""
+    "query": "SELECT * FROM \"reproduce\" LIMIT 10"
   },
   "auth": "bearer",
   "compare": "gunzip"
