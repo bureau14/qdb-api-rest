@@ -48,7 +48,7 @@ wall clock, time to first byte, RSS, throughput, byte volumes. The e2e
 harness and CI assert behaviour and measure nothing (ADR-0013), so no
 milestone criterion or CI gate is a number from here; a person reads
 `report`. The semantic compatibility check costs nothing extra: it is a
-by-product of the `legacy@new-rest` run that measures the same pair.
+by-product of the `v1@new-rest` run that measures the same pair.
 
 This is a local developer tool, deliberately **not** wired into Buildkite:
 it builds `qdb-api-python` from a local checkout and the old server from
@@ -77,7 +77,7 @@ A run is a **(protocol, server) pair**. The two axes are orthogonal:
 | protocol     | client                                                                                                                     |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | `native`     | `quasardb` Python package over `qdb://`, streaming via `stream_query`, the native reference the gateway is chasing         |
-| `legacy`     | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                                      |
+| `v1`         | `POST /api/login` + `POST /api/query`, JSON, client-side parse and wart normalization                                      |
 | `flightsql`  | `pyarrow.flight` / `adbc_driver_flightsql`, Arrow record batches                                                           |
 | `http-arrow` | `POST /api/v2/auth/login` + `POST /api/v2/query` with `Accept: application/vnd.apache.arrow.stream`, read by `pyarrow.ipc` |
 
@@ -92,8 +92,8 @@ Valid runs (the registry is this table, nothing else):
 | run                   | answers                                                                         | needs                  |
 | --------------------- | ------------------------------------------------------------------------------- | ---------------------- |
 | `native@qdbd`         | the reference the gateway is chasing; validates dataset and qdbd health         | qdbd and the dataset   |
-| `legacy@old-rest`     | the production server's baseline                                                | the old server         |
-| `legacy@new-rest`     | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers    |
+| `v1@old-rest`         | the production server's baseline                                                | the old server         |
+| `v1@new-rest`         | drop-in compatibility (same client code, same fingerprint?) and drop-in speedup | the legacy wrappers    |
 | `flightsql@new-rest`  | the gateway thesis                                                              | Flight SQL             |
 | `http-arrow@new-rest` | the first number for the rewrite: the v2 query path, Arrow over plain HTTP      | the v2 login and query |
 
@@ -115,7 +115,7 @@ Headline, per (run, query, repetition):
 Supporting:
 
 - `ttfb_seconds` -- per-protocol definition, printed with the number:
-  - `legacy`: first response body byte.
+  - `v1`: first response body byte.
   - `flightsql`, `http-arrow`: arrival of the first Arrow record batch.
   - `native`: return of the first batch from `stream_query`.
 - `client_peak_rss_bytes`: sampled from outside the measurement child.
@@ -132,13 +132,13 @@ Supporting:
     it exits.
   - `client_bytes`: bytes the measured client process received, per
     protocol: `native` = `qdbd_out_bytes` by definition (the client is
-    the reducer); `legacy` = HTTP body bytes read (gzip controlled
+    the reducer); `v1` = HTTP body bytes read (gzip controlled
     explicitly, recorded); `flightsql` = sum of Arrow IPC record-batch
     sizes (approximate; gRPC may compress on the wire).
   - `client_cpu_seconds`: user+sys CPU of the measurement child
     (`resource.getrusage`), the "low-CPU client machine" proxy.
   - `report` derives `reduction = qdbd_out_bytes / client_bytes`.
-- `legacy_wart_count`: occurrences of `"(void)"` / `"(undefined)"` seen by
+- `wart_count`: occurrences of `"(void)"` / `"(undefined)"` seen by
   the legacy parser before normalization (informational; makes a silent
   wart drop visible in `report` even though fingerprints are compared
   post-normalization).
@@ -319,7 +319,7 @@ one-line change.
 tests/e2e/bench/
   Makefile               check | venv | old-server | new-server | bench-<protocol>@<server> | report | clean
   bench.py               run + report subcommands (see CLI)
-  protocols/             native.py, legacy.py, flightsql.py, http_arrow.py   (fetch)
+  protocols/             native.py, v1.py, flightsql.py, http_arrow.py   (fetch)
   servers/               old_rest.py, new_rest.py             (server_cmd)
   results/               <protocol>@<server>.json (gitignored), consumed by report
   README.md              usage; links back to this plan
@@ -367,25 +367,25 @@ make -C tests/e2e load                    # once: dataset into qdbd (idempotent)
 cd tests/e2e/bench
 make check venv old-server                # parity check, bench venv, old binary
 make bench-native@qdbd                    # -> results/native@qdbd.json
-make bench-legacy@old-rest                # -> results/legacy@old-rest.json
+make bench-v1@old-rest                # -> results/v1@old-rest.json
 make bench-http-arrow@new-rest            # needs the v2 login and query
-make bench-legacy@new-rest                # needs the legacy wrappers
+make bench-v1@new-rest                # needs the legacy wrappers
 make bench-flightsql@new-rest             # needs Flight SQL
 make report                               # merges results/*.json
 ```
 
-`bench.py run --protocol legacy --server new-rest` writes
-`results/legacy@new-rest.json`: per-repetition metrics, the mean,
+`bench.py run --protocol v1 --server new-rest` writes
+`results/v1@new-rest.json`: per-repetition metrics, the mean,
 environment (git shas of this repo/master/qdb-api-python, C API hash,
 machine, timestamp), and the result fingerprint. `bench.py report` reads
 whatever result files exist and prints two sections:
 
 1. **Compatibility**: a fingerprint matrix per query across all runs,
    with the sentence that matters called out explicitly --
-   `legacy@old-rest == legacy@new-rest` -- plus the wart counts.
+   `v1@old-rest == v1@new-rest` -- plus the wart counts.
 2. **Performance**: wall-clock / TTFB / RSS table, with the two headline
-   deltas: `legacy@new-rest` vs `legacy@old-rest` (drop-in speedup) and
-   `flightsql@new-rest` vs `legacy@old-rest` (gateway thesis), and
+   deltas: `v1@new-rest` vs `v1@old-rest` (drop-in speedup) and
+   `flightsql@new-rest` vs `v1@old-rest` (gateway thesis), and
    `native@qdbd` as the floor.
 3. **Gateway leverage**: per query, `qdbd_out_bytes` vs `client_bytes`
    vs `client_cpu_seconds` across all runs, with `reduction` derived. The
@@ -419,13 +419,13 @@ def server_cmd(cfg) -> list[str]
   fetch-iterator pulls; fingerprint accumulation between pulls is bench
   overhead and stays outside both.
 - A protocol module knows nothing about which server answers; it gets a
-  base URL / URI from the harness. That is what makes `legacy@old-rest`
-  and `legacy@new-rest` run byte-for-byte the same client code.
+  base URL / URI from the harness. That is what makes `v1@old-rest`
+  and `v1@new-rest` run byte-for-byte the same client code.
 - The harness owns everything else: child forking, timing, RSS sampling,
   server lifecycle, fingerprinting, persistence. Adding `flightsql` later
   means writing `protocols/flightsql.py` (~30 lines) and enabling the
   registry row -- no harness changes.
-- `legacy.py` is a customer's script: anonymous login, `POST /api/query`
+- `v1.py` is a customer's script: anonymous login, `POST /api/query`
   over stdlib `http.client` (exact first-body-byte TTFB), plain
   `json.loads` (that parse cost is the honest price of this path), then
   columnar JSON to DataFrame with the sentinel strings normalized and
@@ -453,10 +453,10 @@ concrete: identical after documented normalization, floats within
 tolerance.
 
 Caveat, stated once: because normalization runs before fingerprinting,
-`legacy@old-rest == legacy@new-rest` proves data equivalence through a
+`v1@old-rest == v1@new-rest` proves data equivalence through a
 real client, not byte-shape identity of the legacy JSON (a dropped wart
 would still pass). Byte-shape is the permanent e2e golden pairs' job;
-the informational `legacy_wart_count` keeps a silent drop visible here.
+the informational `wart_count` keeps a silent drop visible here.
 
 The same fingerprint (via `native@qdbd`) is the one-time check that
 the CSV export/import round trip of the dataset is faithful: run once
@@ -465,12 +465,12 @@ imported table, compare.
 
 ## Where the rewrite drops in
 
-`native@qdbd` and `legacy@old-rest` agree on every fingerprint, which
+`native@qdbd` and `v1@old-rest` agree on every fingerprint, which
 cross-checks the legacy parser against the native client before the
 rewrite enters the picture. The remaining registry rows are enabled
 in `bench.py` when their server side exists: `http-arrow@new-rest` with
 the v2 login and query (the first performance signal),
-`legacy@new-rest` with the legacy wrappers (the first drop-in
+`v1@new-rest` with the legacy wrappers (the first drop-in
 compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-08-16)
@@ -517,7 +517,7 @@ compatibility signal), `flightsql@new-rest` with Flight SQL.
 
 ## Decision log (2026-09-17)
 
-| Decision                                      | Why                                                                                             | Rejected                                              |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| The bench is the one home of measured numbers | ADR-0013: TTFB and RSS are numbers a person reads, not gates                                    | TTFB and RSS recorded or gated by the e2e harness     |
-| `http-arrow@new-rest` as a run                | needs only the v2 login and query, so the rewrite's first number does not wait for the wrappers | waiting for `legacy@new-rest` or `flightsql@new-rest` |
+| Decision                                      | Why                                                                                             | Rejected                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| The bench is the one home of measured numbers | ADR-0013: TTFB and RSS are numbers a person reads, not gates                                    | TTFB and RSS recorded or gated by the e2e harness |
+| `http-arrow@new-rest` as a run                | needs only the v2 login and query, so the rewrite's first number does not wait for the wrappers | waiting for `v1@new-rest` or `flightsql@new-rest` |
