@@ -111,10 +111,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   (`Generate`, then `Create` on a `*qdb.Cluster`) and compares what came
   back with the `Table` it holds; it never writes its own loader. The
   fixture pushes through the batch writer, whose null is the type's
-  sentinel (`MinInt64`, `NaN`, the empty string, the nil blob), so a
-  generated value is never a sentinel and a timestamp data column is
-  dense: the null timespec is not settable through the writer, and a
-  null-aware constructor is an upstream request. The table fixture and
+  sentinel (`MinInt64`, `NaN`, the empty string, the nil blob,
+  `NullTime`), so a generated value is never a sentinel. The table
+  fixture and
   the cluster fixture (`internal/qdbtest/cluster`, `NewInsecure` and
   `NewSecure`) are subpackages because `internal/qdb`'s own tests import `qdbtest`, and
   a `qdbtest` that imported `internal/qdb` would be a test import cycle.
