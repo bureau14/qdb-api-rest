@@ -80,7 +80,7 @@ those.
 - A qdb-side secret rotation while the user's pool is alive is not
   detected by login: the pool keeps dialing with the credentials it was
   created with until idle eviction. Accepted as rare.
-- The refresh endpoint (M2) reuses the token response and the problem
+- The refresh endpoint (M3) reuses the token response and the problem
   table, adding `refresh_token` and its own rows.
 
 ## Alternatives rejected
@@ -93,4 +93,4 @@ those.
 | The brief sketch's `{access_token, expires_in}`   | RFC 6749 is a registered vocabulary stock clients read, like RFC 9457 and 6750 for the query |
 | 403, or 401 with `WWW-Authenticate`, on bad creds | the caller is unauthenticated, and no bearer scheme was used                                 |
 | Decoding any body as JSON                         | one comparison gives a clear 415, symmetric with the query endpoint                          |
-| A TTL constant until M2                           | M2 adds the key anyway; one config field now                                                 |
+| A TTL constant until M3                           | M3 adds the key anyway; one config field now                                                 |

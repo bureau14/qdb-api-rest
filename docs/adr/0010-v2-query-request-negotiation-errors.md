@@ -110,5 +110,5 @@ so a change after release is a protocol change.
 | An `ErrorType` to status table now         | no client asks for it yet; one row when one does                                               |
 | Not checking `Content-Type`; no body cap   | one comparison turns a JSON body into a clear 415; one line bounds what a request can read     |
 | A writer that flushes per encoder write    | the encoder's and `net/http`'s buffers already stream; a flush only adds chunk frames          |
-| Deferring the `typ` check to M2            | one line; a refresh token is never a data-plane credential                                     |
+| Deferring the `typ` check to M3            | one line; a refresh token is never a data-plane credential                                     |
 | A section in the brief                     | endpoint shapes are decided in ADRs during the v2 milestones (`docs/AGENTS.md`, ADRs)          |

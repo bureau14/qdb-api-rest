@@ -39,7 +39,7 @@ it costs one import and no vendored bytes.
 ## Consequences
 
 - Every later v2 route opts in by wrapping its handler; the rule never
-  grows a second shape. M3's v1 wart (substring `gzip`, every route)
+  grows a second shape. M4's v1 wart (substring `gzip`, every route)
   exports what it needs of the writer when it exists.
 - The access line counts wire bytes: compression sits inside the
   request logger.
@@ -58,4 +58,4 @@ it costs one import and no vendored bytes.
 | A `sync.Pool` of compressors         | package-level state for an allocation the bench has not measured                 |
 | Compressing the mux, probes included | an empty probe body under `Content-Encoding` is an empty frame nobody asked for  |
 | Labelling at `WriteHeader`           | a status without a body would claim a coding it does not carry                   |
-| zstd in M4                           | already vendored and linked; deferring it costs more than the one import         |
+| zstd in M5                           | already vendored and linked; deferring it costs more than the one import         |
