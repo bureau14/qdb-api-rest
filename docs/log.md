@@ -5,30 +5,37 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-17
+Last updated: 2026-09-18
 
-| Milestone             | State       | Note                                                                            |
-| --------------------- | ----------- | ------------------------------------------------------------------------------- |
-| M0 -- Foundation      | done        | exit signed off 2026-08-25                                                      |
-| M1 -- v2 query        | in progress | query, login and compression landed; the `v2` golden suite in Buildkite remains |
-| M2 -- v2 auth         | not started |                                                                                 |
-| M3 -- Drop-in compat  | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green          |
-| M4 -- Resilience      | not started |                                                                                 |
-| M5 -- Flight SQL      | not started |                                                                                 |
-| M6 -- Exploration     | not started |                                                                                 |
-| M7 -- Ingestion       | not started |                                                                                 |
-| M8 -- Embedded DuckDB | not started |                                                                                 |
-| M9 -- Release         | not started |                                                                                 |
+| Milestone               | State       | Note                                                                           |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------ |
+| M0 -- Foundation        | done        | exit signed off 2026-08-25                                                     |
+| M1 -- v2 query          | in progress | query, login and compression landed; exit awaits the Buildkite run of the base |
+| M2 -- Tables and ingest | not started | the v2 e2e flow is its exit (ADR-0014)                                         |
+| M3 -- v2 auth           | not started |                                                                                |
+| M4 -- Drop-in compat    | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green         |
+| M5 -- Resilience        | not started |                                                                                |
+| M6 -- Flight SQL        | not started |                                                                                |
+| M7 -- Exploration       | not started |                                                                                |
+| M8 -- Ingestion         | not started |                                                                                |
+| M9 -- Embedded DuckDB   | not started |                                                                                |
+| M10 -- Release          | not started |                                                                                |
 
 M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
 upstream that links `libqdb_api.a` statically on Linux. Exit: the
 format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
-on all eight platforms; `POST /api/v2/auth/login`
-mints an access token the query endpoint accepts; gzip and zstd
-negotiated via `Accept-Encoding`; the `v2` golden suite green in
-Buildkite on all eight platforms (`docs/e2e.md`, Goldens).
+on all eight platforms; `POST /api/v2/auth/login` mints an access token
+the query endpoint accepts; gzip and zstd negotiated via
+`Accept-Encoding`.
 
-M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
+M2 criteria. Entry: M1 exit. Exit: `POST /api/v2/tables` and
+`POST /api/v2/tables/{name}/rows` (CSV, NDJSON, Arrow IPC bodies)
+landed with their ingest/query roundtrip property tests per input
+format (ADR-0015); the v2 e2e flow (`docs/e2e.md`, "The v2 flow") green
+in Buildkite on all eight platforms through
+`scripts/cicd/40.test-e2e.sh`.
+
+M4 criteria. Entry: v2 auth and query are landed (M1 and M3 exits);
 the 14 v1 goldens replay against a server under test. Exit: every
 v1 golden green against `bin/qdb_rest` at both
 spellings, in Buildkite on all eight platforms; `v1@new-rest` fingerprints equal `v1@old-rest`
@@ -41,36 +48,46 @@ In flight:
 
 Next:
 
-1. The e2e harness unit, which closes M1 (`docs/e2e.md`, Goldens
-   and "In Buildkite"): `golden.sh` drives both suites; a v2 case is
-   one request run over its formats and encodings; the `v2` suite
-   captured and audited, Arrow decoded through `tools/arrowcsv`; the
-   archive repackaged with `expected/`; `scripts/cicd/40.test-e2e.sh`
-   in the build step; the `make load` time on the slowest agent. The
-   base is ahead of origin: push and trigger the build through the API
-   (`.buildkite/AGENTS.md`).
-2. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+1. Close M1: push the base and trigger the build through the API
+   (`.buildkite/AGENTS.md`); the exit is the green run.
+2. The M2 unit (`docs/e2e-v2-flow-plan.md`): ADR-0015 for the two
+   endpoints; the endpoints with their property tests; `tools/e2etool`
+   (`gen`, `tocsv`); `flow.sh` and `make test-flow` driving one server
+   per cluster; `scripts/cicd/40.test-e2e.sh` in the build step.
+3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-3. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+4. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
    freed; and a null-aware timestamp column constructor for the batch
-   writer, so the table fixture can write a null timestamp cell
-   (`internal/AGENTS.md`, Tests).
+   writer, so the table fixture and the flow's generated rows can carry
+   a null timestamp cell (`internal/AGENTS.md`, Tests; ADR-0014).
 
-Handoff to M3 (the v1 wrappers):
+Handoff to M2 (tables and ingest):
+
+- The flow's generated rows carry no empty string and no null
+  timestamp until the limits lift (ADR-0014, Consequences); the ingest
+  parser reads an empty CSV field as null.
+- The v1 suite keeps `seed.sql` and `make load`; the flow reads
+  neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
+  and "In Buildkite").
+- The `make load` wall clock on the slowest agent is measured by the
+  first CI run of the v1 suite, not of the flow (`docs/e2e.md`,
+  Dataset).
+
+Handoff to M4 (the v1 wrappers):
 
 - The v1 byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
-  `docs/e2e.md`, "The v1 suite".
+  `docs/e2e.md`, "The v1 goldens".
 - Every v1 route is a wrapper over its v2 counterpart and lives in
   `internal/httpapi/v1`, created with the first wrapper together
   with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
-- The `find` wart (goldens 12 and 13) has no v2 endpoint until M6; its
-  v2 core is a tag-find function in `internal/qdb`, written in M3 and
-  reused by M6's tags endpoint (`docs/brief.md`, Milestones).
+- The `find` wart (goldens 12 and 13) has no v2 endpoint until M7; its
+  v2 core is a tag-find function in `internal/qdb`, written in M4 and
+  reused by M7's tags endpoint (`docs/brief.md`, Milestones).
 - The goldens and the bench client exercise only the unversioned
   aliases (the old server knows no other spelling); the exit criterion
   additionally proves `/api/v1/<path>` answers identically, by replaying
@@ -86,6 +103,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-18 -- ADR-0014 accepted: the v2 e2e is a generated flow; M2 -- tables and ingest inserted
+
+- Owner decisions: the v2 e2e proves login, create, query, ingest and
+  query back with generated rows, no goldens, error rows as Go tests;
+  the two endpoints move into a new M2 and the later milestones
+  renumber (`docs/brief.md`, Milestones); `docs/e2e.md` and
+  `docs/bench.md` are permanent specifications (`docs/AGENTS.md`).
 
 ## 2026-09-17 -- the status probes are outside the compatibility contract
 
