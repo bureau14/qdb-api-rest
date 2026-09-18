@@ -203,7 +203,9 @@ func writerOf(tbl Table) (*qdbapi.Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	wt.SetIndex(tbl.Index)
+	if err := wt.SetIndex(tbl.Index); err != nil {
+		return nil, err
+	}
 	for i, c := range tbl.Columns {
 		if err := wt.SetData(i, c.Data); err != nil {
 			return nil, err

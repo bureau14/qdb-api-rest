@@ -4,8 +4,8 @@ github.com/apache/arrow-go/v18 v18.8.0 h1:BLOzbPv7bxMPgXPacAg6HQjnxupYsZzC4tf+Fk
 github.com/apache/arrow-go/v18 v18.8.0/go.mod h1:uJCFfCwq0KsxCmsCfQg4ft+LsW+iHYzAXiSDh5ug/8U=
 github.com/apache/thrift v0.24.0 h1:zy31L1a49QTNB2bG1BBfMXol3yJrTH975G3pPubQVLQ=
 github.com/apache/thrift v0.24.0/go.mod h1:zPt6WxgvTOM6hF92y8C+MkEM5LMxZuk4JcQOiU4Esvs=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260910074549-cabebb61efb5 h1:W+0yVtznwd0LkSbMqwqZwhAut22YjRsFGC8ukUdGkDQ=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260910074549-cabebb61efb5/go.mod h1:Uk+cs+NsaMQO6maXGuwVf+SVxYcGijTchFZK87s7PwI=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260918093542-6f2a7abff216 h1:qcvMAzO5deIyvTrHowPnIkZYMWUVhrIrEeWD2tAY04g=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260918093542-6f2a7abff216/go.mod h1:Uk+cs+NsaMQO6maXGuwVf+SVxYcGijTchFZK87s7PwI=
 github.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=
 github.com/go-jose/go-jose/v4 v4.1.4/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
