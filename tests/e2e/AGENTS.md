@@ -14,11 +14,19 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   submodule: never edit it here). Tests fail fast if it is down; they never
   start or stop it. The harness starts and stops only REST servers, via
   pidfiles.
-- A golden is an audited expected response, compared byte for byte; no
-  canonicalization, no tolerance, no timing or measured number asserted
-  anywhere in this directory (ADR-0013). Capture is an operator step and
-  never runs in CI.
-- Goldens under `golden/v1/`: `request.json` is written by hand, the
+- Nothing in this directory asserts a timing or a measured number
+  (ADR-0013); every assertion is pass or fail, compared with `cmp`.
+- The v2 flow (`flow.sh`, `make test-flow`; ADR-0014) captures nothing:
+  the rows it ingests come from `tools/e2etool gen`, the responses are
+  decoded to CSV by `tools/e2etool tocsv` and compared with the
+  generated CSV. A wire change that breaks the flow is fixed in the
+  tool or the driver in the same commit, never by storing a response.
+  Error rows are Go tests in `internal/httpapi`, never flow steps. The
+  generated rows carry no empty string and no null timestamp
+  (`docs/e2e.md`, "The v2 flow").
+- A v1 golden is an audited expected response, compared byte for byte;
+  no canonicalization, no tolerance. Capture is an operator step and
+  never runs in CI. Goldens under `golden/v1/`: `request.json` is written by hand, the
   captured `status`/`headers`/`body` are written only by
   `make capture-v1` and committed as-is; a captured file is never
   edited and the comparator never grows a special case. No case
@@ -31,7 +39,9 @@ Scope: the permanent e2e harness. Specification and verified facts live in
 - `TZ=UTC` is exported by `common.sh` for every server the harness starts
   and every capture; keep it that way (v1 timestamps are local-time).
 - The dataset table `reproduce` is read-only for tests; fixture tables
-  (`seed.sql`) are dropped and recreated freely.
+  (`seed.sql`) are dropped and recreated freely. Both serve the v1
+  suite and the bench only; the flow creates its own `e2e_*` tables
+  on both clusters and drops them first.
 - Ad-hoc probing: `qdbsh --output-format csv` is a plain C client. Its
   `-c` flag cannot be repeated, so a multi-statement session (e.g.
   `direct_set_node` followed by `direct_int_get`) goes in via stdin. A
