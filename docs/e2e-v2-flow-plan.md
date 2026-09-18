@@ -80,8 +80,8 @@ Two facts of the tree bound the generated data (verified 2026-09-18):
 
 ### The Go tool
 
-`tests/e2e/tools/e2etool`, pure Go, no cgo, built by the Makefile with
-the server's toolchain (ADR-0013, Consequences):
+`tests/e2e/tools/e2etool`, built by the Makefile with the server's
+toolchain and environment (ADR-0013, Consequences):
 
 - `e2etool gen --rows N --seed S`: writes the rows as `rows.csv`,
   `rows.ndjson` and `rows.arrow` (one batch per `chunkRows`, the IPC
@@ -92,8 +92,8 @@ the server's toolchain (ADR-0013, Consequences):
 - `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
   through the package's own CSV encoder.
 
-It imports `internal/encoding` and `arrow-go` only. It replaces the
-`tools/arrowcsv` of `docs/e2e.md`.
+It may import any package of this repository, the cgo binding
+included. It replaces the `tools/arrowcsv` of `docs/e2e.md`.
 
 ### The driver
 

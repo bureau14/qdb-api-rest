@@ -33,7 +33,7 @@ no audit.
 2. **The expected value is the generated input.** The rows are
    generated in the CSV encoder's dialect; the CSV response is compared
    with them byte for byte; a JSON, NDJSON or Arrow IPC response is
-   decoded by a pure-Go tool in the harness and rendered through the
+   decoded by a Go tool in the harness and rendered through the
    same CSV encoder, then compared with the same file (ADR-0013 5's
    Arrow rule, applied to every rendered format). A gzip response is
    decompressed first. Nothing is captured, nothing is audited, nothing
@@ -42,10 +42,11 @@ no audit.
    pinned in `internal/httpapi`; the e2e layer asserts the happy path
    only. A login is checked by shape (RFC 6749's fields), a query by
    its decoded content, an ingest by the rows that come back.
-4. **One Go tool, no cgo**: it generates the rows (every column type,
-   nulls, the awkward string, nanosecond timestamps) and decodes the
-   rendered formats to CSV. It imports `internal/encoding` and
-   `arrow-go` only and builds on every platform.
+4. **One Go tool**: it generates the rows (every column type, nulls,
+   the awkward string, nanosecond timestamps) and decodes the rendered
+   formats to CSV. It is built with the server's toolchain and
+   environment and may import any package of this repository, the cgo
+   binding included.
 5. **ADR-0013 3 and 5 apply to v1 only** from this decision on: a v1
    golden is what the old server said. ADR-0013 1, 2, 4, 6 and 7 stand
    for both suites, with "its goldens" read as "its e2e coverage" for

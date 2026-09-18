@@ -27,7 +27,7 @@ first byte, memory and throughput are the bench's (ADR-0013;
 consumes this harness's services and dataset.
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) plus one pure-Go tool, and contains no Python. It runs
+lineage) plus one Go tool, and contains no Python. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -159,9 +159,9 @@ nulls until then.
 
 ### The tool
 
-`tests/e2e/tools/e2etool`, pure Go, no cgo, built by the Makefile with
-the server's toolchain; it imports `internal/encoding` and `arrow-go`
-only, so it builds on every platform (ADR-0013, Consequences).
+`tests/e2e/tools/e2etool`, built by the Makefile with the server's
+toolchain and environment; it may import any package of this
+repository, the cgo binding included (ADR-0013, Consequences).
 
 - `e2etool gen --rows N --seed S`: writes `rows.csv`, `rows.ndjson` and
   `rows.arrow` (the IPC streaming format, one batch per `chunkRows`)

@@ -54,7 +54,7 @@ capture from the old server cannot describe.
    decompression. The Arrow format leaves the value of a null slot and
    of padding undefined, and the batch's buffers are the C API's,
    handed through zero-copy, so an Arrow body has no stable bytes.
-   Decoding normalizes both: a pure-Go tool in the harness reads the
+   Decoding normalizes both: a Go tool in the harness reads the
    stream with `arrow-go`, prints the schema and renders the batches
    through the CSV encoder, and the result is compared byte for byte
    with a small schema golden and with the audited CSV golden of the
@@ -82,8 +82,9 @@ capture from the old server cannot describe.
 - A performance regression is caught by a person running the bench, not
   by a build. A local bench threshold is an addition the bench can ask
   for.
-- The harness builds one Go tool; it imports `internal/encoding` and
-  `arrow-go` only, so it needs no cgo and builds on every platform.
+- The harness builds one Go tool with the server's toolchain and
+  environment; it may import any package of this repository, the cgo
+  binding included.
 - The full-size semantic check of the Arrow path through a real client
   (pyarrow into DataFrames, fingerprinted against the native client) is
   the bench's `http-arrow@new-rest` run.
