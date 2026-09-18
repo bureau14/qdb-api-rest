@@ -785,31 +785,37 @@ entry/exit criteria defined when it starts.
   connection pool core (budget, breaker, retry), `POST /api/v2/query`
   streamed through all four encoders, bearer authentication,
   `POST /api/v2/auth/login` (access token only), gzip and zstd
-  response compression, the `v2` golden suite in Buildkite.
-- **M2 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
+  response compression.
+- **M2 -- Tables and ingest**: `POST /api/v2/tables` (create) and
+  `POST /api/v2/tables/{name}/rows` (single-table ingest; Arrow IPC,
+  NDJSON, CSV bodies; `Content-Encoding`) with their ingest/query
+  roundtrip property tests per input format; the v2 e2e flow (login,
+  create, query, ingest, query in every format and coding; Testing
+  doctrine 2) green in Buildkite.
+- **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
-- **M3 -- Drop-in compat**: the v1 endpoints as thin wrappers over
+- **M4 -- Drop-in compat**: the v1 endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with the
   `v1` golden suite green in Buildkite; the tag-find core in `internal/qdb` that the
-  `find` wart wraps (the v2 core M6's tags endpoint reuses). Outcome:
+  `find` wart wraps (the v2 core M7's tags endpoint reuses). Outcome:
   replaces the old binary at a customer site with no client changes;
   the first shippable binary.
-- **M4 -- Resilience**: `/metrics`, the graceful-drain and
+- **M5 -- Resilience**: `/metrics`, the graceful-drain and
   concurrency stress as behaviour assertions in Buildkite.
-- **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
+- **M6 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
   `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests;
   the bench retires once the new server wins on both of its rows.
-- **M6 -- Exploration**: tables list, schema and create; tags; cluster
-  and node status.
-- **M7 -- Ingestion**: `/api/v2/ingest` multi-table (Arrow IPC, NDJSON,
-  CSV bodies; `Content-Encoding`), `/api/v2/tables/{name}/rows`,
-  ingest/query roundtrip property tests per input format.
-- **M8 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
+- **M7 -- Exploration**: tables list and schema; tags; cluster and
+  node status.
+- **M8 -- Ingestion**: `/api/v2/ingest` multi-table (Arrow IPC, NDJSON,
+  CSV bodies; `Content-Encoding`), push mode selection, over the M2
+  parsers.
+- **M9 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
   quasardb extension, resource governance, streamed responses through the
   shared encoders.
-- **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
+- **M10 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections, and fixing the stale `tls_port` sample
   configs), `qdb-release` version registration, Windows service mode,
@@ -818,14 +824,17 @@ entry/exit criteria defined when it starts.
 
 Ordering rationale. A v1 route wraps its v2 counterpart, so the v2 core
 must exist before any v1 route is written (ADR-0007). M1 carries a
-minimal login so the query endpoint is exercisable end to end; M2
+minimal login so the query endpoint is exercisable end to end. M2
+follows at once because the e2e flow needs a table to create and rows
+to ingest, and two small endpoints are cheaper than a fixture the flow
+would later throw away; from M2 on every milestone closes on CI
+evidence of the built binary (ADR-0013, ADR-0014). M3
 completes v2 auth before anything ships, so the first shippable binary
 exposes no v2 endpoint whose shape or lifetime is still moving, and the
 v1 login wraps a finished counterpart. Flight SQL precedes exploration and
-ingestion because the gateway thesis is why the project exists, the
-Arrow encoder is fresh from M1, and the bench retires as soon as Flight
-SQL is measured. The e2e goldens run in Buildkite from M1, so every
-milestone closes on CI evidence of the built binary (ADR-0013).
+multi-table ingestion because the gateway thesis is why the project
+exists, the Arrow encoder is fresh from M1, and the bench retires as
+soon as Flight SQL is measured.
 
 ## Versioning and release
 
