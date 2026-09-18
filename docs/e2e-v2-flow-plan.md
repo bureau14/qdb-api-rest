@@ -67,16 +67,11 @@ sets for Arrow, applied to every rendered format. The CSV path is thus
 proven against a source the encoders never touched, and the other
 three are proven equal to it.
 
-Two facts of the tree bound the generated data (verified 2026-09-18):
-
-- CSV renders null and the empty string as the same empty field
-  (`internal/encoding/AGENTS.md`, Rendering), so the generator never
-  emits an empty string, and the ingest parser reads an empty CSV field
-  as null.
-- The batch writer has no null-aware timestamp column constructor until
-  the `qdb-api-go` upstream fix (`docs/log.md`, Next), so the generated
-  data has null cells in every type except `timestamp`; the flow gains
-  null timestamps when the fix lands.
+One fact of the tree bounds the generated data (verified 2026-09-18):
+CSV renders null and the empty string as the same empty field
+(`internal/encoding/AGENTS.md`, Rendering), so the generator never
+emits an empty string, and the ingest parser reads an empty CSV field
+as null.
 
 ### The Go tool
 

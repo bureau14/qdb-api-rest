@@ -22,8 +22,8 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   generated CSV. A wire change that breaks the flow is fixed in the
   tool or the driver in the same commit, never by storing a response.
   Error rows are Go tests in `internal/httpapi`, never flow steps. The
-  generated rows carry no empty string and no null timestamp
-  (`docs/e2e.md`, "The v2 flow").
+  generated rows carry no empty string (`docs/e2e.md`, "The v2
+  flow").
 - A v1 golden is an audited expected response, compared byte for byte;
   no canonicalization, no tolerance. Capture is an operator step and
   never runs in CI. Goldens under `golden/v1/`: `request.json` is written by hand, the

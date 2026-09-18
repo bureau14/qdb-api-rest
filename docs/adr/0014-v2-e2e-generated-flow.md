@@ -66,11 +66,8 @@ no audit.
   that hides from the CSV comparison would have to be mirrored by the
   parser that reads the generated CSV; the property tests cover that
   pair independently.
-- Two limits of the tree bound the generated data until they lift: CSV
-  renders null and the empty string alike, so the generator emits no
-  empty string; the batch writer cannot write a null timestamp cell
-  until the `qdb-api-go` upstream fix, so timestamp columns carry no
-  nulls until then.
+- One limit of the tree bounds the generated data: CSV renders null
+  and the empty string alike, so the generator emits no empty string.
 - The dataset archive carries no `expected/` directory, and the v2
   layer reads neither `reproduce` nor `seed.sql`: the v1 suite and the
   bench are their remaining readers.

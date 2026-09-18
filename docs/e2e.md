@@ -150,12 +150,9 @@ anonymous. Every assertion is pass or fail; nothing is timed.
 The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
 4180, header row, LF), so the CSV path is proven against a source the
 encoders never touched and the other three formats are proven equal to
-it. Two facts of the tree bound the data until they lift (verified
-2026-09-18): CSV renders null and the empty string alike, so the
-generator emits no empty string and the ingest parser reads an empty
-CSV field as null; the batch writer cannot write a null timestamp cell
-until the `qdb-api-go` upstream fix, so timestamp columns carry no
-nulls until then.
+it. One fact of the tree bounds the data (verified 2026-09-18): CSV
+renders null and the empty string alike, so the generator emits no
+empty string and the ingest parser reads an empty CSV field as null.
 
 ### The tool
 
