@@ -110,8 +110,7 @@ func drawTime(rt *rapid.T) time.Time {
 
 // generateData draws the cells of one column of type kind under valid,
 // with the writer's null sentinel in every null slot: MinInt64, NaN, the
-// empty string and the nil blob. A timestamp column is dense: its null
-// timespec is not settable through the writer, so its mask is all true.
+// empty string, the nil blob and NullTime.
 func generateData(rt *rapid.T, kind qdbapi.TsColumnType, valid []bool) qdbapi.ColumnData {
 	switch kind {
 	case qdbapi.TsColumnInt64:
@@ -130,7 +129,7 @@ func generateData(rt *rapid.T, kind qdbapi.TsColumnType, valid []bool) qdbapi.Co
 		cd := qdbapi.NewColumnDataBlob(cells(valid, draw, nil))
 		return &cd
 	case qdbapi.TsColumnTimestamp:
-		cd := qdbapi.NewColumnDataTimestamp(cells(valid, func() time.Time { return drawTime(rt) }, time.Time{}))
+		cd := qdbapi.NewColumnDataTimestamp(cells(valid, func() time.Time { return drawTime(rt) }, qdbapi.NullTime()))
 		return &cd
 	default:
 		panic(fmt.Sprintf("column type %v", kind))
@@ -144,11 +143,7 @@ func generateColumn(rt *rapid.T, table string, i, rows, nullPct int) Column {
 	if c.Type == qdbapi.TsColumnSymbol {
 		c.Symtable = table + "_" + c.Name
 	}
-	if c.Type == qdbapi.TsColumnTimestamp {
-		c.Valid = generateMask(rt, rows, 0)
-	} else {
-		c.Valid = generateMask(rt, rows, nullPct)
-	}
+	c.Valid = generateMask(rt, rows, nullPct)
 	c.Data = generateData(rt, c.Type, c.Valid)
 	return c
 }
