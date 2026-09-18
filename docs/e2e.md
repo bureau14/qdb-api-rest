@@ -13,9 +13,12 @@ the end.
 Prove, for the life of the product, that the built binary, driven over
 HTTP like a client:
 
-1. returns exactly the audited response, on the v2 surface and on the
-   v1 surface (the goldens);
-2. behaves honestly under stress: fast, explicit failure under overload,
+1. works as a client expects on the v2 surface: login, create a table,
+   query it, ingest rows, read them back in every format and content
+   coding (the v2 flow, ADR-0014);
+2. returns exactly what the old server returned on the v1 surface (the
+   v1 goldens, ADR-0013);
+3. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
 Every assertion is pass or fail. The harness measures nothing: time to
@@ -24,8 +27,9 @@ first byte, memory and throughput are the bench's (ADR-0013;
 consumes this harness's services and dataset.
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) and contains no Python. It runs identically on developer
-machines and in Buildkite on every platform (see "In Buildkite").
+lineage) plus one pure-Go tool, and contains no Python. It runs
+identically on developer machines and in Buildkite on every platform
+(see "In Buildkite").
 
 ## Service model
 
@@ -61,7 +65,6 @@ from the original qdbd data directory (`shard_size` added to the config so
 reproduce.csv            data, no header (qdb_export convention)
 reproduce.import.json    qdb_import parser/column config, with shard_size
 metadata.json            row count, sha256 of the csv, generation date
-expected/<suite>/<case>/ expected responses too large for git (see Goldens)
 ```
 
 Hosting follows qdb-nats-connector: the public builddeps S3 bucket, prefix
@@ -98,107 +101,118 @@ byte-for-byte with the CSV it was imported from (verified identical
 belt-and-braces check. A mismatch is a `qdb_export`/`qdb_import` bug
 worth surfacing, not a harness problem.
 
-CI loads the same archive developers do; there is one dataset. Cases
+The dataset has two readers: the v1 suite (goldens 06 and 16 select
+`reproduce LIMIT 10`) and the bench. The v2 flow reads neither the
+dataset nor `seed.sql`; it makes its own rows. CI loads the same
+archive developers do, once the v1 suite enters the build step; cases
 bound their own result size with `IN RANGE` or `LIMIT`, and no case
 selects the whole table: a full-table response is the bench's business.
-To verify with the first CI run (2026-09-17: unmeasured): the wall-clock
-time of `make load` on the slowest agent. The fallback, if it is
-unacceptable, is a second, smaller archive of whole shards loaded under
-its own table name, with the two `reproduce` v1 goldens recaptured
-against it.
+To verify with that first CI run: the wall-clock time of `make load` on
+the slowest agent. The fallback, if it is unacceptable, is a second,
+smaller archive of whole shards loaded under its own table name, with
+the two `reproduce` v1 goldens recaptured against it.
 
-## Goldens
+## The v2 flow
+
+One flow, no captured files (ADR-0014): the expected value of every
+step is known by construction, so nothing is audited and nothing lives
+under `tests/e2e/golden/v2/`. The flow runs once per cluster,
+`insecure` (`qdb://127.0.0.1:2836`) and `secure` (`:2838`), each against
+its own server under test; the secure login body is the user security
+file `start-services.sh` writes at the repo root (`user_private.key`,
+the file `internal/qdbtest` reads too), the insecure login is
+anonymous. Every assertion is pass or fail; nothing is timed.
+
+1. `POST /api/v2/auth/login`: 200 and the RFC 6749 shape --
+   `access_token` a non-empty string, `token_type` `Bearer`,
+   `expires_in` a positive integer (ADR-0011). The token authenticates
+   every later step.
+2. `POST /api/v2/tables`: one table per input format, `e2e_csv`,
+   `e2e_ndjson`, `e2e_arrow`, every column type (`blob`, `double`,
+   `int64`, `string`, `symbol`, `timestamp`), dropped first so the flow
+   is idempotent.
+3. Each empty table queried in every format: JSON keeps the columns
+   with empty `data`, NDJSON is an empty body, CSV the header alone,
+   Arrow a schema with no batches (`internal/encoding/AGENTS.md`,
+   Rendering). Proves the schema path before any row exists.
+4. `POST /api/v2/tables/{name}/rows`: the generated rows, as CSV into
+   `e2e_csv`, as NDJSON into `e2e_ndjson`, as Arrow IPC into
+   `e2e_arrow`, each answered as ADR-0015 fixes.
+5. Each table queried in every format (`json`, `ndjson`, `csv`,
+   `arrow`) under `identity` and `gzip`: the CSV response compared byte
+   for byte with the generated CSV; a JSON, NDJSON or Arrow response
+   decoded to CSV by the tool and compared with the same file; a gzip
+   response decompressed first. `content-type` is asserted from the
+   format, `content-encoding` from the coding (absent for `identity`);
+   nothing else in the headers is read. The plain run sends no
+   `Accept-Encoding`; the gzip run sends `Accept-Encoding: gzip`.
+
+The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
+4180, header row, LF), so the CSV path is proven against a source the
+encoders never touched and the other three formats are proven equal to
+it. Two facts of the tree bound the data until they lift (verified
+2026-09-18): CSV renders null and the empty string alike, so the
+generator emits no empty string and the ingest parser reads an empty
+CSV field as null; the batch writer cannot write a null timestamp cell
+until the `qdb-api-go` upstream fix, so timestamp columns carry no
+nulls until then.
+
+### The tool
+
+`tests/e2e/tools/e2etool`, pure Go, no cgo, built by the Makefile with
+the server's toolchain; it imports `internal/encoding` and `arrow-go`
+only, so it builds on every platform (ADR-0013, Consequences).
+
+- `e2etool gen --rows N --seed S`: writes `rows.csv`, `rows.ndjson` and
+  `rows.arrow` (the IPC streaming format, one batch per `chunkRows`)
+  for the same rows: every column type, nulls, the awkward string
+  (`"`, `,`, `<&>`), nanosecond timestamps, negative and extreme
+  integers; NaN excluded, since it renders as null and would not
+  round-trip. The driver prints the seed so a failure reproduces.
+- `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
+  through the package's own CSV encoder.
+
+### The driver
+
+`tests/e2e/flow.sh run --insecure-url <url> --secure-url <url>
+[--rows N] [--seed S]`, a small option loop; the Makefile is the only
+source of URLs, ports and paths. `make test-flow` runs it: a cluster
+whose URL is empty gets a server started from `QDB_REST_BIN` (`40090`
+on the insecure node; `40091` on the secure node with
+`--cluster-public-key-file` and `--cluster-user-security-file`), TLS
+listener off, `TZ=UTC`. Working files go to `actual/flow/<cluster>/`.
+
+Cross-format equivalence over generated schemas (JSON, NDJSON, CSV,
+Arrow IPC, Flight SQL) stays with the Go property tests; the flow
+proves the binary over HTTP with one schema. Error rows (ADR-0010 and
+ADR-0011's tables) are Go tests in `internal/httpapi`, never flow
+steps. An endpoint lands with its step in the flow, so the flow grows
+with the milestones (`docs/brief.md`, Milestones): refresh and session
+join the login step; the exploration endpoints and `/api/v2/sql` add
+steps; multi-table ingest is a second ingest step. Flight SQL has no
+shell client; whether it gets a subcommand of the tool or stays with
+the property tests is decided at that milestone's entry.
+
+## The v1 goldens
 
 A golden is an audited expected response: a run somebody looked at,
 judged correct, and committed; every later run is compared with it byte
-for byte (ADR-0013). No canonicalization and no tolerance: the text
-encoders are deterministic on every platform, QuasarDB returns rows in
-a stable order, and an unexpected byte is a bug worth seeing. Capture
-never runs in CI; a golden changes only in a commit whose diff the owner
-reviews.
+for byte (ADR-0013). No canonicalization and no tolerance: the old
+server's text output is deterministic on every platform, QuasarDB
+returns rows in a stable order, and an unexpected byte is a bug worth
+seeing. Capture never runs in CI; a golden changes only in a commit
+whose diff the owner reviews.
 
-A case is a directory `tests/e2e/golden/<suite>/<NN-slug>/`: a
-hand-written `request.json` (method, path, pre-encoded query string,
-headers, body, auth mode, compare mode) next to the expected `status`,
-`headers` (only the headers that belong to a contract, lowercased,
-sorted; absence is recorded as absence) and `body`. One driver,
-`golden.sh`, captures and replays both suites. Compare modes: `bytes`;
-`gunzip` (the decompressed bytes); `login-shape`, because a login
-answers a token that differs per call (`{"token": <non-empty string>}`
-on v1, RFC 6749's fields on v2).
+A case is a directory `tests/e2e/golden/v1/<NN-slug>/`: a hand-written
+`request.json` (method, path, pre-encoded query string, headers, body,
+auth mode, compare mode) next to the expected `status`, `headers`
+(only the headers that belong to a contract, lowercased, sorted;
+absence is recorded as absence) and `body`. The driver, `golden.sh`,
+captures and replays the suite. Compare modes: `bytes`; `gunzip` (the
+decompressed bytes); `login-shape`, because a login answers a token
+that differs per call (`{"token": <non-empty string>}`).
 
-An expected body small enough for review lives in git next to its
-`request.json`; a body too large for git lives in the dataset archive
-under `expected/<suite>/<case>/`, qdb-nats-connector's layout, so a
-failure still has a body to diff against.
-
-Cross-format equivalence (JSON, NDJSON, CSV, Arrow IPC, Flight SQL) is
-covered by the Go generative property tests, never by golden files.
-
-An endpoint lands with its goldens, so the suites grow with the
-milestones (`docs/brief.md`, Milestones): the auth and session cases,
-the exploration cases and the `/api/v2/sql` cases join `v2` with their
-endpoints; ingestion is qdb-nats-connector's flow exactly -- ingest
-through the API, `qdb_export`, byte-compare with the golden CSV. Flight
-SQL has no shell client; whether it gets a small Go tool in this
-harness or stays with the property tests is decided at that milestone's
-entry.
-
-### The v2 suite
-
-Captured from the server under test (`make capture-v2`, an operator
-step) and audited before it is committed: a data case against qdbsh or
-`qdb_export` output for the same range, a shape or error case against
-the ADR that owns the wire contract.
-
-A v2 query answers the same data in every format and under every
-content coding, so a query case is one request run as a matrix, never a
-directory per format. Its `request.json` lists the `formats` (`json`,
-`ndjson`, `csv`, `arrow`) and the `encodings` (`identity`, `gzip`) it
-runs under; the driver issues one request per pair, setting `Accept`
-and `Accept-Encoding` itself:
-
-```
-golden/v2/10-query-seed-types/
-  request.json   query, auth, formats, encodings
-  status         one, shared by every run of the matrix
-  body.json
-  body.ndjson
-  body.csv       also what the decoded Arrow stream must equal
-  schema.arrow   field names, types, timestamp unit
-golden/v2/30-query-no-bearer/
-  request.json  status  headers  body      no formats: one run
-```
-
-- The `status` is the same for every run of the matrix.
-- `Content-Type` is asserted from the format and `Content-Encoding`
-  from the encoding; neither is stored per run. A case without
-  `formats` (a login, an error) stores its `headers` like a v1 case.
-- A text body is compared byte for byte with `body.<format>`.
-- A compressed run is decompressed and compared with the same
-  `body.<format>`, so a content coding adds no golden.
-- Arrow IPC is compared as decoded content (ADR-0013): the format
-  leaves null slots and padding undefined, so an Arrow body has no
-  stable bytes, and decoding normalizes both. The body is piped through
-  `tools/arrowcsv`, a pure-Go tool (`arrow-go`'s IPC reader and the CSV
-  encoder of `internal/encoding`; no cgo, built by the Makefile with
-  the same toolchain as the server) that writes the schema to one file
-  and the batches as one CSV to another. The schema is compared with
-  `schema.arrow`, the CSV byte for byte with `body.csv`, so Arrow adds
-  no large golden.
-
-Cases: the login (anonymous, and the secure cluster's user on the
-secure cluster); the query over the seeded fixture (every type, nulls,
-the awkward string) and over a `reproduce` range of roughly 200k rows,
-so every text encoder crosses its 65536-row chunk boundary several
-times and the Arrow stream is multi-batch, over real null timestamps
-the Go table fixture cannot write; and the rows of the ADR-0010 and
-ADR-0011 error tables a client can provoke from outside (no bearer,
-malformed bearer, unsupported media type, oversized body, invalid
-query, refused credentials). zstd is covered by the Go round-trip test;
-it joins `encodings` only if the `zstd` CLI is present on every agent.
-
-### The v1 suite
+### The suite
 
 Byte-shape equivalence of the v1 endpoints (`/api/login`, `/api/query`)
 uses small golden request/response pairs captured from
@@ -292,9 +306,10 @@ DataFrame fingerprint (`v1@old-rest == v1@new-rest` in
 
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
-the binary `20.build.sh` built: `make load seed`, then the suites. A
-suite enters the step when it is green: `test-v2` first, `test-v1`
-when the wrappers land, the stress with the resilience milestone. The
+the binary `20.build.sh` built: `make test-flow` first, which loads
+nothing; `make load seed test-v1` when the wrappers land, the stress
+with the resilience milestone. A suite enters the step when it is
+green. The
 script follows qdb-nats-connector's `50.test-e2e.sh`: GNU make discovery
 (`gmake` on FreeBSD, `mingw32-make` on Windows), the Windows DLL
 co-location next to the binary, and a dump of the REST server's and
@@ -319,17 +334,17 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-v1 |
                           test-v1 | test-v1-selfcheck | clean | distclean
-                          capture-v2 | test-v2 (arrive with the v2 suite)
+                          e2etool | test-flow (arrive with the v2 flow)
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
-  golden.sh               golden capture/replay driver (drives both suites once the
-                          v2 suite arrives)
-  seed.sql                golden fixture (qdbsh statements)
+  golden.sh               v1 golden capture/replay driver
+  flow.sh                 the v2 flow driver (arrives with the v2 flow)
+  seed.sql                v1 golden fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
-  tools/arrowcsv/         Go: Arrow IPC stream -> schema + CSV (arrives with the v2 suite)
+  tools/e2etool/          Go: gen (rows in every input format), tocsv (any response -> CSV);
+                          arrives with the v2 flow
   golden/v1/              v1 request/response pairs, captured from the old server
-  golden/v2/              v2 cases, one per request, formats inside (arrives with the v2 suite)
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench.md)
   AGENTS.md, README.md    conventions, usage
@@ -387,13 +402,27 @@ from the Go `rapid` property tests, generated in-process.
 
 ## Decision log (2026-09-17)
 
-| Decision                                          | Why                                                                                     | Rejected                                                                        |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| The harness measures nothing; budgets leave       | ADR-0013: a number is the bench's, CI gates are yes/no                                  | `test-budgets`, `budgets.env`, TTFB and RSS gates                               |
-| Arrow compared decoded, against the CSV golden    | ADR-0013; no stable bytes, and the audited CSV golden already says what the data is     | status and `content-type` only; a separate Arrow golden; pyarrow in the harness |
-| One driver for both suites                        | capture, replay and compare are the same mechanics; only the login and the paths differ | a second script per suite                                                       |
-| Expected bodies in git, large ones in the archive | small bodies are reviewable diffs; a large one still gives a failure something to diff  | everything in git; a sha256 in place of the body                                |
-| One dataset in CI, cases bound their own size     | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback)                           |
-| No v1 golden exercises a deliberate deviation     | ADR-0013; both replays compare with the same captured files, the comparator stays `cmp` | a comparator rule per deviation; a golden that selects a `COUNT`                |
-| One v2 case per request, formats inside           | the same query answers the same data in every format and coding; one status, one CSV    | a directory per (query, format); a twin naming another case's body              |
-| The suites are `v1` and `v2`                      | the names of the API versions they pin; `legacy` named one of them after its history    | `legacy` as a suite, target, driver, fixture or package name                    |
+| Decision                                       | Why                                                                                     | Rejected                                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| The harness measures nothing; budgets leave    | ADR-0013: a number is the bench's, CI gates are yes/no                                  | `test-budgets`, `budgets.env`, TTFB and RSS gates                               |
+| Arrow compared decoded, against the CSV golden | ADR-0013; no stable bytes, and the audited CSV golden already says what the data is     | status and `content-type` only; a separate Arrow golden; pyarrow in the harness |
+| One dataset in CI, cases bound their own size  | no new packaging tooling, no recapture of the `reproduce` goldens                       | a CI slice as the first choice (kept as the fallback)                           |
+| No v1 golden exercises a deliberate deviation  | ADR-0013; both replays compare with the same captured files, the comparator stays `cmp` | a comparator rule per deviation; a golden that selects a `COUNT`                |
+| The suites are `v1` and `v2`                   | the names of the API versions they pin; `legacy` named one of them after its history    | `legacy` as a suite, target, driver, fixture or package name                    |
+
+The v2 golden suite this table also shaped (one driver for both suites,
+expected bodies in the archive, one case per request) was replaced by
+the flow on 2026-09-18 (ADR-0014); those rows are gone with it.
+
+## Decision log (2026-09-18)
+
+| Decision                                           | Why                                                                          | Rejected                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------- |
+| The v2 e2e is one flow, generated data, no goldens | proves the basic flow with little code and no audit liability (ADR-0014)     | ten captured cases and an operator capture cycle          |
+| Error rows are Go tests only                       | the e2e proves the flow, not the surface; the tables are pinned in `httpapi` | 401/413/415/400 goldens                                   |
+| Ingest bodies: CSV, NDJSON and Arrow IPC           | the flow ingests the same rows three ways; the property tests come with them | CSV only, the rest in the ingestion milestone             |
+| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every rendered format; one expected file         | a renderer per format in shell; row-count checks for JSON |
+| The Go tool generates the rows                     | rapid-style generation shares the vocabulary of the property tests           | an awk generator; a checked-in fixture CSV                |
+| The flow runs on both clusters                     | the same flow on two parallel environments; only the login differs           | insecure only                                             |
+| A driver with named options                        | two URLs on a command line need names                                        | positional URLs; environment variables                    |
+| The plain run sends no `Accept-Encoding`           | what a plain client sends; the explicit `identity` rule is a Go test         | `Accept-Encoding: identity`                               |
