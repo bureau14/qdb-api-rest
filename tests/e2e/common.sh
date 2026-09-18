@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the qdb-api-rest e2e harness (docs/e2e-plan.md).
+# Shared helpers for the qdb-api-rest e2e harness (docs/e2e.md).
 # Lineage: qdb-nats-connector examples/common.sh (ADR-007), adapted.
 # Sourced by golden.sh, tools/*.sh and the Makefile's inline shell.
 #

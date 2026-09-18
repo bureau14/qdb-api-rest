@@ -1,7 +1,7 @@
 # tests/e2e/bench -- Agent Instructions
 
 Scope: the assessment bench. Specification, verified facts, lifetime and
-retirement condition live in `docs/bench-plan.md`; progress in
+retirement condition live in `docs/bench.md`; progress in
 `docs/log.md`; usage in `README.md`.
 
 - No abstractions beyond what the measurement needs. Anything with a

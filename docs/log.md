@@ -26,7 +26,7 @@ format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
 on all eight platforms; `POST /api/v2/auth/login`
 mints an access token the query endpoint accepts; gzip and zstd
 negotiated via `Accept-Encoding`; the `v2` golden suite green in
-Buildkite on all eight platforms (`docs/e2e-plan.md`, Goldens).
+Buildkite on all eight platforms (`docs/e2e.md`, Goldens).
 
 M3 criteria. Entry: v2 auth and query are landed (M1 and M2 exits);
 the 14 v1 goldens replay against a server under test. Exit: every
@@ -41,7 +41,7 @@ In flight:
 
 Next:
 
-1. The e2e harness unit, which closes M1 (`docs/e2e-plan.md`, Goldens
+1. The e2e harness unit, which closes M1 (`docs/e2e.md`, Goldens
    and "In Buildkite"): `golden.sh` drives both suites; a v2 case is
    one request run over its formats and encodings; the `v2` suite
    captured and audited, Arrow decoded through `tools/arrowcsv`; the
@@ -51,7 +51,7 @@ Next:
    (`.buildkite/AGENTS.md`).
 2. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
-   (`docs/bench-plan.md`, "Protocols, servers, runs").
+   (`docs/bench.md`, "Protocols, servers, runs").
 3. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
@@ -64,7 +64,7 @@ Handoff to M3 (the v1 wrappers):
 
 - The v1 byte-shape facts -- key order, 401 bodies, error-message
   concatenation, find and gzip warts -- are recorded in
-  `docs/e2e-plan.md`, "The v1 suite".
+  `docs/e2e.md`, "The v1 suite".
 - Every v1 route is a wrapper over its v2 counterpart and lives in
   `internal/httpapi/v1`, created with the first wrapper together
   with its own `AGENTS.md` (ADR-0007; rules in `internal/AGENTS.md`).
@@ -76,7 +76,7 @@ Handoff to M3 (the v1 wrappers):
   additionally proves `/api/v1/<path>` answers identically, by replaying
   every golden at both spellings (ADR-0008).
 - `v1@new-rest` runs under the bench's pinned C API compression
-  through `cluster.compression` (`docs/bench-plan.md`, "Two volumes").
+  through `cluster.compression` (`docs/bench.md`, "Two volumes").
 - A `COUNT(...)` column is answered as `int64`, a deliberate deviation
   no golden exercises (`docs/brief.md`, "Deliberate deviations";
   ADR-0013).
@@ -98,13 +98,13 @@ Blocked on:
 - Owner decisions: `legacy` leaves every suite, target, driver, fixture,
   package and bench-run name; no v1 golden exercises a deliberate
   deviation (ADR-0013); a v2 case is one request with its formats
-  inside (`docs/e2e-plan.md`, "The v2 suite").
+  inside (`docs/e2e.md`, "The v2 suite").
 
 ## 2026-09-17 -- test-strategy-plan.md deleted with the documentation re-cut landed
 
 - The decisions to ADR-0013; the layers, the deviations and the
-  milestones to `docs/brief.md`; the mechanics to `docs/e2e-plan.md`
-  and `docs/bench-plan.md`.
+  milestones to `docs/brief.md`; the mechanics to `docs/e2e.md`
+  and `docs/bench.md`.
 
 ## 2026-09-17 -- ADR-0013 accepted: e2e goldens run in Buildkite
 
@@ -148,7 +148,7 @@ Blocked on:
 
 - Owner decision: not a target; cross-format correctness is the Go
   property test's (`docs/brief.md`, Testing doctrine). The awk
-  comparator and the section that specified it leave `docs/e2e-plan.md`.
+  comparator and the section that specified it leave `docs/e2e.md`.
 
 ## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
 
@@ -228,7 +228,7 @@ Blocked on:
   v1 endpoints follow as thin wrappers in their own package
   (`docs/brief.md`, Milestones; ADR-0007). The direct v1-query
   implementation and its plan were discarded; the verified wire facts
-  moved to `docs/e2e-plan.md`.
+  moved to `docs/e2e.md`.
 
 ## 2026-09-02 -- /api/v1/tags dropped from scope
 
@@ -322,7 +322,7 @@ Blocked on:
 
 - Owner decisions: `native@qdbd` measures `stream_query()` only; C API
   compression pinned per run, default `none`; 3 warmups + 5 measured
-  reps, median reported. `docs/bench-plan.md`, decision log 2026-08-24.
+  reps, median reported. `docs/bench.md`, decision log 2026-08-24.
 
 ## 2026-08-23 -- ADR-0002 accepted: context-carried logging
 
@@ -359,25 +359,25 @@ Blocked on:
 
 - `native@qdbd` and `v1@old-rest` fingerprints agree on every query;
   the tool is ready for `v1@new-rest`. Contract decisions:
-  `docs/bench-plan.md`, decision log 2026-08-20.
+  `docs/bench.md`, decision log 2026-08-20.
 
 ## 2026-08-19 -- Bench measures two data volumes
 
 - qdbd -> reducer and reducer -> client, with a reduce-shape query family.
-  `docs/bench-plan.md`, "Two volumes" and decision log 2026-08-19.
+  `docs/bench.md`, "Two volumes" and decision log 2026-08-19.
 
 ## 2026-08-19 -- e2e harness in place; M1 red bar exists
 
 - Dataset loaded and round-trip verified, v1 goldens captured from
   `master`, `make test-v1` fails fast without a server under test.
-  `docs/e2e-plan.md`, decision log 2026-08-19.
+  `docs/e2e.md`, decision log 2026-08-19.
 
 ## 2026-08-16 -- Planning frozen
 
 - e2e harness and bench plans approved. Decision logs 2026-08-16 in
-  `docs/e2e-plan.md` and `docs/bench-plan.md`.
+  `docs/e2e.md` and `docs/bench.md`.
 
 ## 2026-08-14 -- Old-server baseline measured
 
 - A pre-harness spike; the bench's `v1@old-rest` result files supersede
-  its numbers (`docs/bench-plan.md`).
+  its numbers (`docs/bench.md`).

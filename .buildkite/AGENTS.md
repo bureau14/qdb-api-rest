@@ -33,7 +33,7 @@ all of this should feel.
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` joins the
   build step after the Go tests (ADR-0013; the step is specified in
-  `docs/e2e-plan.md`, "In Buildkite"); until its step script exists it
+  `docs/e2e.md`, "In Buildkite"); until its step script exists it
   is not in CI. The services and dists it needs are already present.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to

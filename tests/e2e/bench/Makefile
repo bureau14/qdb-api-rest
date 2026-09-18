@@ -1,4 +1,4 @@
-# qdb-api-rest assessment bench -- entry point (docs/bench-plan.md).
+# qdb-api-rest assessment bench -- entry point (docs/bench.md).
 # GNU make, macOS developer machines only; never CI. This Makefile is the
 # single source of truth for paths and ports; bench.py receives everything
 # as explicit flags and has no defaults of its own.
@@ -8,8 +8,8 @@
 #   make old-server                build the old REST server (delegates to tests/e2e)
 #   make bench-native@qdbd         -> results/native@qdbd.json
 #   make bench-v1@old-rest         -> results/v1@old-rest.json
-#   make bench-v1@new-rest         not enabled (docs/bench-plan.md)
-#   make bench-flightsql@new-rest  not enabled (docs/bench-plan.md)
+#   make bench-v1@new-rest         not enabled (docs/bench.md)
+#   make bench-flightsql@new-rest  not enabled (docs/bench.md)
 #   make report                    merge and print results/*.json
 #
 # qdbd and the dataset are the e2e harness's business:
@@ -64,7 +64,7 @@ capi_sha = $$(shasum -a 256 $$(ls $(1)/lib/libqdb_api.dylib 2>/dev/null || ls $(
 help:
 	@sed -n '6,17p' $(firstword $(MAKEFILE_LIST))
 
-# Version purity (docs/bench-plan.md): the Python client and both REST
+# Version purity (docs/bench.md): the Python client and both REST
 # servers must link the byte-identical C API.
 check:
 	@ours=$(call capi_sha,$(QDB_DIR)); theirs=$(call capi_sha,$(QDB_API_PYTHON_DIR)/qdb); \

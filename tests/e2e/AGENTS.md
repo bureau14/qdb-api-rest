@@ -1,7 +1,7 @@
 # tests/e2e -- Agent Instructions
 
 Scope: the permanent e2e harness. Specification and verified facts live in
-`docs/e2e-plan.md`; progress in `docs/log.md`. Usage in `README.md`.
+`docs/e2e.md`; progress in `docs/log.md`. Usage in `README.md`.
 
 - `Makefile` is the only entry point and the single source of truth for
   paths, ports and flags; scripts receive them as arguments or exported
@@ -39,5 +39,5 @@ Scope: the permanent e2e harness. Specification and verified facts live in
   buffer (125 MiB), exactly as it does for `qdb_export`.
 - Shell style: `set -euo pipefail`, small named functions, definitions
   before use, ASCII only. No Python in this directory (the bench in
-  `bench/`, `docs/bench-plan.md`, is the one exception; its conventions
+  `bench/`, `docs/bench.md`, is the one exception; its conventions
   live in `bench/AGENTS.md`).

@@ -1,19 +1,20 @@
-# Assessment Benchmark -- Plan
+# Assessment Benchmark -- Specification
 
 Status: approved. This document specifies the temporary local benchmark
-described in the brief's Testing doctrine (item 4). It is a working
-document: dates and verified facts are recorded here, not in the brief;
-progress is recorded in `docs/log.md`, not here. When the bench is
-removed, any mechanics still worth keeping move to `docs/e2e-plan.md` or
+described in the brief's Testing doctrine (item 4). It is a permanent
+specification for as long as the bench exists (`docs/AGENTS.md`,
+Specifications): dates and verified facts are recorded here, not in the
+brief; progress is recorded in `docs/log.md`, not here. When the bench
+is removed, any mechanics still worth keeping move to `docs/e2e.md` or
 the relevant `AGENTS.md`, this document is deleted with it, and
-`docs/log.md` gets a one-line entry (`docs/AGENTS.md`, Plans).
+`docs/log.md` gets a one-line entry.
 
 **This tool is a one-time thing.** It exists to prove that the rewrite
 beats the old REST API on client wall clock, and is retired once that is
 demonstrated. No abstractions are built for it beyond what the measurement
 needs; it is deletable with one `rm -rf tests/e2e/bench`. Everything with
 a longer lifetime -- qdbd as a service, the dataset, budgets, stress --
-lives in the permanent e2e harness (`docs/e2e-plan.md`), which this tool
+lives in the permanent e2e harness (`docs/e2e.md`), which this tool
 consumes and never owns.
 
 ## Purpose
@@ -29,7 +30,7 @@ concerns with one piece of code:
    the same data. This is the "a customer's Python script keeps working"
    claim, checked semantically (normalized DataFrame fingerprints).
    Byte-shape compatibility of the v1 endpoints is the permanent e2e
-   harness's job (`docs/e2e-plan.md`), not this tool's.
+   harness's job (`docs/e2e.md`), not this tool's.
 2. **Performance**: the new REST API beats the old REST API on client wall
    clock -- both for the unchanged v1 protocol (what a customer gets by
    swapping the binary) and for Arrow Flight SQL (what they get by moving
@@ -61,7 +62,7 @@ a `master` worktree, and skips cross-platform ceremony.
   qdbd.
 - **The dataset** (table `reproduce`, 5,613,032 rows) is loaded by
   `tests/e2e`'s `make load` (CSV + `qdb_import`, S3-hosted, sha256-pinned;
-  see `docs/e2e-plan.md`). The bench never fetches or loads data.
+  see `docs/e2e.md`). The bench never fetches or loads data.
 - `bench.py run` asserts both (port answers, `COUNT(*)` matches) and fails
   fast with the make target to run when they do not.
 

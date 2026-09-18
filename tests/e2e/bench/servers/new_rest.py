@@ -2,4 +2,4 @@
 
 
 def server_cmd(cfg):
-    raise NotImplementedError("not enabled (docs/bench-plan.md)")
+    raise NotImplementedError("not enabled (docs/bench.md)")

@@ -1,4 +1,4 @@
-# qdb-api-rest e2e harness -- entry point (docs/e2e-plan.md).
+# qdb-api-rest e2e harness -- entry point (docs/e2e.md).
 # GNU make. Every path and port lives here and is passed down explicitly.
 #
 #   make load                       dataset into the running qdbd (idempotent)
@@ -35,7 +35,7 @@ OLD_REST_PORT  := 40080
 OLD_REST_URL   := http://127.0.0.1:$(OLD_REST_PORT)
 OLD_REST_PID   := $(E2E_DIR)/old-rest.pid
 OLD_REST_LOG   := $(E2E_DIR)/old-rest.log
-# Old-server flags (docs/bench-plan.md, "Server lifecycle"): --local pins
+# Old-server flags (docs/bench.md, "Server lifecycle"): --local pins
 # localhost:40080; the buffer/pool sizes stop a 5.6M-row query from failing.
 OLD_REST_ARGS  := --local -c $(QDB_URI) --pool-size 4 --parallelism-count 4 \
                   --max-in-buffer-size 8589934592 --log-file $(E2E_DIR)/old-rest-server.log

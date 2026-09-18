@@ -1,4 +1,4 @@
--- Golden fixture (docs/e2e-plan.md, "Dataset"). Run by `make seed`
+-- Golden fixture (docs/e2e.md, "Dataset"). Run by `make seed`
 -- through common.sh::run_qdbsh_file: one qdbsh statement per line, `--` comments
 -- and blank lines skipped, first failure aborts. Idempotent: every table is
 -- dropped and recreated (DROP on a missing table and re-attaching a tag are

@@ -3,7 +3,7 @@
 Measures wall-clock time until a Python client holds a fully materialized
 pandas DataFrame, per (protocol, server) pair, on the 5.6M-row `reproduce`
 dataset. Specification, metric definitions, lifetime and retirement condition:
-`docs/bench-plan.md`. Local developer machines only, never CI.
+`docs/bench.md`. Local developer machines only, never CI.
 
 ## Prerequisites
 
@@ -19,8 +19,8 @@ dataset. Specification, metric definitions, lifetime and retirement condition:
 make check venv old-server        # parity check, bench venv, old binary
 make bench-native@qdbd            # -> results/native@qdbd.json
 make bench-v1@old-rest            # -> results/v1@old-rest.json
-make bench-v1@new-rest            # not enabled (docs/bench-plan.md)
-make bench-flightsql@new-rest     # not enabled (docs/bench-plan.md)
+make bench-v1@new-rest            # not enabled (docs/bench.md)
+make bench-flightsql@new-rest     # not enabled (docs/bench.md)
 make report                       # compare all results/*.json
 ```
 
@@ -31,7 +31,7 @@ stay inspectable). `WARMUP=0 REPS=1` gives a quick smoke. `QUERIES=a,b`
 restricts the query set, and `CAPI_COMPRESSION=none|balanced` sets the
 qdbd <-> C API compression for the run's C-API holder (all of these belong
 on the `make` command line). Keep `CAPI_COMPRESSION` the same across the
-runs you compare; why the default is `none`: `docs/bench-plan.md`, "Two
+runs you compare; why the default is `none`: `docs/bench.md`, "Two
 volumes". Each `bench-*` invocation rewrites its run's result file whole;
 the final comparison wants one invocation per run with the full query set.
 

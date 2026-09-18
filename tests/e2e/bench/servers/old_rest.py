@@ -4,7 +4,7 @@ baseline every comparison is measured against."""
 
 def server_cmd(cfg):
     # --local pins 127.0.0.1:40080 and overrides --port; the pool and
-    # buffer sizes let a 5.6M-row query through (docs/bench-plan.md,
+    # buffer sizes let a 5.6M-row query through (docs/bench.md,
     # "Server lifecycle"). --log-file is the application log; stdout and
     # stderr go to the harness's own log next to it.
     return [

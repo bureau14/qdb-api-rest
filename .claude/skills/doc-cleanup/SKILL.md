@@ -231,7 +231,7 @@ Group by document, in the order of the passes. One line per finding:
 
 ```
 docs/log.md:27      Current state   pointer into an entry            delete
-docs/bench-plan.md:225  plan        temporal ("previously claimed")  rewrite as fact
+docs/bench.md:225  plan        temporal ("previously claimed")  rewrite as fact
 docs/log.md:69-78   entry           lesson, no home                  move -> .buildkite/AGENTS.md Facts
 ```
 
@@ -251,8 +251,8 @@ those need a decision and are never applied silently.
 - Re-run the greps of the pass that produced the finding; they must come
   back empty for the resolved items.
 - Commits only when the owner asks: one per document, one line,
-  `docs(<scope>): <subject>`, where scope is `log`, `brief`, `e2e-plan`,
-  `bench-plan`, `adr`, `agents`, or the folder for `AGENTS.md` files
+  `docs(<scope>): <subject>`, where scope is `log`, `brief`, `e2e`,
+  `bench`, `adr`, `agents`, or the folder for `AGENTS.md` files
   (`docs(buildkite): ...`).
 
 ## When to run

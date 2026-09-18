@@ -1,11 +1,12 @@
-# End-to-End Test Harness -- Plan
+# End-to-End Test Harness -- Specification
 
 Status: approved. This document specifies the permanent e2e harness
-described in the brief's Testing doctrine (items 2 and 3): golden e2e
-and stress against a live qdbd. It is a working
-document: verified facts and dates are recorded here, not in the brief;
-progress is recorded in `docs/log.md`, not here. Decisions are in the
-dated decision logs at the end.
+described in the brief's Testing doctrine (items 2 and 3): the v2 flow,
+the v1 goldens and stress against a live qdbd. It is a permanent
+specification (`docs/AGENTS.md`, Specifications): verified facts and
+dates are recorded here, not in the brief; progress is recorded in
+`docs/log.md`, not here. Decisions are in the dated decision logs at
+the end.
 
 ## Purpose
 
@@ -19,7 +20,7 @@ HTTP like a client:
 
 Every assertion is pass or fail. The harness measures nothing: time to
 first byte, memory and throughput are the bench's (ADR-0013;
-`docs/bench-plan.md`), which lives separately in `tests/e2e/bench/` and
+`docs/bench.md`), which lives separately in `tests/e2e/bench/` and
 consumes this harness's services and dataset.
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
@@ -285,7 +286,7 @@ and never the old server); the temporary, local bench checks **semantic**
 compatibility through a real client -- the same v1-protocol Python
 code run against the old and the new server, compared by normalized
 DataFrame fingerprint (`v1@old-rest == v1@new-rest` in
-`docs/bench-plan.md`).
+`docs/bench.md`).
 
 ## In Buildkite
 
@@ -330,7 +331,7 @@ tests/e2e/
   golden/v1/              v1 request/response pairs, captured from the old server
   golden/v2/              v2 cases, one per request, formats inside (arrives with the v2 suite)
   .old-master/            git worktree of master for the old server (gitignored)
-  bench/                  temporary multi-target comparison (docs/bench-plan.md)
+  bench/                  temporary multi-target comparison (docs/bench.md)
   AGENTS.md, README.md    conventions, usage
 ```
 

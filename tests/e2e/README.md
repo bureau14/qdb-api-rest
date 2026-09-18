@@ -1,9 +1,9 @@
 # tests/e2e -- end-to-end harness
 
 Golden-data equivalence and stress for the QuasarDB REST API, run
-against a live qdbd. Specification: `docs/e2e-plan.md`; conventions:
+against a live qdbd. Specification: `docs/e2e.md`; conventions:
 `AGENTS.md`. The bench in `bench/` has its own README and plan
-(`docs/bench-plan.md`).
+(`docs/bench.md`).
 
 ## Prerequisites
 
@@ -41,4 +41,4 @@ directory instead of S3).
 `golden/v1/<NN-slug>/request.json` is hand-written; `status`, `headers`
 and `body` next to it are captured from the old server and committed.
 Request and compare modes: the header of `golden.sh`. Editing rules:
-`AGENTS.md`; provenance and verified facts: `docs/e2e-plan.md`.
+`AGENTS.md`; provenance and verified facts: `docs/e2e.md`.

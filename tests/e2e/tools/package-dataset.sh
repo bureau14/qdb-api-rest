@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-off: convert the sc-19522 qdbd data directory (db.tar.zst) into the
-# distributable dataset archive described in docs/e2e-plan.md, "Dataset":
+# distributable dataset archive described in docs/e2e.md, "Dataset":
 #
 #   reproduce.csv            data, no header (qdb_export convention)
 #   reproduce.import.json    qdb_import config, with shard_size

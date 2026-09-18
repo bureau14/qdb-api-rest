@@ -22,16 +22,17 @@ describe what is true and what comes next, not how we got here.
 
 ## What lives where (one writer per fact)
 
-| Kind of information                                                              | Lives in                       | Update rule                                     |
-| -------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------- |
-| Scope, goals, non-goals, architecture                                            | `docs/brief.md`                | Rarely; only when scope or intent changes       |
-| Hard design decisions; anything that constrains code, build or CI until reversed | `docs/adr/NNNN-<slug>.md`      | Append-only; supersede, never rewrite           |
-| Working plan for work in flight: approach, open questions, verified facts        | `docs/<name>-plan.md`          | Ephemeral; edit freely; deleted when work lands |
-| Micro-decisions taken while a plan is alive                                      | decision-log table in the plan | Append rows; hard ones become ADRs              |
-| How to work in a folder; what not to try there; gotchas                          | that folder's `AGENTS.md`      | Edit in place; state as rules, never as history |
-| Lifecycle of a document                                                          | `Status:` line in that doc     | Vocabulary below                                |
-| Progress, milestone criteria, handoff notes for the next milestone               | `docs/log.md` Current state    | Rewrite in place; the only place progress goes  |
-| Scope, decision and milestone events, dated                                      | `docs/log.md` dated entries    | Append-only; one to three lines; link out       |
+| Kind of information                                                                                 | Lives in                       | Update rule                                     |
+| --------------------------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------- |
+| Scope, goals, non-goals, architecture                                                               | `docs/brief.md`                | Rarely; only when scope or intent changes       |
+| Hard design decisions; anything that constrains code, build or CI until reversed                    | `docs/adr/NNNN-<slug>.md`      | Append-only; supersede, never rewrite           |
+| Specification of a subsystem too large for an `AGENTS.md`: mechanics, verified facts, decision logs | `docs/<subsystem>.md`          | Permanent; edit in place; one per subsystem     |
+| Working plan for work in flight: approach, open questions, verified facts                           | `docs/<name>-plan.md`          | Ephemeral; edit freely; deleted when work lands |
+| Micro-decisions taken while a plan is alive                                                         | decision-log table in the plan | Append rows; hard ones become ADRs              |
+| How to work in a folder; what not to try there; gotchas                                             | that folder's `AGENTS.md`      | Edit in place; state as rules, never as history |
+| Lifecycle of a document                                                                             | `Status:` line in that doc     | Vocabulary below                                |
+| Progress, milestone criteria, handoff notes for the next milestone                                  | `docs/log.md` Current state    | Rewrite in place; the only place progress goes  |
+| Scope, decision and milestone events, dated                                                         | `docs/log.md` dated entries    | Append-only; one to three lines; link out       |
 
 Recorded nowhere, because something else already records it:
 
@@ -73,9 +74,9 @@ state block in `docs/log.md`.
 A plan (`docs/<name>-plan.md`) is scaffolding: a document the owner and
 the agents iterate on while a piece of work is being shaped and built.
 One plan per unit of work, cut however the work is cut -- a milestone
-(`m1-plan.md`), a subsystem (`e2e-plan.md`), a spike -- there is no
-required granularity. A plan may sit in git for as long as its work is
-in flight and not one day longer.
+(`m1-plan.md`), a slice of a subsystem (`e2e-v2-flow-plan.md`), a
+spike -- there is no required granularity. A plan may sit in git for as
+long as its work is in flight and not one day longer.
 
 Rules:
 
@@ -85,7 +86,8 @@ Rules:
   scope or intent changes to `brief.md`; hard decisions and their
   rejected alternatives to an ADR; rules, gotchas and verified
   mechanics to the `AGENTS.md` (or README) of the folder that owns the
-  code; measured numbers nowhere (result files). Then one log entry:
+  code, or to the subsystem's specification when one exists; measured
+  numbers nowhere (result files). Then one log entry:
   `<name>-plan.md deleted; facts moved to <where>`.
 - A plan is where verified facts land _first_ (dated), because that is
   where the work is happening. Moving them out is part of finishing the
@@ -96,6 +98,19 @@ Rules:
   each link needed and repointing the link, so no dangling
   `docs/<name>-plan.md` survives.
 - Plans carry no progress: the Current state block in `log.md` does.
+
+## Specifications
+
+A specification (`docs/<subsystem>.md`: `e2e.md`, `bench.md`) is the
+permanent description of one subsystem whose mechanics and verified
+facts outgrow an `AGENTS.md`: what it is for, how it is put together,
+what has been verified and when, and the dated decision-log tables of
+the plans that built it. It is edited in place as the subsystem
+changes and cited freely. It carries no progress and no milestone
+criteria; its `Status:` is `approved` for as long as the subsystem is
+alive, and it is deleted with the subsystem. The folder's `AGENTS.md`
+keeps the rules for working there and points at the specification for
+everything else.
 
 ## The log
 

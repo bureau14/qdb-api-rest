@@ -2,7 +2,7 @@
 """Assessment bench: one (protocol, server) pair per invocation.
 
 Measures wall clock until a Python client holds a fully materialized
-pandas DataFrame, plus the supporting metrics of docs/bench-plan.md,
+pandas DataFrame, plus the supporting metrics of docs/bench.md,
 which also owns the tool's lifetime and retirement condition. The
 Makefile is the only configuration source; every path and port arrives
 as an explicit flag.
@@ -37,7 +37,7 @@ import pandas as pd
 
 # The registry of valid runs is this table, nothing else; report order is
 # table order. ENABLED gates the runs whose server and protocol exist
-# (docs/bench-plan.md, "Protocols, servers, runs").
+# (docs/bench.md, "Protocols, servers, runs").
 REGISTRY = (
     ("native", "qdbd"),
     ("v1", "old-rest"),
@@ -47,7 +47,7 @@ REGISTRY = (
 ENABLED = {("native", "qdbd"), ("v1", "old-rest")}
 
 # The query set is data: adding a query is one line. Reduce-family rules
-# (docs/bench-plan.md, "Queries"): agg_topk is the agg_wide text plus the
+# (docs/bench.md, "Queries"): agg_topk is the agg_wide text plus the
 # ORDER BY ... LIMIT clause and nothing else, so their qdbd->reducer
 # volumes are directly comparable; every ORDER BY carries a full tiebreaker
 # (id is unique per group); COUNT(id), never COUNT(*) (the wire expands
@@ -84,7 +84,7 @@ MAX_IN_BUF_SIZE = 8_589_934_592
 STREAM_BATCH_SIZE = 65_536
 # qdbd <-> C API compression, selectable via --capi-compression: the C-API
 # holders default differently, so the bench pins the mode on every run
-# (docs/bench-plan.md, "Two volumes").
+# (docs/bench.md, "Two volumes").
 COMPRESSION_MODES = ("none", "balanced")
 
 FINGERPRINT_EDGE_ROWS = 5
@@ -489,7 +489,7 @@ def parse_run(args):
         valid = ", ".join(f"{p}@{s}" for p, s in REGISTRY)
         die(f"unknown run '{args.run}'; valid runs: {valid}")
     if (protocol, server) not in ENABLED:
-        die(f"{args.run}: run not enabled (docs/bench-plan.md, 'Protocols, servers, runs')", code=2)
+        die(f"{args.run}: run not enabled (docs/bench.md, 'Protocols, servers, runs')", code=2)
     return protocol, server
 
 
