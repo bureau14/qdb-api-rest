@@ -1,6 +1,6 @@
 # The v2 e2e flow -- Plan
 
-Status: draft. Scaffolding for one unit of work: the documentation
+Status: approved. Scaffolding for one unit of work: the documentation
 re-cut that replaces the v2 golden suite with the v2 e2e flow and
 inserts the milestone that carries it. The code the flow needs (two
 endpoints, one Go tool, one driver) is a later unit under this same
