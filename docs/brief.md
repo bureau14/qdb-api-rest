@@ -209,7 +209,7 @@ Two real drivers:
    reflective `json.Encode` over the whole structure, and runs without
    HTTP timeouts, so a large result blows memory and hangs rather than
    failing fast. The time-to-first-byte of the reference query is the
-   full materialization time (the bench measures it: `docs/bench-plan.md`).
+   full materialization time (the bench measures it: `docs/bench.md`).
    Escaping go-swagger matters only because it stands in the way of
    high-performance protocols.
 2. **Token and credential hygiene.** The old JWT embeds the user's raw
@@ -457,9 +457,9 @@ POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, conte
 POST   /api/v2/ingest              multi-table bulk ingest; body content-negotiated (Arrow IPC, NDJSON, CSV);
                                    push mode (transactional|fast|async) via parameter
 GET    /api/v2/tables              list tables (prefix filter, pagination)
-POST   /api/v2/tables              create table (name, shard size, columns)
+POST   /api/v2/tables              create table (name, shard size, columns); M2, ADR-0015
 GET    /api/v2/tables/{name}       schema: columns, types, shard size, tags
-POST   /api/v2/tables/{name}/rows  single-table ingest convenience
+POST   /api/v2/tables/{name}/rows  single-table ingest; body content-negotiated; M2, ADR-0015
 GET    /api/v2/tags                list tags
 GET    /api/v2/tags/{tag}          entries carrying the tag
 GET    /api/v2/cluster             cluster status (nodes, disk, memory)
@@ -666,7 +666,7 @@ internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
-tests/e2e/             golden e2e harness (make + shell + curl, live qdbd; runs in Buildkite); bench/ inside is temporary and local
+tests/e2e/             e2e harness (make + shell + curl, live qdbd; runs in Buildkite); bench/ inside is temporary and local
 vendor/                vendored dependencies (committed)
 ```
 
@@ -723,22 +723,25 @@ fourth.
      v2 ingest endpoints (each input format) reads back exactly.
    - _Auth properties_: token roundtrip, expiry, key-rotation continuity,
      refresh behavior -- generated over key/claim space.
-2. **Golden e2e** (pattern from qdb-nats-connector ADR-007) -- does the
-   built binary, driven over HTTP like a client, return exactly the
-   audited response? Make + shell + curl orchestration against a live
-   qdbd started by the shared `scripts/tests/setup/start-services.sh`
-   (qdbd is a persistent service, never started by a test). A golden is
-   an audited expected response: a run somebody judged correct and
-   committed, compared byte for byte ever after. Two suites: `v2`,
-   captured from the server under test and audited, and `v1`,
-   small request/response pairs captured from the old server and
-   replayed against the v1 endpoints, none of them exercising a
-   deliberate deviation (Compatibility contract). An endpoint
-   lands with its goldens. The canonical dataset is a customer-derived
-   5,613,032-row table (story sc-19522) distributed as CSV +
-   `qdb_import` config, sha256-pinned, S3-hosted the way the
+2. **End-to-end** (pattern from qdb-nats-connector ADR-007) -- does the
+   built binary, driven over HTTP like a client, do what a client
+   expects? Make + shell + curl orchestration against a live qdbd
+   started by the shared `scripts/tests/setup/start-services.sh` (qdbd
+   is a persistent service, never started by a test). Two suites. The
+   `v2` flow (ADR-0014): login, create a table, query it, ingest
+   generated rows through every input format, query them back in every
+   format and content coding, each response decoded to CSV and
+   compared byte for byte with the generated rows; nothing is captured
+   and nothing is audited, the expected value is known by construction.
+   The `v1` goldens (ADR-0013): small request/response pairs captured
+   from the old server, audited, committed, and replayed against the v1
+   endpoints, none of them exercising a deliberate deviation
+   (Compatibility contract). Error rows are Go tests, never e2e cases.
+   The v1 suite and the bench read the canonical dataset, a
+   customer-derived 5,613,032-row table (story sc-19522) distributed as
+   CSV + `qdb_import` config, sha256-pinned, S3-hosted the way the
    nats-connector golden datasets are, and loaded idempotently by
-   `make load`. Plan: `docs/e2e-plan.md`.
+   `make load`. Specification: `docs/e2e.md`.
 3. **Stress as behaviour**, in the same harness: a concurrency stress
    (N parallel clients) asserting that the session budget bounds memory
    and load (excess waits or times out, no goodput collapse), and that
@@ -768,7 +771,7 @@ fourth.
    and dataset and owns only its venv, the old-server build, and the
    REST-server lifecycle per run. Cross-run functional equivalence is
    validated by comparing persisted, normalized result fingerprints.
-   The plan lives in `docs/bench-plan.md`.
+   The specification lives in `docs/bench.md`.
 
 ## Milestones
 
