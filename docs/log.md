@@ -61,15 +61,12 @@ Next:
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
-   freed; and a null-aware timestamp column constructor for the batch
-   writer, so the table fixture and the flow's generated rows can carry
-   a null timestamp cell (`internal/AGENTS.md`, Tests; ADR-0014).
+   freed.
 
 Handoff to M2 (tables and ingest):
 
-- The flow's generated rows carry no empty string and no null
-  timestamp until the limits lift (ADR-0014, Consequences); the ingest
-  parser reads an empty CSV field as null.
+- The flow's generated rows carry no empty string (ADR-0014,
+  Consequences); the ingest parser reads an empty CSV field as null.
 - The v1 suite keeps `seed.sql` and `make load`; the flow reads
   neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
   and "In Buildkite").
