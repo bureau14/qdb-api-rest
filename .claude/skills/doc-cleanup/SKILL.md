@@ -30,7 +30,7 @@ In scope, and only these:
 
 ```
 docs/brief.md  docs/*-plan.md  docs/log.md  docs/adr/*.md  docs/adr/README.md
-AGENTS.md (every one)  CLAUDE.md (every one)
+AGENTS.md (every one)
 tests/e2e/README.md  tests/e2e/bench/README.md
 comments in: cmd/ internal/ scripts/cicd/ .buildkite/*.py tests/e2e/*.sh
              tests/e2e/bench/*.py tests/e2e/bench/protocols tests/e2e/bench/servers
@@ -46,11 +46,9 @@ golden fixtures, result files.
 ```bash
 find . \( -path ./vendor -o -path ./qdb -o -path ./scripts/tests/setup \
   -o -path ./.buildkite/tools -o -path ./tests/e2e/.old-master -o -name .env \) -prune \
-  -o \( -name AGENTS.md -o -name CLAUDE.md -o -name README.md -o -path './docs/*.md' \) -print
+  -o \( -name AGENTS.md -o -name README.md -o -path './docs/*.md' \) -print
 ```
 
-For every `AGENTS.md` found, a sibling `CLAUDE.md` must exist containing
-exactly `@AGENTS.md`; for every `CLAUDE.md`, a sibling `AGENTS.md`.
 Every `AGENTS.md` except the root one must have a one-line row in its
 parent's `AGENTS.md`. Every ADR file must have a row in
 `docs/adr/README.md` and vice versa.
@@ -169,7 +167,6 @@ Rules, not history. For each file:
 - "Not yet" / "when M1 lands" items: check whether it landed. Landed ->
   rewrite as the rule that now holds. Not landed -> keep, phrased as a
   dependency ("arrives with the qdb-api-go vendoring"), not a promise.
-- `CLAUDE.md` content is exactly `@AGENTS.md`.
 
 ## Pass 5 -- code comments
 
