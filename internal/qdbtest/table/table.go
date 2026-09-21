@@ -1,8 +1,10 @@
-// Package table is the generated table fixture: a test draws a table
-// (schema, index, rows) with Generate, creates it in the live qdbd
-// fixture with Create, queries it through the cluster, and compares what
-// came back with the Table it holds. The table is removed on the test's
-// cleanup. Rules: internal/AGENTS.md, Tests.
+// Package table is the generated table fixture, in building blocks that
+// stack: GenerateSchema draws a table without rows, Generate draws rows
+// into one, RemoveOnCleanup removes whatever a table leaves behind, and
+// Create creates the table, pushes its rows and removes it on the test's
+// cleanup. A test that creates or pushes through its own door (an HTTP
+// route) takes the blocks below Create; every test compares what came
+// back with the Table it holds. Rules: internal/AGENTS.md, Tests.
 package table
 
 import (
@@ -30,7 +32,8 @@ type T interface {
 
 // Column is one generated column: its cells as the writer's own
 // ColumnData, with the type's null sentinel in every null slot, and the
-// validity mask that says which slots hold a value.
+// validity mask that says which slots hold a value. A schema's column
+// has neither.
 type Column struct {
 	Name     string
 	Type     qdbapi.TsColumnType
@@ -136,30 +139,40 @@ func generateData(rt *rapid.T, kind qdbapi.TsColumnType, valid []bool) qdbapi.Co
 	}
 }
 
-// generateColumn draws column i of table: its type, its mask and its
-// cells.
-func generateColumn(rt *rapid.T, table string, i, rows, nullPct int) Column {
+// generateColumn draws column i of table without cells: its name, its
+// type and, for a symbol, a symtable named after both.
+func generateColumn(rt *rapid.T, table string, i int) Column {
 	c := Column{Name: fmt.Sprintf("c%d", i), Type: rapid.SampledFrom(columnTypes).Draw(rt, "type")}
 	if c.Type == qdbapi.TsColumnSymbol {
 		c.Symtable = table + "_" + c.Name
 	}
-	c.Valid = generateMask(rt, rows, nullPct)
-	c.Data = generateData(rt, c.Type, c.Valid)
 	return c
 }
 
-// Generate draws a table: a name, one to five columns of independently
-// drawn types, a row count, and one null density for the whole table so
-// that runs range from no nulls to all-null columns.
-func Generate(rt *rapid.T) Table {
+// GenerateSchema draws a table without rows: a name and one to five
+// columns of independently drawn types.
+func GenerateSchema(rt *rapid.T) Table {
 	name := "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "table")
-	rows := rapid.IntRange(0, 40).Draw(rt, "rows")
-	nullPct := rapid.IntRange(0, 100).Draw(rt, "null pct")
 	cols := make([]Column, rapid.IntRange(1, 5).Draw(rt, "columns"))
 	for i := range cols {
-		cols[i] = generateColumn(rt, name, i, rows, nullPct)
+		cols[i] = generateColumn(rt, name, i)
 	}
-	return Table{Name: name, Columns: cols, Index: generateIndex(rt, rows)}
+	return Table{Name: name, Columns: cols}
+}
+
+// Generate draws a table: a schema, a row count, and one null density for
+// the whole table so that runs range from no nulls to all-null columns.
+func Generate(rt *rapid.T) Table {
+	tbl := GenerateSchema(rt)
+	rows := rapid.IntRange(0, 40).Draw(rt, "rows")
+	nullPct := rapid.IntRange(0, 100).Draw(rt, "null pct")
+	for i := range tbl.Columns {
+		c := &tbl.Columns[i]
+		c.Valid = generateMask(rt, rows, nullPct)
+		c.Data = generateData(rt, c.Type, c.Valid)
+	}
+	tbl.Index = generateIndex(rt, rows)
+	return tbl
 }
 
 // Select is the query that answers tbl's rows as written: $timestamp
