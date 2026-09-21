@@ -81,3 +81,15 @@ func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard ti
 func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
 }
+
+// IsTableExists reports whether err is the cluster refusing a create
+// because the name is taken. The HTTP layer maps it to 409.
+func IsTableExists(err error) bool {
+	return errors.Is(err, qdbapi.ErrAliasAlreadyExists)
+}
+
+// IsTableNotFound reports whether err is the cluster knowing no entry of
+// that name. The HTTP layer maps it to 404 where the name is the resource.
+func IsTableNotFound(err error) bool {
+	return errors.Is(err, qdbapi.ErrAliasNotFound)
+}
