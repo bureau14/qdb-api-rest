@@ -109,7 +109,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   under `-short`.
 - A test that needs rows draws a table with `internal/qdbtest/table`
   (`Generate`, then `Create` on a `*qdb.Cluster`) and compares what came
-  back with the `Table` it holds; it never writes its own loader. The
+  back with the `Table` it holds; it never writes its own loader. A
+  test that creates or pushes through its own door (an HTTP route)
+  takes the blocks `Create` stacks on, `GenerateSchema` and
+  `RemoveOnCleanup`, never a copy of them. The
   fixture pushes through the batch writer, whose null is the type's
   sentinel (`MinInt64`, `NaN`, the empty string, the nil blob,
   `NullTime`), so a generated value is never a sentinel. The table

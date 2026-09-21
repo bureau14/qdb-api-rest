@@ -82,7 +82,7 @@ and delete".
 - The query property draws a table per iteration and compares each
   format's body byte for byte with the encoder run directly over
   `Cluster.Query`; the encoders' own tests prove the bytes decode.
-- The table property creates a generated schema over HTTP and reads it
-  back through the query endpoint; whatever a create can leave behind,
-  the table and its symtables, is removed on the iteration's cleanup.
+- The table property draws a schema with `table.GenerateSchema`,
+  creates it over HTTP and reads it back through the query endpoint;
+  `table.RemoveOnCleanup` removes what the create leaves behind.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.
