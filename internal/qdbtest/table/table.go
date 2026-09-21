@@ -226,7 +226,7 @@ func writerOf(tbl Table) (*qdbapi.Writer, error) {
 	return &w, nil
 }
 
-// entries is every entry Create can leave behind: the table and its
+// entries is every entry tbl can leave behind: the table and its
 // symtables. A symtable exists only once a symbol value has been pushed
 // into it, so removing one that was never filled answers alias-not-found,
 // which is the state the cleanup wants.
@@ -245,18 +245,10 @@ func call(c *qdb.Cluster, f func(*qdb.Session) error) error {
 	return c.Call(context.Background(), qdb.User{}, f)
 }
 
-// Create creates tbl in the cluster, pushes its rows, and removes the
-// table and its symtables on t's cleanup. The cleanup is registered as
-// soon as the table exists, so a failed push leaves nothing behind; a
-// failed removal is reported, never fatal, so a leak is visible.
-func Create(t T, c *qdb.Cluster, tbl Table) {
-	t.Helper()
-	err := call(c, func(s *qdb.Session) error {
-		return s.CreateTable(tbl.Name, 24*time.Hour, columnInfos(tbl)...)
-	})
-	if err != nil {
-		t.Fatalf("create %s: %v", tbl.Name, err)
-	}
+// RemoveOnCleanup removes tbl and its symtables on t's cleanup, however
+// the table came to exist, tolerating what is already gone. A failed
+// removal is reported, never fatal, so a leak is visible.
+func RemoveOnCleanup(t T, c *qdb.Cluster, tbl Table) {
 	t.Cleanup(func() {
 		for _, name := range entries(tbl) {
 			err := call(c, func(s *qdb.Session) error { return s.RemoveTable(name) })
@@ -265,6 +257,20 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 			}
 		}
 	})
+}
+
+// Create creates tbl in the cluster, pushes its rows, and removes it on
+// t's cleanup. The cleanup is registered as soon as the table exists, so
+// a failed push leaves nothing behind.
+func Create(t T, c *qdb.Cluster, tbl Table) {
+	t.Helper()
+	err := call(c, func(s *qdb.Session) error {
+		return s.CreateTable(tbl.Name, 24*time.Hour, columnInfos(tbl)...)
+	})
+	if err != nil {
+		t.Fatalf("create %s: %v", tbl.Name, err)
+	}
+	RemoveOnCleanup(t, c, tbl)
 	if len(tbl.Index) == 0 {
 		return // nothing to push
 	}
