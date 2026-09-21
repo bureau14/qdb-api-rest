@@ -3,7 +3,8 @@
 Scope: the v2 HTTP handlers, the middleware and the probes. Package-wide
 Go rules, logging and the test fixtures: `internal/AGENTS.md`. The wire
 contract of the query endpoint and the v2 error shape: ADR-0010; of the
-login: ADR-0011.
+login: ADR-0011; of the table routes: `docs/brief.md`, "Tables: create
+and delete".
 
 ## Handlers
 
@@ -25,6 +26,16 @@ login: ADR-0011.
   ending gets nothing on the wire and one debug line; 500 is reserved
   for this process.
 - Every body is read through `readBody`, one cap for all of them.
+- A route whose resource is a name refines the caller's 400 in its own
+  handler, before `writeClusterError` and never inside it: the create
+  answers 409 on `qdb.IsTableExists`, the delete 404 on
+  `qdb.IsTableNotFound`. A query that names an unknown table stays 400.
+  The handlers name no binding error; `internal/qdb` classifies.
+- The create checks the body's shape only: JSON, a present
+  `shard_size` that fits a duration. The column vocabulary and the
+  symtable rule are `internal/qdb`'s (`ErrInvalidColumn`, found before a
+  session is leased); names and sizes are the C API's. A create or a
+  delete is never retried.
 - The login proves credentials by `Cluster.Authenticate`, one direct
   dial outside the pools, and mints only for credentials the cluster
   accepted; a refusal is 401 with no `WWW-Authenticate`, since no
@@ -71,4 +82,7 @@ login: ADR-0011.
 - The query property draws a table per iteration and compares each
   format's body byte for byte with the encoder run directly over
   `Cluster.Query`; the encoders' own tests prove the bytes decode.
+- The table property creates a generated schema over HTTP and reads it
+  back through the query endpoint; whatever a create can leave behind,
+  the table and its symtables, is removed on the iteration's cleanup.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.
