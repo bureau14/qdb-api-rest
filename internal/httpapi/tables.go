@@ -108,8 +108,24 @@ func handleCreateTable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleDeleteTable removes the table the path names and answers 204; a
+// name the cluster does not know is 404.
+func handleDeleteTable(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	err := qdb.ClusterFrom(ctx).RemoveTable(ctx, caller(r), r.PathValue("name"))
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case qdb.IsTableNotFound(err):
+		writeProblem(w, http.StatusNotFound, err.Error())
+	default:
+		writeClusterError(ctx, w, err, http.StatusBadRequest)
+	}
+}
+
 // registerTableRoutes serves the table collection behind the bearer
 // middleware. The mux patterns fix method and path.
 func registerTableRoutes(mux *http.ServeMux) {
 	mux.Handle("POST "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleCreateTable))))
+	mux.Handle("DELETE "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleDeleteTable))))
 }
