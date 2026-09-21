@@ -10,9 +10,6 @@ Agent instructions live in `AGENTS.md` files, maintained **hierarchically**:
 - A higher-level `AGENTS.md` gives only a _rough_ pointer to what a
   sub-folder contains and when to open its `AGENTS.md`. It does not
   repeat or summarize the sub-folder's rules.
-- `CLAUDE.md` files contain exactly `@AGENTS.md` and nothing else; they
-  exist only so the tooling includes `AGENTS.md`. Never put content in
-  a `CLAUDE.md`.
 - When adding a folder with its own conventions, add an `AGENTS.md`
   there and a one-line pointer in the parent's `AGENTS.md`.
 
