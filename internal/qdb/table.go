@@ -1,8 +1,10 @@
 package qdb
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
@@ -60,4 +62,22 @@ func columnInfos(cols []Column) ([]qdbapi.TsColumnInfo, error) {
 		infos[i] = info
 	}
 	return infos, nil
+}
+
+// CreateTable creates the table name as u, with cols after the implied
+// $timestamp column, sharded by shard. An invalid column is answered
+// before a session is leased. A create is never retried: it is not a
+// read.
+func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard time.Duration, cols []Column) error {
+	infos, err := columnInfos(cols)
+	if err != nil {
+		return err
+	}
+	return c.Call(ctx, u, func(s *Session) error { return s.CreateTable(name, shard, infos...) })
+}
+
+// RemoveTable removes the table name as u, and nothing else: a symtable
+// is its own entry, which other tables may share.
+func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
+	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
 }
