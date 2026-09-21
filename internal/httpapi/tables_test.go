@@ -5,10 +5,7 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +14,6 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
-	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -47,61 +43,33 @@ func (s server) deleteTable(name string) *httptest.ResponseRecorder {
 	return s.send(http.MethodDelete, tablesPath+"/"+name, "", map[string]string{"Authorization": "Bearer " + s.token})
 }
 
-// schemaTypes is what a column's type word is drawn from.
-var schemaTypes = []string{"blob", "double", "int64", "string", "symbol", "timestamp"}
-
-// generateCreate draws a create body: a fixture-prefixed name, a shard
-// size, and one to five columns over the six types, a symbol naming a
-// symtable after its table and column.
-func generateCreate(rt *rapid.T) createTableRequest {
-	name := "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "table")
-	shard := rapid.Int64Range(1000, 86_400_000).Draw(rt, "shard size")
-	cols := make([]columnRequest, rapid.IntRange(1, 5).Draw(rt, "columns"))
-	for i := range cols {
-		cols[i] = columnRequest{Name: fmt.Sprintf("c%d", i), Type: rapid.SampledFrom(schemaTypes).Draw(rt, "type")}
-		if cols[i].Type == "symbol" {
-			cols[i].Symtable = name + "_" + cols[i].Name
-		}
-	}
-	return createTableRequest{Name: name, ShardSize: &shard, Columns: cols}
+// typeWords is the schema vocabulary of the binding's column types.
+var typeWords = map[qdbapi.TsColumnType]string{
+	qdbapi.TsColumnBlob:      "blob",
+	qdbapi.TsColumnDouble:    "double",
+	qdbapi.TsColumnInt64:     "int64",
+	qdbapi.TsColumnString:    "string",
+	qdbapi.TsColumnSymbol:    "symbol",
+	qdbapi.TsColumnTimestamp: "timestamp",
 }
 
-// removeOnCleanup removes whatever a create can leave behind, the table
-// and its never-filled symtables, tolerating what is already gone.
-func removeOnCleanup(t table.T, c *qdb.Cluster, req createTableRequest) {
-	names := []string{req.Name}
-	for _, col := range req.Columns {
-		if col.Symtable != "" {
-			names = append(names, col.Symtable)
-		}
+// createBodyOf is the create body that describes tbl, sharded by a day.
+func createBodyOf(tbl table.Table) createTableRequest {
+	shard := int64(86_400_000)
+	cols := make([]columnRequest, len(tbl.Columns))
+	for i, c := range tbl.Columns {
+		cols[i] = columnRequest{Name: c.Name, Type: typeWords[c.Type], Symtable: c.Symtable}
 	}
-	t.Cleanup(func() {
-		for _, name := range names {
-			err := c.RemoveTable(context.Background(), qdb.User{}, name)
-			if err != nil && !errors.Is(err, qdbapi.ErrAliasNotFound) {
-				t.Errorf("remove %s: %v", name, err)
-			}
-		}
-	})
+	return createTableRequest{Name: tbl.Name, ShardSize: &shard, Columns: cols}
 }
 
-// selectOf is the query that answers req's columns in order, $timestamp
-// first.
-func selectOf(req createTableRequest) string {
-	names := []string{"$timestamp"}
-	for _, c := range req.Columns {
-		names = append(names, c.Name)
-	}
-	return "SELECT " + strings.Join(names, ", ") + " FROM " + req.Name
-}
-
-// wireType is the type word a query answers for a schema type word: a
-// symbol reads back as a string.
-func wireType(schemaType string) string {
-	if schemaType == "symbol" {
+// wireType is the type word a query answers for a column: a symbol reads
+// back as a string.
+func wireType(c table.Column) string {
+	if c.Type == qdbapi.TsColumnSymbol {
 		return "string"
 	}
-	return schemaType
+	return typeWords[c.Type]
 }
 
 // TestTableLifecycle: a generated schema is created (201, Location),
@@ -110,8 +78,9 @@ func wireType(schemaType string) string {
 func TestTableLifecycle(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
-		req := generateCreate(rt)
-		removeOnCleanup(rt, s.c, req)
+		tbl := table.GenerateSchema(rt)
+		table.RemoveOnCleanup(rt, s.c, tbl)
+		req := createBodyOf(tbl)
 		resp := s.createTable(rt, req)
 		if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
 			rt.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
@@ -121,7 +90,7 @@ func TestTableLifecycle(t *testing.T) {
 		}
 		// The empty table answers its schema: every column, in order, under
 		// its wire type, with no data.
-		q := s.query(selectOf(req), map[string]string{"Authorization": "Bearer " + s.token})
+		q := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token})
 		var result struct {
 			Columns []struct {
 				Name string `json:"name"`
@@ -132,13 +101,13 @@ func TestTableLifecycle(t *testing.T) {
 		if err := json.Unmarshal(q.Body.Bytes(), &result); err != nil || q.Code != http.StatusOK {
 			rt.Fatalf("query: status %d: %s (%v)", q.Code, q.Body.String(), err)
 		}
-		if len(result.Columns) != len(req.Columns)+1 {
+		if len(result.Columns) != len(tbl.Columns)+1 {
 			rt.Fatalf("query answered %d columns: %s", len(result.Columns), q.Body.String())
 		}
-		for i, c := range req.Columns {
+		for i, c := range tbl.Columns {
 			got := result.Columns[i+1]
-			if got.Name != c.Name || got.Type != wireType(c.Type) || len(got.Data) != 0 {
-				rt.Fatalf("column %d = %+v, want %s %s", i, got, c.Name, wireType(c.Type))
+			if got.Name != c.Name || got.Type != wireType(c) || len(got.Data) != 0 {
+				rt.Fatalf("column %d = %+v, want %s %s", i, got, c.Name, wireType(c))
 			}
 		}
 		if resp := s.createTable(rt, req); resp.Code != http.StatusConflict {
@@ -158,11 +127,11 @@ func TestTableLifecycle(t *testing.T) {
 // again over them.
 func TestTableRecreatedOverSymtable(t *testing.T) {
 	s := newServer(t)
-	shard := int64(86_400_000)
-	req := createTableRequest{Name: "qdbtest_recreated", ShardSize: &shard, Columns: []columnRequest{
-		{Name: "c0", Type: "symbol", Symtable: "qdbtest_recreated_c0"},
+	tbl := table.Table{Name: "qdbtest_recreated", Columns: []table.Column{
+		{Name: "c0", Type: qdbapi.TsColumnSymbol, Symtable: "qdbtest_recreated_c0"},
 	}}
-	removeOnCleanup(t, s.c, req)
+	table.RemoveOnCleanup(t, s.c, tbl)
+	req := createBodyOf(tbl)
 	if resp := s.createTable(t, req); resp.Code != http.StatusCreated {
 		t.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
 	}
