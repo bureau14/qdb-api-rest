@@ -46,7 +46,7 @@ insecure login is anonymous.
    Proves the schema path before any row exists.
 4. `POST /api/v2/tables/{name}/rows`: the generated rows, as CSV into
    `e2e_csv`, as NDJSON into `e2e_ndjson`, as Arrow IPC into
-   `e2e_arrow`; 200 (or the status ADR-0015 fixes), then a row count
+   `e2e_arrow`; a 2xx, then a row count
    through the query endpoint.
 5. Query each table in every format under `identity` and `gzip`; every
    response decoded to CSV and compared byte for byte with the
@@ -110,7 +110,8 @@ too large for git because nothing in v2 is stored.
 
 ### The endpoints (M2, their own ADR)
 
-Decided in ADR-0015 with the code unit, not here; the plan records
+Decided with their code slices (`docs/brief.md`, "Tables: create and
+delete"; the ingest with its own plan), not here; the plan records
 only what the flow needs of them: `POST /api/v2/tables` takes a JSON
 body naming the table, its shard size and its columns in the brief's
 schema vocabulary (`docs/brief.md`, "/api/v2 endpoint sketch");
@@ -126,7 +127,7 @@ through the batch writer. Errors are RFC 9457 problems (ADR-0010 6).
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs/brief.md`, Milestones              | M2 -- Tables and ingest inserted; M1's exit loses the golden suite; M2..M9 renumber to M3..M10; the exploration milestone loses "create", the ingestion milestone keeps the multi-table `/api/v2/ingest` only; the ordering rationale names why M2 sits there |
 | `docs/brief.md`, Testing doctrine 2      | v2 is the generated roundtrip flow; v1 keeps goldens; the dataset sentence is v1's and the bench's                                                                                                                                                            |
-| `docs/brief.md`, endpoint sketch         | the two M2 endpoints marked as decided by ADR-0015                                                                                                                                                                                                            |
+| `docs/brief.md`, endpoint sketch         | the two M2 endpoints marked M2                                                                                                                                                                                                                                |
 | `docs/adr/0014-v2-e2e-generated-flow.md` | the decision above; supersedes ADR-0013 3 and 5 for v2 only; one Go tool generates and decodes                                                                                                                                                                |
 | `docs/adr/0010`, `0011`, `0012`          | the five milestone numbers renumber mechanically (M2 -> M3, M3 -> M4, M4 -> M5); no decision changes                                                                                                                                                          |
 | `docs/e2e-plan.md` -> `docs/e2e.md`      | restored and renamed, a permanent specification; "The v2 suite" rewritten as the flow; the `expected/` archive layout, the operator capture cycle and the v2 golden case layout leave; the v1 section unchanged                                               |
@@ -158,7 +159,7 @@ no commit touches code, tests or the Makefile.
 2. The flow runs on both clusters (decision 2026-09-18 below, kept):
    the secure node proves the key-file flags and the credential check;
    the same rows on both.
-3. The ingest status: 200 with a small JSON body (`rows` written) or 201. Recommended 200 with `{"rows": N}`; ADR-0015 decides.
+3. The ingest status: 200 with a small JSON body (`rows` written) or 201. Recommended 200 with `{"rows": N}`; the ingest slice's plan decides.
 
 ## Decision log (2026-09-18)
 

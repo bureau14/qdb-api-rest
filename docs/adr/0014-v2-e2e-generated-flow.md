@@ -54,7 +54,8 @@ no audit.
 6. **The flow needs `POST /api/v2/tables` and
    `POST /api/v2/tables/{name}/rows`**, so they move from the
    exploration and ingestion milestones into a milestone directly after
-   M1 (`docs/brief.md`, Milestones). Their wire shapes are ADR-0015's.
+   M1 (`docs/brief.md`, Milestones). Their wire shapes are the brief's
+   (`docs/brief.md`, "Tables: create and delete").
 
 ## Consequences
 

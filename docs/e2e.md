@@ -137,7 +137,7 @@ anonymous. Every assertion is pass or fail; nothing is timed.
    Rendering). Proves the schema path before any row exists.
 4. `POST /api/v2/tables/{name}/rows`: the generated rows, as CSV into
    `e2e_csv`, as NDJSON into `e2e_ndjson`, as Arrow IPC into
-   `e2e_arrow`, each answered as ADR-0015 fixes.
+   `e2e_arrow`, each answered 2xx.
 5. Each table queried in every format (`json`, `ndjson`, `csv`,
    `arrow`) under `identity` and `gzip`: the CSV response compared byte
    for byte with the generated CSV; a JSON, NDJSON or Arrow response

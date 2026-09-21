@@ -457,9 +457,10 @@ POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, conte
 POST   /api/v2/ingest              multi-table bulk ingest; body content-negotiated (Arrow IPC, NDJSON, CSV);
                                    push mode (transactional|fast|async) via parameter
 GET    /api/v2/tables              list tables (prefix filter, pagination)
-POST   /api/v2/tables              create table (name, shard size, columns); M2, ADR-0015
+POST   /api/v2/tables              create table (name, shard size, columns); M2, see Tables below
 GET    /api/v2/tables/{name}       schema: columns, types, shard size, tags
-POST   /api/v2/tables/{name}/rows  single-table ingest; body content-negotiated; M2, ADR-0015
+DELETE /api/v2/tables/{name}       remove table; M2, see Tables below
+POST   /api/v2/tables/{name}/rows  single-table ingest; body content-negotiated; M2
 GET    /api/v2/tags                list tags
 GET    /api/v2/tags/{tag}          entries carrying the tag
 GET    /api/v2/cluster             cluster status (nodes, disk, memory)
@@ -483,6 +484,36 @@ legible instead of confusing. Whatever user metadata QuasarDB exposes
 material is never echoed back. Primary audience: debugging "who am I
 logged in as / why am I unauthorized / where are my connections" -- the
 most common support questions an API like this gets.
+
+### Tables: create and delete
+
+Both routes take a bearer access token and answer errors as ADR-0010's
+problems; its status table applies, with the two rows named here.
+
+`POST /api/v2/tables`, `Content-Type: application/json`:
+
+```json
+{
+  "name": "trades",
+  "shard_size": 86400000,
+  "columns": [
+    { "name": "price", "type": "double" },
+    { "name": "venue", "type": "symbol", "symtable": "venues" }
+  ]
+}
+```
+
+`shard_size` is an integer number of milliseconds, the C API's unit,
+and is required: the REST API has no duration syntax of its own next to
+qdbsh's. `type` is a word of the schema vocabulary above; `symtable` is
+required on a `symbol` column, as the C API requires it, and refused on
+any other. `$timestamp` is implied. Answers `201` with
+`Location: /api/v2/tables/<name>` and an empty body; `409` when the
+name is taken.
+
+`DELETE /api/v2/tables/{name}` answers `204` with an empty body, `404`
+when the cluster knows no such name. It removes the table and nothing
+else: a symtable is its own entry, which other tables may share.
 
 ### Resilience and connection management
 
