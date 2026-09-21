@@ -105,6 +105,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-09-21 -- tables-plan.md deleted with table create and delete landed
+
+- The wire contract to `docs/brief.md`, "Tables: create and delete";
+  the handler rules to `internal/httpapi/AGENTS.md`; the owner's ingest
+  parameters to Current state, Next.
+
 ## 2026-09-21 -- M1 closed; M2 started with table create and delete
 
 - Owner decisions: table creation and ingest come before any CI run of
