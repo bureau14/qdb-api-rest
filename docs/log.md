@@ -5,33 +5,26 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-18
+Last updated: 2026-09-21
 
-| Milestone               | State       | Note                                                                           |
-| ----------------------- | ----------- | ------------------------------------------------------------------------------ |
-| M0 -- Foundation        | done        | exit signed off 2026-08-25                                                     |
-| M1 -- v2 query          | in progress | query, login and compression landed; exit awaits the Buildkite run of the base |
-| M2 -- Tables and ingest | not started | the v2 e2e flow is its exit (ADR-0014)                                         |
-| M3 -- v2 auth           | not started |                                                                                |
-| M4 -- Drop-in compat    | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green         |
-| M5 -- Resilience        | not started |                                                                                |
-| M6 -- Flight SQL        | not started |                                                                                |
-| M7 -- Exploration       | not started |                                                                                |
-| M8 -- Ingestion         | not started |                                                                                |
-| M9 -- Embedded DuckDB   | not started |                                                                                |
-| M10 -- Release          | not started |                                                                                |
+| Milestone               | State       | Note                                                                   |
+| ----------------------- | ----------- | ---------------------------------------------------------------------- |
+| M0 -- Foundation        | done        | exit signed off 2026-08-25                                             |
+| M1 -- v2 query          | done        | closed 2026-09-21                                                      |
+| M2 -- Tables and ingest | in progress | the v2 e2e flow is its exit (ADR-0014)                                 |
+| M3 -- v2 auth           | not started |                                                                        |
+| M4 -- Drop-in compat    | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green |
+| M5 -- Resilience        | not started |                                                                        |
+| M6 -- Flight SQL        | not started |                                                                        |
+| M7 -- Exploration       | not started |                                                                        |
+| M8 -- Ingestion         | not started |                                                                        |
+| M9 -- Embedded DuckDB   | not started |                                                                        |
+| M10 -- Release          | not started |                                                                        |
 
-M1 criteria. Entry (met): M0 signed off; `qdb-api-go` vendored at the
-upstream that links `libqdb_api.a` statically on Linux. Exit: the
-format-equivalence property test (JSON, NDJSON, CSV, Arrow IPC) green
-on all eight platforms; `POST /api/v2/auth/login` mints an access token
-the query endpoint accepts; gzip and zstd negotiated via
-`Accept-Encoding`.
-
-M2 criteria. Entry: M1 exit. Exit: `POST /api/v2/tables` and
-`POST /api/v2/tables/{name}/rows` (CSV, NDJSON, Arrow IPC bodies)
+M2 criteria. Exit: `POST /api/v2/tables`, `DELETE /api/v2/tables/{name}`
+and `POST /api/v2/tables/{name}/rows` (CSV, NDJSON, Arrow IPC bodies)
 landed with their ingest/query roundtrip property tests per input
-format (ADR-0015); the v2 e2e flow (`docs/e2e.md`, "The v2 flow") green
+format; the v2 e2e flow (`docs/e2e.md`, "The v2 flow") green
 in Buildkite on all eight platforms through
 `scripts/cicd/40.test-e2e.sh`.
 
@@ -48,16 +41,24 @@ In flight:
 
 Next:
 
-1. Close M1: push the base and trigger the build through the API
-   (`.buildkite/AGENTS.md`); the exit is the green run.
-2. The M2 unit (`docs/e2e-v2-flow-plan.md`): ADR-0015 for the two
-   endpoints; the endpoints with their property tests; `tools/e2etool`
-   (`gen`, `tocsv`); `flow.sh` and `make test-flow` driving one server
-   per cluster; `scripts/cicd/40.test-e2e.sh` in the build step.
-3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+1. The ingest slice: `POST /api/v2/tables/{name}/rows` with the CSV
+   parser and its roundtrip property test. Owner-fixed: a 64 MiB body
+   cap (1 MiB stays for every other body);
+   `?push-mode=transactional|fast|async`, default `fast`;
+   `?deduplication-mode=drop|upsert`, absent meaning none, with
+   `?deduplication-columns=a,b` required by either mode (the columns
+   say what a duplicate is, the mode what happens to one).
+2. The NDJSON and Arrow IPC parsers with their property tests;
+   `Content-Encoding: gzip|zstd` on the ingest.
+3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+   `make test-flow` driving one server per cluster
+   (`docs/e2e-v2-flow-plan.md`).
+4. `scripts/cicd/40.test-e2e.sh` in the build step; the first
+   Buildkite run of the flow is M2's exit.
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-4. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+6. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
@@ -65,6 +66,9 @@ Next:
 
 Handoff to M2 (tables and ingest):
 
+- The flow drops its tables through `DELETE /api/v2/tables/{name}`,
+  which leaves symtables; a create over an existing symtable is
+  accepted (`internal/httpapi/tables_test.go`).
 - The flow's generated rows carry no empty string (ADR-0014,
   Consequences); the ingest parser reads an empty CSV field as null.
 - The v1 suite keeps `seed.sql` and `make load`; the flow reads
@@ -100,6 +104,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-21 -- M1 closed; M2 started with table create and delete
+
+- Owner decisions: table creation and ingest come before any CI run of
+  the e2e; the table endpoints need no ADR, their contract is the
+  brief's (`docs/brief.md`, "Tables: create and delete").
 
 ## 2026-09-18 -- ADR-0014 accepted: the v2 e2e is a generated flow; M2 -- tables and ingest inserted
 
