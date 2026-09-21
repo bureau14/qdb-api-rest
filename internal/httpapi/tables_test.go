@@ -152,3 +152,63 @@ func TestTableLifecycle(t *testing.T) {
 		}
 	})
 }
+
+// TestTableRecreatedOverSymtable: a table whose symtables were filled is
+// deleted, which leaves the symtables, and the same create is accepted
+// again over them.
+func TestTableRecreatedOverSymtable(t *testing.T) {
+	s := newServer(t)
+	shard := int64(86_400_000)
+	req := createTableRequest{Name: "qdbtest_recreated", ShardSize: &shard, Columns: []columnRequest{
+		{Name: "c0", Type: "symbol", Symtable: "qdbtest_recreated_c0"},
+	}}
+	removeOnCleanup(t, s.c, req)
+	if resp := s.createTable(t, req); resp.Code != http.StatusCreated {
+		t.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
+	}
+	// One pushed symbol value brings the symtable into existence.
+	insert := "INSERT INTO qdbtest_recreated ($timestamp, c0) VALUES (2020-01-01, 'a')"
+	if resp := s.query(insert, map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
+		t.Fatalf("insert: status %d: %s", resp.Code, resp.Body.String())
+	}
+	if resp := s.deleteTable(req.Name); resp.Code != http.StatusNoContent {
+		t.Fatalf("delete: status %d: %s", resp.Code, resp.Body.String())
+	}
+	if resp := s.createTable(t, req); resp.Code != http.StatusCreated {
+		t.Fatalf("second create: status %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
+// TestTableErrors: each error row of the two routes answers its status
+// with a problem body.
+func TestTableErrors(t *testing.T) {
+	s := newServer(t)
+	bearer := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"}
+	cases := map[string]struct {
+		method, path, body string
+		headers            map[string]string
+		status             int
+	}{
+		"text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType},
+		"undecodable":             {http.MethodPost, tablesPath, `{"name":`, bearer, http.StatusBadRequest},
+		"no shard_size":           {http.MethodPost, tablesPath, `{"name":"qdbtest_err","columns":[{"name":"c","type":"int64"}]}`, bearer, http.StatusBadRequest},
+		"fractional shard_size":   {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1.5,"columns":[{"name":"c","type":"int64"}]}`, bearer, http.StatusBadRequest},
+		"shard_size out of range": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":9223372036854775807,"columns":[{"name":"c","type":"int64"}]}`, bearer, http.StatusBadRequest},
+		"unknown type":            {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"count"}]}`, bearer, http.StatusBadRequest},
+		"symbol without symtable": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"symbol"}]}`, bearer, http.StatusBadRequest},
+		"symtable on a string":    {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"string","symtable":"s"}]}`, bearer, http.StatusBadRequest},
+		"create without a token":  {http.MethodPost, tablesPath, `{}`, map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized},
+		"delete without a token":  {http.MethodDelete, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized},
+		"delete of no table":      {http.MethodDelete, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound},
+	}
+	for name, tc := range cases {
+		resp := s.send(tc.method, tc.path, tc.body, tc.headers)
+		if resp.Code != tc.status {
+			t.Errorf("%s: status %d, want %d: %s", name, resp.Code, tc.status, resp.Body.String())
+		}
+		var p problem
+		if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
+			t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
+		}
+	}
+}
