@@ -14,8 +14,8 @@ Prove, for the life of the product, that the built binary, driven over
 HTTP like a client:
 
 1. works as a client expects on the v2 surface: login, create a table,
-   query it, ingest rows, read them back in every format and content
-   coding (the v2 flow, ADR-0014);
+   query it empty, ingest rows, dump them back in every format and
+   content coding (the v2 flow, ADR-0014);
 2. returns exactly what the old server returned on the v1 surface (the
    v1 goldens, ADR-0013);
 3. behaves honestly under stress: fast, explicit failure under overload,
@@ -135,17 +135,23 @@ anonymous. Every assertion is pass or fail; nothing is timed.
    with empty `data`, NDJSON is an empty body, CSV the header alone,
    Arrow a schema with no batches (`internal/encoding/AGENTS.md`,
    Rendering). Proves the schema path before any row exists.
-4. `POST /api/v2/tables/{name}/rows`: the generated rows, as CSV into
-   `e2e_csv`, as NDJSON into `e2e_ndjson`, as Arrow IPC into
-   `e2e_arrow`, each answered 2xx.
-5. Each table queried in every format (`json`, `ndjson`, `csv`,
-   `arrow`) under `identity` and `gzip`: the CSV response compared byte
-   for byte with the generated CSV; a JSON, NDJSON or Arrow response
-   decoded to CSV by the tool and compared with the same file; a gzip
-   response decompressed first. `content-type` is asserted from the
-   format, `content-encoding` from the coding (absent for `identity`);
-   nothing else in the headers is read. The plain run sends no
-   `Accept-Encoding`; the gzip run sends `Accept-Encoding: gzip`.
+4. `POST /api/v2/rows`: the generated rows, whose `$table` column names
+   the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`, as
+   Arrow IPC for `e2e_arrow`, each answered 200 with the row count.
+   The generator writes every body with `$table` set, so the three
+   bodies differ in format only; a body carrying several tables is the
+   Go property test's case, not the flow's.
+5. Each table dumped through `GET /api/v2/tables/{name}/rows` in every
+   format (`json`, `ndjson`, `csv`, `arrow`) under `identity` and
+   `gzip`: the CSV response compared byte for byte with the generated
+   CSV; a JSON, NDJSON or Arrow response decoded to CSV by the tool and
+   compared with the same file; a gzip response decompressed first.
+   `content-type` is asserted from the format, `content-encoding` from
+   the coding (absent for `identity`); nothing else in the headers is
+   read. The plain run sends no `Accept-Encoding`; the gzip run sends
+   `Accept-Encoding: gzip`. The dump answers `$table` and `$timestamp`
+   first, then the data columns, and the generated CSV has the same
+   header, so the comparison is byte for byte with no reordering.
 
 The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
 4180, header row, LF), so the CSV path is proven against a source the
@@ -167,7 +173,9 @@ repository, the cgo binding included (ADR-0013, Consequences).
   integers; NaN excluded, since it renders as null and would not
   round-trip. The driver prints the seed so a failure reproduces.
 - `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
-  through the package's own CSV encoder.
+  through the package's own CSV encoder. The JSON it reads is the
+  dump's, a top-level array of `{"columns":[..]}` objects, one per
+  record batch, concatenated per column.
 
 ### The driver
 
@@ -186,7 +194,7 @@ ADR-0011's tables) are Go tests in `internal/httpapi`, never flow
 steps. An endpoint lands with its step in the flow, so the flow grows
 with the milestones (`docs/brief.md`, Milestones): refresh and session
 join the login step; the exploration endpoints and `/api/v2/sql` add
-steps; multi-table ingest is a second ingest step. Flight SQL has no
+steps. Flight SQL has no
 shell client; whether it gets a subcommand of the tool or stays with
 the property tests is decided at that milestone's entry.
 
@@ -356,7 +364,7 @@ one recipe for building the old server.
 submodule; `datasets.json`, the `download-golden`/`extract` recipes and
 the `common.sh` helpers are copies from that repository, adapted. Its
 synthetic-message generator and NATS loader are not used: the loader
-here is `qdb_import` (and `/api/v2/ingest` as a self-test once it
+here is `qdb_import` (and `POST /api/v2/rows` as a self-test once it
 exists), because the customer-derived table -- real nulls, real string
 cardinality, real skew -- exercises encoders in ways synthetic data
 hides. Schema variety (multi-table ingest, symbols, blobs, tags) comes

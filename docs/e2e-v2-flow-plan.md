@@ -1,10 +1,8 @@
 # The v2 e2e flow -- Plan
 
-Status: approved. Scaffolding for one unit of work: the documentation
-re-cut that replaces the v2 golden suite with the v2 e2e flow and
-inserts the milestone that carries it. The code the flow needs (two
-endpoints, one Go tool, one driver) is a later unit under this same
-plan; this unit writes no code. Deleted when the flow lands; anything
+Status: approved. Scaffolding for the v2 e2e flow. The code the flow
+needs (the endpoints, one Go tool, one driver) lands in units under
+this plan. Deleted when the flow lands; anything
 permanent moves to `docs/e2e.md`, `tests/e2e/AGENTS.md`,
 `tests/e2e/README.md` or an ADR first (`docs/AGENTS.md`, Plans).
 
@@ -19,11 +17,10 @@ rows it ingests are generated, so the expected response is known by
 construction and there is no audit step. The v1 suite is untouched: the
 old server is its specification and its goldens stay (ADR-0013 3-4).
 
-Consequences for the milestones: the flow needs `POST /api/v2/tables`
-and `POST /api/v2/tables/{name}/rows`, which the brief placed in M6 and
-M7. They move into a new milestone directly after M1, **M2 -- Tables
-and ingest**, and every later milestone renumbers by one. M1 closes on
-its Go tests; M2 closes on the flow green in Buildkite.
+Consequences for the milestones: the flow needs `POST /api/v2/tables`,
+`GET /api/v2/tables/{name}/rows` and `POST /api/v2/rows`. They live in
+the milestone directly after M1, **M2 -- Tables, dump and ingest**. M1
+closes on its Go tests; M2 closes on the flow green in Buildkite.
 
 ## The flow
 
@@ -44,11 +41,12 @@ insecure login is anonymous.
    empty `data`, NDJSON is an empty body, CSV the header alone, Arrow a
    schema with no batches (`internal/encoding/AGENTS.md`, Rendering).
    Proves the schema path before any row exists.
-4. `POST /api/v2/tables/{name}/rows`: the generated rows, as CSV into
-   `e2e_csv`, as NDJSON into `e2e_ndjson`, as Arrow IPC into
-   `e2e_arrow`; a 2xx, then a row count
-   through the query endpoint.
-5. Query each table in every format under `identity` and `gzip`; every
+4. `POST /api/v2/rows`: the generated rows, their `$table` column
+   naming the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`,
+   as Arrow IPC for `e2e_arrow`; a 200 whose body carries the row
+   count.
+5. Dump each table (`GET /api/v2/tables/{name}/rows`) in every format
+   under `identity` and `gzip`; every
    response decoded to CSV and compared byte for byte with the
    generated CSV. `content-type` is asserted from the format,
    `content-encoding` from the coding; a gzip run is decompressed
@@ -108,18 +106,21 @@ read `reproduce`) and for the bench; the flow reads neither. The
 dataset archive carries no `expected/` directory: nothing in v2 is
 too large for git because nothing in v2 is stored.
 
-### The endpoints (M2, their own ADR)
+### The endpoints (M2)
 
-Decided with their code slices (`docs/brief.md`, "Tables: create and
-delete"; the ingest with its own plan), not here; the plan records
-only what the flow needs of them: `POST /api/v2/tables` takes a JSON
-body naming the table, its shard size and its columns in the brief's
-schema vocabulary (`docs/brief.md`, "/api/v2 endpoint sketch");
-`POST /api/v2/tables/{name}/rows` takes the rows as the body,
+Decided with their code slices, not here; the table routes' contract
+is the brief's (`docs/brief.md`, "Tables: create and delete"), the
+dump's and the ingest's are their handlers'. The plan records only
+what the flow needs of them: `POST /api/v2/tables` takes a JSON body
+naming the table, its shard size and its columns in the brief's schema
+vocabulary; `GET /api/v2/tables/{name}/rows` answers the whole table
+in the `Accept`ed format, `$table` and `$timestamp` first, streamed
+batch by batch; `POST /api/v2/rows` takes the rows as the body,
 `Content-Type` selecting the parser (`text/csv`,
 `application/x-ndjson`, `application/vnd.apache.arrow.stream`), a
-`Content-Encoding` of `gzip` or `zstd` accepted, one push per request
-through the batch writer. Errors are RFC 9457 problems (ADR-0010 6).
+`$table` column routing each row, a `Content-Encoding` of `gzip` or
+`zstd` accepted, one push per request through the batch writer, 200
+with `{"rows": N, ...}`. Errors are RFC 9457 problems (ADR-0010 6).
 
 ## This unit: the documentation re-cut
 
@@ -159,7 +160,6 @@ no commit touches code, tests or the Makefile.
 2. The flow runs on both clusters (decision 2026-09-18 below, kept):
    the secure node proves the key-file flags and the credential check;
    the same rows on both.
-3. The ingest status: 200 with a small JSON body (`rows` written) or 201. Recommended 200 with `{"rows": N}`; the ingest slice's plan decides.
 
 ## Decision log (2026-09-18)
 

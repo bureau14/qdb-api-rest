@@ -51,8 +51,8 @@ no audit.
    golden is what the old server said. ADR-0013 1, 2, 4, 6 and 7 stand
    for both suites, with "its goldens" read as "its e2e coverage" for
    v2: an endpoint lands with its step in the flow.
-6. **The flow needs `POST /api/v2/tables` and
-   `POST /api/v2/tables/{name}/rows`**, so they move from the
+6. **The flow needs `POST /api/v2/tables` and the ingest
+   (`POST /api/v2/rows`)**, so they move from the
    exploration and ingestion milestones into a milestone directly after
    M1 (`docs/brief.md`, Milestones). Their wire shapes are the brief's
    (`docs/brief.md`, "Tables: create and delete").
