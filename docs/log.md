@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 | Milestone                     | State       | Note                                                                   |
 | ----------------------------- | ----------- | ---------------------------------------------------------------------- |
