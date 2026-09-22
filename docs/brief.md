@@ -356,12 +356,16 @@ live-query subscription that re-delivers results on a refresh interval,
 not a cursor). Streaming therefore overlaps serialization and
 transmission with iteration over the materialized batch -- bounding
 REST-server memory and giving early first byte, but not removing the
-binding-side materialization. Relieving that requires upstream work (a
-cursor-style query API, or the bulk reader's batched fetch), out of
-scope here. The gateway direction raises the stakes: large raw
-`SELECT`s from thin clients materialize in the gateway, so the session
-budget is the short-term backstop and upstream streaming the long-term
-relief valve.
+binding-side materialization. Relieving that for queries requires
+upstream work (a cursor-style query API), out of scope here. Whole
+tables take another door: `GET /api/v2/tables/{name}/rows` reads
+through the bulk reader's batched Arrow fetch, one record batch per
+fetch, encoded and sent before the next is fetched, so a table dump is
+bounded on both sides; a `SELECT *` of a whole table is not canonical
+QuasarDB. The gateway direction raises the stakes: large raw `SELECT`s
+from thin clients materialize in the gateway, so the session budget is
+the short-term backstop and upstream streaming the long-term relief
+valve.
 
 ### Arrow Flight SQL (minimal)
 
@@ -454,13 +458,15 @@ POST   /api/v2/auth/logout         invalidates client state; server-side revocat
 GET    /api/v2/session             "who am i": session/user/instance introspection (see below)
 POST   /api/v2/query               native qdb query; streamed, content-negotiated (see above)
 POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, content-negotiated
-POST   /api/v2/ingest              multi-table bulk ingest; body content-negotiated (Arrow IPC, NDJSON, CSV);
-                                   push mode (transactional|fast|async) via parameter
+POST   /api/v2/rows                multi-table ingest, a $table column routes each row; body content-negotiated
+                                   (CSV, NDJSON, Arrow IPC; Content-Encoding); push and deduplication modes
+                                   via parameters; M2, the contract is the handler's
 GET    /api/v2/tables              list tables (prefix filter, pagination)
 POST   /api/v2/tables              create table (name, shard size, columns); M2, see Tables below
 GET    /api/v2/tables/{name}       schema: columns, types, shard size, tags
 DELETE /api/v2/tables/{name}       remove table; M2, see Tables below
-POST   /api/v2/tables/{name}/rows  single-table ingest; body content-negotiated; M2
+GET    /api/v2/tables/{name}/rows  table dump through the bulk reader, streamed batch by batch;
+                                   content-negotiated; optional time range and column selection; M2, the contract is the handler's
 GET    /api/v2/tags                list tags
 GET    /api/v2/tags/{tag}          entries carrying the tag
 GET    /api/v2/cluster             cluster status (nodes, disk, memory)
@@ -750,8 +756,9 @@ fourth.
    - _Format equivalence_: for randomly generated schemas, data, and
      queries, the decoded results of JSON, NDJSON, CSV, Arrow IPC, and
      Flight SQL are identical.
-   - _Ingest/query roundtrip_: randomly generated data pushed through the
-     v2 ingest endpoints (each input format) reads back exactly.
+   - _Ingest/dump roundtrip_: randomly generated data pushed through the
+     v2 ingest endpoint (each input format) reads back exactly through
+     the table dump.
    - _Auth properties_: token roundtrip, expiry, key-rotation continuity,
      refresh behavior -- generated over key/claim space.
 2. **End-to-end** (pattern from qdb-nats-connector ADR-007) -- does the
@@ -759,8 +766,8 @@ fourth.
    expects? Make + shell + curl orchestration against a live qdbd
    started by the shared `scripts/tests/setup/start-services.sh` (qdbd
    is a persistent service, never started by a test). Two suites. The
-   `v2` flow (ADR-0014): login, create a table, query it, ingest
-   generated rows through every input format, query them back in every
+   `v2` flow (ADR-0014): login, create a table, query it empty, ingest
+   generated rows through every input format, dump them back in every
    format and content coding, each response decoded to CSV and
    compared byte for byte with the generated rows; nothing is captured
    and nothing is audited, the expected value is known by construction.
@@ -820,11 +827,14 @@ entry/exit criteria defined when it starts.
   streamed through all four encoders, bearer authentication,
   `POST /api/v2/auth/login` (access token only), gzip and zstd
   response compression.
-- **M2 -- Tables and ingest**: `POST /api/v2/tables` (create) and
-  `POST /api/v2/tables/{name}/rows` (single-table ingest; Arrow IPC,
-  NDJSON, CSV bodies; `Content-Encoding`) with their ingest/query
-  roundtrip property tests per input format; the v2 e2e flow (login,
-  create, query, ingest, query in every format and coding; Testing
+- **M2 -- Tables, dump and ingest**: `POST /api/v2/tables` (create),
+  `DELETE /api/v2/tables/{name}`, `GET /api/v2/tables/{name}/rows`
+  (the table dump through the bulk reader, streamed through all four
+  encoders) and `POST /api/v2/rows` (multi-table ingest routed by a
+  `$table` column; CSV, NDJSON, Arrow IPC bodies; `Content-Encoding`;
+  push and deduplication modes) with their ingest/dump roundtrip
+  property tests per input format; the v2 e2e flow (login, create,
+  query empty, ingest, dump in every format and coding; Testing
   doctrine 2) green in Buildkite.
 - **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
@@ -843,13 +853,10 @@ entry/exit criteria defined when it starts.
   the bench retires once the new server wins on both of its rows.
 - **M7 -- Exploration**: tables list and schema; tags; cluster and
   node status.
-- **M8 -- Ingestion**: `/api/v2/ingest` multi-table (Arrow IPC, NDJSON,
-  CSV bodies; `Content-Encoding`), push mode selection, over the M2
-  parsers.
-- **M9 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
+- **M8 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
   quasardb extension, resource governance, streamed responses through the
   shared encoders.
-- **M10 -- Release**: hardening, docs rewrite in `qdb-documentation`
+- **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections, and fixing the stale `tls_port` sample
   configs), `qdb-release` version registration, Windows service mode,
@@ -859,9 +866,12 @@ entry/exit criteria defined when it starts.
 Ordering rationale. A v1 route wraps its v2 counterpart, so the v2 core
 must exist before any v1 route is written (ADR-0007). M1 carries a
 minimal login so the query endpoint is exercisable end to end. M2
-follows at once because the e2e flow needs a table to create and rows
-to ingest, and two small endpoints are cheaper than a fixture the flow
-would later throw away; from M2 on every milestone closes on CI
+follows at once because the e2e flow needs a table to create, rows to
+ingest and a whole-table read that does not materialize, and the
+endpoints are cheaper than a fixture the flow would later throw away;
+the ingest is multi-table from the start because one batch push over
+several tables is the common case and the writer already takes several
+tables; from M2 on every milestone closes on CI
 evidence of the built binary (ADR-0013, ADR-0014). M3
 completes v2 auth before anything ships, so the first shippable binary
 exposes no v2 endpoint whose shape or lifetime is still moving, and the
