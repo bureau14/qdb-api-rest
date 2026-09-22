@@ -24,7 +24,7 @@ github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
 github.com/apache/arrow-go/v18/internal/utils/maphash
-# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260918093542-6f2a7abff216
+# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20260922094850-abadf4e95b1a
 ## explicit; go 1.26.0
 github.com/bureau14/qdb-api-go/v3
 # github.com/go-jose/go-jose/v4 v4.1.4
