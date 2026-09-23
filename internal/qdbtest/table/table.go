@@ -182,6 +182,26 @@ func Generate(rt *rapid.T) Table {
 	return tbl
 }
 
+// GenerateLike draws a table of tbl's columns under a fresh name, with
+// its own rows: the same names and types, a symbol column's symtable
+// named after the new table, so several tables share one column list.
+func GenerateLike(rt *rapid.T, tbl Table) Table {
+	like := Table{Name: "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "table")}
+	rows := rapid.IntRange(0, 40).Draw(rt, "rows")
+	nullPct := rapid.IntRange(0, 100).Draw(rt, "null pct")
+	for _, c := range tbl.Columns {
+		c.Symtable = ""
+		if c.Type == qdbapi.TsColumnSymbol {
+			c.Symtable = like.Name + "_" + c.Name
+		}
+		c.Valid = generateMask(rt, rows, nullPct)
+		c.Data = generateData(rt, c.Type, c.Valid)
+		like.Columns = append(like.Columns, c)
+	}
+	like.Index = generateIndex(rt, rows)
+	return like
+}
+
 // Select is the query that answers tbl's rows as written: $timestamp
 // first, then the columns in order, rows ascending by $timestamp. A bare
 // SELECT * would also answer the $table column.
