@@ -5,12 +5,16 @@ fixtures: `internal/AGENTS.md`.
 
 ## The seam
 
-- Every encoder implements `Encoder` over the Arrow record batch the
-  query core returns (`internal/AGENTS.md`, Code, the result rule) and
-  knows only its media type and its bytes: it never flushes, never logs,
-  never negotiates, and never releases the batch. A buffered writer
-  inside `Encode` is flushed once at the end; the HTTP flush is the
-  handler's.
+- Every encoder implements `Encoder` over the Arrow record batches the
+  core returns (`internal/AGENTS.md`, Code, the result rule) and knows
+  only its media type and its bytes: it never flushes, never logs,
+  never negotiates, and never releases a batch. `Encode` takes the
+  query's one batch; `EncodeStream` takes a table read's sequence, each
+  batch rendered before the next is pulled, every batch sharing the
+  first's schema unchecked, an error step ending the encoding with its
+  error. A buffered writer inside either is flushed once at the end; the
+  HTTP flush is the handler's, and an error before the first flush
+  leaves nothing on the wire.
 - Every encoder looks at the ctx once per `chunkRows` rows, one shared
   constant: the record batch size on the Arrow wire, the stride between
   ctx checks on the rendered wires.
@@ -27,7 +31,8 @@ fixtures: `internal/AGENTS.md`.
   streaming format in record batches of `chunkRows` rows, no in-format
   buffer compression (HTTP `Accept-Encoding` compression is independent
   of it); a nil batch is a schema with no fields and no batches, a
-  complete stream.
+  complete stream. A stream of batches opens on the first batch's
+  schema and writes every batch in `chunkRows` slices.
 
 ## Rendering
 
@@ -48,16 +53,22 @@ fixtures: `internal/AGENTS.md`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, keys in that
   order, no `tables` wrapper (the table a row came from is a column,
-  `$table`), a nil batch `{"columns":[]}`, no trailing newline.
+  `$table`), a nil batch `{"columns":[]}`, no trailing newline. A stream
+  of batches is a top-level array of such results, one per batch, comma
+  separated: column-oriented within a batch, bounded memory across them,
+  and a cut stream is invalid JSON, so a truncated read is never taken
+  for a complete one.
 - NDJSON (`application/x-ndjson`) is one object per row, keys in column
-  order, LF-terminated lines; no rows is an empty body.
+  order, LF-terminated lines; no rows is an empty body. A stream of
+  batches is the batches' lines appended.
 - CSV (`text/csv`) is `encoding/csv`'s RFC 4180: a header row, LF, a
   field quoted only by the standard writer's rule. `int64` and
   `float64` (`strconv`, shortest round trip) as plain text; `utf8` as
   its own bytes; `binary` as standard base64; the empty field for null,
   for NaN and the infinities, and for the empty string alike. A nil
-  batch is an empty body, no rows the header alone. Byte identity with
-  `qdb_export`'s CSV is a non-concern.
+  batch is an empty body, no rows the header alone. A stream of batches
+  is the first batch's header, then every batch's rows. Byte identity
+  with `qdb_export`'s CSV is a non-concern.
 
 ## Tests
 
@@ -65,4 +76,6 @@ fixtures: `internal/AGENTS.md`.
   (`arrow_test.go`, `render_test.go`): a generated table, queried once,
   encoded, decoded with the standard library, compared cell by cell
   with what was written. What the table fixture cannot write is pinned
-  byte for byte on one hand-built batch in `render_test.go`.
+  byte for byte on one hand-built batch in `render_test.go`; the stream
+  path is pinned on the same batch, twice, as the two one-shot bodies
+  joined (`stream_test.go`), no cluster.

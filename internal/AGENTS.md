@@ -42,6 +42,20 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   (a partial one is released inside `internal/qdb`); a statement without
   a result set is a nil batch. The binding's row-major and columnar
   result paths are never called.
+- A table read is a sequence of such batches (`qdb.Batches`), one per
+  fetch of the bulk reader, handed to a sink while the session is held:
+  `Cluster.Read` leases one session of the caller's pool for as long as
+  the sink runs and is never retried. The sink borrows each batch for
+  its step; the sequence releases it when the step returns, so a value
+  that outlives the step is copied (a `Value` of an Arrow array aliases
+  the batch's buffers). A missing table, a bad range and an unknown
+  column fail before the sink runs; an empty table is one batch of
+  schema alone, built from `ColumnsInfo`, so there is always a step.
+  Two C API defects surface here unworked-around, filed as sc-19829
+  (the Arrow path drops one trailing NUL byte from a string cell; a
+  canary in `internal/qdb/read_test.go` fails when it is fixed) and
+  sc-19830 (two symbol-bearing tables in one reader fail; a read is one
+  table).
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or a cell rendering.
 - The v2 handlers, the problem body and the bearer middleware live in
@@ -92,7 +106,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 ## Tests
 
 - Pin genuine logic only; no tests for glue. White-box, same package,
-  small helpers declared before use, `t.Helper()`. Test bodies carry the
+  small helpers declared before use, `t.Helper()`. The one exception
+  is `internal/qdb/read_test.go`, `package qdb_test`: it needs the
+  table fixture, which imports `internal/qdb`. Test bodies carry the
   same compact walk-through comments as dense code wherever a step's
   purpose is not evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
@@ -112,7 +128,10 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   back with the `Table` it holds; it never writes its own loader. A
   test that creates or pushes through its own door (an HTTP route)
   takes the blocks `Create` stacks on, `GenerateSchema` and
-  `RemoveOnCleanup`, never a copy of them. The
+  `RemoveOnCleanup`, never a copy of them. What came back is compared
+  with `table.Check` (a record batch, column by column by name, `$table`
+  and `$timestamp` included) or `table.CheckColumn`; no test carries a
+  comparer of its own. The
   fixture pushes through the batch writer, whose null is the type's
   sentinel (`MinInt64`, `NaN`, the empty string, the nil blob,
   `NullTime`), so a generated value is never a sentinel. The table

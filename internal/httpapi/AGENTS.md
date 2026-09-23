@@ -4,7 +4,7 @@ Scope: the v2 HTTP handlers, the middleware and the probes. Package-wide
 Go rules, logging and the test fixtures: `internal/AGENTS.md`. The wire
 contract of the query endpoint and the v2 error shape: ADR-0010; of the
 login: ADR-0011; of the table routes: `docs/brief.md`, "Tables: create
-and delete".
+and delete"; of the table reader: this file, Handlers.
 
 ## Handlers
 
@@ -45,6 +45,21 @@ and delete".
   the handler.
 - The batch is released on return; a nil batch (a statement without a
   result set) has nothing to release and encodes as empty.
+- The table reader, `GET /api/v2/tables/{name}/rows`: `?columns=a,b`
+  answers exactly those fields in that order (`$table` and `$timestamp`
+  only when named; every column, the two first, otherwise);
+  `?start=&end=` in RFC 3339, both or neither, `[start, end)`, the pair
+  judged by the binding; `Accept` negotiated as the query's. The read
+  runs inside the sink: the status is decided before it (404 on
+  `qdb.IsTableNotFound`, 400 for a bad range, an unknown column and
+  anything else the cluster answered, through `writeClusterError`), the
+  sink sets `Content-Type` and runs `EncodeStream` through the byte
+  counter, and the session is held until the client has read. The
+  sink's error is kept apart from the call's: with zero bytes out it is
+  500, after the first byte the stream is cut with one warning line,
+  and the sink still returns it so the breaker hears of a fetch that
+  found the cluster gone. Never retried. An empty table answers its
+  schema in every format.
 - No flushing writer: the encoder's own buffer and `net/http`'s chunking
   already stream. The handler wraps the response in a byte counter only,
   so an encode error with zero bytes out is a problem response and with
@@ -85,4 +100,8 @@ and delete".
 - The table property draws a schema with `table.GenerateSchema`,
   creates it over HTTP and reads it back through the query endpoint;
   `table.RemoveOnCleanup` removes what the create leaves behind.
+- The reader property draws a table per iteration and compares each
+  format's body, whole and under a drawn column subset, byte for byte
+  with `EncodeStream` run directly over `Cluster.Read`; a covering range
+  answers the whole read, a range before the rows the schema alone.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.
