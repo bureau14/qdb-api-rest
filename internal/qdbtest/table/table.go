@@ -11,9 +11,12 @@ package table
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -225,6 +228,58 @@ func ColumnOf(tbl Table, name string) (Column, bool) {
 		}
 	}
 	return Column{}, false
+}
+
+// timestampLayout is the text every rendered format writes a timestamp
+// in, RFC 3339 in UTC with nine fixed fractional digits
+// (internal/encoding); the ingest parses it back.
+const timestampLayout = "2006-01-02T15:04:05.000000000Z"
+
+// csvCell is column c's cell i as the CSV encoder renders it: the empty
+// field for null, an integer and a shortest round-trip float as text, a
+// timestamp in timestampLayout, a string as itself, a blob as base64.
+func csvCell(c Column, i int) string {
+	if !c.Valid[i] {
+		return ""
+	}
+	switch c.Type {
+	case qdbapi.TsColumnInt64:
+		return strconv.FormatInt(qdbapi.GetColumnDataInt64Unsafe(c.Data)[i], 10)
+	case qdbapi.TsColumnDouble:
+		return strconv.FormatFloat(qdbapi.GetColumnDataDoubleUnsafe(c.Data)[i], 'g', -1, 64)
+	case qdbapi.TsColumnTimestamp:
+		return qdbapi.GetColumnDataTimestampUnsafe(c.Data)[i].UTC().Format(timestampLayout)
+	case qdbapi.TsColumnString, qdbapi.TsColumnSymbol:
+		return qdbapi.GetColumnDataStringUnsafe(c.Data)[i]
+	case qdbapi.TsColumnBlob:
+		return base64.StdEncoding.EncodeToString(qdbapi.GetColumnDataBlobUnsafe(c.Data)[i])
+	}
+	panic(fmt.Sprintf("column type %v", c.Type))
+}
+
+// CSV renders tbl's rows in the CSV encoder's dialect (encoding/csv RFC
+// 4180, a header row, LF): $table, $timestamp, then the columns in order,
+// one row per index entry. It is what an ingest body of tbl looks like,
+// and what the reader answers for it.
+func CSV(tbl Table) []byte {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	cols := Columns(tbl)
+	names := []string{"$table"}
+	for _, c := range cols {
+		names = append(names, c.Name)
+	}
+	_ = w.Write(names)
+	record := make([]string, len(names))
+	for i := range tbl.Index {
+		record[0] = tbl.Name
+		for j, c := range cols {
+			record[j+1] = csvCell(c, i)
+		}
+		_ = w.Write(record)
+	}
+	w.Flush()
+	return buf.Bytes()
 }
 
 // typed asserts the Arrow array's concrete type.
