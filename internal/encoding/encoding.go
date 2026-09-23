@@ -1,11 +1,13 @@
-// Package encoding turns one query result into bytes in one wire format.
-// Every encoder consumes the same Arrow record batch the query core
-// returns (internal/qdb); an encoder knows its media type and its bytes.
+// Package encoding turns a query result, or a table read, into bytes in
+// one wire format. Every encoder consumes the Arrow record batches the
+// core returns (internal/qdb); an encoder knows its media type and its
+// bytes.
 package encoding
 
 import (
 	"context"
 	"io"
+	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -20,6 +22,13 @@ type Encoder interface {
 	// releases rec, which its caller owns. Encode returns the first write
 	// error; ctx ending between chunks ends the encoding.
 	Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
+	// EncodeStream writes every batch of batches to w as one body, each
+	// batch rendered before the next is pulled, so a read is encoded as it
+	// is fetched. Every batch shares the first batch's schema, which the
+	// reader guarantees and the encoders do not check. An error step ends
+	// the encoding with that error. EncodeStream never releases a batch:
+	// each is the sequence's, valid for its step.
+	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 
 // chunkRows is the run of rows an encoder handles between two looks at

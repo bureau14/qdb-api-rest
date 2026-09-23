@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"io"
+	"iter"
 	"math"
 	"strconv"
 	"time"
@@ -146,7 +147,7 @@ func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 // the end of Encode: internal buffering, not the HTTP flush, which is the
 // handler's.
 
-// NDJSON encodes a record batch as one JSON object per row, keys in
+// NDJSON encodes record batches as one JSON object per row, keys in
 // column order, one LF-terminated line per row. A batch with no rows, a
 // nil batch included, is an empty body.
 type NDJSON struct{}
@@ -163,6 +164,24 @@ func (NDJSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) er
 	bw := bufio.NewWriter(w)
 	if err := writeNDJSON(ctx, bw, cols, numRows(rec)); err != nil {
 		return err
+	}
+	return bw.Flush()
+}
+
+// EncodeStream implements Encoder: every batch's rows, appended.
+func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
+	bw := bufio.NewWriter(w)
+	for rec, err := range batches {
+		if err != nil {
+			return err
+		}
+		cols, err := jsonColumns(rec)
+		if err != nil {
+			return err
+		}
+		if err := writeNDJSON(ctx, bw, cols, rec.NumRows()); err != nil {
+			return err
+		}
 	}
 	return bw.Flush()
 }
@@ -202,6 +221,11 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows i
 // the type before the data; no tables wrapper, one query being one
 // result and the table a row came from a column like any other. A nil
 // batch is {"columns":[]}. No trailing newline.
+//
+// A stream of batches is a top-level array of such results, one per
+// batch: column-oriented within a batch, bounded memory across them, and
+// a stream cut mid-way is invalid JSON, so a client cannot mistake a
+// truncated read for a complete one.
 type JSON struct{}
 
 // ContentType implements Encoder.
@@ -215,6 +239,38 @@ func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) erro
 	}
 	bw := bufio.NewWriter(w)
 	if err := writeJSON(ctx, bw, cols, numRows(rec)); err != nil {
+		return err
+	}
+	return bw.Flush()
+}
+
+// EncodeStream implements Encoder: [ one result per batch, comma
+// separated ]. No batch at all is [].
+func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
+	bw := bufio.NewWriter(w)
+	if err := bw.WriteByte('['); err != nil {
+		return err
+	}
+	first := true
+	for rec, err := range batches {
+		if err != nil {
+			return err
+		}
+		cols, err := jsonColumns(rec)
+		if err != nil {
+			return err
+		}
+		if !first {
+			if err := bw.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		first = false
+		if err := writeJSON(ctx, bw, cols, rec.NumRows()); err != nil {
+			return err
+		}
+	}
+	if err := bw.WriteByte(']'); err != nil {
 		return err
 	}
 	return bw.Flush()
