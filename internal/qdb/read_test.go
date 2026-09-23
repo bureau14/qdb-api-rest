@@ -8,7 +8,9 @@ package qdb_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -117,4 +119,43 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 		}
 		table.Check(rt, tbl, subset)
 	})
+}
+
+// TestReadDropsTrailingNUL pins a C API defect, sc-19829: the bulk
+// reader's Arrow path drops one trailing NUL byte from a string cell,
+// while the query answers the byte. When this test fails, the C API has
+// been fixed: delete the test and let the fixture's drawText draw NUL.
+func TestReadDropsTrailingNUL(t *testing.T) {
+	c := cluster.NewInsecure(t)
+	data := qdbapi.NewColumnDataString([]string{"x\x00"})
+	tbl := table.Table{
+		Name:    "qdbtest_trailing_nul",
+		Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString, Data: &data, Valid: []bool{true}}},
+		Index:   []time.Time{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+	}
+	table.Create(t, c, tbl)
+	// A string value aliases the batch's buffer, which a lent batch frees
+	// when the step returns, so the read copies it out.
+	cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
+	queried, err := c.Query(context.Background(), qdb.User{}, "SELECT c0 FROM "+tbl.Name)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer queried.Release()
+	var read string
+	err = c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
+		for rec, err := range seq {
+			if err != nil {
+				return err
+			}
+			read = cell(rec)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if cell(queried) != "x\x00" || read != "x" {
+		t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", cell(queried), read)
+	}
 }
