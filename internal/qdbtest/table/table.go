@@ -2,12 +2,14 @@
 // stack: GenerateSchema draws a table without rows, Generate draws rows
 // into one, RemoveOnCleanup removes whatever a table leaves behind, and
 // Create creates the table, pushes its rows and removes it on the test's
-// cleanup. A test that creates or pushes through its own door (an HTTP
+// cleanup. Check and CheckColumn compare what a read answers with the
+// table written. A test that creates or pushes through its own door (an HTTP
 // route) takes the blocks below Create; every test compares what came
 // back with the Table it holds. Rules: internal/AGENTS.md, Tests.
 package table
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
@@ -185,6 +189,127 @@ func (tbl Table) Select() string {
 		names = append(names, c.Name)
 	}
 	return "SELECT " + strings.Join(names, ", ") + " FROM " + tbl.Name
+}
+
+// allValid is n valid slots.
+func allValid(n int) []bool {
+	valid := make([]bool, n)
+	for i := range valid {
+		valid[i] = true
+	}
+	return valid
+}
+
+// Columns is tbl as its Select answers it: $timestamp first, every slot
+// valid, then the columns in order.
+func Columns(tbl Table) []Column {
+	index := qdbapi.NewColumnDataTimestamp(tbl.Index)
+	return append([]Column{{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp, Data: &index, Valid: allValid(len(tbl.Index))}}, tbl.Columns...)
+}
+
+// ColumnOf is the column a read of tbl answers under name: $table is the
+// name in every row, $timestamp the index, anything else tbl's column of
+// that name; false when tbl has none.
+func ColumnOf(tbl Table, name string) (Column, bool) {
+	if name == "$table" {
+		names := make([]string, len(tbl.Index))
+		for i := range names {
+			names[i] = tbl.Name
+		}
+		data := qdbapi.NewColumnDataString(names)
+		return Column{Name: name, Type: qdbapi.TsColumnString, Data: &data, Valid: allValid(len(tbl.Index))}, true
+	}
+	for _, c := range Columns(tbl) {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return Column{}, false
+}
+
+// typed asserts the Arrow array's concrete type.
+func typed[A arrow.Array](t T, name string, got arrow.Array) A {
+	t.Helper()
+	a, ok := got.(A)
+	if !ok {
+		t.Fatalf("%s: %T read back, want %T", name, got, a)
+	}
+	return a
+}
+
+// checkValues compares every valid slot of a column read back with the
+// value that was written.
+func checkValues[V any](t T, name string, valid []bool, want []V, got func(int) V, equal func(V, V) bool) {
+	t.Helper()
+	for i, ok := range valid {
+		if ok && !equal(got(i), want[i]) {
+			t.Fatalf("%s row %d: %v read back, %v written", name, i, got(i), want[i])
+		}
+	}
+}
+
+func same[V comparable](a, b V) bool { return a == b }
+
+// nanos is a timestamp column's cells as nanoseconds since the epoch.
+func nanos(data qdbapi.ColumnData) []int64 {
+	var ns []int64
+	for _, ts := range qdbapi.GetColumnDataTimestampUnsafe(data) {
+		ns = append(ns, ts.UnixNano())
+	}
+	return ns
+}
+
+// CheckColumn compares one Arrow column read back with the column that
+// was written: the Arrow type of the table type, every validity bit,
+// every value. Null slots are compared by validity only: their value
+// bytes carry no meaning on either side. A column null in every row keeps
+// its table type, so it takes the same path.
+func CheckColumn(t T, want Column, got arrow.Array) {
+	t.Helper()
+	if got.Len() != len(want.Valid) {
+		t.Fatalf("%s: %d rows read back, %d written", want.Name, got.Len(), len(want.Valid))
+	}
+	for i, valid := range want.Valid {
+		if got.IsValid(i) != valid {
+			t.Fatalf("%s row %d: valid %v read back, %v written", want.Name, i, got.IsValid(i), valid)
+		}
+	}
+	switch want.Type {
+	case qdbapi.TsColumnInt64:
+		a := typed[*array.Int64](t, want.Name, got)
+		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataInt64Unsafe(want.Data), a.Value, same[int64])
+	case qdbapi.TsColumnDouble:
+		a := typed[*array.Float64](t, want.Name, got)
+		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataDoubleUnsafe(want.Data), a.Value, same[float64])
+	case qdbapi.TsColumnTimestamp:
+		a := typed[*array.Timestamp](t, want.Name, got)
+		if dt := a.DataType().(*arrow.TimestampType); dt.Unit != arrow.Nanosecond || dt.TimeZone != "" {
+			t.Fatalf("%s: type %s read back", want.Name, a.DataType())
+		}
+		checkValues(t, want.Name, want.Valid, nanos(want.Data), func(i int) int64 { return int64(a.Value(i)) }, same[int64])
+	case qdbapi.TsColumnString, qdbapi.TsColumnSymbol:
+		a := typed[*array.String](t, want.Name, got)
+		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataStringUnsafe(want.Data), a.Value, same[string])
+	case qdbapi.TsColumnBlob:
+		a := typed[*array.Binary](t, want.Name, got)
+		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataBlobUnsafe(want.Data), a.Value, bytes.Equal)
+	default:
+		t.Fatalf("%s: unexpected column type %v", want.Name, want.Type)
+	}
+}
+
+// Check compares a record batch read back with tbl, column by column by
+// name, so a read that answers $table, $timestamp and the columns and one
+// that answers a requested subset are checked alike.
+func Check(t T, tbl Table, rec arrow.RecordBatch) {
+	t.Helper()
+	for i, f := range rec.Schema().Fields() {
+		want, ok := ColumnOf(tbl, f.Name)
+		if !ok {
+			t.Fatalf("column %q read back, never written", f.Name)
+		}
+		CheckColumn(t, want, rec.Column(i))
+	}
 }
 
 // columnInfos is tbl's schema as the create call takes it.

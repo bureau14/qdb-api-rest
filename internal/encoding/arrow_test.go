@@ -84,8 +84,8 @@ func TestArrowRoundTrip(t *testing.T) {
 		if batches == 0 {
 			return // no rows: the schema and the marker are the whole stream
 		}
-		for i, col := range columns(tbl) {
-			checkColumn(rt, col, cols[i])
+		for i, col := range table.Columns(tbl) {
+			table.CheckColumn(rt, col, cols[i])
 		}
 		for _, col := range cols {
 			col.Release()

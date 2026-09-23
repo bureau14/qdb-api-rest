@@ -175,6 +175,28 @@ func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, e
 	}
 }
 
+// checkValues compares every valid slot of a rendered column with the
+// value that was written.
+func checkValues[V any](t failer, name string, valid []bool, want []V, got func(int) V, equal func(V, V) bool) {
+	t.Helper()
+	for i, ok := range valid {
+		if ok && !equal(got(i), want[i]) {
+			t.Fatalf("%s row %d: %v on the wire, %v written", name, i, got(i), want[i])
+		}
+	}
+}
+
+func same[V comparable](a, b V) bool { return a == b }
+
+// nanosOf is a timestamp column's cells as nanoseconds since the epoch.
+func nanosOf(data qdbapi.ColumnData) []int64 {
+	var nanos []int64
+	for _, ts := range qdbapi.GetColumnDataTimestampUnsafe(data) {
+		nanos = append(nanos, ts.UnixNano())
+	}
+	return nanos
+}
+
 // checkCells compares one rendered column with the column that was
 // written: name, wire type where carried, every validity bit, and every
 // value parsed back from its text.
@@ -233,7 +255,7 @@ func TestRenderedRoundTrip(t *testing.T) {
 		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
 
-		want := columns(tbl)
+		want := table.Columns(tbl)
 		names := make([]string, len(want))
 		for i, col := range want {
 			names[i] = col.Name
