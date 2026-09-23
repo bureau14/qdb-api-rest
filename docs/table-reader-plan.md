@@ -138,14 +138,22 @@ Response compression through `Accept-Encoding` as on every route
 
 ## Tests
 
-- `internal/qdb`: one property. A fixture table (`table.Generate`,
-  `table.Create`), read with a drawn `BatchRows` of 1 to 16, its
-  batches concatenated per column (`array.Concatenate`), equals the
-  table's `Select()` query batch column by column (`array.Equal`),
-  `$table` being the name in every row, no batch over `BatchRows`. A
-  drawn row count of zero exercises the schema-only batch. The
-  comparison is exact: the fixture draws `[a-zA-Z0-9]`, so no drawn
-  string ends in NUL.
+- `internal/qdbtest/table`: the comparer `Check(t, tbl, rec)`, moved
+  out of `internal/encoding`'s test file where it exists today as
+  `checkColumn`: every column of `rec` against the column written, by
+  name -- `$timestamp` against the index, `$table` equal to `tbl.Name`
+  in every row, a data column by type, every validity bit, every
+  value. The encoding tests switch to it; a shared test helper lives
+  in a named fixture package, never in another package's test file.
+- `internal/qdb`: one property, in `package qdb_test` because the
+  fixture imports `internal/qdb` (the one black-box test of the
+  package; `Cluster.Read` is exported, nothing is lost). A fixture
+  table (`table.Generate`, `table.Create`), read with a drawn
+  `BatchRows` of 1 to 16, its batches concatenated per column
+  (`array.Concatenate`), passes `table.Check` against the rows written,
+  no batch over `BatchRows`. A drawn row count of zero exercises the
+  schema-only batch. The comparison is exact: the fixture draws
+  `[a-zA-Z0-9]`, so no drawn string ends in NUL.
 - `internal/qdb`: one canary pinning the NUL defect, the inverse of an
   expected failure. One row with `"x\x00"` pushed through the writer;
   the query batch answers `"x\x00"`, the reader answers `"x"`, and the
@@ -170,18 +178,19 @@ Every test bounds its sessions; `go test -p 1`.
 
 1. `feat(qdb): Cluster.Read streams a table's batches through the bulk reader as the caller`
 2. `feat(qdb): an empty table reads as one schema-only batch from ColumnsInfo`
-3. `test(qdb): a table read equals its query, batch by batch`
-4. `test(qdb): the bulk reader drops a trailing NUL byte, pinned until sc-19829 lands`
-5. `feat(encoding): EncodeStream renders a sequence of batches; Arrow and CSV`
-6. `feat(encoding): NDJSON and JSON stream a sequence; JSON is an array of batches`
-7. `test(encoding): a streamed sequence renders as its batches joined`
-8. `feat(httpapi): GET /api/v2/tables/{name}/rows reads the table in the negotiated format`
-9. `feat(httpapi): the table read takes start, end and columns`
-10. `test(httpapi): a generated table read over HTTP equals the stream encoder run directly`
-11. `test(httpapi): the table read's error rows`
-12. `docs(agents): internal, encoding and httpapi AGENTS.md name the table reader rules`
-13. `docs(log): the table reader landed; table-reader-plan.md deleted`
-14. Verify: push `sc-19567/rr-table-reader`, build its head in
+3. `test(qdbtest): table.Check compares a record batch with the table written`
+4. `test(qdb): a table read answers the rows written, batch by batch`
+5. `test(qdb): the bulk reader drops a trailing NUL byte, pinned until sc-19829 lands`
+6. `feat(encoding): EncodeStream renders a sequence of batches; Arrow and CSV`
+7. `feat(encoding): NDJSON and JSON stream a sequence; JSON is an array of batches`
+8. `test(encoding): a streamed sequence renders as its batches joined`
+9. `feat(httpapi): GET /api/v2/tables/{name}/rows reads the table in the negotiated format`
+10. `feat(httpapi): the table read takes start, end and columns`
+11. `test(httpapi): a generated table read over HTTP equals the stream encoder run directly`
+12. `test(httpapi): the table read's error rows`
+13. `docs(agents): internal, encoding and httpapi AGENTS.md name the table reader rules`
+14. `docs(log): the table reader landed; table-reader-plan.md deleted`
+15. Verify: push `sc-19567/rr-table-reader`, build its head in
     Buildkite, wait for the result. Green: report the build number.
     Red: fix with further small commits on this branch, push, build
     again.
