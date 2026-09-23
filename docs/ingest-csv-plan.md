@@ -165,34 +165,63 @@ contract in the shape of the table reader's paragraph.
 
 ## Tests
 
+The good path of the whole v2 surface is one property, and the error
+rows are one table (owner, 2026-09-23, review of this plan): the
+three properties of `internal/httpapi` today -- the query, the table
+lifecycle, the reader -- share one skeleton and differ only in the
+door they drive, and the ingest would have added two more of the
+same shape. One flow covers them all, the in-process twin of the e2e
+flow (`docs/e2e.md`, "The v2 flow"), with generated schemas and the
+multi-table body that document assigns to the Go property.
+
 - `internal/qdbtest/table`: `CSV(tbl) []byte`, the table's rows in the
   CSV encoder's dialect (`encoding/csv`, header, LF): `$table`,
   `$timestamp`, then the columns, a null cell the empty field, a
   timestamp in the encoders' nine-digit text, a blob in base64. The
-  one renderer the property tests and, later, `e2etool gen` share.
-- `internal/qdbtest/table`: `CreateEmpty(t, c, tbl)`, the create half
-  of `Create` (create, `RemoveOnCleanup`, no push), so a test that
-  pushes through its own door does not copy it; `Create` stacks on
-  it. `GenerateLike(rt, tbl)`, a table with a fresh name, `tbl`'s
-  columns and its own drawn rows, so a body can carry several tables
-  of one column list.
-- `internal/qdb`, `ingest_test.go`, `package qdb_test` (the fixture
-  imports `internal/qdb`, as `read_test.go`): one property. One to
-  three tables of one column list (`Generate`, then `GenerateLike`),
-  each `CreateEmpty`, their `CSV` bodies concatenated under one
-  header, `IngestCSV` under a drawn push mode of `transactional` or
-  `fast`, the result's `Rows` and `Tables` equal to what was written;
-  every table read back through `Cluster.Read`, its batches
-  concatenated per column, `table.Check` against the rows written. A
-  drawn row count of zero exercises the no-push answer. One case in
-  the same test pushes a body twice under `drop` on `$timestamp` and
-  reads the rows back once.
-- `internal/httpapi`, `rows_test.go`: one property, the reader test's
-  shape: the same bodies over HTTP answer 200 and the four-field
-  body with the row and table counts; read back through the reader
-  endpoint equal to `EncodeStream` run directly, as `read_test.go`
-  does. Plus the error rows of the table above, one request each,
-  and one `async` push answered 200 without a read-back.
+  one renderer the flow and, later, `e2etool gen` share.
+- `internal/qdbtest/table`: `GenerateLike(rt, tbl)`, a table with a
+  fresh name, `tbl`'s columns and its own drawn rows, so a body can
+  carry several tables of one column list.
+- `internal/httpapi`, `flow_test.go`: one property, `TestFlow`, per
+  iteration:
+  1. one to three tables of one column list (`Generate`, then
+     `GenerateLike`), zero rows allowed;
+  2. each created over `POST /api/v2/tables` (201), `RemoveOnCleanup`;
+  3. each read empty over `GET /api/v2/tables/{name}/rows` in every
+     format, the schema-only answer;
+  4. the rows ingested over `POST /api/v2/rows` as one body, the
+     tables' `CSV` bodies joined under one header, the push mode drawn
+     from `transactional` and `fast`; 200 with the row and table
+     counts (zero rows: the no-push answer). The body format is drawn
+     from the formats that exist, CSV alone in this unit, NDJSON and
+     Arrow IPC joining the draw when Next 2 lands;
+  5. each table read over the reader in every format, whole and under
+     a drawn column subset, and queried over `POST /api/v2/query`
+     (`tbl.Select()`) in every format;
+  6. each deleted over `DELETE` (204); a read then answers 404.
+
+  The oracle is the tree's: each response equals the encoder run
+  directly over `Cluster.Read` or `Cluster.Query`, and the direct read
+  passes `table.Check` against the rows generated, so the bytes on the
+  wire carry the rows written; the encoders' own tests prove each
+  format decodes to the batch, so the flow needs no decoder. One case
+  in the same file ingests a body twice under `drop` on `$timestamp`
+  and reads the rows back once, and one ingests under `async` and
+  asserts 200 alone (the C API returns before the rows are readable).
+  `TestQueryPerMediaType`, `TestTableLifecycle`,
+  `TestTableRecreatedOverSymtable` and `TestReadTablePerMediaType`
+  fold into it and leave.
+
+- `internal/httpapi`, `errors_test.go`: one table-driven
+  `TestErrorRows`, one row per (request, status) across the routes:
+  the query's, the tables', the reader's and the ingest's rows of
+  ADR-0010 and the tables above. `TestQueryErrors`, `TestTableErrors`
+  and the reader's error rows fold into it and leave; the login
+  verdicts stay in `login_test.go`, since they need the secure cluster
+  and the fixed clock, as do the bearer and compression tests.
+- `internal/qdb`: `read_test.go` stays as it is; it pins the batching
+  and the NUL canary, which no HTTP flow can. `IngestCSV` has no test
+  of its own: the flow drives it.
 
 Every test bounds its sessions; `go test -p 1`.
 
@@ -201,11 +230,11 @@ Every test bounds its sessions; `go test -p 1`.
 1. `feat(qdb): PushOptions carry the push mode and the deduplication mode with its columns; invalid ones fail before a lease`
 2. `feat(qdb): IngestCSV streams records into per-table writer columns through one held session and pushes once`
 3. `test(qdbtest): table.CSV renders a table's rows in the CSV encoder's dialect`
-4. `test(qdbtest): CreateEmpty and GenerateLike, the blocks an ingest test stacks on`
-5. `test(qdb): generated tables pushed as CSV read back as written`
-6. `feat(httpapi): POST /api/v2/rows ingests a CSV body under push-mode and deduplication parameters`
-7. `test(httpapi): a generated multi-table CSV body over HTTP reads back as written; the error rows`
-8. `docs(agents): internal and httpapi AGENTS.md name the ingest rules`
+4. `test(qdbtest): GenerateLike draws a table of another's columns`
+5. `feat(httpapi): POST /api/v2/rows ingests a CSV body under push-mode and deduplication parameters`
+6. `test(httpapi): the flow: generated tables created, read empty, ingested, read and queried in every format, deleted; the three properties fold in`
+7. `test(httpapi): one error-row table across the routes; the per-route error tests fold in`
+8. `docs(agents): internal and httpapi AGENTS.md name the ingest rules and the flow`
 9. `docs(log): the CSV ingest landed; ingest-csv-plan.md deleted`
 10. Verify: push `sc-19567/rr-ingest-csv`, build its head in
     Buildkite, wait for the result. Green: report the build number.
@@ -217,7 +246,7 @@ the live pair from `scripts/tests/setup/start-services.sh`.
 
 ## Open questions and recommendations
 
-None; the owner settled the six of the seed report on 2026-09-23.
+None; the owner settled the six of the seed report and the test shape on 2026-09-23.
 
 ## Decision log (2026-09-23)
 
@@ -230,3 +259,4 @@ None; the owner settled the six of the seed report on 2026-09-23.
 | A header-only body is 200 with zero rows         | nothing to write is not an error                                             | 400                                                               |
 | The body streams from `MaxBytesReader`           | server memory is the parsed columns, not a copy of the body                  | `readBody` with a second cap                                      |
 | The header's columns are the columns written     | a column the header lacks is null in every row without a second mechanism    | requiring every column of the table in the header                 |
+| One flow property and one error table            | one good path per line of test code; the e2e flow's twin in process          | a property per door; a `qdb` ingest property                      |
