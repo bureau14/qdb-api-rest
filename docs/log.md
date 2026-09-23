@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 
 | Milestone                       | State       | Note                                                                   |
 | ------------------------------- | ----------- | ---------------------------------------------------------------------- |
@@ -40,16 +40,7 @@ In flight:
 
 Next:
 
-1. The table reader: `GET /api/v2/tables/{name}/rows` through the bulk
-   reader's Arrow sequence (`Reader.Arrow`, vendored), one record
-   batch per fetch encoded before the next is fetched, in every
-   format; `?start=&end=` both or neither, `?columns=a,b`. Owner-fixed:
-   JSON stays column-oriented as a top-level array of the query's
-   `{"columns":[..]}` objects, one per batch, so a cut stream is
-   invalid JSON; an empty table answers its schema (one batch with
-   empty `data`, the header alone, a schema with no batches), read
-   through `ColumnsInfo` since the reader yields nothing for it.
-2. The ingest slice: `POST /api/v2/rows` with the CSV parser and its
+1. The ingest slice: `POST /api/v2/rows` with the CSV parser and its
    roundtrip property test through the table reader. Owner-fixed: multi-table,
    a required `$table` column routing each row and a required
    `$timestamp`, the header the union of the tables' columns, an empty
@@ -62,17 +53,17 @@ Next:
    say what a duplicate is, the mode what happens to one); the answer
    200 with `{"rows", "tables", "parse_ms", "push_ms"}`, `async`
    included since the push call returned.
-3. The NDJSON and Arrow IPC parsers with their property tests;
+2. The NDJSON and Arrow IPC parsers with their property tests;
    `Content-Encoding: gzip|zstd` on the ingest.
-4. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-5. `scripts/cicd/40.test-e2e.sh` in the build step; the first
+4. `scripts/cicd/40.test-e2e.sh` in the build step; the first
    Buildkite run of the flow is M2's exit.
-6. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-7. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+6. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
@@ -85,13 +76,6 @@ Handoff to M2 (tables, reader and ingest):
   accepted (`internal/httpapi/tables_test.go`).
 - The flow's generated rows carry no empty string (ADR-0014,
   Consequences); the ingest parser reads an empty CSV field as null.
-- The bulk reader's Arrow schema differs from `qdb_query_arrow`'s in
-  two details a table reader client may notice: `$table` and `$timestamp` are
-  non-nullable and no field carries `max_width` metadata; the encoders
-  read neither. Two C API defects surface through the table reader and are
-  filed upstream, not worked around: the Arrow path drops one trailing
-  NUL byte from a string cell, and two symbol-bearing tables in one
-  reader fail with invalid argument (the table reader reads one table).
 - The v1 suite keeps `seed.sql` and `make load`; the flow reads
   neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
   and "In Buildkite").
@@ -125,6 +109,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-09-23 -- the table reader landed; table-reader-plan.md deleted
+
+- `GET /api/v2/tables/{name}/rows` through the bulk reader, every
+  format. The rules to `internal/AGENTS.md` (the read, the lent
+  batches, the two C API defects), `internal/encoding/AGENTS.md`
+  (`EncodeStream`, the JSON array) and `internal/httpapi/AGENTS.md`
+  (the route's contract).
 
 ## 2026-09-22 -- M2 gains the table reader; the ingest is multi-table
 
