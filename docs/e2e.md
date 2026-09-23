@@ -14,7 +14,7 @@ Prove, for the life of the product, that the built binary, driven over
 HTTP like a client:
 
 1. works as a client expects on the v2 surface: login, create a table,
-   query it empty, ingest rows, dump them back in every format and
+   query it empty, ingest rows, read them back in every format and
    content coding (the v2 flow, ADR-0014);
 2. returns exactly what the old server returned on the v1 surface (the
    v1 goldens, ADR-0013);
@@ -141,7 +141,7 @@ anonymous. Every assertion is pass or fail; nothing is timed.
    The generator writes every body with `$table` set, so the three
    bodies differ in format only; a body carrying several tables is the
    Go property test's case, not the flow's.
-5. Each table dumped through `GET /api/v2/tables/{name}/rows` in every
+5. Each table read through `GET /api/v2/tables/{name}/rows` in every
    format (`json`, `ndjson`, `csv`, `arrow`) under `identity` and
    `gzip`: the CSV response compared byte for byte with the generated
    CSV; a JSON, NDJSON or Arrow response decoded to CSV by the tool and
@@ -149,7 +149,7 @@ anonymous. Every assertion is pass or fail; nothing is timed.
    `content-type` is asserted from the format, `content-encoding` from
    the coding (absent for `identity`); nothing else in the headers is
    read. The plain run sends no `Accept-Encoding`; the gzip run sends
-   `Accept-Encoding: gzip`. The dump answers `$table` and `$timestamp`
+   `Accept-Encoding: gzip`. The table reader answers `$table` and `$timestamp`
    first, then the data columns, and the generated CSV has the same
    header, so the comparison is byte for byte with no reordering.
 
@@ -174,7 +174,7 @@ repository, the cgo binding included (ADR-0013, Consequences).
   round-trip. The driver prints the seed so a failure reproduces.
 - `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
   through the package's own CSV encoder. The JSON it reads is the
-  dump's, a top-level array of `{"columns":[..]}` objects, one per
+  table reader's, a top-level array of `{"columns":[..]}` objects, one per
   record batch, concatenated per column.
 
 ### The driver

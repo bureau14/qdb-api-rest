@@ -360,7 +360,7 @@ binding-side materialization. Relieving that for queries requires
 upstream work (a cursor-style query API), out of scope here. Whole
 tables take another door: `GET /api/v2/tables/{name}/rows` reads
 through the bulk reader's batched Arrow fetch, one record batch per
-fetch, encoded and sent before the next is fetched, so a table dump is
+fetch, encoded and sent before the next is fetched, so a table read is
 bounded on both sides; a `SELECT *` of a whole table is not canonical
 QuasarDB. The gateway direction raises the stakes: large raw `SELECT`s
 from thin clients materialize in the gateway, so the session budget is
@@ -465,7 +465,7 @@ GET    /api/v2/tables              list tables (prefix filter, pagination)
 POST   /api/v2/tables              create table (name, shard size, columns); M2, see Tables below
 GET    /api/v2/tables/{name}       schema: columns, types, shard size, tags
 DELETE /api/v2/tables/{name}       remove table; M2, see Tables below
-GET    /api/v2/tables/{name}/rows  table dump through the bulk reader, streamed batch by batch;
+GET    /api/v2/tables/{name}/rows  the table reader: the bulk reader streamed batch by batch;
                                    content-negotiated; optional time range and column selection; M2, the contract is the handler's
 GET    /api/v2/tags                list tags
 GET    /api/v2/tags/{tag}          entries carrying the tag
@@ -756,9 +756,9 @@ fourth.
    - _Format equivalence_: for randomly generated schemas, data, and
      queries, the decoded results of JSON, NDJSON, CSV, Arrow IPC, and
      Flight SQL are identical.
-   - _Ingest/dump roundtrip_: randomly generated data pushed through the
+   - _Ingest/read roundtrip_: randomly generated data pushed through the
      v2 ingest endpoint (each input format) reads back exactly through
-     the table dump.
+     the table reader.
    - _Auth properties_: token roundtrip, expiry, key-rotation continuity,
      refresh behavior -- generated over key/claim space.
 2. **End-to-end** (pattern from qdb-nats-connector ADR-007) -- does the
@@ -767,7 +767,7 @@ fourth.
    started by the shared `scripts/tests/setup/start-services.sh` (qdbd
    is a persistent service, never started by a test). Two suites. The
    `v2` flow (ADR-0014): login, create a table, query it empty, ingest
-   generated rows through every input format, dump them back in every
+   generated rows through every input format, read them back in every
    format and content coding, each response decoded to CSV and
    compared byte for byte with the generated rows; nothing is captured
    and nothing is audited, the expected value is known by construction.
@@ -827,14 +827,14 @@ entry/exit criteria defined when it starts.
   streamed through all four encoders, bearer authentication,
   `POST /api/v2/auth/login` (access token only), gzip and zstd
   response compression.
-- **M2 -- Tables, dump and ingest**: `POST /api/v2/tables` (create),
+- **M2 -- Tables, reader and ingest**: `POST /api/v2/tables` (create),
   `DELETE /api/v2/tables/{name}`, `GET /api/v2/tables/{name}/rows`
-  (the table dump through the bulk reader, streamed through all four
+  (the table reader: the bulk reader streamed through all four
   encoders) and `POST /api/v2/rows` (multi-table ingest routed by a
   `$table` column; CSV, NDJSON, Arrow IPC bodies; `Content-Encoding`;
-  push and deduplication modes) with their ingest/dump roundtrip
+  push and deduplication modes) with their ingest/read roundtrip
   property tests per input format; the v2 e2e flow (login, create,
-  query empty, ingest, dump in every format and coding; Testing
+  query empty, ingest, read in every format and coding; Testing
   doctrine 2) green in Buildkite.
 - **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key

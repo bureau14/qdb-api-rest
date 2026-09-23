@@ -7,22 +7,22 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 Last updated: 2026-09-22
 
-| Milestone                     | State       | Note                                                                   |
-| ----------------------------- | ----------- | ---------------------------------------------------------------------- |
-| M0 -- Foundation              | done        | exit signed off 2026-08-25                                             |
-| M1 -- v2 query                | done        | closed 2026-09-21                                                      |
-| M2 -- Tables, dump and ingest | in progress | the v2 e2e flow is its exit (ADR-0014)                                 |
-| M3 -- v2 auth                 | not started |                                                                        |
-| M4 -- Drop-in compat          | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green |
-| M5 -- Resilience              | not started |                                                                        |
-| M6 -- Flight SQL              | not started |                                                                        |
-| M7 -- Exploration             | not started |                                                                        |
-| M8 -- Embedded DuckDB         | not started |                                                                        |
-| M9 -- Release                 | not started |                                                                        |
+| Milestone                       | State       | Note                                                                   |
+| ------------------------------- | ----------- | ---------------------------------------------------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                                             |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                                      |
+| M2 -- Tables, reader and ingest | in progress | the v2 e2e flow is its exit (ADR-0014)                                 |
+| M3 -- v2 auth                   | not started |                                                                        |
+| M4 -- Drop-in compat            | not started | local red bar exists: `make -C tests/e2e test-v1`; joins CI when green |
+| M5 -- Resilience                | not started |                                                                        |
+| M6 -- Flight SQL                | not started |                                                                        |
+| M7 -- Exploration               | not started |                                                                        |
+| M8 -- Embedded DuckDB           | not started |                                                                        |
+| M9 -- Release                   | not started |                                                                        |
 
 M2 criteria. Exit: `POST /api/v2/tables`, `DELETE /api/v2/tables/{name}`,
 `GET /api/v2/tables/{name}/rows` (every format) and `POST /api/v2/rows`
-(CSV, NDJSON, Arrow IPC bodies) landed with their ingest/dump roundtrip
+(CSV, NDJSON, Arrow IPC bodies) landed with their ingest/read roundtrip
 property tests per input format; the v2 e2e flow (`docs/e2e.md`, "The
 v2 flow") green in Buildkite on all eight platforms through
 `scripts/cicd/40.test-e2e.sh`.
@@ -40,7 +40,7 @@ In flight:
 
 Next:
 
-1. The dump: `GET /api/v2/tables/{name}/rows` through the bulk
+1. The table reader: `GET /api/v2/tables/{name}/rows` through the bulk
    reader's Arrow sequence (`Reader.Arrow`, vendored), one record
    batch per fetch encoded before the next is fetched, in every
    format; `?start=&end=` both or neither, `?columns=a,b`. Owner-fixed:
@@ -50,7 +50,7 @@ Next:
    empty `data`, the header alone, a schema with no batches), read
    through `ColumnsInfo` since the reader yields nothing for it.
 2. The ingest slice: `POST /api/v2/rows` with the CSV parser and its
-   roundtrip property test through the dump. Owner-fixed: multi-table,
+   roundtrip property test through the table reader. Owner-fixed: multi-table,
    a required `$table` column routing each row and a required
    `$timestamp`, the header the union of the tables' columns, an empty
    field null; the parser streams record by record into the writer's
@@ -78,7 +78,7 @@ Next:
    a nil handle, which `client.h` documents as API-managed and not to be
    freed.
 
-Handoff to M2 (tables, dump and ingest):
+Handoff to M2 (tables, reader and ingest):
 
 - The flow drops its tables through `DELETE /api/v2/tables/{name}`,
   which leaves symtables; a create over an existing symtable is
@@ -86,12 +86,12 @@ Handoff to M2 (tables, dump and ingest):
 - The flow's generated rows carry no empty string (ADR-0014,
   Consequences); the ingest parser reads an empty CSV field as null.
 - The bulk reader's Arrow schema differs from `qdb_query_arrow`'s in
-  two details a dump client may notice: `$table` and `$timestamp` are
+  two details a table reader client may notice: `$table` and `$timestamp` are
   non-nullable and no field carries `max_width` metadata; the encoders
-  read neither. Two C API defects surface through the dump and are
+  read neither. Two C API defects surface through the table reader and are
   filed upstream, not worked around: the Arrow path drops one trailing
   NUL byte from a string cell, and two symbol-bearing tables in one
-  reader fail with invalid argument (the dump reads one table).
+  reader fail with invalid argument (the table reader reads one table).
 - The v1 suite keeps `seed.sql` and `make load`; the flow reads
   neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
   and "In Buildkite").
@@ -126,7 +126,7 @@ Blocked on:
 
 ## Entries
 
-## 2026-09-22 -- M2 gains the table dump; the ingest is multi-table
+## 2026-09-22 -- M2 gains the table reader; the ingest is multi-table
 
 - Owner decisions: whole tables are read through the bulk reader
   (`GET /api/v2/tables/{name}/rows`), never materialized by a query;

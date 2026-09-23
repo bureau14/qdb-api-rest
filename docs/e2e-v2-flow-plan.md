@@ -19,7 +19,7 @@ old server is its specification and its goldens stay (ADR-0013 3-4).
 
 Consequences for the milestones: the flow needs `POST /api/v2/tables`,
 `GET /api/v2/tables/{name}/rows` and `POST /api/v2/rows`. They live in
-the milestone directly after M1, **M2 -- Tables, dump and ingest**. M1
+the milestone directly after M1, **M2 -- Tables, reader and ingest**. M1
 closes on its Go tests; M2 closes on the flow green in Buildkite.
 
 ## The flow
@@ -45,7 +45,7 @@ insecure login is anonymous.
    naming the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`,
    as Arrow IPC for `e2e_arrow`; a 200 whose body carries the row
    count.
-5. Dump each table (`GET /api/v2/tables/{name}/rows`) in every format
+5. Read each table (`GET /api/v2/tables/{name}/rows`) in every format
    under `identity` and `gzip`; every
    response decoded to CSV and compared byte for byte with the
    generated CSV. `content-type` is asserted from the format,
@@ -110,7 +110,7 @@ too large for git because nothing in v2 is stored.
 
 Decided with their code slices, not here; the table routes' contract
 is the brief's (`docs/brief.md`, "Tables: create and delete"), the
-dump's and the ingest's are their handlers'. The plan records only
+table reader's and the ingest's are their handlers'. The plan records only
 what the flow needs of them: `POST /api/v2/tables` takes a JSON body
 naming the table, its shard size and its columns in the brief's schema
 vocabulary; `GET /api/v2/tables/{name}/rows` answers the whole table
