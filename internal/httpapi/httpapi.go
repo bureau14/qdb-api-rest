@@ -55,5 +55,6 @@ func NewHandler() http.Handler {
 	registerQueryRoutes(mux)
 	registerTableRoutes(mux)
 	registerReadRoutes(mux)
+	registerRowsRoutes(mux)
 	return withRequestLogging(mux)
 }
