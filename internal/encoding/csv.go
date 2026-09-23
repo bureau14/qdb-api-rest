@@ -133,9 +133,11 @@ func (CSV) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
 	return cw.Error()
 }
 
-// EncodeStream implements Encoder: the header from the first batch, then
-// every batch's rows. No batch at all is an empty body.
+// EncodeStream implements Encoder.
 func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
+	// One header for the whole body, taken from the first batch since every
+	// batch shares its schema; the rows of every batch follow. No batch at
+	// all writes nothing, the nil-batch rule.
 	cw := csv.NewWriter(w)
 	first := true
 	for rec, err := range batches {
@@ -156,6 +158,8 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 			return err
 		}
 	}
+	// The standard writer buffers and reports its first write error only
+	// here; an error step above returns before the buffer is flushed.
 	cw.Flush()
 	return cw.Error()
 }

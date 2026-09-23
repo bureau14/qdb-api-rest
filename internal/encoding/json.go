@@ -168,7 +168,7 @@ func (NDJSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) er
 	return bw.Flush()
 }
 
-// EncodeStream implements Encoder: every batch's rows, appended.
+// EncodeStream implements Encoder.
 func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
 	bw := bufio.NewWriter(w)
 	for rec, err := range batches {
@@ -244,15 +244,23 @@ func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) erro
 	return bw.Flush()
 }
 
-// EncodeStream implements Encoder: [ one result per batch, comma
-// separated ]. No batch at all is [].
+// EncodeStream implements Encoder.
 func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
+	// The body is a top-level array with one columnar result per batch:
+	// each batch is rendered exactly as Encode renders it, between "[" and
+	// "]", a comma before every result but the first. The array closes only
+	// after the last batch, so a stream cut mid-way is invalid JSON and a
+	// client cannot take a truncated read for a complete one. No batch at
+	// all is "[]".
 	bw := bufio.NewWriter(w)
 	if err := bw.WriteByte('['); err != nil {
 		return err
 	}
 	first := true
 	for rec, err := range batches {
+		// An error step returns before the buffered writer is flushed, so a
+		// failure on the first fetch leaves nothing on the wire and the
+		// handler can still answer a status.
 		if err != nil {
 			return err
 		}

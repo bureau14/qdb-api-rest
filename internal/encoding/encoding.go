@@ -1,7 +1,5 @@
-// Package encoding turns a query result, or a table read, into bytes in
-// one wire format. Every encoder consumes the Arrow record batches the
-// core returns (internal/qdb); an encoder knows its media type and its
-// bytes.
+// Package encoding turns Arrow record batches into bytes in one wire
+// format. An encoder knows its media type and its bytes, nothing else.
 package encoding
 
 import (
@@ -13,21 +11,17 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-// Encoder writes one record batch to w in one wire format.
+// Encoder writes record batches to w in one wire format. It never
+// releases a batch and returns the first error: a write's, an error step's,
+// or ctx ending between chunks.
 type Encoder interface {
 	// ContentType is the media type the handler answers with.
 	ContentType() string
-	// Encode writes rec to w. A nil rec is a statement that produced no
-	// result set and encodes as zero columns and zero rows. Encode never
-	// releases rec, which its caller owns. Encode returns the first write
-	// error; ctx ending between chunks ends the encoding.
+	// Encode writes one batch. A nil rec is a statement without a result
+	// set and encodes as zero columns and zero rows.
 	Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
-	// EncodeStream writes every batch of batches to w as one body, each
-	// batch rendered before the next is pulled, so a read is encoded as it
-	// is fetched. Every batch shares the first batch's schema, which the
-	// reader guarantees and the encoders do not check. An error step ends
-	// the encoding with that error. EncodeStream never releases a batch:
-	// each is the sequence's, valid for its step.
+	// EncodeStream writes a sequence of batches as one body. Every batch
+	// shares the first batch's schema; a batch is valid for its step only.
 	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 

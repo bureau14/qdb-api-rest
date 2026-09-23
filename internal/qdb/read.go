@@ -78,10 +78,12 @@ func dataFields(cols []qdbapi.TsColumnInfo) ([]arrow.Field, map[string]arrow.Fie
 	return fields, byName
 }
 
-// schemaOf is the schema the reader would answer for a table with cols
-// under o: every field in the reader's layout, or the requested names in
-// their order, a special and a data column found by name alike.
+// schemaOf is the schema the reader answers for a table with cols read
+// under o. An unknown requested name is ErrUnknownColumn.
 func schemaOf(cols []qdbapi.TsColumnInfo, o ReadOptions) (*arrow.Schema, error) {
+	// The reader's layout: without a column list, $table, $timestamp, then
+	// the table's columns; with one, exactly the requested names in their
+	// order, the two specials answered only when named, like any column.
 	fields, byName := dataFields(cols)
 	if o.Columns == nil {
 		return arrow.NewSchema(append([]arrow.Field{specialFields["$table"], specialFields["$timestamp"]}, fields...), nil), nil
@@ -119,11 +121,15 @@ func emptyBatch(schema *arrow.Schema) arrow.RecordBatch {
 // the last. There is always at least one step.
 type Batches = iter.Seq2[arrow.RecordBatch, error]
 
-// lent wraps the reader's owned batches into lent ones: each is released
-// once the receiver's step returns, whether it broke out or not. A reader
-// that yields nothing, an empty table, yields one batch of schema alone.
+// lent turns the reader's owned batches into the lent Batches over
+// schema, the schema the reader answers.
 func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
+		// The binding hands out one owned reference per batch and wants it
+		// released exactly once; releasing after the step returns, whether
+		// the receiver broke out or not, keeps that promise in one place.
+		// Note: a value read from the batch aliases its buffers and is
+		// garbage after the release; a receiver that keeps one copies it.
 		yielded := false
 		for rec, err := range owned {
 			yielded = true
@@ -135,6 +141,8 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 				return
 			}
 		}
+		// The reader yields nothing for an empty table, not even a schema,
+		// so the schema-only batch stands in and every receiver sees a step.
 		if !yielded {
 			rec := emptyBatch(schema)
 			yield(rec, nil)
@@ -143,26 +151,38 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 	}
 }
 
-// Read opens the bulk reader over the table name and hands its batches to
-// sink, one per fetch, the next fetched only when sink's step returns:
-// memory is one batch whatever the table's size. A missing table, a bad
-// range or an unknown column fails here, before sink runs, so the schema
-// the reader will answer is known before the first byte. The reader is
-// closed after sink returns, whatever it returned.
+// Read reads the table name under o through the bulk reader and hands its
+// batches to sink, one per fetch, the next fetched only when sink's step
+// returns. An error before sink runs is the table's, the range's or a
+// column's; sink's own error is returned as is.
 func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) error {
+	// Everything that can refuse the read runs before the sink, so a caller
+	// that has to decide a status (the HTTP handler) decides it before the
+	// first byte:
+	//
+	//  1. open the reader: the binding judges the range and the batch size,
+	//     the cluster the table's existence;
+	//  2. fetch the table's columns, the schema an empty table answers;
+	//  3. shape that schema under o, which finds an unknown column;
+	//  4. run the sink over the lent batches, the reader closing after it.
+
+	// 1. open the reader
 	rd, err := qdbapi.NewReader(s.session, o.readerOptions(name))
 	if err != nil {
 		return err
 	}
 	defer rd.Close()
+	// 2. fetch the columns
 	cols, err := s.session.Table(name).ColumnsInfo()
 	if err != nil {
 		return err
 	}
+	// 3. shape the schema
 	schema, err := schemaOf(cols, o)
 	if err != nil {
 		return err
 	}
+	// 4. run the sink
 	return sink(lent(rd.Arrow(), schema))
 }
 

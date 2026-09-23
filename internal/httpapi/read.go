@@ -45,11 +45,21 @@ func readOptions(q url.Values) (qdb.ReadOptions, error) {
 }
 
 // handleReadTable streams the table the path names, batch by batch, in
-// the negotiated format. The status is decided before the first byte: the
-// reader opens, and the schema is known, before the sink runs; the sink
-// then holds the session for as long as the client reads.
+// the negotiated format, as the bearer's user.
 func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// The read runs inside the cluster call's sink, which holds a session
+	// for as long as the client reads. Two kinds of failure come out of it
+	// and they answer differently, so they are kept apart:
+	//
+	//  1. read the parameters; a bad time is the caller's 400 right here;
+	//  2. read the table, the encoder streaming inside the sink;
+	//  3. a failure of the stream: with zero bytes out it is 500, after the
+	//     first byte the stream is cut and only the log hears of it;
+	//  4. a failure of the call, before the sink ran and before any byte:
+	//     404 for an unknown table, ADR-0010's table for the rest.
+
+	// 1. the parameters
 	o, err := readOptions(r.URL.Query())
 	if err != nil {
 		writeProblem(w, http.StatusBadRequest, err.Error())
@@ -57,10 +67,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	}
 	enc := negotiate(r.Header.Get("Accept"))
 	cw := &countingWriter{w: w}
-	// The sink's error is kept apart from the call's: the call fails before
-	// anything is sent and answers a status; the sink fails a stream. The
-	// sink still returns it, so the breaker and the pool hear of a fetch
-	// that found the cluster gone.
+	// 2. the read. The sink keeps its own error and also returns it, so the
+	// breaker and the pool hear of a fetch that found the cluster gone.
 	var streamErr error
 	err = qdb.ClusterFrom(ctx).Read(ctx, caller(r), r.PathValue("name"), o, func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
@@ -68,10 +76,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 		return streamErr
 	})
 	switch {
+	// 3. the stream failed
 	case streamErr != nil:
-		// Before the first byte the failure is a fetch's or this process's:
-		// 500. After it, or once the caller has left, the stream is cut and
-		// only the log hears of it.
 		switch {
 		case ctx.Err() != nil:
 			observe.Logger(ctx).DebugContext(ctx, "response abandoned by the caller", slog.Int64("bytes", cw.n), observe.Err(streamErr))
@@ -80,6 +86,7 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 		default:
 			observe.Logger(ctx).WarnContext(ctx, "response cut mid-stream", slog.Int64("bytes", cw.n), observe.Err(streamErr))
 		}
+	// 4. the call failed
 	case qdb.IsTableNotFound(err):
 		writeProblem(w, http.StatusNotFound, err.Error())
 	case err != nil:
