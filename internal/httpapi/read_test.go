@@ -1,16 +1,14 @@
-// The table reader's helpers, its range and its error rows; its good
-// path in every format is the flow (flow_test.go).
+// The table reader's test helpers and its range; its good path in every
+// format is the flow (flow_test.go), its error rows are errors_test.go's.
 package httpapi
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
@@ -56,35 +54,4 @@ func TestReadTableRange(t *testing.T) {
 			rt.Fatalf("range before the rows: status %d: %q, want the header alone", before.Code, before.Body.String())
 		}
 	})
-}
-
-// TestReadTableErrors: each error row answers its status with a problem
-// body.
-func TestReadTableErrors(t *testing.T) {
-	s := newServer(t)
-	tbl := table.Table{Name: "qdbtest_read_errors", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
-	table.Create(t, s.c, tbl)
-	bearer := map[string]string{"Authorization": "Bearer " + s.token}
-	cases := map[string]struct {
-		name, query string
-		headers     map[string]string
-		status      int
-	}{
-		"no token":         {tbl.Name, "", nil, http.StatusUnauthorized},
-		"no such table":    {"qdbtest_read_none", "", bearer, http.StatusNotFound},
-		"unparsable start": {tbl.Name, "start=yesterday&end=2020-01-02T00:00:00Z", bearer, http.StatusBadRequest},
-		"start alone":      {tbl.Name, "start=2020-01-01T00:00:00Z", bearer, http.StatusBadRequest},
-		"end not after":    {tbl.Name, "start=2020-01-02T00:00:00Z&end=2020-01-01T00:00:00Z", bearer, http.StatusBadRequest},
-		"unknown column":   {tbl.Name, "columns=nope", bearer, http.StatusBadRequest},
-	}
-	for name, tc := range cases {
-		resp := s.readTable(tc.name, tc.query, tc.headers)
-		if resp.Code != tc.status {
-			t.Errorf("%s: status %d, want %d: %s", name, resp.Code, tc.status, resp.Body.String())
-		}
-		var p problem
-		if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
-			t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
-		}
-	}
 }

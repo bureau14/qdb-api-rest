@@ -9,7 +9,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -84,39 +83,6 @@ func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 		t.Fatalf("%s: %v", e.ContentType(), err)
 	}
 	return buf.Bytes()
-}
-
-// TestQueryErrors: each error row answers its status with a problem body
-// and, where the status has one, its header.
-func TestQueryErrors(t *testing.T) {
-	s := newServer(t)
-	bearer := "Bearer " + s.token
-	cases := map[string]struct {
-		body      string
-		headers   map[string]string
-		status    int
-		challenge string
-	}{
-		"invalid query": {"NOT A QUERY", map[string]string{"Authorization": bearer}, http.StatusBadRequest, ""},
-		"json body":     {`{"query":"SELECT 1"}`, map[string]string{"Authorization": bearer, "Content-Type": "application/json"}, http.StatusUnsupportedMediaType, ""},
-		"no token":      {"SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
-		"bad token":     {"SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-	}
-	for name, tc := range cases {
-		resp := s.query(tc.body, tc.headers)
-		if resp.Code != tc.status {
-			t.Errorf("%s: status %d, want %d: %s", name, resp.Code, tc.status, resp.Body.String())
-		}
-		if got := resp.Header().Get("WWW-Authenticate"); got != tc.challenge {
-			t.Errorf("%s: WWW-Authenticate = %q, want %q", name, got, tc.challenge)
-		}
-		// The body is a problem whose status repeats the status line and
-		// whose title is its standard text.
-		var p problem
-		if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
-			t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
-		}
-	}
 }
 
 // TestQueryCompressed: for a generated table, each coding answers the
