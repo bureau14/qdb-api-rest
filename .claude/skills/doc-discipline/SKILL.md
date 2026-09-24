@@ -1,6 +1,6 @@
 ---
 name: doc-discipline
-description: Enforce this project's documentation discipline. Moves knowledge out of doc/ and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives complex functions narrative comments (process overview at the top of the body, intent comments per step). Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative), an optional "check" flag for report-only, and optional paths.
+description: Enforce this project's documentation discipline. Moves knowledge out of the documentation folder and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives complex functions narrative comments (process overview at the top of the body, intent comments per step). Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative), an optional "check" flag for report-only, and optional paths.
 argument-hint: "[all|placement|narrative] [check] [paths...]"
 ---
 

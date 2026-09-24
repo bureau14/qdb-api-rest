@@ -42,7 +42,7 @@ bullet: "what is the smallest piece of code this is about?"
 Then walk the code bottom-up for the reverse problem, which is rarer:
 comments that state cross-file or cross-component facts (protocol rules,
 shared invariants, vocabulary definitions). Those move up to the `AGENTS.md`
-or `doc/` rung, and the comment becomes a one-line pointer.
+or documentation-folder rung, and the comment becomes a one-line pointer.
 
 Record every finding as one row of the placement plan before changing
 anything:
