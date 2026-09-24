@@ -1,7 +1,5 @@
-// The table routes are pinned against the live qdbd fixture: a generated
-// schema is created over HTTP, answers its columns when queried empty,
-// conflicts on a second create, and is deleted once; the error rows of
-// both routes are checked one by one on the same fixture.
+// The table routes' helpers and error rows; their good path is the flow
+// (flow_test.go).
 package httpapi
 
 import (
@@ -12,7 +10,6 @@ import (
 	"testing"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
-	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -61,91 +58,6 @@ func createBodyOf(tbl table.Table) createTableRequest {
 		cols[i] = columnRequest{Name: c.Name, Type: typeWords[c.Type], Symtable: c.Symtable}
 	}
 	return createTableRequest{Name: tbl.Name, ShardSize: &shard, Columns: cols}
-}
-
-// wireType is the type word a query answers for a column: a symbol reads
-// back as a string.
-func wireType(c table.Column) string {
-	if c.Type == qdbapi.TsColumnSymbol {
-		return "string"
-	}
-	return typeWords[c.Type]
-}
-
-// TestTableLifecycle: a generated schema is created (201, Location),
-// answers exactly its columns when queried empty, conflicts on a second
-// create (409), is deleted (204) and is then unknown (404).
-func TestTableLifecycle(t *testing.T) {
-	s := newServer(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.GenerateSchema(rt)
-		table.RemoveOnCleanup(rt, s.c, tbl)
-		req := createBodyOf(tbl)
-		resp := s.createTable(rt, req)
-		if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
-			rt.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
-		}
-		if got := resp.Header().Get("Location"); got != tablesPath+"/"+req.Name {
-			rt.Fatalf("Location = %q", got)
-		}
-		// The empty table answers its schema: every column, in order, under
-		// its wire type, with no data.
-		q := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token})
-		var result struct {
-			Columns []struct {
-				Name string `json:"name"`
-				Type string `json:"type"`
-				Data []any  `json:"data"`
-			} `json:"columns"`
-		}
-		if err := json.Unmarshal(q.Body.Bytes(), &result); err != nil || q.Code != http.StatusOK {
-			rt.Fatalf("query: status %d: %s (%v)", q.Code, q.Body.String(), err)
-		}
-		if len(result.Columns) != len(tbl.Columns)+1 {
-			rt.Fatalf("query answered %d columns: %s", len(result.Columns), q.Body.String())
-		}
-		for i, c := range tbl.Columns {
-			got := result.Columns[i+1]
-			if got.Name != c.Name || got.Type != wireType(c) || len(got.Data) != 0 {
-				rt.Fatalf("column %d = %+v, want %s %s", i, got, c.Name, wireType(c))
-			}
-		}
-		if resp := s.createTable(rt, req); resp.Code != http.StatusConflict {
-			rt.Fatalf("second create: status %d: %s", resp.Code, resp.Body.String())
-		}
-		if resp := s.deleteTable(req.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
-			rt.Fatalf("delete: status %d: %s", resp.Code, resp.Body.String())
-		}
-		if resp := s.deleteTable(req.Name); resp.Code != http.StatusNotFound {
-			rt.Fatalf("second delete: status %d: %s", resp.Code, resp.Body.String())
-		}
-	})
-}
-
-// TestTableRecreatedOverSymtable: a table whose symtables were filled is
-// deleted, which leaves the symtables, and the same create is accepted
-// again over them.
-func TestTableRecreatedOverSymtable(t *testing.T) {
-	s := newServer(t)
-	tbl := table.Table{Name: "qdbtest_recreated", Columns: []table.Column{
-		{Name: "c0", Type: qdbapi.TsColumnSymbol, Symtable: "qdbtest_recreated_c0"},
-	}}
-	table.RemoveOnCleanup(t, s.c, tbl)
-	req := createBodyOf(tbl)
-	if resp := s.createTable(t, req); resp.Code != http.StatusCreated {
-		t.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
-	}
-	// One pushed symbol value brings the symtable into existence.
-	insert := "INSERT INTO qdbtest_recreated ($timestamp, c0) VALUES (2020-01-01, 'a')"
-	if resp := s.query(insert, map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
-		t.Fatalf("insert: status %d: %s", resp.Code, resp.Body.String())
-	}
-	if resp := s.deleteTable(req.Name); resp.Code != http.StatusNoContent {
-		t.Fatalf("delete: status %d: %s", resp.Code, resp.Body.String())
-	}
-	if resp := s.createTable(t, req); resp.Code != http.StatusCreated {
-		t.Fatalf("second create: status %d: %s", resp.Code, resp.Body.String())
-	}
 }
 
 // TestTableErrors: each error row of the two routes answers its status

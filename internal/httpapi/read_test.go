@@ -1,8 +1,5 @@
-// The table reader is pinned against the live qdbd fixture: for a
-// generated table, each media type answers 200 with the encoder's
-// Content-Type and the bytes the stream encoder writes when run directly
-// over Cluster.Read, whole and under a column subset; the error rows of
-// the route are checked one by one on the same fixture.
+// The table reader's helpers, its range and its error rows; its good
+// path in every format is the flow (flow_test.go).
 package httpapi
 
 import (
@@ -11,8 +8,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"strings"
 	"testing"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
@@ -40,42 +35,6 @@ func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.Re
 		t.Fatalf("read %s: %v", name, err)
 	}
 	return buf.Bytes()
-}
-
-// TestReadTablePerMediaType: for a generated table, whole and under a
-// drawn column subset, each Accept answers 200, the encoder's
-// Content-Type, and the stream encoder's own bytes.
-func TestReadTablePerMediaType(t *testing.T) {
-	s := newServer(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, s.c, tbl)
-		all := []string{"$table", "$timestamp"}
-		for _, c := range tbl.Columns {
-			all = append(all, c.Name)
-		}
-		picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
-		for _, tc := range []struct {
-			query string
-			o     qdb.ReadOptions
-		}{
-			{"", qdb.ReadOptions{}},
-			{"columns=" + url.QueryEscape(strings.Join(picked, ",")), qdb.ReadOptions{Columns: picked}},
-		} {
-			for accept, e := range encoders {
-				resp := s.readTable(tbl.Name, tc.query, map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
-				if resp.Code != http.StatusOK {
-					rt.Fatalf("%s ?%s: status %d: %s", accept, tc.query, resp.Code, resp.Body.String())
-				}
-				if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
-					rt.Fatalf("%s: Content-Type = %q", accept, ct)
-				}
-				if want := s.directRead(rt, e, tbl.Name, tc.o); !bytes.Equal(resp.Body.Bytes(), want) {
-					rt.Fatalf("%s ?%s: body differs from the stream encoder's own bytes", accept, tc.query)
-				}
-			}
-		}
-	})
 }
 
 // TestReadTableRange: a range that covers the table answers what the

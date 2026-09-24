@@ -86,28 +86,6 @@ func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	return buf.Bytes()
 }
 
-// TestQueryPerMediaType: for a generated table, each Accept answers 200,
-// the encoder's Content-Type, and the encoder's own bytes.
-func TestQueryPerMediaType(t *testing.T) {
-	s := newServer(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, s.c, tbl)
-		for accept, e := range encoders {
-			resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
-			if resp.Code != http.StatusOK {
-				rt.Fatalf("%s: status %d: %s", accept, resp.Code, resp.Body.String())
-			}
-			if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
-				rt.Fatalf("%s: Content-Type = %q", accept, ct)
-			}
-			if want := s.direct(rt, e, tbl.Select()); !bytes.Equal(resp.Body.Bytes(), want) {
-				rt.Fatalf("%s: body differs from the encoder's own bytes", accept)
-			}
-		}
-	})
-}
-
 // TestQueryErrors: each error row answers its status with a problem body
 // and, where the status has one, its header.
 func TestQueryErrors(t *testing.T) {

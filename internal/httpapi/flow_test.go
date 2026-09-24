@@ -1,0 +1,249 @@
+// The good path of the v2 surface is one property against the live qdbd
+// fixture, the in-process twin of the e2e flow: generated tables of one
+// column list are created over HTTP, read empty, ingested in one body,
+// read and queried in every format, deleted, re-created over what the
+// delete leaves behind, and deleted again. Each response equals the
+// encoder run directly over the cluster, and the direct read passes
+// table.Check against the rows generated, so the bytes on the wire carry
+// the rows written.
+package httpapi
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"slices"
+	"strings"
+	"testing"
+
+	qdbapi "github.com/bureau14/qdb-api-go/v3"
+	"pgregory.net/rapid"
+
+	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
+)
+
+// ingest posts body as CSV under the query string.
+func (s server) ingest(body, query string, headers map[string]string) *httptest.ResponseRecorder {
+	if headers == nil {
+		headers = map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
+	}
+	return s.post(rowsPath+"?"+query, body, headers)
+}
+
+// ingestBodyOf is the one CSV body that carries every table: the first
+// table's CSV whole, then the rows of the others under its header, which
+// is theirs too since they share the column list.
+func ingestBodyOf(tables []table.Table) string {
+	var buf bytes.Buffer
+	for i, tbl := range tables {
+		csv := table.CSV(tbl)
+		if i > 0 {
+			csv = csv[bytes.IndexByte(csv, '\n')+1:]
+		}
+		buf.Write(csv)
+	}
+	return buf.String()
+}
+
+// checkRead reads tbl over the cluster and compares what comes back with
+// the rows generated; the fixture's tables fit one batch.
+func (s server) checkRead(t *rapid.T, tbl table.Table) {
+	t.Helper()
+	err := s.c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
+		for rec, err := range batches {
+			if err != nil {
+				return err
+			}
+			table.Check(t, tbl, rec)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read %s: %v", tbl.Name, err)
+	}
+}
+
+// checkReadFormats reads tbl over HTTP in every format, whole and, when
+// picked names columns, under that subset, and compares each body with
+// the stream encoder run directly.
+func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
+	t.Helper()
+	cases := []struct {
+		query string
+		o     qdb.ReadOptions
+	}{{"", qdb.ReadOptions{}}}
+	if picked != nil {
+		cases = append(cases, struct {
+			query string
+			o     qdb.ReadOptions
+		}{"columns=" + url.QueryEscape(strings.Join(picked, ",")), qdb.ReadOptions{Columns: picked}})
+	}
+	for _, tc := range cases {
+		for accept, e := range encoders {
+			resp := s.readTable(tbl.Name, tc.query, map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
+			if resp.Code != http.StatusOK {
+				t.Fatalf("read %s ?%s: status %d: %s", accept, tc.query, resp.Code, resp.Body.String())
+			}
+			if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
+				t.Fatalf("read %s: Content-Type = %q", accept, ct)
+			}
+			if want := s.directRead(t, e, tbl.Name, tc.o); !bytes.Equal(resp.Body.Bytes(), want) {
+				t.Fatalf("read %s ?%s: body differs from the stream encoder's own bytes", accept, tc.query)
+			}
+		}
+	}
+}
+
+// checkQueryFormats queries tbl over HTTP in every format and compares
+// each body with the encoder run directly.
+func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
+	t.Helper()
+	for accept, e := range encoders {
+		resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
+		if resp.Code != http.StatusOK {
+			t.Fatalf("query %s: status %d: %s", accept, resp.Code, resp.Body.String())
+		}
+		if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
+			t.Fatalf("query %s: Content-Type = %q", accept, ct)
+		}
+		if want := s.direct(t, e, tbl.Select()); !bytes.Equal(resp.Body.Bytes(), want) {
+			t.Fatalf("query %s: body differs from the encoder's own bytes", accept)
+		}
+	}
+}
+
+// ingestResponseOf decodes the ingest's answer.
+func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse {
+	t.Helper()
+	var r ingestResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &r); err != nil || resp.Code != http.StatusOK {
+		t.Fatalf("ingest: status %d: %s (%v)", resp.Code, resp.Body.String(), err)
+	}
+	return r
+}
+
+// TestFlow: the flow above, per iteration over one to three generated
+// tables of one column list.
+func TestFlow(t *testing.T) {
+	s := newServer(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		// 1. the tables: the first drawn whole, the rest of its columns
+		first := table.Generate(rt)
+		tables := []table.Table{first}
+		for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
+			tables = append(tables, table.GenerateLike(rt, first))
+		}
+		wantRows, wantTables := 0, 0
+		for _, tbl := range tables {
+			wantRows += len(tbl.Index)
+			if len(tbl.Index) > 0 {
+				wantTables++
+			}
+		}
+		all := []string{"$table", "$timestamp"}
+		for _, c := range first.Columns {
+			all = append(all, c.Name)
+		}
+		picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
+
+		// 2. create each: 201 with its Location
+		for _, tbl := range tables {
+			table.RemoveOnCleanup(rt, s.c, tbl)
+			resp := s.createTable(rt, createBodyOf(tbl))
+			if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
+				rt.Fatalf("create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			}
+			if got := resp.Header().Get("Location"); got != tablesPath+"/"+tbl.Name {
+				rt.Fatalf("create %s: Location = %q", tbl.Name, got)
+			}
+		}
+
+		// 3. read the first table empty: the schema alone, in every format,
+		// and the schema is the one generated. The others share it, and an
+		// empty read through the bulk reader is slow (about a tenth of a
+		// second where a filled read is milliseconds), so one table stands
+		// for all
+		empty := first
+		empty.Index = nil
+		empty.Columns = slices.Clone(first.Columns)
+		for i := range empty.Columns {
+			empty.Columns[i].Valid = nil
+		}
+		s.checkRead(rt, empty)
+		s.checkReadFormats(rt, first, nil)
+
+		// 4. ingest every table's rows in one body: the counts answered are
+		// the rows generated and the tables that had any
+		mode := rapid.SampledFrom([]string{"", "fast", "transactional"}).Draw(rt, "push mode")
+		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(tables), "push-mode="+mode, nil))
+		if got.Rows != wantRows || got.Tables != wantTables {
+			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
+		}
+
+		// 5. read and query each in every format: the rows written are the
+		// rows generated, and every wire carries the encoder's own bytes
+		for _, tbl := range tables {
+			s.checkRead(rt, tbl)
+			s.checkReadFormats(rt, tbl, picked)
+			s.checkQueryFormats(rt, tbl)
+		}
+
+		// 6. delete each (204), which leaves the symtables; the same create
+		// is accepted again over them (201); a second delete is 404
+		for _, tbl := range tables {
+			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
+				rt.Fatalf("delete %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			}
+			if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
+				rt.Fatalf("re-create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			}
+			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent {
+				rt.Fatalf("delete %s again: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			}
+			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNotFound {
+				rt.Fatalf("delete %s of nothing: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			}
+		}
+	})
+}
+
+// TestFlowDeduplicated: the same body ingested twice under drop on
+// $timestamp reads back once.
+func TestFlowDeduplicated(t *testing.T) {
+	s := newServer(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		tbl := table.Generate(rt)
+		if len(tbl.Index) == 0 {
+			return
+		}
+		table.RemoveOnCleanup(rt, s.c, tbl)
+		if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
+			rt.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
+		}
+		query := "deduplication-mode=drop&deduplication-columns=" + url.QueryEscape("$timestamp")
+		for range 2 {
+			ingestResponseOf(rt, s.ingest(ingestBodyOf([]table.Table{tbl}), query, nil))
+		}
+		s.checkRead(rt, tbl)
+	})
+}
+
+// TestFlowAsync: an async push is accepted; its rows are not read back,
+// since the C API returns before they are readable.
+func TestFlowAsync(t *testing.T) {
+	s := newServer(t)
+	tbl := table.Table{Name: "qdbtest_async", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
+	table.RemoveOnCleanup(t, s.c, tbl)
+	if resp := s.createTable(t, createBodyOf(tbl)); resp.Code != http.StatusCreated {
+		t.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
+	}
+	body := "$table,$timestamp,c0\nqdbtest_async,2020-01-01T00:00:00.000000000Z,1\n"
+	if got := ingestResponseOf(t, s.ingest(body, "push-mode=async", nil)); got.Rows != 1 || got.Tables != 1 {
+		t.Fatalf("ingest answered %+v", got)
+	}
+}
