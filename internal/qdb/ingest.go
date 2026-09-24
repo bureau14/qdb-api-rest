@@ -80,8 +80,8 @@ var ErrInvalidRows = errors.New("qdb: invalid rows")
 
 // IngestResult is what one push wrote and how long its two halves took:
 // Parse from the first byte read to the end of the body, Push the batch
-// push call itself, which under the async mode returns before the rows
-// are readable.
+// push call itself. After an async push a query sees the rows at once;
+// the bulk reader sees them only after the server's async flush.
 type IngestResult struct {
 	Rows, Tables int
 	Parse, Push  time.Duration

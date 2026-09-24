@@ -69,7 +69,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   The empty field is the type's null sentinel, so the empty string
   cannot be ingested. Push and deduplication options are judged before
   the lease (`ErrInvalidPushOptions`); either deduplication mode needs
-  its columns. The parsers of every body format live in `ingest.go`:
+  its columns. After an `async` push a query sees the rows at once and
+  the bulk reader only after the server's async flush; `fast` and
+  `transactional` are visible on both paths when the push returns. The parsers of every body format live in `ingest.go`:
   no format is QuasarDB's, the package's story is the writer.
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or a cell rendering.

@@ -108,9 +108,12 @@ and delete"; of the table reader: this file, Handlers.
 - The good path of the v2 surface is one round trip, `TestRoundtrip`
   (`roundtrip_test.go`), the in-process twin of the e2e flow: one to three
   generated tables of one column list are created over HTTP, the first
-  read empty in every format, all ingested in one body, read (whole and
-  under a drawn column subset) and queried in every format, deleted,
-  re-created over the symtables the delete leaves, deleted again. The
+  read empty in every format, all ingested in one body under a drawn
+  push mode, read (whole and under a drawn column subset) and queried
+  in every format, deleted, re-created over the symtables the delete
+  leaves, deleted again. Under `async` the read-back is the query's
+  alone: a query sees the rows at once, the bulk reader only after the
+  server's async flush. The
   oracle is the encoder run directly over `Cluster.Read` or
   `Cluster.Query`, byte for byte, and `table.Check` on the direct read
   against the rows generated; the encoders' own tests prove the bytes
