@@ -27,14 +27,14 @@ func isCSV(contentType string) bool {
 	return err == nil && mt == encoding.CSVContentType
 }
 
-// pushOptions reads the push parameters of the query string as words;
+// pushOptions reads the push options among the URL parameters as words;
 // the cluster call judges them.
-func pushOptions(q url.Values) qdb.PushOptions {
+func pushOptions(params url.Values) qdb.PushOptions {
 	o := qdb.PushOptions{
-		Mode:              q.Get("push-mode"),
-		DeduplicationMode: q.Get("deduplication-mode"),
+		Mode:              params.Get("push-mode"),
+		DeduplicationMode: params.Get("deduplication-mode"),
 	}
-	if cols := q.Get("deduplication-columns"); cols != "" {
+	if cols := params.Get("deduplication-columns"); cols != "" {
 		o.DeduplicationColumns = strings.Split(cols, ",")
 	}
 	return o

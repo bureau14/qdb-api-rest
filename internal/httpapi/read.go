@@ -12,10 +12,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// parseTime reads a query parameter as RFC 3339 with any fraction, which
+// parseTime reads one URL parameter as RFC 3339 with any fraction, which
 // accepts the timestamp text the encoders write; absent is the zero time.
-func parseTime(q url.Values, key string) (time.Time, error) {
-	s := q.Get(key)
+func parseTime(params url.Values, key string) (time.Time, error) {
+	s := params.Get(key)
 	if s == "" {
 		return time.Time{}, nil
 	}
@@ -26,19 +26,19 @@ func parseTime(q url.Values, key string) (time.Time, error) {
 	return t, nil
 }
 
-// readOptions reads the query parameters of a table read: start and end
+// readOptions reads the URL parameters of a table read: start and end
 // as times, columns as a comma-separated list, absent meaning every
 // column. Whether the pair makes a range is the cluster call's to judge.
-func readOptions(q url.Values) (qdb.ReadOptions, error) {
+func readOptions(params url.Values) (qdb.ReadOptions, error) {
 	var o qdb.ReadOptions
 	var err error
-	if o.Start, err = parseTime(q, "start"); err != nil {
+	if o.Start, err = parseTime(params, "start"); err != nil {
 		return o, err
 	}
-	if o.End, err = parseTime(q, "end"); err != nil {
+	if o.End, err = parseTime(params, "end"); err != nil {
 		return o, err
 	}
-	if cols := q.Get("columns"); cols != "" {
+	if cols := params.Get("columns"); cols != "" {
 		o.Columns = strings.Split(cols, ",")
 	}
 	return o, nil

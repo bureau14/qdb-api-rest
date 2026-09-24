@@ -36,8 +36,8 @@ func TestErrorRows(t *testing.T) {
 	bearer := map[string]string{"Authorization": "Bearer " + s.token}
 	jsonBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"}
 	csvBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
-	read := func(name, query string) string { return tablesPath + "/" + name + "/rows?" + query }
-	ingest := func(query string) string { return rowsPath + "?" + query }
+	read := func(name, params string) string { return tablesPath + "/" + name + "/rows?" + params }
+	ingest := func(params string) string { return rowsPath + "?" + params }
 	csvHeader := "$table,$timestamp,c0\n"
 	rows := map[string]errorRow{
 		// the query

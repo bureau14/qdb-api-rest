@@ -16,9 +16,9 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// readTable gets the rows of name under the query string with headers.
-func (s server) readTable(name, query string, headers map[string]string) *httptest.ResponseRecorder {
-	return s.send(http.MethodGet, tablesPath+"/"+name+"/rows?"+query, "", headers)
+// readTable gets the rows of name under the URL parameters with headers.
+func (s server) readTable(name, params string, headers map[string]string) *httptest.ResponseRecorder {
+	return s.send(http.MethodGet, tablesPath+"/"+name+"/rows?"+params, "", headers)
 }
 
 // directRead reads name over the cluster and encodes it with e's stream

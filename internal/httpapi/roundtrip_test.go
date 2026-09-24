@@ -27,12 +27,12 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// ingest posts body as CSV under the query string.
-func (s server) ingest(body, query string, headers map[string]string) *httptest.ResponseRecorder {
+// ingest posts body as CSV under the URL parameters.
+func (s server) ingest(body, params string, headers map[string]string) *httptest.ResponseRecorder {
 	if headers == nil {
 		headers = map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
 	}
-	return s.post(rowsPath+"?"+query, body, headers)
+	return s.post(rowsPath+"?"+params, body, headers)
 }
 
 // ingestBodyOf is the one CSV body that carries every table: the first
@@ -74,26 +74,26 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	t.Helper()
 	cases := []struct {
-		query string
-		o     qdb.ReadOptions
+		params string
+		o      qdb.ReadOptions
 	}{{"", qdb.ReadOptions{}}}
 	if picked != nil {
 		cases = append(cases, struct {
-			query string
-			o     qdb.ReadOptions
+			params string
+			o      qdb.ReadOptions
 		}{"columns=" + url.QueryEscape(strings.Join(picked, ",")), qdb.ReadOptions{Columns: picked}})
 	}
 	for _, tc := range cases {
 		for accept, e := range encoders {
-			resp := s.readTable(tbl.Name, tc.query, map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
+			resp := s.readTable(tbl.Name, tc.params, map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
 			if resp.Code != http.StatusOK {
-				t.Fatalf("read %s ?%s: status %d: %s", accept, tc.query, resp.Code, resp.Body.String())
+				t.Fatalf("read %s ?%s: status %d: %s", accept, tc.params, resp.Code, resp.Body.String())
 			}
 			if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
 				t.Fatalf("read %s: Content-Type = %q", accept, ct)
 			}
 			if want := s.directRead(t, e, tbl.Name, tc.o); !bytes.Equal(resp.Body.Bytes(), want) {
-				t.Fatalf("read %s ?%s: body differs from the stream encoder's own bytes", accept, tc.query)
+				t.Fatalf("read %s ?%s: body differs from the stream encoder's own bytes", accept, tc.params)
 			}
 		}
 	}
