@@ -15,7 +15,7 @@ Place knowledge on the lowest rung that covers its subject. Lower wins.
 | what one function promises to callers         | the doc comment above that function                     |
 | one type, or one file as a whole              | the comment on the type, or the file header comment     |
 | several files in one directory                | that directory's `AGENTS.md` (Invariants, Why, How to)  |
-| several components                            | `doc/` (architecture, principles, decisions)            |
+| several components                            | the documentation folder, per its `AGENTS.md`           |
 | what something looked like before, or history | nowhere. Delete it; git keeps history                   |
 
 Executable forms beat all prose rungs: if an assertion, a type, a schema or a
@@ -27,9 +27,10 @@ saying why.
 Walk the documentation top-down and ask of every paragraph, table row and
 bullet: "what is the smallest piece of code this is about?"
 
-- `doc/*.md`: anything about a component that now has a directory violates the
-  eviction rule in `doc/AGENTS.md`. Sections describing internals, entries in
-  `decisions.md` whose "Moves to" target now exists.
+- The documentation folder: whatever its `AGENTS.md` calls misplaced, by its
+  own rules (a routing table, an eviction rule, a budget). Typically sections
+  describing a component's internals once that component has a directory, and
+  decisions whose code home now exists.
 - `AGENTS.md` files: anything about a single file or function (algorithm
   descriptions, field-by-field explanations, "function X does Y because Z",
   edge-case lists). Map rows are fine; essays about a row's subject are not.
@@ -87,19 +88,19 @@ can get to it. After every move, check all three:
    topic in the words a reader would use ("how missing fields are handled",
    not "evaluation helpers"). Update the cell when knowledge moves in. One
    short phrase per topic; the row is an index entry, not a summary.
-3. **Findable by search.** The comment uses the project vocabulary from
-   `doc/overview.md` for the concepts it touches, spelled the same way, so a
-   text search for the term lands on it. If the code uses a different
-   identifier than the vocabulary term, mention the term once.
+3. **Findable by search.** The comment uses the project vocabulary, as the
+   documentation folder defines it, for the concepts it touches, spelled the
+   same way, so a text search for the term lands on it. If the code uses a
+   different identifier than the vocabulary term, mention the term once.
 
 Also repair what you pass on the way: `AGENTS.md` files missing from their
 parent's Map, Map rows pointing at files that no longer exist, files with
 notable logic and no Map row.
 
-## Budgets
+## Budgets and checks
 
-While here, check the budgets in `doc/AGENTS.md` (file count, about 200 lines
-each, no subfolders) and the section order of component `AGENTS.md` files.
-Overruns are fixed by moving knowledge down the ladder, never by splitting a
-document into more documents. What cannot be fixed by moving goes in the
-report.
+While here, run every check the documentation folder's `AGENTS.md` lists
+(budgets, greps for words or numbers it forbids) and confirm the section
+order it prescribes for component `AGENTS.md` files. Overruns are fixed by
+moving knowledge down the ladder, never by splitting a document into more
+documents. What cannot be fixed by moving goes in the report.

@@ -7,8 +7,10 @@ argument-hint: "[all|placement|narrative] [check] [paths...]"
 # Documentation discipline
 
 The policy is the "Documentation strategy" and "Code comments" sections of the
-root `AGENTS.md`, plus `doc/AGENTS.md`. Read them first. If anything here
-disagrees with them, they win; say so in the report.
+root `AGENTS.md`, plus the `AGENTS.md` of the documentation folder that section
+names (`doc/` or `docs/`). Read them first. If anything here disagrees with
+them, they win; say so in the report. This file and its two references carry
+no policy of their own, so the same copy serves every repository.
 
 ## Arguments
 
