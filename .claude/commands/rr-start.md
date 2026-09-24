@@ -56,12 +56,12 @@ sc-19567/rr-<slug>`), then delete the feature branch. If the base
 Every unit of work moves through these stages in order. A gate is an
 owner message; nothing crosses a gate on its own.
 
-| Stage    | You produce                                                                            | You never                                                                                   | Ends with                                                                                                   |
-| -------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 1. Seed  | the report below                                                                       | write, branch, commit                                                                       | "Then wait."                                                                                                |
-| 2. Plan  | the branch and exactly one commit: the plan document                                   | touch code, tests, config, ADRs or any other document                                       | the plan-stage message below, ending in the approval question                                               |
-| 3. Build | the small commits the approved plan lists, then the Buildkite build the plan ends with | merge; deviate from the plan without saying so; ask about merging before the build is green | branch name, summary, the build number and state, the `git diff` command, and the question whether to merge |
-| 4. Merge | the fast-forward merge, the branch deletion                                            | merge without the owner's explicit yes on the code                                          | one line: what merged                                                                                       |
+| Stage    | You produce                                                                                                         | You never                                                                                                                  | Ends with                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Seed  | the report below                                                                                                    | write, branch, commit                                                                                                      | "Then wait."                                                                                                                    |
+| 2. Plan  | the branch and exactly one commit: the plan document                                                                | touch code, tests, config, ADRs or any other document                                                                      | the plan-stage message below, ending in the approval question                                                                   |
+| 3. Build | the small commits the approved plan lists, then the doc-discipline check and the Buildkite build the plan ends with | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | branch name, summary, the check's report, the build number and state, the `git diff` command, and the question whether to merge |
+| 4. Merge | the fast-forward merge, the branch deletion                                                                         | merge without the owner's explicit yes on the code                                                                         | one line: what merged                                                                                                           |
 
 A go-ahead advances exactly one stage, never more, whatever its wording:
 "go", "ok", "yes", "proceed", "looks good", a thumbs up. Open questions
@@ -90,6 +90,34 @@ When the plan is committed, reply with exactly:
 
 Then stop. Code begins only after the owner answers that question with
 an approval.
+
+### The plan carries the knowledge
+
+The build stage writes the comments and documents of the unit while the
+reasons are still in context, so the plan document says what they will
+be. Under a **Knowledge** heading, per commit:
+
+- the functions expected to qualify for a narrative under the root
+  `AGENTS.md`, "Code comments", and the why each overview will state,
+  with the evidence for it (a `file:line`, a test, a document);
+- the `AGENTS.md` rows and the documents the commit changes, named by
+  the routing table in `docs/AGENTS.md`;
+- any fact the commit establishes that has no home yet, with the home it
+  will get.
+
+A why you cannot verify, or a function you cannot place under the rules,
+is a question to the owner through the question tool, asked before the
+plan is committed; the answer goes into the plan. What the owner leaves
+unanswered is an open question of the plan-stage message.
+
+Correct: the plan names `ingestCSV` as narrated, its overview stating
+that the session is held for the whole body because the writer types the
+columns through it, evidence `internal/qdb/ingest.go:266`; and asks
+whether the empty-string exclusion is a decision or a limitation before
+writing either word.
+
+Incorrect: the plan lists commits only, and the reasons are reconstructed
+from the diff at build time, or guessed.
 
 ### The plan ends with a Buildkite build
 
@@ -121,6 +149,27 @@ real number.
 Incorrect: the last planned commit lands, local tests pass, and you ask
 whether to merge because the change was small. Or: the plan lists only
 commits, so nothing at build time says to run the build.
+
+### Comments are written with the code
+
+Every build-stage commit carries its comments and document rows as the
+Knowledge section planned them, in the shape the root `AGENTS.md`, "Code
+comments", prescribes. A reason that arises while building (a rejected
+alternative, a threshold, an ordering constraint) is written where it is
+decided. One you would have to invent is asked through the question tool
+before the commit that needs it, never written as a guess and never left
+out silently.
+
+Before the build-stage message, run `/doc-discipline check <paths the
+branch touched>`. A finding is fixed with a further small commit on the
+branch; the build-stage message quotes the check's report, or says it
+was clean.
+
+Correct: a step comment needs to say why the writer refuses an empty
+push; you do not know; you ask, and the answer becomes the comment.
+
+Incorrect: the comment says "the writer refuses an empty push for
+safety", because that sounded right.
 
 ## Repository state
 
