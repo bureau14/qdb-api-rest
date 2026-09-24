@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
@@ -66,6 +65,22 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	if err != nil {
 		t.Fatalf("read %s: %v", tbl.Name, err)
 	}
+}
+
+// checkQuery queries tbl over the cluster and compares what comes back
+// with the rows generated: the read-back a query sees, which after an
+// async push is ahead of the bulk reader's.
+func (s server) checkQuery(t *rapid.T, tbl table.Table) {
+	t.Helper()
+	rec, err := s.c.Query(context.Background(), qdb.User{}, tbl.Select())
+	if err != nil {
+		t.Fatalf("query %s: %v", tbl.Name, err)
+	}
+	if rec == nil {
+		t.Fatalf("query %s: no result set", tbl.Name)
+	}
+	defer rec.Release()
+	table.Check(t, tbl, rec)
 }
 
 // checkReadFormats reads tbl over HTTP in every format, whole and, when
@@ -177,20 +192,28 @@ func TestRoundtrip(t *testing.T) {
 		s.checkRead(rt, empty)
 		s.checkReadFormats(rt, first, nil)
 
-		// 4. ingest every table's rows in one body: the counts answered are
-		// the rows generated and the tables that had any
-		mode := rapid.SampledFrom([]string{"", "fast", "transactional"}).Draw(rt, "push mode")
+		// 4. ingest every table's rows in one body under a drawn push mode,
+		// the default included: the counts answered are the rows generated
+		// and the tables that had any
+		mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
 		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(tables), "push-mode="+mode, nil))
 		if got.Rows != wantRows || got.Tables != wantTables {
 			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 		}
 
 		// 5. read and query each in every format: the rows written are the
-		// rows generated, and every wire carries the encoder's own bytes
+		// rows generated, and every wire carries the encoder's own bytes.
+		// After an async push a query sees the rows at once and the bulk
+		// reader only after the server's flush, so async reads back through
+		// the query alone
 		for _, tbl := range tables {
+			s.checkQuery(rt, tbl)
+			s.checkQueryFormats(rt, tbl)
+			if mode == "async" {
+				continue
+			}
 			s.checkRead(rt, tbl)
 			s.checkReadFormats(rt, tbl, picked)
-			s.checkQueryFormats(rt, tbl)
 		}
 
 		// 6. delete each (204), which leaves the symtables; the same create
@@ -231,19 +254,4 @@ func TestRoundtripDeduplicated(t *testing.T) {
 		}
 		s.checkRead(rt, tbl)
 	})
-}
-
-// TestRoundtripAsync: an async push is accepted; its rows are not read back,
-// since the C API returns before they are readable.
-func TestRoundtripAsync(t *testing.T) {
-	s := newServer(t)
-	tbl := table.Table{Name: "qdbtest_async", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
-	table.RemoveOnCleanup(t, s.c, tbl)
-	if resp := s.createTable(t, createBodyOf(tbl)); resp.Code != http.StatusCreated {
-		t.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
-	}
-	body := "$table,$timestamp,c0\nqdbtest_async,2020-01-01T00:00:00.000000000Z,1\n"
-	if got := ingestResponseOf(t, s.ingest(body, "push-mode=async", nil)); got.Rows != 1 || got.Tables != 1 {
-		t.Fatalf("ingest answered %+v", got)
-	}
 }
