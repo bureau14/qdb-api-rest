@@ -40,7 +40,7 @@ In flight:
 
 Next:
 
-1. The NDJSON and Arrow IPC parsers, each joining the flow's draw of
+1. The NDJSON and Arrow IPC parsers, each joining the round trip's draw of
    body formats (`internal/httpapi/AGENTS.md`, Tests);
    `Content-Encoding: gzip|zstd` on the ingest.
 2. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
@@ -100,9 +100,9 @@ Blocked on:
 
 - `POST /api/v2/rows` with a CSV body through the writer, one push per
   request. Owner decisions: the tables of one body share one column
-  list; the httpapi tests are one flow property and one error table.
+  list; the httpapi tests are one round trip and one error table.
   The rules to `internal/AGENTS.md` (the ingest) and
-  `internal/httpapi/AGENTS.md` (the route, the flow).
+  `internal/httpapi/AGENTS.md` (the route, the round trip).
 
 ## 2026-09-23 -- the table reader landed; table-reader-plan.md deleted
 

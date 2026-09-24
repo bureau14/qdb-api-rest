@@ -1,5 +1,5 @@
 // The table reader's test helpers and its range; its good path in every
-// format is the flow (flow_test.go), its error rows are errors_test.go's.
+// format is the round trip (roundtrip_test.go), its error rows are errors_test.go's.
 package httpapi
 
 import (

@@ -1,11 +1,11 @@
-// The good path of the v2 surface is one property against the live qdbd
+// The good path of the v2 surface is one round trip against the live qdbd
 // fixture, the in-process twin of the e2e flow: generated tables of one
 // column list are created over HTTP, read empty, ingested in one body,
 // read and queried in every format, deleted, re-created over what the
-// delete leaves behind, and deleted again. Each response equals the
-// encoder run directly over the cluster, and the direct read passes
-// table.Check against the rows generated, so the bytes on the wire carry
-// the rows written.
+// delete leaves behind, and deleted again. What went in comes back out:
+// each response equals the encoder run directly over the cluster, and the
+// direct read passes table.Check against the rows generated, so the bytes
+// on the wire carry the rows written.
 package httpapi
 
 import (
@@ -127,9 +127,9 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 	return r
 }
 
-// TestFlow: the flow above, per iteration over one to three generated
+// TestRoundtrip: the round trip above, per iteration over one to three generated
 // tables of one column list.
-func TestFlow(t *testing.T) {
+func TestRoundtrip(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		// 1. the tables: the first drawn whole, the rest of its columns
@@ -212,9 +212,9 @@ func TestFlow(t *testing.T) {
 	})
 }
 
-// TestFlowDeduplicated: the same body ingested twice under drop on
+// TestRoundtripDeduplicated: the same body ingested twice under drop on
 // $timestamp reads back once.
-func TestFlowDeduplicated(t *testing.T) {
+func TestRoundtripDeduplicated(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
@@ -233,9 +233,9 @@ func TestFlowDeduplicated(t *testing.T) {
 	})
 }
 
-// TestFlowAsync: an async push is accepted; its rows are not read back,
+// TestRoundtripAsync: an async push is accepted; its rows are not read back,
 // since the C API returns before they are readable.
-func TestFlowAsync(t *testing.T) {
+func TestRoundtripAsync(t *testing.T) {
 	s := newServer(t)
 	tbl := table.Table{Name: "qdbtest_async", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
 	table.RemoveOnCleanup(t, s.c, tbl)

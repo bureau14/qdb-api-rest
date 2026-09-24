@@ -1,7 +1,7 @@
 // Every error row of the v2 routes is one table: a request, the status
 // it answers, and the challenge where the status carries one. Each row
 // answers a problem body whose status repeats the status line and whose
-// title is its standard text. The good path is the flow (flow_test.go).
+// title is its standard text. The good path is the round trip (roundtrip_test.go).
 package httpapi
 
 import (

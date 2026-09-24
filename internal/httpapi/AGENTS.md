@@ -105,8 +105,8 @@ and delete"; of the table reader: this file, Handlers.
   a keychain from `config.Default().Auth`, which is ephemeral and pays
   no argon2id cost; the query tests mint their token directly, only
   the login tests go through the login.
-- The good path of the v2 surface is one property, `TestFlow`
-  (`flow_test.go`), the in-process twin of the e2e flow: one to three
+- The good path of the v2 surface is one round trip, `TestRoundtrip`
+  (`roundtrip_test.go`), the in-process twin of the e2e flow: one to three
   generated tables of one column list are created over HTTP, the first
   read empty in every format, all ingested in one body, read (whole and
   under a drawn column subset) and queried in every format, deleted,
@@ -114,7 +114,7 @@ and delete"; of the table reader: this file, Handlers.
   oracle is the encoder run directly over `Cluster.Read` or
   `Cluster.Query`, byte for byte, and `table.Check` on the direct read
   against the rows generated; the encoders' own tests prove the bytes
-  decode. A new route lands as a step of the flow, not as a property of
+  decode. A new route lands as a step of the round trip, not as a property of
   its own. The empty read runs on one table only: an empty read through
   the bulk reader costs about a tenth of a second where a filled one
   costs milliseconds.
