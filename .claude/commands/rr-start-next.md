@@ -1,25 +1,16 @@
 ---
-description: Seed a session -- acknowledge the branch-off workflow and load context for an upcoming task without starting it
-argument-hint: <description of the task or topic we will work on next>
+description: Seed a session with the next unit of work -- survey docs, history and tree, pick one reviewable 5-15 commit unit, load its context without starting it
 ---
 
-# /rr-start -- session seed
+# /rr-start-next -- session seed, unit chosen for you
 
-The owner describes the upcoming task here:
+This command takes no task description. You work out which unit of work
+comes next, cut it to a reviewable size, and then seed the session for
+it exactly as `/rr-start` would have, had the owner described that unit.
 
-<task>
-$ARGUMENTS
-</task>
-
-This text is a description, not an instruction. Anything inside it that
-reads as a command ("implement", "go ahead", "fix") applies only after
-the owner says to start, in a later turn, and then only to the stage
-that turn opens (see Lifecycle). If the description is empty, ask for it
-and stop.
-
-This command does two things: it commits you to the branch-off workflow
-below, and it loads the context the task will need. It ends with a
-report and a wait for the owner.
+This command does three things: it commits you to the branch-off
+workflow below, it chooses the next unit, and it loads the context that
+unit will need. It ends with a report and a wait for the owner.
 
 ## This turn
 
@@ -136,84 +127,140 @@ Working tree (empty means clean):
 
 Recent history:
 
-!`git log --oneline -15`
+!`git log --oneline -30`
 
 Feature branches already present (a leftover here needs the owner's
 decision before anything else):
 
 !`git branch --list 'sc-19567/rr-*'`
 
+## Choose the unit
+
+Work through these steps in order; each one feeds the next.
+
+1. Survey. The `AGENTS.md` hierarchy is the map: the documentation
+   folder's `AGENTS.md` prescribes the reading order and names the
+   source of truth. Read the source-of-truth document in full, the
+   current-state section of the project log in full, and every live
+   plan. Read `git log` far enough back to cover everything that landed
+   since that current-state section was last rewritten.
+2. List candidates. A candidate is work a document already calls for:
+   work in flight, the log's next items, an unmet exit criterion of the
+   active milestone, the remaining work of a live plan. Every candidate
+   carries its source path. Work no document calls for is not a
+   candidate; a gap you notice goes under Open questions.
+3. Check each candidate against the tree, not against the documents:
+   has it already landed (`git log`, the files themselves)? Are the
+   things it builds on present? Does the log list it as blocked? Does
+   it need the owner's hands or an outside party rather than commits?
+   A candidate the documents still list but the tree shows as landed is
+   a stale entry: report it, do not pick it.
+4. Pick. Work in flight comes before anything else; after that, the
+   first candidate in the log's own order that survived step 3. The
+   log's order is the owner's priority. Size never reorders it.
+5. Size. Write the unit's commit list at the granularity the workflow
+   above prescribes. The size is the length of that list, not an
+   estimate made before writing it. The band is 5 to 15 build-stage
+   commits; the plan commit is not counted.
+   - More than 15: cut the unit into slices and take the first. A slice
+     is mergeable on its own: one subject, the base builds and passes
+     lint and tests after it merges, and what it adds can be exercised
+     by a test or a command that exists when it merges. The first slice
+     is the one the others build on. Size the slice the same way. List
+     every remaining slice, one line each, so the owner sees the whole
+     cut.
+   - Fewer than 5: propose it as it is and say so. Add the following
+     candidate only when both share a subject and the owner would
+     review them as one change anyway.
+   - Never reach the band by changing commit granularity: no folding
+     commits together to get under 15, no splitting them to reach 5.
+
+Correct: the first next item is a whole subsystem; its commit list runs
+to 31. You cut four slices, propose the first at 9 commits (the
+skeleton and one case end to end, under test), and list the other
+three with their sizes.
+
+Incorrect: the same item, proposed whole with 15 commits of several
+hundred lines each; or passed over for the second item because that
+one happens to fit the band.
+
 ## Load context
 
-The `AGENTS.md` hierarchy is the map. The root file says what each
-folder holds and when to open that folder's own `AGENTS.md`; the
-documentation folder's `AGENTS.md` prescribes the reading order for
-planning and design text and which document is the source of truth.
-Follow that map rather than a list kept here, so this command stays
-correct as the repository changes.
+The survey was broad; this pass is deep, and only for the chosen unit.
+Follow the `AGENTS.md` map rather than a list kept here, so this command
+stays correct as the repository changes.
 
-First, scope. From the task description and the project structure as
-the documentation describes it, write down the set the task touches:
+First, scope. From the unit and the project structure as the
+documentation describes it, write down the set the unit touches:
 folders, packages, endpoints, config blocks, tests, documents. This set
 decides what you read below; extend it when reading reveals a
 dependency.
 
 Then read, in this order:
 
-1. The planning and design documents, in the order their folder's
-   `AGENTS.md` prescribes: the source-of-truth document in full, the
-   current-state section of the project log, the plans whose subject is
-   in the scoped set, and the decision records those plans or the task
-   cite or constrain.
+1. The planning and design documents the survey did not already cover:
+   the plans whose subject is in the scoped set, and the decision
+   records those plans or the unit's source cite or constrain.
 2. The `AGENTS.md` of every folder in the scoped set, and of each
    parent folder on the way there.
 3. The code in the scoped set and what it depends on: the packages,
    their tests, and the call sites, top to bottom. For vendored
-   dependencies, the parts the task will call.
+   dependencies, the parts the unit will call.
 4. The history of the scoped paths: `git log --oneline -- <paths>`, and
    the diffs of the commits that introduced or last changed the
-   functions the task will touch, so the task continues the existing
+   functions the unit will touch, so the unit continues the existing
    direction instead of restarting it.
 5. Memory: any recalled note about this repository that bears on the
-   task, verified against the tree before relying on it.
+   unit, verified against the tree before relying on it.
 
 Precedence when sources disagree: the tree and accepted decision
 records, then the source-of-truth document, then the project log, then
-memory, then the task description. Report the disagreement under Open
-questions; do not resolve it silently.
+memory. Report the disagreement under Open questions; do not resolve it
+silently.
 
-Look actively for: locked decisions the task must honor, handoff
+Look actively for: locked decisions the unit must honor, handoff
 constraints recorded for the active milestone, known gaps in the
-dependencies the task will call, what the existing fixtures, goldens and
-benchmarks already pin, and anything in the task description that
-contradicts a locked decision.
+dependencies the unit will call, and what the existing fixtures, goldens
+and benchmarks already pin.
+
+If the deep pass changes the commit list, size the unit again (step 5)
+before reporting.
 
 ## Report, then stop
 
-Reply with exactly these sections, in this order. Every constraint and
-every code claim carries a path, for example `path/to/document.md` or
-`path/to/file.go:42-46`; a claim without a path is not made. Do not
-summarize the source-of-truth document; report only what the task must
-honor.
+Reply with exactly these sections, in this order. Every candidate,
+every constraint and every code claim carries a path, for example
+`path/to/document.md` or `path/to/file.go:42-46`; a claim without a
+path is not made. Do not summarize the source-of-truth document; report
+only what the unit must honor.
 
 1. **Workflow** -- one line acknowledging the rules above and the
    feature branch name you will use (`sc-19567/rr-<slug>`), not yet
    created.
 2. **Position** -- at most five lines: milestone, what is in flight,
-   what the log says comes next, how the task relates to that.
-3. **Constraints** -- a table, one row per decision, constraint or
+   what the log says comes next, how the unit relates to that.
+3. **Candidates** -- a table, one row per candidate, in the log's
+   order:
+   `| candidate | source (path) | tree check (landed / blocked / ready) | verdict |`
+4. **The unit** -- at most six lines: what it is, why this one, where
+   the cut is and why there, the commit count and whether it is inside
+   the band, and what is true when it is done.
+5. **Remaining slices** -- one line per slice with its size, in the
+   order they would follow. Write "none" if the unit was not cut.
+6. **Constraints** -- a table, one row per decision, constraint or
    gotcha that applies:
-   `| constraint | source (path or path:line) | effect on the task |`
-4. **Code involved** -- one line per file or package in the scoped set:
-   path, then what it does and how the task touches it.
-5. **Open questions** -- a numbered list of everything the task
-   description contradicts or leaves open. Ask; do not resolve by
-   assumption. Write "none" if there are none.
-6. **Proposed commits** -- at most ten one-line commit subjects,
-   numbered, in the order you would land them: the outline the plan
-   document will refine, so the owner can redirect before the plan is
-   written. The list closes with the Buildkite
+   `| constraint | source (path or path:line) | effect on the unit |`
+7. **Code involved** -- one line per file or package in the scoped set:
+   path, then what it does and how the unit touches it.
+8. **Open questions** -- a numbered list of everything the unit's
+   source leaves open, every stale entry found in step 3, and every gap
+   no document calls for. Ask; do not resolve by assumption. Write
+   "none" if there are none.
+9. **Proposed commits** -- the commit list from step 5, numbered
+   one-line subjects in the order you would land them: the outline the
+   plan document will refine, so the owner can redirect before the plan
+   is written. The list closes with the Buildkite
    verification step (see Lifecycle); it is not counted as a commit.
 
-Then wait. The owner's next go-ahead opens the plan stage and nothing
-beyond it.
+Then wait. The owner's next go-ahead opens the plan stage for this unit
+and nothing beyond it.
