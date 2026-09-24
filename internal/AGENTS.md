@@ -10,13 +10,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - No package-level mutable state. `context.Context` is the first
   parameter of anything that does I/O, logs, or can be cancelled.
 - Small composable functions with descriptive names; explicit over
-  implicit. Comments state why, as facts; never history. A negation
-  belongs in a comment only where it records a rejected alternative or
-  an invariant, never to correct what an earlier version claimed.
-- Dense code -- crypto, parsers, encoders -- additionally gets compact
-  inline walk-through comments: one short sentence per step, the why as
-  it happens (`internal/auth/token.go` is the reference). Glue gets
-  none, and a walk-through never pads into narration.
+  implicit. Comments follow the root `AGENTS.md`, "Code comments": the
+  Go doc comment is the contract, the narrative lives in the body. A
+  negation belongs in a comment only where it records a rejected
+  alternative or an invariant, never to correct what an earlier version
+  claimed.
 - Validation has one home: the component that consumes a value owns its
   checks, made once, where a violation cannot get past them (`tlsconf`
   owns the certificate-pair rule; the C API judges the dial options at
@@ -125,9 +123,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
 - Pin genuine logic only; no tests for glue. White-box, same package,
   small helpers declared before use, `t.Helper()`. The one exception
   is `internal/qdb/read_test.go`, `package qdb_test`: it needs the
-  table fixture, which imports `internal/qdb`. Test bodies carry the
-  same compact walk-through comments as dense code wherever a step's
-  purpose is not evident from the assertion.
+  table fixture, which imports `internal/qdb`. Test bodies carry step
+  comments (root `AGENTS.md`, "Code comments") wherever a step's purpose
+  is not evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`);
   wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
 - The tests are not in the business of testing the C API, which offers
