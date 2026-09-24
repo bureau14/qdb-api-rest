@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/csv"
+	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"math"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 // CSVContentType is the media type of RFC 4180 text.
@@ -162,4 +165,230 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 	// here; an error step above returns before the buffer is flushed.
 	cw.Flush()
 	return cw.Error()
+}
+
+// timestampField is the index column of every decoded batch: $timestamp
+// as timestamp[ns], never null.
+var timestampField = arrow.Field{Name: "$timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}}
+
+// csvAppender binds one builder to its parse of a CSV field, csvCell
+// inverted: the empty field is null, otherwise the text parses as the
+// column's type. Its error is the strconv or time error; the caller adds
+// the row and the column.
+func csvAppender(f arrow.Field, b array.Builder) (func(field string) error, error) {
+	switch b := b.(type) {
+	case *array.Int64Builder:
+		return func(s string) error {
+			v, err := strconv.ParseInt(s, 10, 64)
+			b.Append(v)
+			return err
+		}, nil
+	case *array.Float64Builder:
+		return func(s string) error {
+			v, err := strconv.ParseFloat(s, 64)
+			b.Append(v)
+			return err
+		}, nil
+	case *array.TimestampBuilder:
+		return func(s string) error {
+			t, err := time.Parse(time.RFC3339Nano, s)
+			b.Append(arrow.Timestamp(t.UnixNano()))
+			return err
+		}, nil
+	case *array.StringBuilder:
+		return func(s string) error {
+			b.Append(s)
+			return nil
+		}, nil
+	case *array.BinaryBuilder:
+		return func(s string) error {
+			v, err := base64.StdEncoding.DecodeString(s)
+			b.Append(v)
+			return err
+		}, nil
+	}
+	return nil, unsupportedType(f)
+}
+
+// csvTable accumulates one table's rows: the batch's schema, one builder
+// per field with its appender, and which CSV field feeds each.
+type csvTable struct {
+	name      string
+	schema    *arrow.Schema
+	builders  []array.Builder
+	appenders []func(string) error
+	fields    []int // the CSV field of each schema field
+}
+
+// newCSVTable types the header's data columns by the table's schema:
+// $timestamp first, then the header's names in their order, each found
+// in the table or ErrInvalidRows.
+func newCSVTable(name string, h csvHeader, schemaOf SchemaOf) (*csvTable, error) {
+	schema, err := schemaOf(name)
+	if err != nil {
+		return nil, err
+	}
+	fields := []arrow.Field{timestampField}
+	csvFields := []int{h.timestamp}
+	for i, n := range h.names {
+		idx := schema.FieldIndices(n)
+		if idx == nil {
+			return nil, fmt.Errorf("%w: table %s has no column %s", ErrInvalidRows, name, n)
+		}
+		fields = append(fields, schema.Field(idx[0]))
+		csvFields = append(csvFields, h.fields[i])
+	}
+	t := &csvTable{name: name, schema: arrow.NewSchema(fields, nil), fields: csvFields}
+	for _, f := range fields {
+		b := array.NewBuilder(memory.DefaultAllocator, f.Type)
+		app, err := csvAppender(f, b)
+		if err != nil {
+			b.Release()
+			t.release()
+			return nil, err
+		}
+		t.builders = append(t.builders, b)
+		t.appenders = append(t.appenders, app)
+	}
+	return t, nil
+}
+
+// appendRecord parses one record into t's builders; an empty field is
+// null, except the index, which cannot be.
+func (t *csvTable) appendRecord(rec []string) error {
+	for i, f := range t.fields {
+		s := rec[f]
+		if s == "" {
+			if i == 0 {
+				return errors.New("empty $timestamp")
+			}
+			t.builders[i].AppendNull()
+			continue
+		}
+		if err := t.appenders[i](s); err != nil {
+			return fmt.Errorf("column %s: %w", t.schema.Field(i).Name, err)
+		}
+	}
+	return nil
+}
+
+// batch hands the rows over as one record batch, the builders emptied.
+func (t *csvTable) batch() TableBatch {
+	cols := make([]arrow.Array, len(t.builders))
+	for i, b := range t.builders {
+		cols[i] = b.NewArray()
+	}
+	rec := array.NewRecordBatch(t.schema, cols, int64(cols[0].Len()))
+	for _, c := range cols {
+		c.Release()
+	}
+	return TableBatch{Table: t.name, Batch: rec}
+}
+
+func (t *csvTable) release() {
+	for _, b := range t.builders {
+		b.Release()
+	}
+}
+
+// csvHeader is the body's first record: where $table and $timestamp sit,
+// and the data columns' names with the field each occupies.
+type csvHeader struct {
+	table, timestamp int
+	names            []string
+	fields           []int
+}
+
+// readCSVHeader reads the first record; $table and $timestamp are
+// required, every other name is a data column.
+func readCSVHeader(rd *csv.Reader) (csvHeader, error) {
+	rec, err := rd.Read()
+	if err != nil {
+		return csvHeader{}, fmt.Errorf("%w: header: %w", ErrInvalidRows, err)
+	}
+	h := csvHeader{table: -1, timestamp: -1}
+	for i, name := range rec {
+		switch name {
+		case "$table":
+			h.table = i
+		case "$timestamp":
+			h.timestamp = i
+		default:
+			h.names = append(h.names, name)
+			h.fields = append(h.fields, i)
+		}
+	}
+	switch {
+	case h.table < 0:
+		return csvHeader{}, fmt.Errorf("%w: header names no $table", ErrInvalidRows)
+	case h.timestamp < 0:
+		return csvHeader{}, fmt.Errorf("%w: header names no $timestamp", ErrInvalidRows)
+	}
+	return h, nil
+}
+
+// Decode implements Decoder: RFC 4180 text in this encoder's dialect, a
+// header row naming $table, $timestamp and data columns in any order.
+func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableBatch, error) {
+	// One pass over the body, records streamed into per-table builders:
+	//
+	//  1. the header fixes the field count and which fields are the
+	//     table, the index and the data columns;
+	//  2. each record goes to its table's builders; a table seen for the
+	//     first time is typed through schemaOf;
+	//  3. at the end every table becomes one batch, in first-seen order.
+	rd := csv.NewReader(r)
+	rd.ReuseRecord = true
+	tables := map[string]*csvTable{}
+	var order []*csvTable
+	release := func() {
+		for _, t := range order {
+			t.release()
+		}
+	}
+
+	// 1. the header
+	h, err := readCSVHeader(rd)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. the records
+	for row := int64(1); ; row++ {
+		if err := checkChunk(ctx, row); err != nil {
+			release()
+			return nil, err
+		}
+		rec, err := rd.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			release()
+			// Both chains stay reachable: the sentinel for the status, the
+			// reader's cause for a cap the HTTP layer set on the body.
+			return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
+		}
+		t, ok := tables[rec[h.table]]
+		if !ok {
+			if t, err = newCSVTable(rec[h.table], h, schemaOf); err != nil {
+				release()
+				return nil, err
+			}
+			tables[t.name] = t
+			order = append(order, t)
+		}
+		if err := t.appendRecord(rec); err != nil {
+			release()
+			return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
+		}
+	}
+
+	// 3. one batch per table
+	out := make([]TableBatch, len(order))
+	for i, t := range order {
+		out[i] = t.batch()
+		t.release()
+	}
+	return out, nil
 }

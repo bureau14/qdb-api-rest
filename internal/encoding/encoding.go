@@ -25,6 +25,24 @@ type Encoder interface {
 	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 
+// TableBatch is one table's decoded rows: $timestamp first, then the
+// data columns the body carried, in the body's order. The receiver owns
+// the batch and releases it once.
+type TableBatch struct {
+	Table string
+	Batch arrow.RecordBatch
+}
+
+// SchemaOf answers a table's data columns in the reader's Arrow types.
+type SchemaOf func(table string) (*arrow.Schema, error)
+
+// Decoder reads a body in one wire format into one batch per table, the
+// reverse of its Encoder. schemaOf types the cells, once per table the
+// body names. On error there are no batches.
+type Decoder interface {
+	Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableBatch, error)
+}
+
 // chunkRows is the run of rows an encoder handles between two looks at
 // the ctx: one record batch on the Arrow wire, one stride between ctx
 // checks on the rendered wires.
