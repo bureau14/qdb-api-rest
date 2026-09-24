@@ -190,8 +190,30 @@ ASCII only, no emojis, `--` for dashes; `npx prettier --write` after
 touching any Markdown file. Documents read top to bottom; definitions
 before use.
 
-## Maintenance
+## Checks
 
-The rules above are enforced after the fact by the `doc-cleanup` skill
-(`.claude/skills/doc-cleanup/SKILL.md`): run it at every milestone
-boundary and whenever the log has grown by more than a few entries.
+Mechanical checks for the rules above. The `/doc-discipline` skill (root
+`AGENTS.md`, "Code comments") runs them in its placement mode, at every
+milestone boundary and whenever the log has grown by more than a few
+entries. The first grep lists candidates, each judged against the rule
+it hints at; the other three must print nothing.
+
+```bash
+# history told in forward-looking documents (candidates)
+grep -nE '\b(previously|no longer|used to|contrary to what|old plan|now that|as of|recently|still)\b' docs/brief.md docs/*-plan.md
+# pointers into log entries, from anywhere
+grep -rnE 'log\.md[ ,]*20[0-9]{2}-|see the 20[0-9]{2}-[0-9]{2}-[0-9]{2} entry' . \
+  --exclude-dir=vendor --exclude-dir=qdb --exclude-dir=.env --exclude-dir=.git \
+  --exclude-dir=tools --exclude-dir=setup --exclude-dir=.old-master
+# measured numbers in documents
+grep -nE '[0-9]+(\.[0-9]+)? ?(s|ms|MB|MiB|GB|GiB|B|%)\b' docs/log.md docs/*-plan.md
+# non-ASCII (tabs allowed)
+LC_ALL=C grep -rn $'[^ -~\t]' --include='*.md' --exclude-dir=.old-master --exclude-dir=tools \
+  docs AGENTS.md internal tests scripts .buildkite
+```
+
+One writer per fact is checked by hand: the facts most likely to be
+stated twice (ports, dataset name and row count, golden count,
+compression default, `TZ=UTC`, submodule rules, the CI exclusion) are
+grepped across every document, and the routing table's owner keeps the
+statement while the others keep at most a link.
