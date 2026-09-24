@@ -56,6 +56,23 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   canary in `internal/qdb/read_test.go` fails when it is fixed) and
   sc-19830 (two symbol-bearing tables in one reader fail; a read is one
   table).
+- An ingest is one batch push per request through one held session:
+  `Cluster.IngestCSV` leases one session of the caller's pool for the
+  whole body, looks each table's columns up through it the first time a
+  row names the table, and pushes through it; it is never retried. The
+  tables of one body share one column list (the header's data columns,
+  typed by each table; the binding's writer refuses a second table whose
+  typed columns differ); a body's failure -- a header without `$table`
+  or `$timestamp`, a name a table lacks, a field that does not parse, an
+  empty `$timestamp`, tables of differing types (`ErrInvalidRows`), an
+  unknown table (`IsTableNotFound`) -- is the whole request's, found
+  before the push, and nothing is written. The header's data columns
+  are the columns written; one the header lacks is null in every row.
+  The empty field is the type's null sentinel, so the empty string
+  cannot be ingested. Push and deduplication options are judged before
+  the lease (`ErrInvalidPushOptions`); either deduplication mode needs
+  its columns. The parsers of every body format live in `ingest.go`:
+  no format is QuasarDB's, the package's story is the writer.
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or a cell rendering.
 - The v2 handlers, the problem body and the bearer middleware live in
@@ -127,8 +144,11 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   (`Generate`, then `Create` on a `*qdb.Cluster`) and compares what came
   back with the `Table` it holds; it never writes its own loader. A
   test that creates or pushes through its own door (an HTTP route)
-  takes the blocks `Create` stacks on, `GenerateSchema` and
-  `RemoveOnCleanup`, never a copy of them. What came back is compared
+  takes the blocks `Create` stacks on, `GenerateSchema`,
+  `GenerateLike` (another table of the same columns) and
+  `RemoveOnCleanup`, never a copy of them; a body of rows comes from
+  `table.CSV`, the one renderer of a `Table` in the CSV encoder's
+  dialect. What came back is compared
   with `table.Check` (a record batch, column by column by name, `$table`
   and `$timestamp` included) or `table.CheckColumn`; no test carries a
   comparer of its own. The

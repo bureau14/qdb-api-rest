@@ -60,6 +60,17 @@ and delete"; of the table reader: this file, Handlers.
   and the sink still returns it so the breaker hears of a fetch that
   found the cluster gone. Never retried. An empty table answers its
   schema in every format.
+- The ingest, `POST /api/v2/rows`: `Content-Type` `text/csv` (415
+  otherwise), the body streamed into `Cluster.IngestCSV` under a 64 MiB
+  `MaxBytesReader` (413 surfaces from the parse), never read whole;
+  `?push-mode=transactional|fast|async` (default `fast`),
+  `?deduplication-mode=drop|upsert` with `?deduplication-columns=a,b`
+  required by either. 200 with `{"rows","tables","parse_ms","push_ms"}`,
+  `push_ms` under `async` the time until the push call returned; a
+  header-only body is 200 with zeros and no push. `qdb.ErrInvalidRows`
+  and `qdb.ErrInvalidPushOptions` are 400; a `$table` the cluster does
+  not know is 404 and fails the whole request; the rest is
+  `writeClusterError` at 400. Never retried.
 - No flushing writer: the encoder's own buffer and `net/http`'s chunking
   already stream. The handler wraps the response in a byte counter only,
   so an encode error with zero bytes out is a problem response and with
@@ -94,14 +105,22 @@ and delete"; of the table reader: this file, Handlers.
   a keychain from `config.Default().Auth`, which is ephemeral and pays
   no argon2id cost; the query tests mint their token directly, only
   the login tests go through the login.
-- The query property draws a table per iteration and compares each
-  format's body byte for byte with the encoder run directly over
-  `Cluster.Query`; the encoders' own tests prove the bytes decode.
-- The table property draws a schema with `table.GenerateSchema`,
-  creates it over HTTP and reads it back through the query endpoint;
-  `table.RemoveOnCleanup` removes what the create leaves behind.
-- The reader property draws a table per iteration and compares each
-  format's body, whole and under a drawn column subset, byte for byte
-  with `EncodeStream` run directly over `Cluster.Read`; a covering range
-  answers the whole read, a range before the rows the schema alone.
+- The good path of the v2 surface is one property, `TestFlow`
+  (`flow_test.go`), the in-process twin of the e2e flow: one to three
+  generated tables of one column list are created over HTTP, the first
+  read empty in every format, all ingested in one body, read (whole and
+  under a drawn column subset) and queried in every format, deleted,
+  re-created over the symtables the delete leaves, deleted again. The
+  oracle is the encoder run directly over `Cluster.Read` or
+  `Cluster.Query`, byte for byte, and `table.Check` on the direct read
+  against the rows generated; the encoders' own tests prove the bytes
+  decode. A new route lands as a step of the flow, not as a property of
+  its own. The empty read runs on one table only: an empty read through
+  the bulk reader costs about a tenth of a second where a filled one
+  costs milliseconds.
+- Every error row of every route is one table, `TestErrorRows`
+  (`errors_test.go`): a request, its status, its challenge, a problem
+  body. A new route's rows join the table. The login verdicts, the
+  bearer edge and the codings keep their own tests: they need the
+  secure cluster, a fixed clock or a decompressor.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.
