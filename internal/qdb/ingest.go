@@ -209,7 +209,7 @@ type header struct {
 func readHeader(rd *csv.Reader) (header, error) {
 	rec, err := rd.Read()
 	if err != nil {
-		return header{}, fmt.Errorf("%w: header: %v", ErrInvalidRows, err)
+		return header{}, fmt.Errorf("%w: header: %w", ErrInvalidRows, err)
 	}
 	h := header{table: -1, timestamp: -1}
 	for i, name := range rec {
@@ -356,7 +356,9 @@ func (s *Session) ingestCSV(body io.Reader, opts qdbapi.WriterOptions) (IngestRe
 			break
 		}
 		if err != nil {
-			return res, fmt.Errorf("%w: row %d: %v", ErrInvalidRows, row, err)
+			// Both chains stay reachable: the sentinel for the status, the
+			// reader's cause for a cap the HTTP layer set on the body.
+			return res, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
 		}
 		name := rec[h.table]
 		t, ok := tables[name]
