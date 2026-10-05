@@ -167,10 +167,6 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 	return cw.Error()
 }
 
-// timestampField is the index column of every decoded batch: $timestamp
-// as timestamp[ns], never null.
-var timestampField = arrow.Field{Name: "$timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}}
-
 // csvAppender binds one builder to its parse of a CSV field, csvCell
 // inverted: the empty field is null, otherwise the text parses as the
 // column's type. Its error is the strconv or time error; the caller adds
@@ -221,23 +217,49 @@ type csvTable struct {
 }
 
 // newCSVTable types the header's data columns by the table's schema:
-// $timestamp first, then the header's names in their order, each found
-// in the table or ErrInvalidRows.
-func newCSVTable(name string, h csvHeader, schemaOf SchemaOf) (*csvTable, error) {
+// $timestamp first, then the header's names in their order, each a field
+// of the schema or ErrInvalidRows. A table after the first must agree
+// with it on every field's type, or ErrInvalidRows names both tables.
+func newCSVTable(name string, h csvHeader, schemaOf SchemaOf, first *csvTable) (*csvTable, error) {
+	// The batch carries the reader's types, so its fields are picked from
+	// the reader's schema rather than declared here:
+	//
+	//  1. look the table up through schemaOf; its error passes as is;
+	//  2. pick $timestamp and the header's names from it by name; a name
+	//     the table lacks is the body's fault;
+	//  3. a table after the first must equal it in every field's type: one
+	//     body is one column list, and the Arrow writer checks one table
+	//     at a time, so the rule is this decoder's;
+	//  4. one builder and one appender per field.
+
+	// 1. the table's schema
 	schema, err := schemaOf(name)
 	if err != nil {
 		return nil, err
 	}
-	fields := []arrow.Field{timestampField}
-	csvFields := []int{h.timestamp}
-	for i, n := range h.names {
+
+	// 2. the fields, by name
+	names := append([]string{"$timestamp"}, h.names...)
+	csvFields := append([]int{h.timestamp}, h.fields...)
+	fields := make([]arrow.Field, len(names))
+	for i, n := range names {
 		idx := schema.FieldIndices(n)
 		if idx == nil {
 			return nil, fmt.Errorf("%w: table %s has no column %s", ErrInvalidRows, name, n)
 		}
-		fields = append(fields, schema.Field(idx[0]))
-		csvFields = append(csvFields, h.fields[i])
+		fields[i] = schema.Field(idx[0])
 	}
+
+	// 3. one column list per body
+	if first != nil {
+		for i, f := range fields {
+			if want := first.schema.Field(i); !arrow.TypeEqual(f.Type, want.Type) {
+				return nil, fmt.Errorf("%w: tables %s and %s differ in the type of column %s", ErrInvalidRows, first.name, name, f.Name)
+			}
+		}
+	}
+
+	// 4. the builders
 	t := &csvTable{name: name, schema: arrow.NewSchema(fields, nil), fields: csvFields}
 	for _, f := range fields {
 		b := array.NewBuilder(memory.DefaultAllocator, f.Type)
@@ -335,7 +357,8 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableB
 	//  1. the header fixes the field count and which fields are the
 	//     table, the index and the data columns;
 	//  2. each record goes to its table's builders; a table seen for the
-	//     first time is typed through schemaOf;
+	//     first time is typed through schemaOf and must agree with the
+	//     first table's types;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	rd := csv.NewReader(r)
 	rd.ReuseRecord = true
@@ -371,7 +394,11 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableB
 		}
 		t, ok := tables[rec[h.table]]
 		if !ok {
-			if t, err = newCSVTable(rec[h.table], h, schemaOf); err != nil {
+			var first *csvTable
+			if len(order) > 0 {
+				first = order[0]
+			}
+			if t, err = newCSVTable(rec[h.table], h, schemaOf, first); err != nil {
 				release()
 				return nil, err
 			}

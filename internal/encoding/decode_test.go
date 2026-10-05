@@ -39,7 +39,7 @@ func csvBatch(t *testing.T) arrow.RecordBatch {
 	bb.AppendValues([][]byte{[]byte("z"), {0x00, 0xff}, []byte("hi"), []byte("x"), nil}, valid)
 
 	arrays := []arrow.Array{tb.NewArray(), ib.NewArray(), fb.NewArray(), sb.NewArray(), bb.NewArray()}
-	fields := []arrow.Field{timestampField}
+	fields := []arrow.Field{{Name: "$timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}}}
 	for i, name := range []string{"i", "d", "s", "b"} {
 		fields = append(fields, arrow.Field{Name: name, Type: arrays[i+1].DataType(), Nullable: true})
 	}
@@ -68,11 +68,12 @@ func withTable(t *testing.T, name string, rec arrow.RecordBatch) arrow.RecordBat
 	return out
 }
 
-// schemaOf answers rec's data columns for every table name.
+// schemaOf answers rec's columns behind $table for every table name, the
+// reader's whole-table shape.
 func schemaOf(rec arrow.RecordBatch) SchemaOf {
-	return func(string) (*arrow.Schema, error) {
-		return arrow.NewSchema(rec.Schema().Fields()[1:], nil), nil
-	}
+	fields := append([]arrow.Field{{Name: "$table", Type: arrow.BinaryTypes.String}}, rec.Schema().Fields()...)
+	schema := arrow.NewSchema(fields, nil)
+	return func(string) (*arrow.Schema, error) { return schema, nil }
 }
 
 // TestCSVDecodesWhatItEncoded: the rows of two tables in one body, the

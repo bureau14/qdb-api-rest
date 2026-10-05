@@ -33,7 +33,9 @@ type TableBatch struct {
 	Batch arrow.RecordBatch
 }
 
-// SchemaOf answers a table's data columns in the reader's Arrow types.
+// SchemaOf answers the schema the bulk reader answers for the table whole:
+// $table, $timestamp, then the data columns, in the reader's Arrow types.
+// The error of a table the cluster does not know is the cluster's, as is.
 type SchemaOf func(table string) (*arrow.Schema, error)
 
 // Decoder reads a body in one wire format into one batch per table, the
