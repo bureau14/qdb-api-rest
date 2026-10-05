@@ -275,6 +275,26 @@ and benchmarks already pin.
 If the deep pass changes the commit list, size the unit again (step 5)
 before reporting.
 
+## Shape the unit
+
+The report explains the unit to the owner before it lists anything,
+so settle its shape before writing. From what you read, decide:
+
+1. The outcome: what is true in the tree when the unit is done, and
+   what it leaves for later.
+2. The approach: the shape of the change, where it lives, what it
+   reuses, what it introduces.
+3. Each design choice the unit requires: the option you take, the
+   alternative it beats, the reason, and what settles it. A choice a
+   source settles carries that path. A choice the sources leave open is
+   a proposal: you still pick, you say the pick is yours, and the plan's
+   approval is what settles it. A choice that contradicts a locked
+   decision, or that would make the unit materially different work, is
+   not yours to make; it goes under Open questions.
+
+A reason you do not have is not invented; the choice becomes an open
+question instead.
+
 ## Report, then stop
 
 Reply with exactly these sections, in this order. Every candidate,
@@ -291,25 +311,47 @@ only what the unit must honor.
 3. **Candidates** -- a table, one row per candidate, in the log's
    order:
    `| candidate | source (path) | tree check (landed / blocked / ready) | verdict |`
-4. **The unit** -- at most six lines: what it is, why this one, where
-   the cut is and why there, the commit count and whether it is inside
-   the band, and what is true when it is done.
-5. **Remaining slices** -- one line per slice with its size, in the
-   order they would follow. Write "none" if the unit was not cut.
-6. **Constraints** -- a table, one row per decision, constraint or
+4. **Brief** -- prose for the owner to read, at most 200 words, no
+   tables, no paths: the one section whose claims the sections below
+   evidence instead of carrying paths themselves. Three paragraphs:
+   what the unit is and what is true when it is done; how it will be
+   done, the approach and the shape of the change in plain words; why
+   this unit comes now and what it leaves for later. Written for a
+   reader who has not opened the sources: this is the explanation, the
+   rest of the report is its evidence.
+5. **Decisions** -- a numbered list, one entry per design choice from
+   Shape the unit, one to three lines each: the choice, the
+   alternative it beats, the reason, and `settled by <path>` or
+   `proposal`. Write "none" if the unit leaves no choice to make.
+6. **Size and slices** -- at most three lines: the commit count and
+   whether it is inside the band, where the cut is and why there; then
+   one line per remaining slice with its size, in the order they would
+   follow, or "none" if the unit was not cut.
+7. **Constraints** -- a table, one row per decision, constraint or
    gotcha that applies:
    `| constraint | source (path or path:line) | effect on the unit |`
-7. **Code involved** -- one line per file or package in the scoped set:
+8. **Code involved** -- one line per file or package in the scoped set:
    path, then what it does and how the unit touches it.
-8. **Open questions** -- a numbered list of everything the unit's
-   source leaves open, every stale entry found in step 3, and every gap
-   no document calls for. Ask; do not resolve by assumption. Write
-   "none" if there are none.
-9. **Proposed commits** -- the commit list from step 5, numbered
-   one-line subjects in the order you would land them: the outline the
-   plan document will refine, so the owner can redirect before the plan
-   is written. The list closes with the Buildkite
-   verification step (see Lifecycle); it is not counted as a commit.
+9. **Open questions** -- a numbered list of everything the unit's
+   source leaves open, every stale entry found in step 3, every gap no
+   document calls for, and every choice Shape the unit found was not
+   yours to make. Ask; do not resolve by assumption. Write "none" if
+   there are none.
+10. **Proposed commits** -- the commit list from step 5, numbered
+    one-line subjects in the order you would land them: the outline the
+    plan document will refine, so the owner can redirect before the plan
+    is written. The list closes with the Buildkite
+    verification step (see Lifecycle); it is not counted as a commit.
+
+Correct: the brief says the decoder reads the whole body into one
+record batch per table before anything is pushed, so a malformed row
+anywhere fails the request before the server sees a row; it names
+streaming as the alternative and says why it lost; the decision entry
+repeats the choice with what settles it.
+
+Incorrect: the brief says "add the CSV decoder, 7 commits, inside the
+band", and the owner learns what the decoder does from the commit
+subjects.
 
 Then wait. The owner's next go-ahead opens the plan stage for this unit
 and nothing beyond it.

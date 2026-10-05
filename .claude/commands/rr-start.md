@@ -237,6 +237,26 @@ dependencies the task will call, what the existing fixtures, goldens and
 benchmarks already pin, and anything in the task description that
 contradicts a locked decision.
 
+## Shape the task
+
+The report explains the task to the owner before it lists anything,
+so settle its shape before writing. From what you read, decide:
+
+1. The outcome: what is true in the tree when the task is done, and
+   what it leaves for later.
+2. The approach: the shape of the change, where it lives, what it
+   reuses, what it introduces.
+3. Each design choice the task requires: the option you take, the
+   alternative it beats, the reason, and what settles it. A choice a
+   source settles carries that path. A choice the sources leave open is
+   a proposal: you still pick, you say the pick is yours, and the plan's
+   approval is what settles it. A choice that contradicts a locked
+   decision, or that would make the task materially different work, is
+   not yours to make; it goes under Open questions.
+
+A reason you do not have is not invented; the choice becomes an open
+question instead.
+
 ## Report, then stop
 
 Reply with exactly these sections, in this order. Every constraint and
@@ -250,19 +270,41 @@ honor.
    created.
 2. **Position** -- at most five lines: milestone, what is in flight,
    what the log says comes next, how the task relates to that.
-3. **Constraints** -- a table, one row per decision, constraint or
+3. **Brief** -- prose for the owner to read, at most 200 words, no
+   tables, no paths: the one section whose claims the sections below
+   evidence instead of carrying paths themselves. Three paragraphs:
+   what the task is and what is true when it is done; how it will be
+   done, the approach and the shape of the change in plain words; how
+   it fits what is in flight and what it leaves for later. Written for
+   a reader who has not opened the sources: this is the explanation,
+   the rest of the report is its evidence.
+4. **Decisions** -- a numbered list, one entry per design choice from
+   Shape the task, one to three lines each: the choice, the
+   alternative it beats, the reason, and `settled by <path>` or
+   `proposal`. Write "none" if the task leaves no choice to make.
+5. **Constraints** -- a table, one row per decision, constraint or
    gotcha that applies:
    `| constraint | source (path or path:line) | effect on the task |`
-4. **Code involved** -- one line per file or package in the scoped set:
+6. **Code involved** -- one line per file or package in the scoped set:
    path, then what it does and how the task touches it.
-5. **Open questions** -- a numbered list of everything the task
-   description contradicts or leaves open. Ask; do not resolve by
+7. **Open questions** -- a numbered list of everything the task
+   description contradicts or leaves open, and every choice Shape the
+   task found was not yours to make. Ask; do not resolve by
    assumption. Write "none" if there are none.
-6. **Proposed commits** -- at most ten one-line commit subjects,
+8. **Proposed commits** -- at most ten one-line commit subjects,
    numbered, in the order you would land them: the outline the plan
    document will refine, so the owner can redirect before the plan is
    written. The list closes with the Buildkite
    verification step (see Lifecycle); it is not counted as a commit.
+
+Correct: the brief says the decoder reads the whole body into one
+record batch per table before anything is pushed, so a malformed row
+anywhere fails the request before the server sees a row; it names
+streaming as the alternative and says why it lost; the decision entry
+repeats the choice with what settles it.
+
+Incorrect: the brief says "add the CSV decoder, 7 commits", and the
+owner learns what the decoder does from the commit subjects.
 
 Then wait. The owner's next go-ahead opens the plan stage and nothing
 beyond it.
