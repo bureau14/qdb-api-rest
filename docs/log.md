@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-09-23
+Last updated: 2026-10-05
 
 | Milestone                       | State       | Note                                                                   |
 | ------------------------------- | ----------- | ---------------------------------------------------------------------- |
@@ -40,18 +40,22 @@ In flight:
 
 Next:
 
-1. The NDJSON and Arrow IPC parsers, each joining the round trip's draw of
-   body formats (`internal/httpapi/AGENTS.md`, Tests);
-   `Content-Encoding: gzip|zstd` on the ingest.
-2. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+1. The table fixture moves to the Arrow writer: `internal/qdbtest/table`
+   holds a record batch, pushes through `ArrowWriter`, renders CSV through
+   the encoder and checks by batch equality (`internal/AGENTS.md`, Tests).
+2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+   file joining `codecs` and the round trip's draw of body formats
+   (`internal/encoding/AGENTS.md`, The seam; `internal/httpapi/AGENTS.md`,
+   Tests); `Content-Encoding: gzip|zstd` on the ingest.
+3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-3. `scripts/cicd/40.test-e2e.sh` in the build step; the first
+4. `scripts/cicd/40.test-e2e.sh` in the build step; the first
    Buildkite run of the flow is M2's exit.
-4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-5. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+6. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
@@ -95,6 +99,16 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-05 -- the ingest decodes to Arrow; arrow-ingest-plan.md deleted
+
+- `POST /api/v2/rows` decodes its body in `internal/encoding` into one
+  record batch per table and pushes through the Go API's Arrow writer;
+  the neutral types live in the new `internal/model`. Owner decisions:
+  Arrow is the one representation between the layers; one column list
+  per body, types included, the decoder's check. The rules to
+  `internal/AGENTS.md` (the ingest), `internal/encoding/AGENTS.md` (the
+  decoder) and `internal/model/AGENTS.md`.
 
 ## 2026-09-23 -- the CSV ingest landed; ingest-csv-plan.md deleted
 
