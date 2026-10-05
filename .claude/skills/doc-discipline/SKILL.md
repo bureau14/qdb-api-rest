@@ -1,7 +1,7 @@
 ---
 name: doc-discipline
-description: Enforce this project's documentation discipline. Moves knowledge out of the documentation folder and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives complex functions narrative comments (process overview at the top of the body, intent comments per step). Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative), an optional "check" flag for report-only, and optional paths.
-argument-hint: "[all|placement|narrative] [check] [paths...]"
+description: Enforce this project's documentation discipline. Moves knowledge out of the documentation folder and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives complex functions narrative comments (process overview at the top of the body, intent comments per step). Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative, read), an optional "check" flag for report-only, optional paths, and optionally a plan document whose promised comments the code is reconciled against. Run "read" before writing code or a plan in this shape.
+argument-hint: "[all|placement|narrative|read] [check] [paths...] [plan.md]"
 ---
 
 # Documentation discipline
@@ -16,15 +16,21 @@ no policy of their own, so the same copy serves every repository.
 
 Parse the arguments as words, in any order:
 
-| Word        | Meaning                                                              |
-| ----------- | -------------------------------------------------------------------- |
-| `placement` | Only knowledge placement. Follow `placement.md`.                     |
-| `narrative` | Only narrative comments in complex functions. Follow `narrative.md`. |
-| `all`       | Both, placement first. This is the default when no mode is given.    |
-| `check`     | Change nothing. Produce the report with proposed changes only.       |
-| other words | Paths or globs that limit the scope. No paths means the whole repo.  |
+| Word        | Meaning                                                               |
+| ----------- | --------------------------------------------------------------------- |
+| `placement` | Only knowledge placement. Follow `placement.md`.                      |
+| `narrative` | Only narrative comments in complex functions. Follow `narrative.md`.  |
+| `all`       | Both, placement first. This is the default when no mode is given.     |
+| `read`      | Load the policy and both references, change nothing, report one line. |
+| `check`     | Change nothing. Produce the report with proposed changes only.        |
+| a plan path | A plan document; its promised comments become the expected state.     |
+| other words | Paths or globs that limit the scope. No paths means the whole repo.   |
 
-Read only the reference file(s) the mode needs.
+Read only the reference file(s) the mode needs. `read` reads both and then
+stops: it is for an agent about to write code or a plan in this shape, so
+the shape is in context before the first line, and it answers with one line
+naming the files read. A plan path is any argument ending in `-plan.md` or
+named by the caller as the plan; it is read whole and never edited.
 
 Scope excludes generated code, vendored code, lock files, and anything ignored
 by git. When paths are given, `placement` still reads the `AGENTS.md` chain
@@ -66,7 +72,8 @@ about them lives, but it only moves knowledge that concerns the given paths.
    the Report section. Tell it to do the work itself and not delegate further.
    Merge the returned reports section by section.
 3. Plan. Following the reference file(s) for the mode, write the plan table(s)
-   they define, one terse row per passage or function. In `check` mode, stop
+   they define, one terse row per passage or function. When a plan document
+   was given, reconcile first (below) and add its rows. In `check` mode, stop
    here: the plan plus the report is the result.
 4. Execute the plan row by row. A row whose "why" has no evidence is executed
    as a "what"-only comment and listed under "Rationale unknown".
@@ -77,6 +84,29 @@ about them lives, but it only moves knowledge that concerns the given paths.
    when that is cheap.
 6. Report.
 
+## Reconciling against a plan document
+
+A plan document says what the comments and documents were going to be,
+written while the reasons were still in context; the code says what they
+became. The gap between the two is where reasons get lost, because the plan
+is deleted once its work lands. When a plan path is given:
+
+1. Collect every promise the plan makes about prose: each doc comment and
+   numbered overview in its design section, each row of its rationale or
+   decision table, each landing place in its knowledge section (a function,
+   an `AGENTS.md` row, a document).
+2. For each promise, find where it landed: the comment on that function, the
+   row in that file, the document. A changed wording is fine when every claim
+   survives; a claim that is gone, or a rationale row with no home in any
+   comment or document, is a finding.
+3. Each finding becomes one row of the narrative or placement plan table,
+   with the plan as its why-evidence, so executing the plan writes the
+   missing reason where the plan said it would go. A promise the code
+   contradicts (the design changed while building) is not written; it goes
+   under "Needs a human" with both versions quoted.
+4. Report them under "Unlanded from the plan", one line each: the promise,
+   where the plan said it would land, what is there instead.
+
 ## Report
 
 Keep it short; list, do not narrate.
@@ -86,6 +116,8 @@ Keep it short; list, do not narrate.
 - **Removed**: stale or duplicate comments and doc passages.
 - **Discoverability**: `AGENTS.md` Map rows added or changed.
 - **Rationale unknown**: places where the why could not be verified.
+- **Unlanded from the plan**: reasons the plan document promised that no
+  comment or document states; "none" when a plan was given and all landed.
 - **Needs a human**: code-level findings outside this skill's limits (split
   candidates, misleading names, dead or commented-out code, doc budget
   overruns that cannot be fixed by moving).

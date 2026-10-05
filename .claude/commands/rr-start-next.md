@@ -47,21 +47,24 @@ sc-19567/rr-<slug>`), then delete the feature branch. If the base
 Every unit of work moves through these stages in order. A gate is an
 owner message; nothing crosses a gate on its own.
 
-| Stage    | You produce                                                                                                         | You never                                                                                                                  | Ends with                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Seed  | the report below                                                                                                    | write, branch, commit                                                                                                      | "Then wait."                                                                                                                    |
-| 2. Plan  | the branch and exactly one commit: the plan document                                                                | touch code, tests, config, ADRs or any other document                                                                      | the plan-stage message below, ending in the approval question                                                                   |
-| 3. Build | the small commits the approved plan lists, then the doc-discipline check and the Buildkite build the plan ends with | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | branch name, summary, the check's report, the build number and state, the `git diff` command, and the question whether to merge |
-| 4. Merge | the fast-forward merge, the branch deletion                                                                         | merge without the owner's explicit yes on the code                                                                         | one line: what merged                                                                                                           |
+| Stage    | You produce                                                                                                    | You never                                                                                                                  | Ends with                                                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Seed  | the report below                                                                                               | write, branch, commit                                                                                                      | "Then wait."                                                                                                                    |
+| 2. Plan  | `/doc-discipline read`, then the branch and exactly one commit: the plan document, in the shape below          | touch code, tests, config, ADRs or any other document                                                                      | the plannotator gate on the committed plan; on approval, the plan-stage message, then the build begins                          |
+| 3. Build | the small commits the approved plan lists, then the doc-discipline runs and the Buildkite build the plan lists | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | branch name, summary, the check's report, the build number and state, the `git diff` command, and the question whether to merge |
+| 4. Merge | the fast-forward merge, the branch deletion                                                                    | merge without the owner's explicit yes on the code                                                                         | one line: what merged                                                                                                           |
 
 A go-ahead advances exactly one stage, never more, whatever its wording:
-"go", "ok", "yes", "proceed", "looks good", a thumbs up. Open questions
-the owner left unanswered are not answered by the go-ahead either; the
-plan records your recommendation for each, and the plan's approval is
-what settles them.
+"go", "ok", "yes", "proceed", "looks good", a thumbs up. The go-ahead on
+the seed report means one thing: write and commit the plan, commit 1 of
+the unit. The gate on the plan is not a chat message at all; it is the
+owner's decision in the plannotator review (below). Open questions the
+owner left unanswered are not answered by a go-ahead either; the plan
+records your recommendation for each, and the plan's approval is what
+settles them.
 
 Correct: after the seed report the owner says "go". You create the
-branch, commit the plan, post the plan-stage message, and stop.
+branch, commit the plan, open the plannotator gate on it, and wait.
 
 Incorrect: after the seed report the owner says "go". You create the
 branch, commit the plan, and continue into the code because the change
@@ -69,46 +72,146 @@ is small and the design was already in the report. A small change and a
 settled design do not shorten the lifecycle; the plan gate exists so the
 owner reviews the plan on its own.
 
-### The plan-stage message
+### The plan stage, step by step
 
-When the plan is committed, reply with exactly:
+The owner's go-ahead on the seed report opens this stage and only this
+stage. It is executed as written, in this order, and nothing in it is
+code:
 
-1. the branch name and the plan's path;
-2. `git show <sha>` for the plan commit;
-3. your recommendation for every open question the owner did not
-   answer, one line each;
-4. the literal closing line: "Approve the plan, redirect it, or stop?"
+1. Create `sc-19567/rr-<slug>` from the up-to-date base, clean tree.
+2. `/doc-discipline read`.
+3. Write `docs/<slug>-plan.md` in the shape below.
+4. Commit it alone: `docs(plan): <slug>-plan.md, <one-line subject>`.
+   This is commit 1 of the unit, the one the seed report promised.
+5. Yield through the review tool, never through a typed question:
 
-Then stop. Code begins only after the owner answers that question with
-an approval.
+   ```
+   plannotator annotate docs/<slug>-plan.md --gate --json
+   ```
 
-### The plan carries the knowledge
+   Run it in the background; it blocks until the owner decides in the
+   browser, and the harness wakes you when it exits. Do nothing while it
+   runs. Its stdout is one JSON decision:
+   - `approved` (with optional `feedback`): the owner's yes on the plan.
+     Post the plan-stage message and begin the build stage.
+   - annotations: the owner's redirect. Fold every annotation into the
+     plan, commit the revision as a further `docs(plan)` commit, and
+     gate again from step 5. Never start code on an annotated plan.
+   - `dismissed`, or a non-zero exit without a decision: stop and
+     report; the owner decides in the conversation.
 
-The build stage writes the comments and documents of the unit while the
-reasons are still in context, so the plan document says what they will
-be. Under a **Knowledge** heading, per commit:
+The plan-stage message, posted on approval, is exactly: the branch name
+and the plan's path; `git show <sha>` for the plan commit; the owner's
+`feedback` quoted, if any, with how the build will honor it; the open
+questions the plan recorded, each with the recommendation the approval
+has now settled; one line saying the build stage begins.
 
-- the functions expected to qualify for a narrative under the root
-  `AGENTS.md`, "Code comments", and the why each overview will state,
-  with the evidence for it (a `file:line`, a test, a document);
-- the `AGENTS.md` rows and the documents the commit changes, named by
-  the routing table in `docs/AGENTS.md`;
-- any fact the commit establishes that has no home yet, with the home it
-  will get.
+Correct: the owner says "go" on the seed report. You branch, read the
+skill, write the plan, commit it, run the gate, wait; the decision is
+`approved`; you post the message and start commit 2.
+
+Incorrect: the owner says "go" and you start the first code commit
+because the plan was "already in the report". Or: you commit the plan
+and ask "Approve the plan, redirect it, or stop?" in the conversation
+instead of running the gate. Or: the gate returns annotations and you
+start code while addressing them.
+
+### The plan is the unit's only memory
+
+The build stage may run in another session, by an agent that has none
+of this conversation: not the seed report, not the owner's answers, not
+what was tried and dropped. The plan document is the only thing that
+crosses that boundary, and it is deleted when the unit lands
+(`docs/AGENTS.md`, Plans), so a reason it carries that never reaches a
+comment or a document is lost twice. Write it for that reader: an
+executor who writes every commit, every comment and every document row
+from the plan alone, without guessing and without asking, and who could
+defend each choice to the owner the way you can now.
+
+Before writing it, run `/doc-discipline read`. It loads the comment
+shape and the placement ladder the build stage is held to, so the plan's
+doc comments, overviews and homes are written in that shape from the
+start rather than repaired after.
+
+The document is `docs/<slug>-plan.md`, `Status: draft`, and carries
+these sections in this order. A section with nothing to say says
+"none"; it is never dropped.
+
+1. **Outcome.** What is true in the tree when the unit lands, and what
+   it leaves for later units, each named.
+2. **Verified facts.** What you checked against dependencies, vendored
+   code, the daemon or the documents, each with its evidence
+   (`path:line`, a commit, a dated session), so the executor neither
+   re-verifies nor trusts what was never verified.
+3. **Design.** Every function, type and variable the unit adds or
+   changes, in the file order they will have: the signature and the doc
+   comment it will carry (the contract, per the root `AGENTS.md`, "Code
+   comments"), and, for every function that qualifies for a narrative
+   under the skill's `narrative.md`, the numbered overview its body will
+   state, each step with its why. A function that stays bare is named
+   as bare with the rule that says so. Tests are designed the same way.
+   The executor types these texts in; it does not compose them.
+4. **Rationale.** One row per decision the unit rests on:
+   `| decision | why | rejected, and why | gained | given up | settled by |`.
+   "Why" is the reason the owner or the sources gave, never a
+   reconstruction. "Rejected, and why" names the alternative that lost
+   and what sank it, so no later agent re-litigates it. "Gained" and
+   "given up" are the trade: what the unit buys, and the cost it
+   accepts (a limitation, a slower path, a rule the code must now
+   keep). "Settled by" is a path, "owner, <date>", or `proposal`. Put
+   here everything the conversation established that the code will not
+   show: a dependency's defect, an owner preference, a reversal of an
+   earlier rule, a constraint from a milestone handoff.
+5. **Knowledge.** Per commit, where each why of sections 3 and 4
+   lands: the narrated functions with the why-evidence of every
+   overview claim; the `AGENTS.md` rows and documents the commit
+   changes, named by the routing table of `docs/AGENTS.md`; every fact
+   with no home yet, with the home it gets and the commit that gives
+   it. Every Rationale row has at least one landing place here, or it
+   dies with the plan.
+6. **How the knowledge lands.** The instructions the executor follows,
+   written out so that executing the plan executes them: run
+   `/doc-discipline read` before the first code commit; write every
+   commit's comments and document rows from sections 3 and 5 in the
+   same commit as the code; a why that arises while building and is
+   not in the plan is written where it is decided, with its evidence,
+   or asked of the owner through the question tool before the commit;
+   after the last code commit, `/doc-discipline all <paths>` and one
+   small commit per finding; before the build-stage message,
+   `/doc-discipline check <paths> docs/<slug>-plan.md`, which
+   reconciles the code against the plan and reports every reason the
+   plan promised that the code and documents do not state.
+7. **Commits.** The numbered list, one subject each in the commit form
+   above, in landing order: commit 1 is this document, already
+   committed; the build commits follow; the `/doc-discipline` runs are
+   placed after the commits they follow; the Verify step is last
+   (below).
+8. **Open questions and recommendations.** Every question the owner has
+   not answered, with your recommendation, one line each. The plan's
+   approval settles them.
 
 A why you cannot verify, or a function you cannot place under the rules,
 is a question to the owner through the question tool, asked before the
 plan is committed; the answer goes into the plan. What the owner leaves
 unanswered is an open question of the plan-stage message.
 
+Before committing, read the plan as the executor would: for each commit,
+can it be written from the plan alone, comments included, and can each
+of its choices be defended from the Rationale alone? Each "no" is a gap
+in section 3, 4 or 5, filled now.
+
 Correct: the plan names `ingestCSV` as narrated, its overview stating
 that the session is held for the whole body because the writer types the
-columns through it, evidence `internal/qdb/ingest.go:266`; and asks
-whether the empty-string exclusion is a decision or a limitation before
-writing either word.
+columns through it, evidence `internal/qdb/ingest.go:266`; its Rationale
+row says the alternative was a lease per lookup, sunk by the
+one-held-session rule, giving up a schema cache; and it asks whether the
+empty-string exclusion is a decision or a limitation before writing
+either word.
 
-Incorrect: the plan lists commits only, and the reasons are reconstructed
-from the diff at build time, or guessed.
+Incorrect: the plan lists commits and signatures, and the reasons are
+reconstructed from the diff at build time, or guessed; or the Rationale
+says what was chosen and not what lost, so the next unit tries the loser
+again.
 
 ### The plan ends with a Buildkite build
 
@@ -143,24 +246,31 @@ commits, so nothing at build time says to run the build.
 
 ### Comments are written with the code
 
-Every build-stage commit carries its comments and document rows as the
-Knowledge section planned them, in the shape the root `AGENTS.md`, "Code
-comments", prescribes. A reason that arises while building (a rejected
-alternative, a threshold, an ordering constraint) is written where it is
-decided. One you would have to invent is asked through the question tool
-before the commit that needs it, never written as a guess and never left
-out silently.
+The build stage follows the plan's "How the knowledge lands" section
+to the letter. Every commit carries its comments and document rows as
+the plan's Design and Knowledge sections planned them, in the shape the
+root `AGENTS.md`, "Code comments", prescribes, in the same commit as the
+code. A reason that arises while building (a rejected alternative, a
+threshold, an ordering constraint) is written where it is decided, with
+its evidence. One you would have to invent is asked through the question
+tool before the commit that needs it, never written as a guess and never
+left out silently.
 
-Before the build-stage message, run `/doc-discipline check <paths the
-branch touched>`. A finding is fixed with a further small commit on the
-branch; the build-stage message quotes the check's report, or says it
-was clean.
+The last check before the build-stage message is the plan's own:
+`/doc-discipline check <paths the branch touched> docs/<slug>-plan.md`.
+Its "Unlanded from the plan" findings are reasons the plan carried
+that the code and documents do not; each one is fixed with a further
+small commit before the plan is deleted, or reported with the reason it
+was dropped. The build-stage message quotes the check's report, or says
+it was clean.
 
 Correct: a step comment needs to say why the writer refuses an empty
 push; you do not know; you ask, and the answer becomes the comment.
 
 Incorrect: the comment says "the writer refuses an empty push for
-safety", because that sounded right.
+safety", because that sounded right. Or: the plan's Rationale says the
+schema cache was rejected, no comment or document says so, and the plan
+is deleted with that reason in it.
 
 ## Repository state
 
@@ -337,11 +447,14 @@ only what the unit must honor.
    document calls for, and every choice Shape the unit found was not
    yours to make. Ask; do not resolve by assumption. Write "none" if
    there are none.
-10. **Proposed commits** -- the commit list from step 5, numbered
-    one-line subjects in the order you would land them: the outline the
-    plan document will refine, so the owner can redirect before the plan
-    is written. The list closes with the Buildkite
-    verification step (see Lifecycle); it is not counted as a commit.
+10. **Proposed commits** -- numbered one-line commit subjects in the
+    order you would land them. Commit 1 is always the plan:
+    `docs(plan): <slug>-plan.md, <subject>`; it is the only commit the
+    next go-ahead authorizes, and it is outside the size band. Then the
+    build commits from step 5: the outline the plan document will
+    refine, so the owner can redirect before the plan is written. The
+    list closes with the Buildkite verification step (see Lifecycle);
+    it is not counted as a commit.
 
 Correct: the brief says the decoder reads the whole body into one
 record batch per table before anything is pushed, so a malformed row
@@ -354,4 +467,4 @@ band", and the owner learns what the decoder does from the commit
 subjects.
 
 Then wait. The owner's next go-ahead opens the plan stage for this unit
-and nothing beyond it.
+and nothing beyond it: commit 1, the plan, then the plannotator gate.

@@ -61,7 +61,10 @@ comments alone tell the story:
    delete any claim the code does not bear out.
 
 `Session.ingest` in `internal/qdb/ingest.go` is the shape. This is the
-primary path: new code is written this way. `/doc-discipline
-[all|placement|narrative] [check] [paths...]` is the repair path; it
-applies or checks all of the above after the fact, and its worked
-example is in `.claude/skills/doc-discipline/narrative.md`.
+primary path: new code is written this way. `/doc-discipline read`
+loads the shape before new code or a plan is written; `/doc-discipline
+[all|placement|narrative] [check] [paths...] [plan.md]` is the repair
+path: it applies or checks all of the above after the fact, reconciles
+the code against the plan that promised its comments when one is
+given, and its worked example is in
+`.claude/skills/doc-discipline/narrative.md`.

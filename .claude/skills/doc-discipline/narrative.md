@@ -25,7 +25,10 @@ Decide in this order; the first rule that applies wins:
 1. It forwards, accesses, assigns or converts in one obvious step: bare.
 2. Its name plus its body already say everything a reader needs: bare.
 3. It encodes a domain rule, is an algorithm, has non-obvious control flow, or
-   depends on an invariant established elsewhere: narrate.
+   depends on an invariant established elsewhere: narrate. Three or more
+   decision points (branches, early returns, error paths) are non-obvious
+   control flow by this rule, and a handler or middleware is not exempt
+   because its steps are each simple; the sequence is what needs telling.
 4. Anything else: bare.
 
 Length alone never qualifies a function, and the default is bare.
@@ -88,6 +91,15 @@ of contents. Numbers must be unique and in order.
 
 A step comment says what the step achieves or why it is done this way. It does
 not paraphrase syntax.
+
+The reason that is local to a step lives at the step: the guard, the
+threshold, the ordering constraint, the failure policy, the alternative
+rejected there. The overview carries the strategy and the sequence; the step
+comment repeats the number and the heading and adds the step's own why, so a
+reader standing at the step never scrolls up to learn why the line below it
+is there. A bare heading (`// 3. stage`) is enough only for a step whose code
+already says everything; a step that needed a sentence in the overview needs
+that sentence here, not a pointer to it.
 
 | Instead of                | Write                                                  |
 | ------------------------- | ------------------------------------------------------ |
@@ -194,6 +206,12 @@ none on the final `return` beyond the one reason it is not simply `false`.
 6. After writing a function's comments, read them back top to bottom as a
    list of separate claims and check each one against the code directly below
    it. Fix or delete any claim the code does not bear out. Check that step
-   numbers are unique, in order, and match the overview.
+   numbers are unique, in order, and match the overview. Then cover the code
+   and read the comments alone, as a reader who has never seen the plan, the
+   review or the conversation that shaped this function: can they say what
+   it does, why the steps come in this order, what happens on each failure
+   path, and what was tried and rejected? Each question the comments cannot
+   answer is a missing comment, written now from its evidence, or a question
+   to the owner; never a guess.
 7. New code written elsewhere in this project follows the same shape from the
    start; this skill is the repair path, not the primary one.
