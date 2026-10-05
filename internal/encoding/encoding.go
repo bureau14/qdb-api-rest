@@ -1,5 +1,6 @@
 // Package encoding turns Arrow record batches into bytes in one wire
-// format. An encoder knows its media type and its bytes, nothing else.
+// format, and a body of one wire format back into batches. An encoder or
+// decoder knows its media type and its bytes, nothing else.
 package encoding
 
 import (
