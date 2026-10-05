@@ -3,12 +3,15 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	"github.com/bureau14/qdb-api-rest/internal/model"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
@@ -20,11 +23,26 @@ const rowsPath = "/api/v2/rows"
 // rather than a line of text: 64 MiB, the owner's number.
 const maxIngestBytes = 64 << 20
 
-// isCSV reports whether a Content-Type names text/csv; a charset
-// parameter is neither honored nor checked.
-func isCSV(contentType string) bool {
+// decoders maps each media type the ingest accepts to its decoder.
+var decoders = map[string]encoding.Decoder{
+	encoding.CSVContentType: encoding.CSV{},
+}
+
+// decoderOf picks the decoder for a Content-Type by media type alone; a
+// charset parameter is neither honored nor checked. The second value is
+// false for a type the ingest does not accept.
+func decoderOf(contentType string) (encoding.Decoder, bool) {
 	mt, _, err := mime.ParseMediaType(contentType)
-	return err == nil && mt == encoding.CSVContentType
+	if err != nil {
+		return nil, false
+	}
+	d, ok := decoders[mt]
+	return d, ok
+}
+
+// acceptedTypes names the media types decoders holds, sorted, for the 415.
+func acceptedTypes() string {
+	return strings.Join(slices.Sorted(maps.Keys(decoders)), ", ")
 }
 
 // pushOptions reads the push options among the URL parameters as words;
@@ -51,17 +69,25 @@ type ingestResponse struct {
 
 // handleIngestRows pushes the body's rows to their tables in one batch
 // as the bearer's user and answers the counts. The body streams into the
-// parser under its cap, never read whole; the status is decided when the
+// decoder under its cap, never read whole; the status is decided when the
 // push has returned, since the answer is one small object.
 func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// A non-CSV body is a clear 415 instead of a parse error.
-	if !isCSV(r.Header.Get("Content-Type")) {
-		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be text/csv")
+	// 1. a body of a type no decoder reads is a clear 415 instead of a
+	// decode error
+	dec, ok := decoderOf(r.Header.Get("Content-Type"))
+	if !ok {
+		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be one of "+acceptedTypes())
 		return
 	}
+	// 2. the body under the ingest cap
 	body := http.MaxBytesReader(w, r.Body, maxIngestBytes)
-	res, err := qdb.ClusterFrom(ctx).IngestCSV(ctx, caller(r), body, pushOptions(r.URL.Query()))
+	// 3. one call: the decoder runs under the held session's schema lookup
+	decode := func(schemaOf model.SchemaOf) ([]model.TableBatch, error) {
+		return dec.Decode(ctx, body, schemaOf)
+	}
+	res, err := qdb.ClusterFrom(ctx).Ingest(ctx, caller(r), pushOptions(r.URL.Query()), decode)
+	// 4. the status by who failed
 	var tooLarge *http.MaxBytesError
 	switch {
 	case err == nil:
@@ -72,11 +98,11 @@ func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 			ParseMS: res.Parse.Milliseconds(),
 			PushMS:  res.Push.Milliseconds(),
 		})
-	// The cap surfaces from inside the parse, so it is classified here.
+	// The cap surfaces from inside the decode, so it is classified here.
 	case errors.As(err, &tooLarge):
 		writeProblem(w, http.StatusRequestEntityTooLarge, err.Error())
 	// A body's or an option's fault is the caller's, before any push.
-	case errors.Is(err, qdb.ErrInvalidPushOptions), errors.Is(err, qdb.ErrInvalidRows):
+	case errors.Is(err, qdb.ErrInvalidPushOptions), errors.Is(err, encoding.ErrInvalidRows):
 		writeProblem(w, http.StatusBadRequest, err.Error())
 	// A $table the cluster does not know fails the whole request.
 	case qdb.IsTableNotFound(err):
