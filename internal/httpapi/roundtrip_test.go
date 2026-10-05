@@ -69,7 +69,8 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 
 // checkQuery queries tbl over the cluster and compares what comes back
 // with the rows generated: the read-back a query sees, which after an
-// async push is ahead of the bulk reader's.
+// async push is ahead of the bulk reader's (internal/AGENTS.md, the
+// ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	rec, err := s.c.Query(context.Background(), qdb.User{}, tbl.Select())
@@ -204,8 +205,10 @@ func TestRoundtrip(t *testing.T) {
 		// 5. read and query each in every format: the rows written are the
 		// rows generated, and every wire carries the encoder's own bytes.
 		// After an async push a query sees the rows at once and the bulk
-		// reader only after the server's flush, so async reads back through
-		// the query alone
+		// reader only once the server has flushed: before that it answers
+		// none of them, or some twice while the flush runs (qdbd
+		// 3.15.0.dev0, both writers), so async reads back through the query
+		// alone
 		for _, tbl := range tables {
 			s.checkQuery(rt, tbl)
 			s.checkQueryFormats(rt, tbl)
