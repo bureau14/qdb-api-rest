@@ -60,7 +60,7 @@ comments alone tell the story:
    separate claims and check each against the code below it. Fix or
    delete any claim the code does not bear out.
 
-`ingestCSV` in `internal/qdb/ingest.go` is the shape. This is the
+`Session.ingest` in `internal/qdb/ingest.go` is the shape. This is the
 primary path: new code is written this way. `/doc-discipline
 [all|placement|narrative] [check] [paths...]` is the repair path; it
 applies or checks all of the above after the fact, and its worked

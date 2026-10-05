@@ -68,7 +68,7 @@ three are proven equal to it.
 One fact of the tree bounds the generated data (verified 2026-09-18):
 CSV renders null and the empty string as the same empty field
 (`internal/encoding/AGENTS.md`, Rendering), so the generator never
-emits an empty string, and the ingest parser reads an empty CSV field
+emits an empty string, and the ingest decoder reads an empty CSV field
 as null.
 
 ### The Go tool

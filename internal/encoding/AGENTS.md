@@ -1,7 +1,7 @@
 # internal/encoding -- Agent Instructions
 
-Scope: the wire encoders. Package-wide Go rules, logging and the test
-fixtures: `internal/AGENTS.md`.
+Scope: the wire encoders and decoders. Package-wide Go rules, logging
+and the test fixtures: `internal/AGENTS.md`.
 
 ## The seam
 
@@ -15,6 +15,21 @@ fixtures: `internal/AGENTS.md`.
   error. A buffered writer inside either is flushed once at the end; the
   HTTP flush is the handler's, and an error before the first flush
   leaves nothing on the wire.
+- A format that is ingested also implements `Decoder`, the encoder
+  inverted, in the same file: a body reads into one `model.TableBatch`
+  per table, `$timestamp` first and then the data columns the body
+  carried, in first-seen order, a table with no rows absent. `$table`
+  routes a row and is never carried in a batch. Each table is typed the
+  first time a row names it through the `model.SchemaOf` it is given,
+  the reader's whole-table schema, so the batch carries the reader's
+  types and the package declares no field of its own; the tables of one
+  body must agree in every field's type, the decoder's check, since the
+  Arrow writer checks one table at a time. The receiver owns the
+  batches and releases each once; on error there are none. A body's
+  fault is `ErrInvalidRows`, naming the row and the column, with the
+  reader's cause kept in the chain; the lookup's error passes as is. The
+  empty field is null in every type: the text wires cannot carry the
+  empty string.
 - Every encoder looks at the ctx once per `chunkRows` rows, one shared
   constant: the record batch size on the Arrow wire, the stride between
   ctx checks on the rendered wires.
@@ -78,4 +93,7 @@ fixtures: `internal/AGENTS.md`.
   with what was written. What the table fixture cannot write is pinned
   byte for byte on one hand-built batch in `render_test.go`; the stream
   path is pinned on the same batch, twice, as the two one-shot bodies
-  joined (`stream_test.go`), no cluster.
+  joined (`stream_test.go`), no cluster. The decoders are one generative
+  round trip over every codec (`decode_test.go`): drawn schemas and
+  tables, encoded as one body and decoded back to the batches drawn, no
+  cluster; the faults of a body are one table.

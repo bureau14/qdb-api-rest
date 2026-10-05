@@ -695,7 +695,8 @@ internal/config/       YAML config + flags + env
 internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0001)
 internal/auth/         JWE tokens, key derivation, the caller's user
 internal/qdb/          session pools, circuit breaker, query execution, ingestion (wraps qdb-api-go)
-internal/encoding/     format encoders: json, ndjson, csv, arrow
+internal/encoding/     format encoders and decoders: json, ndjson, csv, arrow
+internal/model/        the neutral table representation the layers share, Arrow record batches by indirection
 internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
 internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the v1 wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server

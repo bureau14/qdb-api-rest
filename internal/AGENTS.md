@@ -54,25 +54,37 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   canary in `internal/qdb/read_test.go` fails when it is fixed) and
   sc-19830 (two symbol-bearing tables in one reader fail; a read is one
   table).
-- An ingest is one batch push per request through one held session:
-  `Cluster.IngestCSV` leases one session of the caller's pool for the
-  whole body, looks each table's columns up through it the first time a
-  row names the table, and pushes through it; it is never retried. The
-  tables of one body share one column list (the header's data columns,
-  typed by each table; the binding's writer refuses a second table whose
-  typed columns differ); a body's failure -- a header without `$table`
-  or `$timestamp`, a name a table lacks, a field that does not parse, an
-  empty `$timestamp`, tables of differing types (`ErrInvalidRows`), an
-  unknown table (`IsTableNotFound`) -- is the whole request's, found
-  before the push, and nothing is written. The header's data columns
-  are the columns written; one the header lacks is null in every row.
-  The empty field is the type's null sentinel, so the empty string
-  cannot be ingested. Push and deduplication options are judged before
-  the lease (`ErrInvalidPushOptions`); either deduplication mode needs
-  its columns. After an `async` push a query sees the rows at once and
-  the bulk reader only after the server's async flush; `fast` and
-  `transactional` are visible on both paths when the push returns. The parsers of every body format live in `ingest.go`:
-  no format is QuasarDB's, the package's story is the writer.
+- An ingest is one push per request through one held session:
+  `Cluster.Ingest` leases one session of the caller's pool for the whole
+  body, lends the decoder a schema lookup bound to it (`Session.schemaOf`,
+  the reader's whole-table schema) and pushes the decoded batches through
+  it in one `ArrowWriter` call; it is never retried. The body decodes in
+  `internal/encoding` into one `model.TableBatch` per table, typed the
+  first time a row names the table; `internal/qdb` releases every batch
+  once the push has returned. The tables of one body share one column
+  list, names and types: the header's data columns, typed by each table,
+  and a table whose types differ from the first's is refused by the
+  decoder, since the Arrow writer checks one table at a time. A body's
+  failure -- a header without `$table` or `$timestamp`, a name a table
+  lacks, a field that does not parse, an empty `$timestamp`, tables of
+  differing types (`encoding.ErrInvalidRows`), an unknown table
+  (`IsTableNotFound`) -- is the whole request's, found before the push,
+  and nothing is written. The header's data columns are the columns
+  written; one the header lacks is null in every row. The empty field is
+  null, and the server stores a zero-length string or blob as null
+  whichever writer sent it, so the empty string cannot be ingested. Push
+  and deduplication options are judged before the lease
+  (`ErrInvalidPushOptions`); either deduplication mode needs its columns.
+  After an `async` push a query sees the rows at once and the bulk
+  reader only once the server has flushed; before that it answers none
+  of them, or some twice while the flush runs (qdbd 3.15.0.dev0, the
+  Arrow and the sentinel writer alike). `fast` and `transactional` are
+  visible on both paths when the push returns. No format is QuasarDB's:
+  the package's story is the lease, the type map and the push.
+- The neutral table types (`TableBatch`, `SchemaOf`) live in
+  `internal/model`, which `internal/encoding` and `internal/qdb` both
+  import and which imports neither; open `internal/model/AGENTS.md`
+  before adding a type there.
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or a cell rendering.
 - The v2 handlers, the problem body and the bearer middleware live in
@@ -93,7 +105,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   then bump the version in `go.mod` (`go get ...@<commit>`, a commit on
   upstream `master`; a branch commit lives only as long as the work
   that needs it) and re-run `go mod tidy` and `go mod vendor`; nothing
-  under `vendor/` is written by hand.
+  under `vendor/` is written by hand. A branch commit of a PR that is
+  squash-merged never reaches `master`; the work that vendored it
+  re-points `go.mod` at the squash commit before it merges.
 
 ## Logging (ADR-0002)
 

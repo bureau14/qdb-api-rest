@@ -158,7 +158,7 @@ The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
 encoders never touched and the other three formats are proven equal to
 it. One fact of the tree bounds the data (verified 2026-09-18): CSV
 renders null and the empty string alike, so the generator emits no
-empty string and the ingest parser reads an empty CSV field as null.
+empty string and the ingest decoder reads an empty CSV field as null.
 
 ### The tool
 

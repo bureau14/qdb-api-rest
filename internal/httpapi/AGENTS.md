@@ -60,17 +60,19 @@ and delete"; of the table reader: this file, Handlers.
   and the sink still returns it so the breaker hears of a fetch that
   found the cluster gone. Never retried. An empty table answers its
   schema in every format.
-- The ingest, `POST /api/v2/rows`: `Content-Type` `text/csv` (415
-  otherwise), the body streamed into `Cluster.IngestCSV` under a 64 MiB
-  `MaxBytesReader` (413 surfaces from the parse), never read whole;
+- The ingest, `POST /api/v2/rows`: `Content-Type` picked from
+  `decoders` by media type (415 otherwise, naming the types accepted),
+  the body streamed into the decoder under a 64 MiB `MaxBytesReader`
+  through `Cluster.Ingest` (413 surfaces from the decode), never read
+  whole;
   `?push-mode=transactional|fast|async` (default `fast`),
   `?deduplication-mode=drop|upsert` with `?deduplication-columns=a,b`
   required by either. 200 with `{"rows","tables","parse_ms","push_ms"}`,
   `push_ms` under `async` the time until the push call returned; a
-  header-only body is 200 with zeros and no push. `qdb.ErrInvalidRows`
-  and `qdb.ErrInvalidPushOptions` are 400; a `$table` the cluster does
-  not know is 404 and fails the whole request; the rest is
-  `writeClusterError` at 400. Never retried.
+  header-only body is 200 with zeros and no push.
+  `encoding.ErrInvalidRows` and `qdb.ErrInvalidPushOptions` are 400; a
+  `$table` the cluster does not know is 404 and fails the whole request;
+  the rest is `writeClusterError` at 400. Never retried.
 - No flushing writer: the encoder's own buffer and `net/http`'s chunking
   already stream. The handler wraps the response in a byte counter only,
   so an encode error with zero bytes out is a problem response and with
