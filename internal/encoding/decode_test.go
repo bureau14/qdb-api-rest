@@ -16,6 +16,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"pgregory.net/rapid"
 
+	"github.com/bureau14/qdb-api-rest/internal/model"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -122,7 +123,7 @@ func withTable(t table.T, name string, rec arrow.RecordBatch) arrow.RecordBatch 
 
 // bodyOf is the batches as one body of e: the first table's bytes whole,
 // the rows of the others under its header, which is theirs too.
-func bodyOf(t table.T, e Encoder, tables []TableBatch) []byte {
+func bodyOf(t table.T, e Encoder, tables []model.TableBatch) []byte {
 	t.Helper()
 	var body []byte
 	for i, tb := range tables {
@@ -136,7 +137,7 @@ func bodyOf(t table.T, e Encoder, tables []TableBatch) []byte {
 }
 
 // constant answers schema for every table name.
-func constant(schema *arrow.Schema) SchemaOf {
+func constant(schema *arrow.Schema) model.SchemaOf {
 	return func(string) (*arrow.Schema, error) { return schema, nil }
 }
 
@@ -149,9 +150,9 @@ func TestDecodeRoundTrip(t *testing.T) {
 			rapid.Check(t, func(rt *rapid.T) {
 				// 1. the schema and the tables, zero rows allowed
 				schema := genSchema(rt)
-				var drawn, want []TableBatch
+				var drawn, want []model.TableBatch
 				for i := range rapid.IntRange(1, 3).Draw(rt, "tables") {
-					tb := TableBatch{Table: fmt.Sprintf("t%d", i), Batch: genBatch(rt, schema, 64)}
+					tb := model.TableBatch{Table: fmt.Sprintf("t%d", i), Batch: genBatch(rt, schema, 64)}
 					drawn = append(drawn, tb)
 					if tb.Batch.NumRows() > 0 {
 						want = append(want, tb)
@@ -195,7 +196,7 @@ func TestCSVDecodeFaults(t *testing.T) {
 	refused := errors.New("no such table")
 	for name, tc := range map[string]struct {
 		body     string
-		schemaOf SchemaOf
+		schemaOf model.SchemaOf
 		want     error
 	}{
 		"no $table":                {"$timestamp,i\n", ints, ErrInvalidRows},

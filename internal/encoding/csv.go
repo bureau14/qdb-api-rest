@@ -15,6 +15,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
 // CSVContentType is the media type of RFC 4180 text.
@@ -220,7 +222,7 @@ type csvTable struct {
 // $timestamp first, then the header's names in their order, each a field
 // of the schema or ErrInvalidRows. A table after the first must agree
 // with it on every field's type, or ErrInvalidRows names both tables.
-func newCSVTable(name string, h csvHeader, schemaOf SchemaOf, first *csvTable) (*csvTable, error) {
+func newCSVTable(name string, h csvHeader, schemaOf model.SchemaOf, first *csvTable) (*csvTable, error) {
 	// The batch carries the reader's types, so its fields are picked from
 	// the reader's schema rather than declared here:
 	//
@@ -295,7 +297,7 @@ func (t *csvTable) appendRecord(rec []string) error {
 }
 
 // batch hands the rows over as one record batch, the builders emptied.
-func (t *csvTable) batch() TableBatch {
+func (t *csvTable) batch() model.TableBatch {
 	cols := make([]arrow.Array, len(t.builders))
 	for i, b := range t.builders {
 		cols[i] = b.NewArray()
@@ -304,7 +306,7 @@ func (t *csvTable) batch() TableBatch {
 	for _, c := range cols {
 		c.Release()
 	}
-	return TableBatch{Table: t.name, Batch: rec}
+	return model.TableBatch{Table: t.name, Batch: rec}
 }
 
 func (t *csvTable) release() {
@@ -351,7 +353,7 @@ func readCSVHeader(rd *csv.Reader) (csvHeader, error) {
 
 // Decode implements Decoder: RFC 4180 text in this encoder's dialect, a
 // header row naming $table, $timestamp and data columns in any order.
-func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableBatch, error) {
+func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
 	// One pass over the body, records streamed into per-table builders:
 	//
 	//  1. the header fixes the field count and which fields are the
@@ -412,7 +414,7 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableB
 	}
 
 	// 3. one batch per table
-	out := make([]TableBatch, len(order))
+	out := make([]model.TableBatch, len(order))
 	for i, t := range order {
 		out[i] = t.batch()
 		t.release()

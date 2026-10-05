@@ -9,6 +9,8 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+
+	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
 // Encoder writes record batches to w in one wire format. It never
@@ -25,24 +27,11 @@ type Encoder interface {
 	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 
-// TableBatch is one table's decoded rows: $timestamp first, then the
-// data columns the body carried, in the body's order. The receiver owns
-// the batch and releases it once.
-type TableBatch struct {
-	Table string
-	Batch arrow.RecordBatch
-}
-
-// SchemaOf answers the schema the bulk reader answers for the table whole:
-// $table, $timestamp, then the data columns, in the reader's Arrow types.
-// The error of a table the cluster does not know is the cluster's, as is.
-type SchemaOf func(table string) (*arrow.Schema, error)
-
 // Decoder reads a body in one wire format into one batch per table, the
 // reverse of its Encoder. schemaOf types the cells, once per table the
 // body names. On error there are no batches.
 type Decoder interface {
-	Decode(ctx context.Context, r io.Reader, schemaOf SchemaOf) ([]TableBatch, error)
+	Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error)
 }
 
 // chunkRows is the run of rows an encoder handles between two looks at
