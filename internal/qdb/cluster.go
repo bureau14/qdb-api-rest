@@ -251,6 +251,12 @@ func (s *Session) Push(w *qdbapi.Writer) error {
 	return w.Push(s.session)
 }
 
+// PushArrow writes every table w holds in one batch. The writer pins the
+// Go buffers it hands to the C API for the duration of the call.
+func (s *Session) PushArrow(w *qdbapi.ArrowWriter) error {
+	return w.Push(s.session)
+}
+
 // callConfig carries per-call options.
 type callConfig struct {
 	retry bool
