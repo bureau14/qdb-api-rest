@@ -30,7 +30,7 @@ When the unit lands:
 - Every test proves exactly what it proved before. No test is added or
   removed.
 - `docs/log.md` Current state lists the following units, including the
-  two audit slices below, and no longer this one. This plan is deleted.
+  two audit slices below, without this one. This plan is deleted.
 
 Left for later units, in this order (Rationale, row 13):
 
