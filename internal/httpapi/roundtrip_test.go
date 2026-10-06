@@ -34,22 +34,12 @@ func (s server) ingest(body, params string, headers map[string]string) *httptest
 }
 
 // ingestBodyOf is the one CSV body that carries every table: the CSV
-// encoder over the first table's batch whole, then the rows of the
-// others under its header, which is theirs too since they share the
-// column list.
+// encoder over the tables' one batch.
 func ingestBodyOf(t table.T, tables []table.Table) string {
 	t.Helper()
 	var buf bytes.Buffer
-	for i, tbl := range tables {
-		var one bytes.Buffer
-		if err := (encoding.CSV{}).Encode(context.Background(), &one, table.WithTable(t, tbl)); err != nil {
-			t.Fatalf("encode %s: %v", tbl.Name, err)
-		}
-		csv := one.Bytes()
-		if i > 0 {
-			csv = csv[bytes.IndexByte(csv, '\n')+1:]
-		}
-		buf.Write(csv)
+	if err := (encoding.CSV{}).Encode(context.Background(), &buf, table.Body(t, tables...)); err != nil {
+		t.Fatalf("encode: %v", err)
 	}
 	return buf.String()
 }
