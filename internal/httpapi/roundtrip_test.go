@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strings"
 	"testing"
 
@@ -34,13 +33,19 @@ func (s server) ingest(body, params string, headers map[string]string) *httptest
 	return s.post(rowsPath+"?"+params, body, headers)
 }
 
-// ingestBodyOf is the one CSV body that carries every table: the first
-// table's CSV whole, then the rows of the others under its header, which
-// is theirs too since they share the column list.
-func ingestBodyOf(tables []table.Table) string {
+// ingestBodyOf is the one CSV body that carries every table: the CSV
+// encoder over the first table's batch whole, then the rows of the
+// others under its header, which is theirs too since they share the
+// column list.
+func ingestBodyOf(t table.T, tables []table.Table) string {
+	t.Helper()
 	var buf bytes.Buffer
 	for i, tbl := range tables {
-		csv := table.CSV(tbl)
+		var one bytes.Buffer
+		if err := (encoding.CSV{}).Encode(context.Background(), &one, table.WithTable(t, tbl)); err != nil {
+			t.Fatalf("encode %s: %v", tbl.Name, err)
+		}
+		csv := one.Bytes()
 		if i > 0 {
 			csv = csv[bytes.IndexByte(csv, '\n')+1:]
 		}
@@ -156,8 +161,8 @@ func TestRoundtrip(t *testing.T) {
 		}
 		wantRows, wantTables := 0, 0
 		for _, tbl := range tables {
-			wantRows += len(tbl.Index)
-			if len(tbl.Index) > 0 {
+			wantRows += tbl.Rows()
+			if tbl.Rows() > 0 {
 				wantTables++
 			}
 		}
@@ -185,11 +190,7 @@ func TestRoundtrip(t *testing.T) {
 		// second where a filled read is milliseconds), so one table stands
 		// for all
 		empty := first
-		empty.Index = nil
-		empty.Columns = slices.Clone(first.Columns)
-		for i := range empty.Columns {
-			empty.Columns[i].Valid = nil
-		}
+		empty.Batch = nil
 		s.checkRead(rt, empty)
 		s.checkReadFormats(rt, first, nil)
 
@@ -197,7 +198,7 @@ func TestRoundtrip(t *testing.T) {
 		// the default included: the counts answered are the rows generated
 		// and the tables that had any
 		mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
-		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(tables), "push-mode="+mode, nil))
+		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, tables), "push-mode="+mode, nil))
 		if got.Rows != wantRows || got.Tables != wantTables {
 			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 		}
@@ -244,7 +245,7 @@ func TestRoundtripDeduplicated(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
-		if len(tbl.Index) == 0 {
+		if tbl.Rows() == 0 {
 			return
 		}
 		table.RemoveOnCleanup(rt, s.c, tbl)
@@ -253,7 +254,7 @@ func TestRoundtripDeduplicated(t *testing.T) {
 		}
 		query := "deduplication-mode=drop&deduplication-columns=" + url.QueryEscape("$timestamp")
 		for range 2 {
-			ingestResponseOf(rt, s.ingest(ingestBodyOf([]table.Table{tbl}), query, nil))
+			ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, []table.Table{tbl}), query, nil))
 		}
 		s.checkRead(rt, tbl)
 	})

@@ -25,6 +25,22 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
+// oneRow is tbl's batch of one row at the start of time holding s in its
+// one string column; the caller releases it.
+func oneRow(tbl table.Table, s string) arrow.RecordBatch {
+	schema := table.Schema(tbl)
+	ts := array.NewTimestampBuilder(memory.DefaultAllocator, schema.Field(0).Type.(*arrow.TimestampType))
+	defer ts.Release()
+	ts.Append(arrow.Timestamp(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()))
+	str := array.NewStringBuilder(memory.DefaultAllocator)
+	defer str.Release()
+	str.Append(s)
+	cols := []arrow.Array{ts.NewArray(), str.NewArray()}
+	defer cols[0].Release()
+	defer cols[1].Release()
+	return array.NewRecordBatch(schema, cols, 1)
+}
+
 // concat is the batches joined into one the caller owns, per column.
 func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow.RecordBatch {
 	t.Helper()
@@ -127,12 +143,9 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 // been fixed: delete the test and let the fixture's drawText draw NUL.
 func TestReadDropsTrailingNUL(t *testing.T) {
 	c := cluster.NewInsecure(t)
-	data := qdbapi.NewColumnDataString([]string{"x\x00"})
-	tbl := table.Table{
-		Name:    "qdbtest_trailing_nul",
-		Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString, Data: &data, Valid: []bool{true}}},
-		Index:   []time.Time{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
-	}
+	tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
+	tbl.Batch = oneRow(tbl, "x\x00")
+	defer tbl.Batch.Release()
 	table.Create(t, c, tbl)
 	// A string value aliases the batch's buffer, which a lent batch frees
 	// when the step returns, so the read copies it out.
