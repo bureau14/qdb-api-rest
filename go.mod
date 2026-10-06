@@ -6,7 +6,7 @@ toolchain go1.27.0
 
 require (
 	github.com/apache/arrow-go/v18 v18.8.0
-	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261006010600-14cfccc8f0e3
+	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261006085000-e99e51d1dbcc
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/klauspost/compress v1.19.2
