@@ -55,7 +55,7 @@ capture from the old server cannot describe.
    of padding undefined, and the batch's buffers are the C API's,
    handed through zero-copy, so an Arrow body has no stable bytes.
    Decoding normalizes both: a Go tool in the harness reads the
-   stream with `arrow-go`, prints the schema and renders the batches
+   stream with `arrow-go`, prints the schema and encodes the batches
    through the CSV encoder, and the result is compared byte for byte
    with a small schema golden and with the audited CSV golden of the
    same query. The Arrow case asserts that the binary's Arrow stream
@@ -93,17 +93,17 @@ capture from the old server cannot describe.
 
 ## Alternatives rejected
 
-| Alternative                                       | Why not                                                                                                                                     |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Performance budgets as CI gates                   | shared agents make a timing bound flaky or meaningless; materialization puts most of it outside this binary                                 |
-| Numbers recorded by the e2e harness               | a second home for what the bench measures; nothing gates on them                                                                            |
-| A comparator rule per deviation                   | hides the deviation in shell code and grows with every one                                                                                  |
-| Editing a captured body to what v1 answers        | the replay against the old server stops proving the capture                                                                                 |
-| A sha256 in place of a large expected body        | a failure has nothing to diff against                                                                                                       |
-| A canonicalizing or tolerance comparator          | output is deterministic; an unexpected byte is a bug worth seeing                                                                           |
-| Arrow IPC compared as raw bytes                   | the format leaves null slots and padding undefined; stable bytes would be an accident of one C API release                                  |
-| Arrow IPC left to the property test alone         | the binary's negotiation, multi-batch stream and compression, over real nulls, would never be driven from outside                           |
-| pyarrow or pandas as the decoder in the harness   | no pyarrow wheels on FreeBSD, a venv on every agent, Python in the permanent path; pandas turns a nullable int64 into float64               |
-| A decoder independent of the CSV encoder          | a second rendering needs a second audited golden; the CSV golden is audited on its own, so a renderer bug cannot hide behind the comparison |
-| e2e kept out of CI until the resilience milestone | every earlier milestone, the first shippable binary included, would close on local evidence only                                            |
-| The red `v1` suite in CI before the wrappers      | a permanently red step teaches everyone to ignore the build                                                                                 |
+| Alternative                                       | Why not                                                                                                                                    |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Performance budgets as CI gates                   | shared agents make a timing bound flaky or meaningless; materialization puts most of it outside this binary                                |
+| Numbers recorded by the e2e harness               | a second home for what the bench measures; nothing gates on them                                                                           |
+| A comparator rule per deviation                   | hides the deviation in shell code and grows with every one                                                                                 |
+| Editing a captured body to what v1 answers        | the replay against the old server stops proving the capture                                                                                |
+| A sha256 in place of a large expected body        | a failure has nothing to diff against                                                                                                      |
+| A canonicalizing or tolerance comparator          | output is deterministic; an unexpected byte is a bug worth seeing                                                                          |
+| Arrow IPC compared as raw bytes                   | the format leaves null slots and padding undefined; stable bytes would be an accident of one C API release                                 |
+| Arrow IPC left to the property test alone         | the binary's negotiation, multi-batch stream and compression, over real nulls, would never be driven from outside                          |
+| pyarrow or pandas as the decoder in the harness   | no pyarrow wheels on FreeBSD, a venv on every agent, Python in the permanent path; pandas turns a nullable int64 into float64              |
+| A decoder independent of the CSV encoder          | a second encoding needs a second audited golden; the CSV golden is audited on its own, so an encoder bug cannot hide behind the comparison |
+| e2e kept out of CI until the resilience milestone | every earlier milestone, the first shippable binary included, would close on local evidence only                                           |
+| The red `v1` suite in CI before the wrappers      | a permanently red step teaches everyone to ignore the build                                                                                |

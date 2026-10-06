@@ -33,9 +33,9 @@ no audit.
 2. **The expected value is the generated input.** The rows are
    generated in the CSV encoder's dialect; the CSV response is compared
    with them byte for byte; a JSON, NDJSON or Arrow IPC response is
-   decoded by a Go tool in the harness and rendered through the
+   decoded by a Go tool in the harness and encoded through the
    same CSV encoder, then compared with the same file (ADR-0013 5's
-   Arrow rule, applied to every rendered format). A gzip response is
+   Arrow rule, applied to every text format). A gzip response is
    decompressed first. Nothing is captured, nothing is audited, nothing
    is stored under `tests/e2e/golden/v2/`.
 3. **Error rows are Go tests.** The ADR-0010 and ADR-0011 tables are
@@ -43,7 +43,7 @@ no audit.
    only. A login is checked by shape (RFC 6749's fields), a query by
    its decoded content, an ingest by the rows that come back.
 4. **One Go tool**: it generates the rows (every column type, nulls,
-   the awkward string, nanosecond timestamps) and decodes the rendered
+   the awkward string, nanosecond timestamps) and decodes the text
    formats to CSV. It is built with the server's toolchain and
    environment and may import any package of this repository, the cgo
    binding included.
@@ -67,7 +67,7 @@ no audit.
   that hides from the CSV comparison would have to be mirrored by the
   parser that reads the generated CSV; the property tests cover that
   pair independently.
-- One limit of the tree bounds the generated data: CSV renders null
+- One limit of the tree bounds the generated data: CSV writes null
   and the empty string alike, so the generator emits no empty string.
 - The dataset archive carries no `expected/` directory, and the v2
   layer reads neither `reproduce` nor `seed.sql`: the v1 suite and the
@@ -83,7 +83,7 @@ no audit.
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | The v2 golden suite as planned                       | ten cases, an operator capture cycle and an archive layout to prove a flow a roundtrip proves with no audit  |
 | Error goldens (401, 413, 415, 400)                   | the rows are already Go tests; an e2e error case repeats a table without proving a flow                      |
-| A renderer per format in the harness                 | a second rendering of JSON, NDJSON and Arrow in shell, kept in sync with the encoders by hand                |
+| An encoder per format in the harness                 | a second encoding of JSON, NDJSON and Arrow in shell, kept in sync with the encoders by hand                 |
 | Row-count checks for JSON and NDJSON                 | a count proves nothing about the cells; the decoded comparison costs one Go tool the harness builds anyway   |
 | A checked-in fixture CSV                             | fixed data hides what a generator finds; the generator shares its vocabulary with the property tests         |
 | An awk generator                                     | blobs, nanosecond timestamps and Arrow IPC bodies in awk; the Go tool exists for decoding already            |

@@ -228,9 +228,9 @@ Blocked on:
   property test's (`docs/brief.md`, Testing doctrine). The awk
   comparator and the section that specified it leave `docs/e2e.md`.
 
-## 2026-09-11 -- encoders-plan.md deleted with the rendering encoders landed
+## 2026-09-11 -- encoders-plan.md deleted with the text encoders landed
 
-- The rendering rules to `internal/encoding/AGENTS.md`, which now holds
+- The text-format rules to `internal/encoding/AGENTS.md`, which now holds
   every encoder rule; the columns-only JSON shape and the `jsontext`
   appenders to `docs/brief.md`.
 

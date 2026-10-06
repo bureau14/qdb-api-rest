@@ -70,7 +70,7 @@ so a change after release is a protocol change.
    an unknown table, a denied access and an oversized reply alike, the
    same line the breaker draws. An unreachable cluster is 503, honest
    because the readiness probe fails in the same moment. 500 is reserved
-   for this process: a column the encoder cannot render, a panic.
+   for this process: a column the encoder cannot encode, a panic.
    Unknown paths and wrong methods keep the stdlib mux's plain-text 404
    and 405.
 
