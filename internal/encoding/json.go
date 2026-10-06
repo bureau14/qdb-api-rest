@@ -23,7 +23,7 @@ const (
 	NDJSONContentType = "application/x-ndjson"
 )
 
-// jsonColumn is one column bound to its JSON rendering: its name, its
+// jsonColumn is one column bound to its JSON encoding: its name, its
 // type in QuasarDB's words (int64, double, string, blob, timestamp), and
 // the appender of cell i as a JSON value, null included.
 type jsonColumn struct {
@@ -49,7 +49,7 @@ func appendQuoted(dst []byte, s string) []byte {
 // encoding/json writes: shortest round trip, plain notation for
 // exponents in [-6, 21). The appender would write NaN and the infinities
 // as strings; they are not JSON, and NaN is the writer's own null for
-// doubles, so the caller renders them as null.
+// doubles, so the caller writes them as null.
 func appendFloat(dst []byte, f float64) []byte {
 	return jsontext.AppendFloat(dst, f, 64)
 }
@@ -63,7 +63,7 @@ func appendTimestamp(dst []byte, nanos int64) []byte {
 }
 
 // appendBase64 appends b as a JSON string in the standard alphabet with
-// padding, as encoding/json renders bytes: what every client library
+// padding, as encoding/json encodes bytes: what every client library
 // decodes without configuration.
 func appendBase64(dst []byte, b []byte) []byte {
 	dst = append(dst, '"')
@@ -71,7 +71,7 @@ func appendBase64(dst []byte, b []byte) []byte {
 	return append(dst, '"')
 }
 
-// jsonCell binds column a to its JSON rendering. The type switch runs
+// jsonCell binds column a to its JSON encoding. The type switch runs
 // once per column, so a cell is one call. A symbol column arrives as
 // utf8 and is reported as a string; a count column arrives as int64 and
 // is reported as int64: the type words on the wire are the binding's
@@ -248,7 +248,7 @@ func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) erro
 // EncodeStream implements Encoder.
 func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
 	// The body is a top-level array with one columnar result per batch:
-	// each batch is rendered exactly as Encode renders it, between "[" and
+	// each batch is encoded exactly as Encode encodes it, between "[" and
 	// "]", a comma before every result but the first. The array closes only
 	// after the last batch, so a stream cut mid-way is invalid JSON and a
 	// client cannot take a truncated read for a complete one. No batch at

@@ -83,7 +83,7 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 		}
 	}
 	// No batch at all still has to be a complete stream: the nil-batch
-	// rendering, a schema with no fields and the marker.
+	// encoding, a schema with no fields and the marker.
 	if ipcw == nil {
 		return writeArrow(ctx, w, nil, chunkRows)
 	}

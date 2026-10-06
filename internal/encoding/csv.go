@@ -23,7 +23,7 @@ import (
 const CSVContentType = "text/csv"
 
 // csvCell binds column a to its CSV text: the field of cell i, the
-// empty field for null. Each type renders the way CSV readers expect: an
+// empty field for null. Each type is written the way CSV readers expect: an
 // integer and a shortest round-trip float as plain text, a timestamp in
 // timestampLayout, a string as its own bytes (the writer quotes what
 // needs quoting), a blob as standard base64. NaN and the infinities are

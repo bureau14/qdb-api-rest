@@ -37,7 +37,7 @@ type Decoder interface {
 
 // chunkRows is the run of rows an encoder handles between two looks at
 // the ctx: one record batch on the Arrow wire, one stride between ctx
-// checks on the rendered wires.
+// checks on the text wires.
 const chunkRows = 65536
 
 // checkChunk looks at the ctx at every chunk boundary, so a client that
