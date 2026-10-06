@@ -45,34 +45,21 @@ func (o ReadOptions) readerOptions(name string) qdbapi.ReaderOptions {
 // first.
 var ErrUnknownColumn = errors.New("qdb: unknown column")
 
-// timestampType is the reader's timestamp: nanoseconds, no zone.
-var timestampType = &arrow.TimestampType{Unit: arrow.Nanosecond}
-
 // specialFields are the two columns every table has and the reader
 // answers non-nullable: the table a row came from and its index.
 var specialFields = map[string]arrow.Field{
-	"$table":     {Name: "$table", Type: arrow.BinaryTypes.String},
-	"$timestamp": {Name: "$timestamp", Type: timestampType},
+	"$table":     {Name: "$table", Type: qdbapi.TsColumnString.ArrowType()},
+	"$timestamp": {Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()},
 }
 
-// arrowTypes maps a column type onto the type the reader answers it in:
-// a symbol reads as a string.
-var arrowTypes = map[qdbapi.TsColumnType]arrow.DataType{
-	qdbapi.TsColumnInt64:     arrow.PrimitiveTypes.Int64,
-	qdbapi.TsColumnDouble:    arrow.PrimitiveTypes.Float64,
-	qdbapi.TsColumnString:    arrow.BinaryTypes.String,
-	qdbapi.TsColumnSymbol:    arrow.BinaryTypes.String,
-	qdbapi.TsColumnBlob:      arrow.BinaryTypes.Binary,
-	qdbapi.TsColumnTimestamp: timestampType,
-}
-
-// dataFields is the table's own columns as the reader answers them:
-// nullable, in the table's order, keyed by name for the requested subset.
+// dataFields is the table's own columns as the reader answers them: the
+// binding's Arrow type of each column type, nullable, in the table's
+// order, keyed by name for the requested subset.
 func dataFields(cols []qdbapi.TsColumnInfo) ([]arrow.Field, map[string]arrow.Field) {
 	fields := make([]arrow.Field, len(cols))
 	byName := make(map[string]arrow.Field, len(cols))
 	for i, c := range cols {
-		fields[i] = arrow.Field{Name: c.Name(), Type: arrowTypes[c.Type()], Nullable: true}
+		fields[i] = arrow.Field{Name: c.Name(), Type: c.Type().ArrowType(), Nullable: true}
 		byName[c.Name()] = fields[i]
 	}
 	return fields, byName
