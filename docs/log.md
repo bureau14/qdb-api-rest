@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 | Milestone                       | State       | Note                                                                             |
 | ------------------------------- | ----------- | -------------------------------------------------------------------------------- |
@@ -40,27 +40,23 @@ In flight:
 
 Next:
 
-1. The prose audit (root `AGENTS.md`, Prose) of the files the
-   encode-test unit touched outside `internal/encoding`, whole:
-   `internal/AGENTS.md`, `internal/model/model.go`,
-   `internal/httpapi/query.go`, `docs/brief.md`, `docs/e2e.md`,
-   `docs/e2e-v2-flow-plan.md`, ADRs 0010, 0013 and 0014, `docs/log.md`,
-   `tests/e2e/common.sh`, `tests/e2e/bench/bench.py`.
-2. The prose audit of every other comment and document in the project,
-   one package or document per unit.
-3. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+1. The prose audit (root `AGENTS.md`, Prose) of every other comment and
+   document in the project, one package or document per unit.
+   `tests/e2e/bench/bench.py` is left out: the bench retires once the
+   rewrite beats the old server (`docs/brief.md`, Testing doctrine).
+2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
    file joining `codecs` and the round trip's draw of body formats
    (`internal/encoding/AGENTS.md`, The seam, and `internal/httpapi/AGENTS.md`,
    Tests), and `Content-Encoding: gzip|zstd` on the ingest.
-4. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-5. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+4. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-6. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-7. File upstream against `qdb-api-go`, with no local patch
+6. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -104,6 +100,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-07 -- the files the encode-test unit touched read as plain sentences; prose-audit-touched-plan.md deleted
+
+- Owner decisions: accepted ADRs and dated entries are reworded with
+  their decisions unchanged, and the bench is outside the audit. No fact
+  moved, because the plan carried none.
 
 ## 2026-10-06 -- the encoders' tests are encode_test.go; encode-test-plan.md deleted
 
