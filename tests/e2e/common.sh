@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Shared helpers for the qdb-api-rest e2e harness (docs/e2e.md).
-# Lineage: qdb-nats-connector examples/common.sh (ADR-007), adapted.
-# Sourced by golden.sh, tools/*.sh and the Makefile's inline shell.
+# Shared helpers for the qdb-api-rest e2e harness (docs/e2e.md). They are
+# adapted from qdb-nats-connector's examples/common.sh (ADR-007) and are
+# sourced by golden.sh, tools/*.sh and the Makefile's inline shell.
 #
-# Reads top to bottom: logging, environment, process control, qdb helpers,
-# CSV comparison. Nothing here starts qdbd -- it is a persistent service
-# owned by scripts/tests/setup/start-services.sh.
+# The file reads top to bottom: logging, environment, process control,
+# qdb helpers. Nothing here starts qdbd. It is a persistent service owned
+# by scripts/tests/setup/start-services.sh.
 
 set -euo pipefail
 
@@ -37,8 +37,9 @@ E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$E2E_DIR/../.." && pwd)"
 export E2E_DIR REPO_ROOT
 
-# Explicit tool paths (PATH is not mutated). The qdb tree is the extracted
-# QuasarDB distribution at <repo>/qdb (fetched, gitignored). Overridable.
+# Explicit tool paths, so PATH is not mutated. The qdb tree is the extracted
+# QuasarDB distribution at <repo>/qdb (fetched, gitignored). Every path can
+# be overridden.
 export QDB_URI="${QDB_URI:-qdb://127.0.0.1:2836}"
 export QDB_DIR="${QDB_DIR:-$REPO_ROOT/qdb}"
 export QDB_BIN_DIR="${QDB_BIN_DIR:-$QDB_DIR/bin}"
@@ -47,16 +48,17 @@ export QDBSH="${QDBSH:-$QDB_BIN_DIR/qdbsh$EXE_EXT}"
 export QDB_EXPORT="${QDB_EXPORT:-$QDB_BIN_DIR/qdb_export$EXE_EXT}"
 export QDB_IMPORT="${QDB_IMPORT:-$QDB_BIN_DIR/qdb_import$EXE_EXT}"
 
-# qdbsh writes qdbsh.log* into its log directory (default: cwd). Keep that
-# noise out of the tree; every qdbsh call goes through this wrapper.
+# qdbsh writes qdbsh.log* into its log directory, which defaults to the
+# working directory. This wrapper keeps that noise out of the tree, so
+# every qdbsh call goes through it.
 export QDBSH_LOG_DIR="${QDBSH_LOG_DIR:-${TMPDIR:-/tmp}/qdb-e2e-qdbsh-logs}"
 qdbsh() {
     mkdir -p "$QDBSH_LOG_DIR"
     "$QDBSH" --log-directory "$QDBSH_LOG_DIR" "$@"
 }
 
-# Set the loader path explicitly: the shipped tools' rpath to ../lib is
-# not honoured on every platform.
+# Set the loader path explicitly, because the shipped tools' rpath to
+# ../lib is not honoured on every platform.
 export LD_LIBRARY_PATH="$QDB_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$QDB_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 
@@ -66,7 +68,7 @@ export TZ=UTC
 
 # ---------------------------------------------------------- process control
 
-# TCP probe on localhost. Usage: check_service_running <name> <port> [timeout]
+# Probe a TCP port on localhost. Usage: check_service_running <name> <port> [timeout]
 check_service_running() {
     local name="$1" port="$2" timeout="${3:-5}"
     if command -v timeout >/dev/null 2>&1; then
@@ -95,7 +97,7 @@ require_qdbd() {
     check_service_running qdbd "$port" || die "qdbd is not answering on $QDB_URI; run: bash scripts/tests/setup/start-services.sh"
 }
 
-# Atomic pidfile (hardlink create). Usage: write_pid_file <file> [pid]
+# Write a pidfile atomically, through a hardlink create. Usage: write_pid_file <file> [pid]
 write_pid_file() {
     local pid_file="$1" pid="${2:-$$}" tmp="${1}.tmp.$$"
     echo "$pid" > "$tmp"
@@ -115,7 +117,8 @@ write_pid_file() {
     rm -f "$tmp"
 }
 
-# Prints the pid; dies if absent, malformed, or not running.
+# Print the pid. Die if the file is absent or malformed, or its process is
+# not running.
 read_pid_file() {
     local pid_file="$1" pid
     [[ -f "$pid_file" ]] || die "PID file $pid_file does not exist"
@@ -141,7 +144,7 @@ start_server() {
     fi
 }
 
-# SIGTERM, wait up to 10s, then SIGKILL. Usage: stop_server <pidfile>
+# Send SIGTERM, wait up to 10s, then send SIGKILL. Usage: stop_server <pidfile>
 stop_server() {
     local pid_file="$1" pid i
     [[ -f "$pid_file" ]] || return 0
@@ -159,8 +162,9 @@ stop_server() {
 
 # ------------------------------------------------------------ qdb helpers
 
-# COUNT(*) of one table via qdbsh; prints 0 when the table is missing.
-# qdbsh output:  header / --- divider / value row (with thousands commas).
+# COUNT(*) of one table through qdbsh. Prints 0 when the table is missing.
+# The qdbsh output is a header, a --- divider and the value row, with
+# thousands commas.
 # Usage: count_qdb_rows <table> [cluster_uri]
 count_qdb_rows() {
     local table="$1" uri="${2:-$QDB_URI}" count
@@ -169,10 +173,10 @@ count_qdb_rows() {
     echo "${count:-0}"
 }
 
-# Run a file of qdbsh statements, one per line, stopping at the first error
+# Run a file of qdbsh statements, one per line, and stop at the first error
 # (qdbsh exits non-zero on query errors). Blank lines and lines starting with
-# -- are skipped; DROP TABLE of a missing table and attach_tag of an already
-# attached tag are tolerated (idempotent re-seeding).
+# -- are skipped. A DROP TABLE of a missing table and an attach_tag of an
+# already attached tag are tolerated, so re-seeding is idempotent.
 run_qdbsh_file() {
     local file="$1" line out
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -212,12 +216,13 @@ table_time_range() {
 to_epoch()   { date -u -d "$1" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%S" "$1" +%s; }
 from_epoch() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S; }
 
-# qdb_export a whole table to CSV (no header row; qdb_export convention).
-# qdb_export reads through the bulk reader, whose result must fit the client
-# network input buffer (125 MiB default, no flag to raise it), so large tables
-# are exported one shard-sized half-open range at a time and concatenated;
-# ranges are ordered, so the result equals a single export. The optional
-# config path receives the qdb_import config (written by the first chunk).
+# Export a whole table to CSV with qdb_export (no header row, the qdb_export
+# convention). qdb_export reads through the bulk reader, whose result must
+# fit the client network input buffer (125 MiB by default, with no flag to
+# raise it), so large tables are exported one shard-sized half-open range at
+# a time and concatenated. The ranges are ordered, so the result equals a
+# single export. The optional config path receives the qdb_import config,
+# which the first chunk writes.
 # Usage: export_table_csv <table> <csv> [cluster_uri] [import_config]
 export_table_csv() {
     local table="$1" csv="$2" uri="${3:-$QDB_URI}" config="${4:-}"
