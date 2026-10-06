@@ -20,8 +20,9 @@ type Arrow struct{}
 // ContentType implements Encoder.
 func (Arrow) ContentType() string { return ArrowContentType }
 
-// emptyBatch is the batch of a statement without a result set: no fields,
-// no rows, so the stream is a schema and the end-of-stream marker.
+// emptyBatch returns the batch of a statement without a result set. It
+// has no fields and no rows, so its stream is a schema and the
+// end-of-stream marker.
 func emptyBatch() arrow.RecordBatch {
 	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
 }
@@ -82,8 +83,9 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 			return err
 		}
 	}
-	// No batch at all still has to be a complete stream: the nil-batch
-	// encoding, a schema with no fields and the marker.
+	// A sequence without any batch must still be a complete stream, so it
+	// is written as the nil-batch encoding: a schema with no fields and
+	// the marker.
 	if ipcw == nil {
 		return writeArrow(ctx, w, nil, chunkRows)
 	}

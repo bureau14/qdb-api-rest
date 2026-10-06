@@ -23,9 +23,9 @@ const (
 	NDJSONContentType = "application/x-ndjson"
 )
 
-// jsonColumn is one column bound to its JSON encoding: its name, its
-// type in QuasarDB's words (int64, double, string, blob, timestamp), and
-// the appender of cell i as a JSON value, null included.
+// jsonColumn is one column with its JSON encoding: its name, its type in
+// QuasarDB's words (int64, double, string, blob, timestamp), and the
+// function that appends cell i as a JSON value, null included.
 type jsonColumn struct {
 	name string
 	kind string
@@ -71,11 +71,11 @@ func appendBase64(dst []byte, b []byte) []byte {
 	return append(dst, '"')
 }
 
-// jsonCell binds column a to its JSON encoding. The type switch runs
-// once per column, so a cell is one call. A symbol column arrives as
-// utf8 and is reported as a string; a count column arrives as int64 and
-// is reported as int64: the type words on the wire are the binding's
-// types.
+// jsonCell returns the type word and the appender of column a. The type
+// switch runs once per column, so appending a cell is one call. The type
+// words on the wire are the binding's types: a symbol column arrives as
+// utf8 and is reported as a string, and a count column arrives as int64
+// and is reported as int64.
 func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	c := jsonColumn{name: f.Name}
 	switch a := a.(type) {
@@ -126,7 +126,8 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	return c, nil
 }
 
-// jsonColumns binds every column of rec; a nil rec has none.
+// jsonColumns returns the jsonColumn of every column of rec. A nil rec
+// has none.
 func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 	if rec == nil {
 		return nil, nil
@@ -145,12 +146,12 @@ func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 // The two JSON encoders append every cell straight into the buffered
 // writer's spare capacity (AvailableBuffer) and hand the bytes back, so
 // the hot loop allocates nothing. The buffered writer is flushed once at
-// the end of Encode: internal buffering, not the HTTP flush, which is the
-// handler's.
+// the end of Encode. That flush is internal buffering; the HTTP flush
+// belongs to the handler.
 
 // NDJSON encodes record batches as one JSON object per row, keys in
-// column order, one LF-terminated line per row. A batch with no rows, a
-// nil batch included, is an empty body.
+// column order, one LF-terminated line per row. A batch with no rows,
+// including a nil batch, encodes as an empty body.
 type NDJSON struct{}
 
 // ContentType implements Encoder.
@@ -218,15 +219,16 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows i
 //
 //	{"columns":[{"name":"$timestamp","type":"timestamp","data":[...]},...]}
 //
-// One object per column, keys in that order so a streaming reader knows
-// the type before the data. There is no tables wrapper: one query is one
-// result, and the table a row came from is a column like any other. A
-// nil batch is {"columns":[]}. No trailing newline.
+// There is one object per column, with the keys in that order so a
+// streaming reader knows the type before the data. There is no tables
+// wrapper, because one query is one result and the table a row came
+// from is a column like any other. A nil batch encodes as
+// {"columns":[]}. There is no trailing newline.
 //
-// A stream of batches is a top-level array of such results, one per
-// batch: column-oriented within a batch, bounded memory across them, and
-// a stream cut mid-way is invalid JSON, so a client cannot mistake a
-// truncated read for a complete one.
+// A stream of batches encodes as a top-level array of such results, one
+// per batch. The body is column-oriented within a batch and memory stays
+// bounded across batches. A stream cut mid-way is invalid JSON, so a
+// client cannot mistake a truncated read for a complete one.
 type JSON struct{}
 
 // ContentType implements Encoder.
@@ -247,12 +249,12 @@ func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) erro
 
 // EncodeStream implements Encoder.
 func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
-	// The body is a top-level array with one columnar result per batch:
-	// each batch is encoded exactly as Encode encodes it, between "[" and
-	// "]", a comma before every result but the first. The array closes only
-	// after the last batch, so a stream cut mid-way is invalid JSON and a
-	// client cannot take a truncated read for a complete one. No batch at
-	// all is "[]".
+	// The body is a top-level array with one columnar result per batch.
+	// Each batch is encoded exactly as Encode encodes it, between "[" and
+	// "]", with a comma before every result but the first. The array
+	// closes only after the last batch, so a stream cut mid-way is invalid
+	// JSON and a client cannot take a truncated read for a complete one. A
+	// sequence without any batch encodes as "[]".
 	bw := bufio.NewWriter(w)
 	if err := bw.WriteByte('['); err != nil {
 		return err
@@ -285,7 +287,7 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 	return bw.Flush()
 }
 
-// writeJSON writes the columns, each array walked once, so the body
+// writeJSON writes the columns. Each array is walked once, so the body
 // streams column-major over the batch.
 func writeJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int64) error {
 	if _, err := w.WriteString(`{"columns":[`); err != nil {

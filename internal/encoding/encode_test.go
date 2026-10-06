@@ -67,8 +67,8 @@ func readIPC(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
 	return r.Schema(), cols, batches
 }
 
-// cell is one decoded cell: whether it holds a value, and the value's
-// text with the format's own quoting removed.
+// cell is one parsed cell: whether it holds a value, and the value's
+// text with the format's quoting removed.
 type cell struct {
 	valid bool
 	text  string
@@ -89,8 +89,8 @@ func unmarshal(t failer, body []byte, out any) {
 	}
 }
 
-// cellOf reads a raw JSON scalar: null is invalid, a string is unquoted,
-// a number is its own text.
+// cellOf parses a raw JSON scalar. null is an invalid cell, a string is
+// unquoted, and a number keeps its own text.
 func cellOf(t failer, raw json.RawMessage) cell {
 	t.Helper()
 	switch {
@@ -173,7 +173,7 @@ func readCSV(t failer, body []byte) []wireColumn {
 	return cols
 }
 
-// wordOf is the wire type word of a column's Arrow type.
+// wordOf returns the wire type word for an Arrow type.
 func wordOf(dt arrow.DataType) string {
 	switch dt.ID() {
 	case arrow.INT64:
@@ -203,7 +203,8 @@ func parseInt(s string) (int64, error)     { return strconv.ParseInt(s, 10, 64) 
 func parseFloat(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
 func parseText(s string) (string, error)   { return s, nil }
 
-// parsed is the cell reader that parses a valid cell's text as V.
+// parsed returns a reader that parses the text of cell i as a V and
+// fails the test when it cannot.
 func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, error)) func(int) V {
 	return func(i int) V {
 		v, err := parse(cells[i].text)
@@ -299,9 +300,9 @@ func TestTextRoundTrip(t *testing.T) {
 	})
 }
 
-// TestArrowRoundTrip: what the encoder puts on the wire decodes to the
-// batch it was given, whatever the types, the nulls and the row
-// count, across batch boundaries.
+// TestArrowRoundTrip checks that the Arrow encoder's output parses back
+// to the batch it was given, for any types, nulls and row count, and
+// across batch boundaries.
 func TestArrowRoundTrip(t *testing.T) {
 	c := cluster.NewInsecure(t)
 	rapid.Check(t, func(rt *rapid.T) {
@@ -343,8 +344,8 @@ func TestArrowRoundTrip(t *testing.T) {
 	})
 }
 
-// TestArrowNilBatch: a statement without a result set is a complete
-// stream with no fields and no batches.
+// TestArrowNilBatch checks that a statement without a result set encodes
+// as a complete stream with no fields and no batches.
 func TestArrowNilBatch(t *testing.T) {
 	schema, _, batches := readIPC(t, encode(t, Arrow{}, nil))
 	if schema.NumFields() != 0 || batches != 0 {
@@ -352,11 +353,12 @@ func TestArrowNilBatch(t *testing.T) {
 	}
 }
 
-// edgeBatch is one hand-built batch of what the fixture does not draw
-// (the int64 extremes, NaN and an infinity, a float above 1e21, the epoch
+// edgeBatch builds one batch of the values the fixture does not generate:
+// the int64 extremes, NaN and an infinity, a float above 1e21, the epoch
 // and the nanosecond before it, the empty string, invalid UTF-8, the
-// empty blob, a null in every column) and of what the byte-level pin
-// wants exactly (a string that CSV must quote, a leading space).
+// empty blob, and a null in every column. It also holds the values the
+// byte-level pin needs exactly: a string that CSV must quote and a
+// leading space.
 func edgeBatch(t *testing.T) arrow.RecordBatch {
 	t.Helper()
 	mem := memory.DefaultAllocator
@@ -420,7 +422,7 @@ func TestEdgeCells(t *testing.T) {
 	}
 }
 
-// steps is a sequence of recs, then err when non-nil.
+// steps yields every batch in recs, then err when it is not nil.
 func steps(recs []arrow.RecordBatch, err error) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		for _, rec := range recs {
@@ -434,7 +436,8 @@ func steps(recs []arrow.RecordBatch, err error) iter.Seq2[arrow.RecordBatch, err
 	}
 }
 
-// encodeStream runs e's stream path over batches and returns the body.
+// encodeStream runs the stream path of e over batches and returns the
+// body.
 func encodeStream(t *testing.T, e Encoder, batches iter.Seq2[arrow.RecordBatch, error]) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -444,8 +447,8 @@ func encodeStream(t *testing.T, e Encoder, batches iter.Seq2[arrow.RecordBatch, 
 	return buf.Bytes()
 }
 
-// ipcStream is the IPC stream of recs written directly: one schema, one
-// record batch each, the marker.
+// ipcStream writes recs directly as an IPC stream: one schema, one
+// record batch each, and the end marker.
 func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -461,9 +464,9 @@ func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 	return buf.Bytes()
 }
 
-// TestStreamIsBatchesJoined: two batches stream as the IPC stream with
-// two record batches, the CSV with one header, the NDJSON lines
-// appended, and the JSON array of two results.
+// TestStreamIsBatchesJoined checks that two batches stream as the IPC
+// stream with two record batches, the CSV with one header, the NDJSON
+// lines appended, and a JSON array of two results.
 func TestStreamIsBatchesJoined(t *testing.T) {
 	rec := edgeBatch(t)
 	csv := encode(t, CSV{}, rec)
@@ -485,8 +488,8 @@ func TestStreamIsBatchesJoined(t *testing.T) {
 	}
 }
 
-// TestStreamErrorStep: an error step after a batch ends every encoder's
-// stream with that error.
+// TestStreamErrorStep checks that an error step after a batch ends every
+// encoder's stream with that error.
 func TestStreamErrorStep(t *testing.T) {
 	rec := edgeBatch(t)
 	errStep := errors.New("fetch failed")

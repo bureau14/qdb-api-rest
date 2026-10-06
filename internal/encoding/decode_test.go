@@ -1,7 +1,7 @@
-// The decoders are pinned without a cluster: for every codec, tables
-// drawn through the fixture go through the encoder as one body and come
-// back out of the decoder as the batches that were drawn. The faults a
-// body can have are one table of cases.
+// Tests for the decoders. They need no cluster. For every codec, the
+// round trip draws tables through the fixture, encodes them as one body
+// and checks that the decoder returns the batches that were drawn. The
+// faults a body can have are one table of cases.
 package encoding
 
 import (
@@ -19,15 +19,15 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// codecs pairs every format that decodes with its encoder; a new decoder
-// joins the slice and the round trip.
+// codecs pairs every format that decodes with its encoder. A new decoder
+// joins the slice and thereby the round trip.
 var codecs = []struct {
 	Encoder
 	Decoder
 }{{CSV{}, CSV{}}}
 
 // specials are the two columns the reader answers in front of every
-// table; the fault table builds its one-column schemas on them.
+// table. The fault table builds its one-column schemas on them.
 var specials = []arrow.Field{
 	{Name: "$table", Type: arrow.BinaryTypes.String},
 	{Name: "$timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
@@ -38,11 +38,11 @@ func constant(schema *arrow.Schema) model.SchemaOf {
 	return func(string) (*arrow.Schema, error) { return schema, nil }
 }
 
-// TestDecodeRoundTrip: for every codec, one to three tables that share a
-// column list are drawn through the fixture and encoded as one body; the
-// decoder answers the batches that were drawn, in the order the body
-// first names each table, without the tables that have no rows. A body
-// that is a header alone decodes to no table at all.
+// TestDecodeRoundTrip checks, for every codec, that one to three tables
+// sharing a column list, drawn through the fixture and encoded as one
+// body, decode to the batches that were drawn, in the order the body
+// first names each table and without the tables that have no rows. A
+// body that is a header alone decodes to no table at all.
 func TestDecodeRoundTrip(t *testing.T) {
 	for _, c := range codecs {
 		t.Run(c.ContentType(), func(t *testing.T) {
@@ -64,14 +64,14 @@ func TestDecodeRoundTrip(t *testing.T) {
 				body := encode(rt, c, table.Body(rt, tables...))
 
 				// 3. decode it under a lookup that answers the reader's whole-table
-				// schema for any name; the tables share one column list, so one
-				// schema fits all of them
+				// schema for any name. The tables share one column list, so one
+				// schema fits all of them.
 				got, err := c.Decode(context.Background(), bytes.NewReader(body), constant(table.WithTable(rt, first).Schema()))
 				if err != nil {
 					rt.Fatalf("decode: %v", err)
 				}
 
-				// 4. the decoder answers one batch per table that had rows, in the
+				// 4. the decoder returns one batch per table that had rows, in the
 				// order the body first named them, each equal to the batch drawn
 				if len(got) != len(want) {
 					rt.Fatalf("decoded %d tables, want %d", len(got), len(want))
@@ -87,9 +87,9 @@ func TestDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCSVDecodeFaults: each fault of a body is ErrInvalidRows, naming the
-// row and the column; a table that schemaOf refuses surfaces schemaOf's
-// own error, unwrapped.
+// TestCSVDecodeFaults checks that each fault of a body is ErrInvalidRows
+// naming the row and the column, and that a table schemaOf refuses
+// surfaces the error of schemaOf itself, unwrapped.
 func TestCSVDecodeFaults(t *testing.T) {
 	typed := func(dt arrow.DataType) *arrow.Schema {
 		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)

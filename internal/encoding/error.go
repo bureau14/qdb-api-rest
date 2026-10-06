@@ -8,8 +8,8 @@ import (
 )
 
 // ErrUnsupportedType is the encode error for a column whose Arrow type
-// has no encoding: the binding's vocabulary can grow, and the wire
-// refuses loudly rather than guess.
+// has no encoding. The binding's vocabulary can grow, so an encoder
+// refuses such a column instead of guessing.
 var ErrUnsupportedType = errors.New("unsupported type")
 
 // unsupportedType wraps ErrUnsupportedType with the column and its type.

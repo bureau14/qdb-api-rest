@@ -24,7 +24,7 @@ type failer interface {
 }
 
 // run executes q as the anonymous user and fails the test on error. The
-// caller releases the batch.
+// caller releases the batch it returns.
 func run(t failer, c *qdb.Cluster, q string) arrow.RecordBatch {
 	t.Helper()
 	rec, err := c.Query(context.Background(), qdb.User{}, q)
