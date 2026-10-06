@@ -40,19 +40,24 @@ In flight:
 
 Next:
 
-1. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+1. The encoders' tests become the counterpart of `decode_test.go`: one
+   `encode_test.go` in `internal/encoding` holding the rendered and the
+   Arrow round trips and the stream pins, and the "render" vocabulary
+   of `internal/encoding/AGENTS.md` reviewed against "encode"
+   (owner, review of 2026-10-06).
+2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
    file joining `codecs` and the round trip's draw of body formats
    (`internal/encoding/AGENTS.md`, The seam; `internal/httpapi/AGENTS.md`,
    Tests); `Content-Encoding: gzip|zstd` on the ingest.
-2. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-3. `scripts/cicd/40.test-e2e.sh` in the build step; the first
+4. `scripts/cicd/40.test-e2e.sh` in the build step; the first
    Buildkite run of the flow is M2's exit.
-4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-5. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+6. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
