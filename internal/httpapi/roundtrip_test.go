@@ -33,8 +33,8 @@ func (s server) ingest(body, params string, headers map[string]string) *httptest
 	return s.post(rowsPath+"?"+params, body, headers)
 }
 
-// ingestBodyOf is the one CSV body that carries every table: the CSV
-// encoder over the tables' one batch.
+// ingestBodyOf is the one CSV body that carries every table: the tables
+// joined into one batch by the fixture, written out by the CSV encoder.
 func ingestBodyOf(t table.T, tables []table.Table) string {
 	t.Helper()
 	var buf bytes.Buffer

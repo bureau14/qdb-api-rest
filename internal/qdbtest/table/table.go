@@ -324,18 +324,20 @@ func WithTable(t T, tbl Table) arrow.RecordBatch {
 	return out
 }
 
-// Body is the tables as one ingest body carries them: their WithTable
-// batches concatenated, which needs one column list. Released on t's
-// cleanup. An encoder run over it is a body of that format.
+// Body joins the tables into the one batch an ingest body carries: every
+// table's WithTable batch, concatenated. The tables must share a column
+// list. The batch is released on t's cleanup; an encoder run over it
+// writes a body of that format.
 func Body(t T, tables ...Table) arrow.RecordBatch {
 	t.Helper()
-	// One batch for every table, so a body of any format is one encoder
-	// run, with no header to strip and no line to join:
+	// The tables become one batch so that a body of any format is one run
+	// of its encoder, with no header to strip and no lines to join:
 	//
-	//  1. one WithTable batch per table; they share a schema, since one
-	//     body is one column list;
-	//  2. concatenate per column;
-	//  3. one batch over the first's schema, released on cleanup.
+	//  1. build each table's WithTable batch; the batches share a schema
+	//     because one body is one column list;
+	//  2. concatenate the batches column by column;
+	//  3. assemble the result under the first batch's schema and release
+	//     it on cleanup.
 
 	// 1. one batch per table
 	parts := make([]arrow.RecordBatch, len(tables))
@@ -343,7 +345,7 @@ func Body(t T, tables ...Table) arrow.RecordBatch {
 		parts[i] = WithTable(t, tbl)
 	}
 
-	// 2. concatenate per column
+	// 2. concatenate column by column
 	schema := parts[0].Schema()
 	cols := make([]arrow.Array, schema.NumFields())
 	rows := int64(0)
@@ -362,7 +364,7 @@ func Body(t T, tables ...Table) arrow.RecordBatch {
 		rows += p.NumRows()
 	}
 
-	// 3. one batch
+	// 3. the result, under the first batch's schema
 	out := array.NewRecordBatch(schema, cols, rows)
 	t.Cleanup(out.Release)
 	return out

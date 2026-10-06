@@ -29,12 +29,16 @@ func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 // one string column; the caller releases it.
 func oneRow(tbl table.Table, s string) arrow.RecordBatch {
 	schema := table.Schema(tbl)
+	// One builder per field; a builder is released once it has handed its
+	// array out, since the array holds its own reference to the buffers.
 	ts := array.NewTimestampBuilder(memory.DefaultAllocator, schema.Field(0).Type.(*arrow.TimestampType))
 	defer ts.Release()
 	ts.Append(arrow.Timestamp(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()))
 	str := array.NewStringBuilder(memory.DefaultAllocator)
 	defer str.Release()
 	str.Append(s)
+	// The record batch retains the arrays it is built from, so the local
+	// references are released here and the batch alone keeps them alive.
 	cols := []arrow.Array{ts.NewArray(), str.NewArray()}
 	defer cols[0].Release()
 	defer cols[1].Release()

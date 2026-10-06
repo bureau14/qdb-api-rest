@@ -38,15 +38,16 @@ func constant(schema *arrow.Schema) model.SchemaOf {
 	return func(string) (*arrow.Schema, error) { return schema, nil }
 }
 
-// TestDecodeRoundTrip: for every codec, one to three tables of one column
-// list drawn through the fixture, encoded as one body, decode back to the
-// batches drawn, in first-seen order, the empty ones absent; a header
-// alone is no table.
+// TestDecodeRoundTrip: for every codec, one to three tables that share a
+// column list are drawn through the fixture and encoded as one body; the
+// decoder answers the batches that were drawn, in the order the body
+// first names each table, without the tables that have no rows. A body
+// that is a header alone decodes to no table at all.
 func TestDecodeRoundTrip(t *testing.T) {
 	for _, c := range codecs {
 		t.Run(c.ContentType(), func(t *testing.T) {
 			rapid.Check(t, func(rt *rapid.T) {
-				// 1. the tables through the fixture, zero rows allowed
+				// 1. draw the tables; a table may have no rows
 				first := table.Generate(rt)
 				tables := []table.Table{first}
 				for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
@@ -59,17 +60,19 @@ func TestDecodeRoundTrip(t *testing.T) {
 					}
 				}
 
-				// 2. one body: the codec's encoder over the tables' one batch
+				// 2. encode every table into one body
 				body := encode(rt, c, table.Body(rt, tables...))
 
-				// 3. decoded under the reader's whole-table schema, the same for
-				// every name since the tables share one column list
+				// 3. decode it under a lookup that answers the reader's whole-table
+				// schema for any name; the tables share one column list, so one
+				// schema fits all of them
 				got, err := c.Decode(context.Background(), bytes.NewReader(body), constant(table.WithTable(rt, first).Schema()))
 				if err != nil {
 					rt.Fatalf("decode: %v", err)
 				}
 
-				// 4. the batches with rows, in first-seen order, equal to the drawn
+				// 4. the decoder answers one batch per table that had rows, in the
+				// order the body first named them, each equal to the batch drawn
 				if len(got) != len(want) {
 					rt.Fatalf("decoded %d tables, want %d", len(got), len(want))
 				}
