@@ -10,7 +10,7 @@ and the test fixtures: `internal/AGENTS.md`.
   only its media type and its bytes: it never flushes, never logs,
   never negotiates, and never releases a batch. `Encode` takes the
   query's one batch; `EncodeStream` takes a table read's sequence, each
-  batch rendered before the next is pulled, every batch sharing the
+  batch encoded before the next is pulled, every batch sharing the
   first's schema unchecked, an error step ending the encoding with its
   error. A buffered writer inside either is flushed once at the end; the
   HTTP flush is the handler's, and an error before the first flush
@@ -32,7 +32,7 @@ and the test fixtures: `internal/AGENTS.md`.
   empty string.
 - Every encoder looks at the ctx once per `chunkRows` rows, one shared
   constant: the record batch size on the Arrow wire, the stride between
-  ctx checks on the rendered wires.
+  ctx checks on the text wires.
 - The wire types are the binding's: `int64` (a count included),
   `float64`, naive `timestamp[ns]`, `utf8` and `binary` carrying
   `max_width` field metadata, every field nullable, an all-null column
@@ -49,10 +49,10 @@ and the test fixtures: `internal/AGENTS.md`.
   complete stream. A stream of batches opens on the first batch's
   schema and writes every batch in `chunkRows` slices.
 
-## Rendering
+## The text formats
 
 - JSON, NDJSON and CSV are the only code that must know a type to
-  render a cell. Each format renders every type the way its own readers
+  write a cell. Each format writes every type the way its own readers
   expect, and the code for a format lives in that format's file only
   (`json.go`, `csv.go`); the two share nothing but the package's
   `ErrUnsupportedType` and the timestamp text, RFC 3339 in UTC with
@@ -87,14 +87,18 @@ and the test fixtures: `internal/AGENTS.md`.
 
 ## Tests
 
-- One round trip per wire family against the live fixture
-  (`arrow_test.go`, `render_test.go`): a generated table, queried once,
-  encoded, decoded with the standard library, compared cell by cell
-  with the batch encoded, which the fixture's `Check` has proven to be
-  the table written. What the table fixture does not draw is pinned
-  byte for byte on one hand-built batch in `render_test.go`; the stream
-  path is pinned on the same batch, twice, as the two one-shot bodies
-  joined (`stream_test.go`), no cluster. The decoders are one generative
-  round trip over every codec (`decode_test.go`): tables drawn through
-  the fixture, encoded as one body over `table.Body` and decoded back to
-  the batches drawn, no cluster; the faults of a body are one table.
+- The encoders' tests are in `encode_test.go`. Each wire family has one
+  round trip against the live fixture: the test generates a table,
+  queries it once, encodes the result, parses the output with the
+  standard library and compares every cell with the batch it encoded.
+  The fixture's `Check` has proven that batch to be the table written.
+  Values the fixture does not generate are pinned byte for byte on one
+  hand-built batch, and the stream path is pinned on that batch twice,
+  as the two one-shot bodies joined; neither needs a cluster. The
+  decoders' tests are in `decode_test.go`: one generative round trip
+  over every codec draws tables through the fixture, encodes them as
+  one body over `table.Body` and decodes them back to the batches it
+  drew, without a cluster; the faults of a body are one table of cases.
+  A test helper that parses a body is named `read*`, because `decode`
+  is the package's word for its `Decoder`. `encoding_test.go` holds the
+  helpers both files share.
