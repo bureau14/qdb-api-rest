@@ -74,8 +74,8 @@ type cell struct {
 	text  string
 }
 
-// wireColumn is one column as a rendered format delivered it; kind is
-// empty where the format carries no type.
+// wireColumn is one column as parsed from a text format. kind is empty
+// when the format carries no type.
 type wireColumn struct {
 	name  string
 	kind  string
@@ -189,8 +189,8 @@ func wordOf(dt arrow.DataType) string {
 	}
 }
 
-// parseTimestamp reads a rendered timestamp: RFC 3339 in UTC with exactly
-// nine fractional digits, so the fixed width is pinned too.
+// parseTimestamp parses an encoded timestamp and checks its width: RFC
+// 3339 in UTC with exactly nine fractional digits.
 func parseTimestamp(s string) (int64, error) {
 	if len(s) != len(timestampLayout) {
 		return 0, errors.New("not the fixed nine-digit form")
@@ -214,8 +214,8 @@ func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, e
 	}
 }
 
-// checkValues compares every valid slot of a rendered column with the
-// value encoded.
+// checkValues compares every valid cell of a parsed column with the
+// value that was encoded.
 func checkValues[V any](t failer, name string, want arrow.Array, value func(int) V, got func(int) V, equal func(V, V) bool) {
 	t.Helper()
 	for i := range want.Len() {
@@ -227,9 +227,9 @@ func checkValues[V any](t failer, name string, want arrow.Array, value func(int)
 
 func same[V comparable](a, b V) bool { return a == b }
 
-// checkCells compares one rendered column with the column encoded: name,
-// wire type where carried, every validity bit, and every value parsed
-// back from its text.
+// checkCells compares one parsed column with the column that was
+// encoded: the name, the wire type when the format carries one, the
+// validity of every cell, and every value parsed back from its text.
 func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 	t.Helper()
 	if got.name != f.Name {
@@ -262,9 +262,9 @@ func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 	}
 }
 
-// checkRendered compares a rendered body with the batch encoded, column
-// by column in order.
-func checkRendered(t failer, rec arrow.RecordBatch, got []wireColumn) {
+// checkText compares a parsed text body with the batch that was encoded,
+// column by column.
+func checkText(t failer, rec arrow.RecordBatch, got []wireColumn) {
 	t.Helper()
 	if int64(len(got)) != rec.NumCols() {
 		t.Fatalf("%d columns on the wire, %d encoded", len(got), rec.NumCols())
@@ -274,10 +274,10 @@ func checkRendered(t failer, rec arrow.RecordBatch, got []wireColumn) {
 	}
 }
 
-// TestRenderedRoundTrip: what the three rendering encoders put on the
-// wire decodes to the table it was given, whatever the types, the nulls
-// and the row count.
-func TestRenderedRoundTrip(t *testing.T) {
+// TestTextRoundTrip checks that the output of the three text encoders
+// parses back to the batch they were given, for any column types, nulls
+// and row count.
+func TestTextRoundTrip(t *testing.T) {
 	c := cluster.NewInsecure(t)
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
@@ -285,16 +285,17 @@ func TestRenderedRoundTrip(t *testing.T) {
 		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
 
-		// The batch is the table written; the wire is then checked against
-		// the batch, so one comparer, the fixture's, decides what was written.
+		// The fixture's Check proves that the batch is the table written, so
+		// the wire is compared with the batch and only one comparer, the
+		// fixture's, decides what was written.
 		table.Check(rt, tbl, rec)
 		names := make([]string, rec.NumCols())
 		for i, f := range rec.Schema().Fields() {
 			names[i] = f.Name
 		}
-		checkRendered(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
-		checkRendered(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
-		checkRendered(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
+		checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
+		checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
+		checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
 	})
 }
 
@@ -308,8 +309,9 @@ func TestArrowRoundTrip(t *testing.T) {
 		table.Create(rt, c, tbl)
 		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
-		// The batch is the table written; the wire is then checked against
-		// the batch, so one comparer, the fixture's, decides what was written.
+		// The fixture's Check proves that the batch is the table written, so
+		// the wire is compared with the batch and only one comparer, the
+		// fixture's, decides what was written.
 		table.Check(rt, tbl, rec)
 
 		// A batch size below the row count is what exercises slicing and
@@ -383,11 +385,11 @@ func edgeBatch(t *testing.T) arrow.RecordBatch {
 	return rec
 }
 
-// TestEdgeCells pins the bytes of the edge batch in every rendered
-// format: NaN and the infinity are null; invalid UTF-8 is U+FFFD in JSON
-// and the raw byte in CSV; the leading space and the comma, quote and
-// newline are what encoding/csv quotes; the empty string is the empty
-// field.
+// TestEdgeCells pins the exact bytes of the edge batch in every text
+// format. NaN and the infinity become null. Invalid UTF-8 becomes U+FFFD
+// in JSON and stays a raw byte in CSV. CSV quotes the leading space and
+// the field that holds a comma, a quote and a newline. The empty string
+// becomes the empty field.
 func TestEdgeCells(t *testing.T) {
 	rec := edgeBatch(t)
 	for _, tc := range []struct {
