@@ -90,10 +90,11 @@ and the test fixtures: `internal/AGENTS.md`.
 - One round trip per wire family against the live fixture
   (`arrow_test.go`, `render_test.go`): a generated table, queried once,
   encoded, decoded with the standard library, compared cell by cell
-  with what was written. What the table fixture cannot write is pinned
+  with the batch encoded, which the fixture's `Check` has proven to be
+  the table written. What the table fixture does not draw is pinned
   byte for byte on one hand-built batch in `render_test.go`; the stream
   path is pinned on the same batch, twice, as the two one-shot bodies
   joined (`stream_test.go`), no cluster. The decoders are one generative
-  round trip over every codec (`decode_test.go`): drawn schemas and
-  tables, encoded as one body and decoded back to the batches drawn, no
-  cluster; the faults of a body are one table.
+  round trip over every codec (`decode_test.go`): tables drawn through
+  the fixture, encoded as one body over `table.Body` and decoded back to
+  the batches drawn, no cluster; the faults of a body are one table.

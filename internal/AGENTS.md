@@ -49,6 +49,9 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   the batch's buffers). A missing table, a bad range and an unknown
   column fail before the sink runs; an empty table is one batch of
   schema alone, built from `ColumnsInfo`, so there is always a step.
+  The Arrow type of a column type is the binding's
+  `TsColumnType.ArrowType` (a symbol reads as a string); the server
+  declares no map of its own.
   Two C API defects surface here unworked-around, filed as sc-19829
   (the Arrow path drops one trailing NUL byte from a string cell; a
   canary in `internal/qdb/read_test.go` fails when it is fixed) and
@@ -155,24 +158,29 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   with the start hint when a port does not answer. Nothing is skipped
   under `-short`.
 - A test that needs rows draws a table with `internal/qdbtest/table`
-  (`Generate`, then `Create` on a `*qdb.Cluster`) and compares what came
-  back with the `Table` it holds; it never writes its own loader. A
-  test that creates or pushes through its own door (an HTTP route)
-  takes the blocks `Create` stacks on, `GenerateSchema`,
-  `GenerateLike` (another table of the same columns) and
-  `RemoveOnCleanup`, never a copy of them; a body of rows comes from
-  `table.CSV`, the one renderer of a `Table` in the CSV encoder's
-  dialect. What came back is compared
-  with `table.Check` (a record batch, column by column by name, `$table`
-  and `$timestamp` included) or `table.CheckColumn`; no test carries a
-  comparer of its own. The
-  fixture pushes through the batch writer, whose null is the type's
-  sentinel (`MinInt64`, `NaN`, the empty string, the nil blob,
-  `NullTime`), so a generated value is never a sentinel. The table
-  fixture and
-  the cluster fixture (`internal/qdbtest/cluster`, `NewInsecure` and
-  `NewSecure`) are subpackages because `internal/qdb`'s own tests import `qdbtest`, and
-  a `qdbtest` that imported `internal/qdb` would be a test import cycle.
+  (`Generate`, then `Create` on a `*qdb.Cluster`), which holds its rows
+  as one record batch in the binding's Arrow types and pushes it
+  through the Arrow writer; the test compares what came back with the
+  `Table` it holds and never writes its own loader. A test that creates
+  or pushes through its own door (an HTTP route) takes the blocks
+  `Create` stacks on, `GenerateSchema`, `GenerateLike` (another table of
+  the same columns) and `RemoveOnCleanup`, never a copy of them; a body
+  of rows is the format's encoder run over `table.Body` (several tables
+  as one batch, `$table` per row) or `table.WithTable` (one table), since
+  the fixture cannot import `internal/encoding`: the encoding tests are
+  white-box and import the fixture, which would be a test import cycle.
+  What came back is compared with `table.Check` (a record batch, column
+  by column by name, `$table` and `$timestamp` included) or
+  `table.CheckColumn`, by array equality; no test carries a comparer of
+  its own. The draw never produces `MinInt64`, `NaN`, the empty string
+  or the empty blob, which the server reads back as null whichever
+  writer sent them, nor a NUL, which the bulk reader drops from the end
+  of a string (sc-19829); strings draw the characters the text wires
+  quote, symbols only what a symtable takes. The table fixture and the
+  cluster fixture (`internal/qdbtest/cluster`, `NewInsecure` and
+  `NewSecure`) are subpackages because `internal/qdb`'s own tests import
+  `qdbtest`, and a `qdbtest` that imported `internal/qdb` would be a
+  test import cycle.
   Every fixture table is removed on the test's cleanup, per
   `rapid.Check` iteration too; run `qdbsh` for `qdbtest_*` entries when a
   run was killed mid-way.

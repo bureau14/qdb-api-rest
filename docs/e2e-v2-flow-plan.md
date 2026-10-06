@@ -119,7 +119,7 @@ batch by batch; `POST /api/v2/rows` takes the rows as the body,
 `Content-Type` selecting the parser (`text/csv`,
 `application/x-ndjson`, `application/vnd.apache.arrow.stream`), a
 `$table` column routing each row, a `Content-Encoding` of `gzip` or
-`zstd` accepted, one push per request through the batch writer, 200
+`zstd` accepted, one push per request through the Arrow writer, 200
 with `{"rows": N, ...}`. Errors are RFC 9457 problems (ADR-0010 6).
 
 ## This unit: the documentation re-cut
