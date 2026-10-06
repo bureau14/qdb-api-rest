@@ -7,7 +7,9 @@
 // and CheckColumn compare what a read answers with the batch written, by
 // array equality. WithTable and Body are the batch as an ingest body
 // carries it, for a test that pushes through its own door (an HTTP
-// route). Rules: internal/AGENTS.md, Tests.
+// route). The blocks are functions of the test's rapid.T and take no
+// options: the consumers differ only in bounds, and one set serves all.
+// Rules: internal/AGENTS.md, Tests.
 package table
 
 import (
@@ -282,7 +284,9 @@ func expected(tbl Table, name string) (arrow.Array, bool) {
 
 // CheckColumn compares one column read back under name with the column
 // written: the type, every validity bit, every value. Null slots are
-// compared by validity only.
+// compared by validity only. Array equality ignores a field's
+// nullability and metadata (the reader adds max_width to string and
+// blob fields), so a query result and a bulk read check alike.
 func CheckColumn(t T, tbl Table, name string, got arrow.Array) {
 	t.Helper()
 	want, ok := expected(tbl, name)
