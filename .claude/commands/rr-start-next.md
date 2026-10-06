@@ -413,6 +413,13 @@ every constraint and every code claim carries a path, for example
 path is not made. Do not summarize the source-of-truth document; report
 only what the unit must honor.
 
+Each section opens with its number and name on a bold line of its
+own, `**N. Name**`, and its content starts on the next line. The section
+line is never a markdown list item: a `1. ` prefix joins it to the
+numbered list above or below it, and the renderer then renumbers the
+entries of Decisions, Open questions and Proposed commits as if they
+were sections. The numbered lists inside a section start at 1.
+
 1. **Workflow** -- one line acknowledging the rules above and the
    feature branch name you will use (`sc-19567/rr-<slug>`), not yet
    created.
