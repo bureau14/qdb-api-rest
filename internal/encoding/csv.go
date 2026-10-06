@@ -29,8 +29,8 @@ const CSVContentType = "text/csv"
 // needs quoting), a blob as standard base64. NaN and the infinities are
 // the empty field: CSV has no null token, and NaN is the writer's own
 // null for doubles. The type switch runs once per column, so a cell is
-// one call; the per-cell string is the cost of the standard writer's
-// interface, accepted.
+// one call; the per-cell string allocation is the price of the standard
+// writer's interface, and is accepted.
 func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 	switch a := a.(type) {
 	case *array.Int64:
@@ -89,7 +89,8 @@ func csvColumns(rec arrow.RecordBatch) ([]string, []func(int) string, error) {
 	return names, cells, nil
 }
 
-// writeCSVRows writes one record per row through the one reused record.
+// writeCSVRows writes one CSV record per row, reusing a single record
+// slice for all of them.
 func writeCSVRows(ctx context.Context, cw *csv.Writer, cells []func(int) string, rows int64) error {
 	record := make([]string, len(cells))
 	for row := int64(0); row < rows; row++ {
@@ -142,7 +143,7 @@ func (CSV) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
 func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
 	// One header for the whole body, taken from the first batch since every
 	// batch shares its schema; the rows of every batch follow. No batch at
-	// all writes nothing, the nil-batch rule.
+	// all writes nothing, as the nil-batch rule says.
 	cw := csv.NewWriter(w)
 	first := true
 	for rec, err := range batches {
@@ -169,10 +170,10 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 	return cw.Error()
 }
 
-// csvAppender binds one builder to its parse of a CSV field, csvCell
-// inverted: the empty field is null, otherwise the text parses as the
-// column's type. Its error is the strconv or time error; the caller adds
-// the row and the column.
+// csvAppender binds one builder to the parser of its CSV field, the
+// inverse of csvCell: the empty field is null, any other text parses as
+// the column's type. The error it returns is the strconv or time error;
+// the caller adds the row and the column.
 func csvAppender(f arrow.Field, b array.Builder) (func(field string) error, error) {
 	switch b := b.(type) {
 	case *array.Int64Builder:
@@ -219,9 +220,10 @@ type csvTable struct {
 }
 
 // newCSVTable types the header's data columns by the table's schema:
-// $timestamp first, then the header's names in their order, each a field
-// of the schema or ErrInvalidRows. A table after the first must agree
-// with it on every field's type, or ErrInvalidRows names both tables.
+// $timestamp first, then the header's names in their order. Each must be
+// a field of the schema, or the result is ErrInvalidRows. A table after
+// the first must agree with it on every field's type, or ErrInvalidRows
+// names both tables.
 func newCSVTable(name string, h csvHeader, schemaOf model.SchemaOf, first *csvTable) (*csvTable, error) {
 	// The batch carries the reader's types, so its fields are picked from
 	// the reader's schema rather than declared here:
@@ -390,8 +392,8 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]
 		}
 		if err != nil {
 			release()
-			// Both chains stay reachable: the sentinel for the status, the
-			// reader's cause for a cap the HTTP layer set on the body.
+			// Both error chains stay reachable: the sentinel decides the status,
+			// and the reader's cause reveals a body-size cap the HTTP layer set.
 			return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
 		}
 		t, ok := tables[rec[h.table]]

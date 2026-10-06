@@ -72,9 +72,10 @@ func appendBase64(dst []byte, b []byte) []byte {
 }
 
 // jsonCell binds column a to its JSON rendering. The type switch runs
-// once per column, so a cell is one call. A symbol arrives as utf8 and
-// answers as a string; a count arrives as int64 and answers as one: the
-// wire words are the binding's types.
+// once per column, so a cell is one call. A symbol column arrives as
+// utf8 and is reported as a string; a count column arrives as int64 and
+// is reported as int64: the type words on the wire are the binding's
+// types.
 func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	c := jsonColumn{name: f.Name}
 	switch a := a.(type) {
@@ -218,9 +219,9 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows i
 //	{"columns":[{"name":"$timestamp","type":"timestamp","data":[...]},...]}
 //
 // One object per column, keys in that order so a streaming reader knows
-// the type before the data; no tables wrapper, one query being one
-// result and the table a row came from a column like any other. A nil
-// batch is {"columns":[]}. No trailing newline.
+// the type before the data. There is no tables wrapper: one query is one
+// result, and the table a row came from is a column like any other. A
+// nil batch is {"columns":[]}. No trailing newline.
 //
 // A stream of batches is a top-level array of such results, one per
 // batch: column-oriented within a batch, bounded memory across them, and

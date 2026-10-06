@@ -12,10 +12,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
-// ErrInvalidPushOptions is a push no writer can be built for: a mode word
-// outside the vocabulary, or deduplication columns without a mode and a
-// mode without columns. It is the caller's error and is found before any
-// session is leased.
+// ErrInvalidPushOptions is the push error for options no writer can be
+// built from: a mode word outside the vocabulary, deduplication columns
+// without a mode, or a mode without columns. It is the caller's error
+// and is found before any session is leased.
 var ErrInvalidPushOptions = errors.New("qdb: invalid push options")
 
 // PushOptions tune one batch push, in the words the HTTP surface uses.
@@ -70,22 +70,24 @@ func (o PushOptions) writerOptions() (qdbapi.WriterOptions, error) {
 }
 
 // IngestResult is what one push wrote and how long its two halves took:
-// Parse from the first byte read to the end of the body, Push the batch
-// push call itself.
+// Parse covers the first byte read to the end of the body, Push covers
+// the batch push call itself.
 type IngestResult struct {
 	Rows, Tables int
 	Parse, Push  time.Duration
 }
 
-// Decode reads one body into one batch per table, typing each table the
-// first time the body names it through schemaOf. Its error is the body's
-// or the lookup's, as is; on error there are no batches.
+// Decode reads one body into one batch per table, typing each table
+// through schemaOf the first time the body names it. The error it
+// returns comes from the body or from the lookup, unchanged; on error
+// there are no batches.
 type Decode func(schemaOf model.SchemaOf) ([]model.TableBatch, error)
 
-// schemaOf answers the reader's whole-table schema of name through s:
-// its columns looked up through the held session, shaped as a read
-// without a column list. The binding's error of an unknown table passes
-// as is, so IsTableNotFound classifies it.
+// schemaOf answers the schema the reader gives for the whole of table
+// name: its columns, looked up through the held session s and shaped
+// as for a read without a column list. The binding's error for an
+// unknown table passes through unchanged, so IsTableNotFound
+// classifies it.
 func (s *Session) schemaOf(name string) (*arrow.Schema, error) {
 	cols, err := s.session.Table(name).ColumnsInfo()
 	if err != nil {
@@ -150,12 +152,12 @@ func (s *Session) ingest(decode Decode, opts qdbapi.WriterOptions) (IngestResult
 	return res, err
 }
 
-// Ingest pushes the batches decode reads as u in one batch under o. The
-// session is held for the whole body: the tables' schemas are looked up
-// through it as the body names them and the push runs through it.
-// Invalid options fail before a session is leased; an invalid body or an
-// unknown table fails the whole request before the push. Never retried:
-// a push is not a read.
+// Ingest pushes the batches that decode reads, as user u and under o, in
+// one push. The session is held for the whole body: the tables' schemas
+// are looked up through it as the body names them, and the push runs
+// through it. Invalid options fail before a session is leased; an
+// invalid body or an unknown table fails the whole request before the
+// push. An ingest is never retried: a push is not a read.
 func (c *Cluster) Ingest(ctx context.Context, u User, o PushOptions, decode Decode) (IngestResult, error) {
 	opts, err := o.writerOptions()
 	if err != nil {

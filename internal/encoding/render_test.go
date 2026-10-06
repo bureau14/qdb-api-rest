@@ -262,7 +262,7 @@ func TestRenderedRoundTrip(t *testing.T) {
 // (the int64 extremes, NaN and an infinity, a float above 1e21, the epoch
 // and the nanosecond before it, the empty string, invalid UTF-8, the
 // empty blob, a null in every column) and of what the byte-level pin
-// wants exactly (a string CSV must quote, a leading space).
+// wants exactly (a string that CSV must quote, a leading space).
 func edgeBatch(t *testing.T) arrow.RecordBatch {
 	t.Helper()
 	mem := memory.DefaultAllocator

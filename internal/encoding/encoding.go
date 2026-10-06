@@ -15,8 +15,8 @@ import (
 )
 
 // Encoder writes record batches to w in one wire format. It never
-// releases a batch and returns the first error: a write's, an error step's,
-// or ctx ending between chunks.
+// releases a batch. It returns the first error it meets: a write error,
+// the error of an error step, or the ctx ending between chunks.
 type Encoder interface {
 	// ContentType is the media type the handler answers with.
 	ContentType() string
@@ -29,8 +29,8 @@ type Encoder interface {
 }
 
 // Decoder reads a body in one wire format into one batch per table, the
-// reverse of its Encoder. schemaOf types the cells, once per table the
-// body names. On error there are no batches.
+// reverse of its Encoder. schemaOf types the cells and is called once
+// for each table the body names. On error there are no batches.
 type Decoder interface {
 	Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error)
 }
@@ -58,10 +58,10 @@ func numRows(rec arrow.RecordBatch) int64 {
 }
 
 // timestampLayout is how every text format writes a timestamp: RFC 3339
-// in UTC with nine fixed fractional digits, lossless to the nanosecond,
-// parsed by every reader, and fixed width writes faster than a trimmed
-// one. The binding's timestamp is naive; QuasarDB stores every timestamp
-// in UTC.
+// in UTC with nine fixed fractional digits. It is lossless to the
+// nanosecond, every reader parses it, and a fixed width writes faster
+// than a trimmed one. The binding's timestamp is naive; QuasarDB stores
+// every timestamp in UTC.
 const timestampLayout = "2006-01-02T15:04:05.000000000Z"
 
 // nanosReader returns the reader of a's values as nanoseconds since the

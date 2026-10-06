@@ -70,8 +70,8 @@ var columnTypes = []qdbapi.TsColumnType{
 // indexStart is the first index value; every index begins here.
 var indexStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// drawSymbol draws a symbol value: a symtable entry, which the server
-// rejects arbitrary bytes in. Never empty, since the server stores the
+// drawSymbol draws a symbol value: a symtable entry, in which the server
+// rejects arbitrary bytes. Never empty, since the server stores the
 // empty string as null.
 func drawSymbol(rt *rapid.T) string {
 	return rapid.StringMatching(`[a-zA-Z0-9]{1,16}`).Draw(rt, "symbol")
@@ -264,9 +264,10 @@ func tableColumn(tbl Table, n int) arrow.Array {
 	return b.NewArray()
 }
 
-// expected is the column a read of tbl answers under name, which the
-// caller releases: $table is the name in every row, anything else the
-// batch's column of that name; false when tbl has none.
+// expected is the column a read of tbl answers for name, which the
+// caller releases: for $table, the table name in every row; for any
+// other name, the batch's column of that name; false when tbl has no
+// such column.
 func expected(tbl Table, name string) (arrow.Array, bool) {
 	if name == "$table" {
 		return tableColumn(tbl, tbl.Rows()), true

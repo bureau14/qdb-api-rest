@@ -64,8 +64,9 @@ func values(k key) *rapid.Generator[string] {
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }
 
-// set writes text into cfg at path through the same parser the layers
-// use, following the yaml tags; the expected side of the fold.
+// set writes text into cfg at the key's path through the same parser the
+// layers use, following the yaml tags; this builds the expected side of
+// the fold.
 func set(t *rapid.T, cfg *Config, k key, text string) {
 	t.Helper()
 	value, err := parseValue(k, text)
@@ -173,8 +174,8 @@ func TestLoadIsTheLayerFold(t *testing.T) {
 	})
 }
 
-// A ${VAR} inside a list element expands like any string value; unset,
-// it refuses the start by name.
+// A ${VAR} inside a list element expands like any string value; when the
+// variable is unset, the start is refused with an error naming it.
 func TestListElementsInterpolate(t *testing.T) {
 	path := writeConfig(t, "auth:\n  token_secrets:\n    - \"${TOKEN_A}\"\n    - \"literal\"\n")
 	cfg, err := load([]string{"--config", path}, map[string]string{"TOKEN_A": "hunter2"})

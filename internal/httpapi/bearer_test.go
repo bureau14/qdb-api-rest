@@ -15,8 +15,8 @@ import (
 // epoch is the fixed clock every token in these tests is judged against.
 var epoch = time.Unix(1_700_000_000, 0)
 
-// tokensAt builds a keychain judging expiry at now: the default auth
-// config, so an ephemeral key and no argon2id cost.
+// tokensAt builds a keychain whose clock is fixed at now. It uses the
+// default auth config, so the key is ephemeral and argon2id costs nothing.
 func tokensAt(t *testing.T, now time.Time) *auth.Tokens {
 	t.Helper()
 	tk, err := auth.New(observeContext(), config.Default().Auth, func() time.Time { return now })
@@ -70,7 +70,7 @@ func problemDetail(t *testing.T, resp *httptest.ResponseRecorder) string {
 }
 
 // TestBearerAccessTokenPasses: a minted access token reaches the handler
-// with its claims, the scheme case-insensitive.
+// with its claims, whatever the case of the scheme.
 func TestBearerAccessTokenPasses(t *testing.T) {
 	tk := tokensAt(t, epoch)
 	token := mint(t, tk, "access", "alice", epoch.Add(time.Minute))

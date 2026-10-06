@@ -17,6 +17,6 @@ func unsupportedType(f arrow.Field) error {
 	return fmt.Errorf("encoding: column %q has type %s: %w", f.Name, f.Type, ErrUnsupportedType)
 }
 
-// ErrInvalidRows: the body cannot be read as rows. The message names the
-// row and the column.
+// ErrInvalidRows is the decode error for a body that cannot be read as
+// rows. The message names the row and the column.
 var ErrInvalidRows = errors.New("invalid rows")

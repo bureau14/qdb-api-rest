@@ -1,8 +1,7 @@
 // Package httpapi assembles the HTTP surface of the REST server: the
 // /api/v2 resource API, its bearer middleware and the unauthenticated
-// status probes. It never
-// imports v1 compatibility code; the v1 package wraps this one
-// and the entry point composes the two.
+// status probes. It never imports v1 compatibility code; the v1 package
+// wraps this one and the entry point composes the two.
 package httpapi
 
 import (
@@ -20,9 +19,9 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 
 // handleReadiness answers whether this instance can serve traffic. It
 // dials the cluster as the REST API's own user on every probe, with no
-// cached verdict and no effect on the pool, the budget or the breaker
-// 200 when the probe succeeds, 503 when it fails, both with an
-// empty body. The cause goes to the log line, not the wire.
+// cached verdict and no effect on the pool, the budget or the breaker.
+// It answers 200 when the probe succeeds and 503 when it fails, both
+// with an empty body. The cause goes to the log line, not the wire.
 func handleReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := qdb.ClusterFrom(ctx).Probe(ctx); err != nil {

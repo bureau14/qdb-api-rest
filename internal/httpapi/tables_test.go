@@ -1,5 +1,5 @@
-// The table routes' test helpers; their good path is the round
-// trip (roundtrip_test.go), their error rows are errors_test.go's.
+// The table routes' test helpers. Their good path is the round trip
+// (roundtrip_test.go); their error rows live in errors_test.go.
 package httpapi
 
 import (

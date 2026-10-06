@@ -24,8 +24,8 @@ func NewInsecure(t testing.TB) *qdb.Cluster {
 	return bind(t, cfg)
 }
 
-// NewSecure binds a cluster to the secure fixture as its test user, the
-// REST API's own user for the test's life.
+// NewSecure binds a cluster to the secure fixture, with the fixture's
+// test user as the REST API's own user, for the test's life.
 func NewSecure(t testing.TB) *qdb.Cluster {
 	t.Helper()
 	qdbtest.Require(t, qdbtest.SecureURI)

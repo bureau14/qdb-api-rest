@@ -68,8 +68,8 @@ func headerFor(kid string) string {
 // parseHeader decodes a protected header strictly: exactly the three
 // known fields, exactly our algorithms.
 func parseHeader(raw []byte) (header, error) {
-	// DisallowUnknownFields makes the allowlist the parser: zip, crit
-	// or a foreign algorithm fails before it can act.
+	// DisallowUnknownFields turns the parser into the allowlist: a zip or
+	// crit field, or a foreign algorithm, fails here before it can act.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var h header

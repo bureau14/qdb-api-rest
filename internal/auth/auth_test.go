@@ -27,7 +27,7 @@ func ctx() context.Context {
 	return observe.WithLogger(context.Background(), slog.New(slog.DiscardHandler))
 }
 
-// failer is the slice of testing.TB that tokensFor needs, so *testing.T
+// failer is the subset of testing.TB that tokensFor needs, so *testing.T
 // and *rapid.T both fit.
 type failer interface {
 	Helper()
@@ -204,8 +204,9 @@ func TestBadConfigRefused(t *testing.T) {
 	}
 }
 
-// MintAccess fills in what a login fixes: the drawn user, access typ,
-// both times now, exp one TTL later; the two handles are fresh per call.
+// MintAccess fills in what a login fixes: the given user, the access
+// typ, both times set to now, and exp one TTL later; the two handles
+// are fresh on every call.
 func TestMintAccess(t *testing.T) {
 	tk := tokensFor(t, nil)
 	mintAccess := func() Claims {

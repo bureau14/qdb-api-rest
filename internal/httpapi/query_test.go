@@ -67,8 +67,8 @@ func (s server) query(body string, headers map[string]string) *httptest.Response
 	return s.post("/api/v2/query", body, headers)
 }
 
-// direct runs q over the cluster and encodes it with e, the bytes the
-// endpoint must match.
+// direct runs q over the cluster and encodes the result with e; the
+// endpoint must answer these exact bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	rec, err := s.c.Query(context.Background(), qdb.User{}, q)

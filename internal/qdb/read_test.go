@@ -25,8 +25,8 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// oneRow is tbl's batch of one row at the start of time holding s in its
-// one string column; the caller releases it.
+// oneRow is a one-row batch for tbl, its $timestamp at 2020-01-01 and s
+// in its one string column; the caller releases it.
 func oneRow(tbl table.Table, s string) arrow.RecordBatch {
 	schema := table.Schema(tbl)
 	// One builder per field; a builder is released once it has handed its
@@ -45,7 +45,8 @@ func oneRow(tbl table.Table, s string) arrow.RecordBatch {
 	return array.NewRecordBatch(schema, cols, 1)
 }
 
-// concat is the batches joined into one the caller owns, per column.
+// concat joins the batches column by column into one batch the caller
+// owns.
 func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow.RecordBatch {
 	t.Helper()
 	cols := make([]arrow.Array, schema.NumFields())
@@ -67,9 +68,10 @@ func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow
 	return array.NewRecordBatch(schema, cols, rows)
 }
 
-// read reads name under o as the anonymous user into one batch the caller
-// owns, asserting that no batch exceeded BatchRows and that a batch is
-// what the sequence lends: retained here, since the step releases it.
+// read reads table name under o as the anonymous user into one batch
+// the caller owns, asserting that no batch exceeded BatchRows. Each
+// batch is only lent by the sequence and is released when the step
+// returns, so it is retained here.
 func read(t *rapid.T, c *qdb.Cluster, name string, o qdb.ReadOptions) arrow.RecordBatch {
 	t.Helper()
 	var batches []arrow.RecordBatch
@@ -130,7 +132,7 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 		}
 		table.Check(rt, tbl, whole)
 
-		// A subset in a drawn order, the specials in the draw like any name.
+		// A subset in a drawn order; the specials are drawn like any other name.
 		o.Columns = rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 		subset := read(rt, c, tbl.Name, o)
 		defer subset.Release()

@@ -23,7 +23,8 @@ const (
 // the listed codings are read in order and the first one this server
 // produces wins. An absent header, no match and identity itself all mean
 // identity; the server never compresses uninvited. q weights are not
-// read: a client that wants a coding names it, the rule Accept follows.
+// read: a client that wants a coding names it, the same rule the Accept
+// header follows.
 func negotiateCoding(acceptEncoding string) coding {
 	for tok := range strings.SplitSeq(acceptEncoding, ",") {
 		// The coding name ends at the parameters (q included), which are

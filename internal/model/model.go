@@ -17,5 +17,6 @@ type TableBatch struct {
 
 // SchemaOf answers the schema the bulk reader answers for the table whole:
 // $table, $timestamp, then the data columns, in the reader's Arrow types.
-// The error of a table the cluster does not know is the cluster's, as is.
+// For a table the cluster does not know, the cluster's error passes
+// through as is.
 type SchemaOf func(table string) (*arrow.Schema, error)

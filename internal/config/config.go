@@ -170,10 +170,10 @@ func Default() Config {
 			Breaker:     Breaker{Failures: 3, OpenFor: 10 * time.Second},
 		},
 		Status: Status{ReadinessQuery: "SELECT 1"},
-		// The empty secrets list is the non-nil empty slice: the
-		// defaults round-trip through YAML (defaults()), where nil
-		// marshals as [] and decodes back non-nil, and one canonical
-		// empty keeps whole-value compares honest.
+		// TokenSecrets defaults to a non-nil empty slice: the defaults
+		// round-trip through YAML (defaults()), where nil marshals as []
+		// and decodes back as a non-nil empty slice, and a single
+		// canonical empty value keeps whole-value comparisons honest.
 		Auth: Auth{
 			TokenSecrets: []string{},
 			Argon2id:     Argon2id{Time: 3, MemoryMiB: 64, Parallelism: 4},
@@ -220,10 +220,10 @@ func keys() []key {
 	return out
 }
 
-// envPrefix and the naming rules: the environment variable is the path
-// upper-cased with dots as underscores (cluster.user_security_file is
-// QDB_REST_CLUSTER_USER_SECURITY_FILE); the flag is the path with dots
-// and underscores as hyphens (--cluster-user-security-file).
+// envPrefix heads every environment variable name. The variable name is
+// the path upper-cased with dots as underscores (cluster.user_security_file
+// is QDB_REST_CLUSTER_USER_SECURITY_FILE); the flag name is the path with
+// dots and underscores as hyphens (--cluster-user-security-file).
 const envPrefix = "QDB_REST_"
 
 func envName(path string) string {
@@ -550,8 +550,8 @@ func validateCluster(c Cluster) error {
 	return nil
 }
 
-// validatePool: every count at least one, the per-user cap within the
-// budget, every age positive.
+// validatePool requires every count to be at least one, the per-user cap
+// to fit within the budget, and every age to be positive.
 func validatePool(p Pool) error {
 	if p.MaxSessions < 1 {
 		return fmt.Errorf("pool.max_sessions must be at least 1, got %d", p.MaxSessions)

@@ -1,7 +1,7 @@
 // The decoders are pinned without a cluster: for every codec, tables
 // drawn through the fixture go through the encoder as one body and come
-// back out of the decoder as the batches drawn; the body's faults are
-// one table.
+// back out of the decoder as the batches that were drawn. The faults a
+// body can have are one table of cases.
 package encoding
 
 import (
@@ -33,7 +33,7 @@ var specials = []arrow.Field{
 	{Name: "$timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
 }
 
-// constant answers schema for every table name.
+// constant answers the same schema for every table name.
 func constant(schema *arrow.Schema) model.SchemaOf {
 	return func(string) (*arrow.Schema, error) { return schema, nil }
 }
@@ -88,7 +88,8 @@ func TestDecodeRoundTrip(t *testing.T) {
 }
 
 // TestCSVDecodeFaults: each fault of a body is ErrInvalidRows, naming the
-// row and the column; a table schemaOf refuses is that refusal, as is.
+// row and the column; a table that schemaOf refuses surfaces schemaOf's
+// own error, unwrapped.
 func TestCSVDecodeFaults(t *testing.T) {
 	typed := func(dt arrow.DataType) *arrow.Schema {
 		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)

@@ -20,9 +20,9 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// decode reads every batch of an IPC stream and concatenates it per column,
-// returning the schema, the columns and the batch count. A stream with no
-// batch has no columns to return.
+// decode reads every batch of an IPC stream and concatenates the batches
+// per column, returning the schema, the columns and the batch count. A
+// stream with no batch has no columns to return.
 func decode(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
 	t.Helper()
 	r, err := ipc.NewReader(bytes.NewReader(stream))

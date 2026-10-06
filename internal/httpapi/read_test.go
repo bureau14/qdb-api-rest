@@ -1,5 +1,6 @@
-// The table reader's test helpers and its range; its good path in every
-// format is the round trip (roundtrip_test.go), its error rows are errors_test.go's.
+// The table reader's test helpers and its range test. Its good path in
+// every format is the round trip (roundtrip_test.go); its error rows
+// live in errors_test.go.
 package httpapi
 
 import (
@@ -21,8 +22,8 @@ func (s server) readTable(name, params string, headers map[string]string) *httpt
 	return s.send(http.MethodGet, tablesPath+"/"+name+"/rows?"+params, "", headers)
 }
 
-// directRead reads name over the cluster and encodes it with e's stream
-// path, the bytes the endpoint must match.
+// directRead reads name over the cluster and encodes it through e's
+// stream path; the endpoint must answer these exact bytes.
 func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.ReadOptions) []byte {
 	t.Helper()
 	var buf bytes.Buffer

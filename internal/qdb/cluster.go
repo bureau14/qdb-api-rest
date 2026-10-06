@@ -16,8 +16,8 @@ import (
 // evictInterval is how often user pools that hold no session are evicted.
 const evictInterval = 10 * time.Second
 
-// userPool is one user's bounded set of sessions plus when it last held
-// none, for LRU eviction.
+// userPool is one user's bounded set of sessions, plus the time at which
+// it was last found holding none, for LRU eviction.
 type userPool struct {
 	pool       *qdbapi.SessionPool
 	emptySince time.Time // zero while the pool holds a session
@@ -234,8 +234,8 @@ func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
 	return rec, nil
 }
 
-// CreateTable creates the table name with cols after the implied
-// $timestamp column, sharded by shard.
+// CreateTable creates the table called name, with cols after the implied
+// $timestamp column and a shard size of shard.
 func (s *Session) CreateTable(name string, shard time.Duration, cols ...qdbapi.TsColumnInfo) error {
 	return s.session.Table(name).Create(shard, cols...)
 }
@@ -289,10 +289,10 @@ func (c *Cluster) feedBreaker(err error) {
 // Call runs f against a session authenticated as u. The breaker gates the
 // call; u's pool leases a session (dialing one on demand), runs f, and
 // decides the session's fate from f's error (the binding's IsBadSession,
-// through Lease.Done). This layer decides per cluster: the breaker, fed
+// through Lease.Done). What this layer decides is per cluster: the breaker, which is fed
 // only by the errors that are evidence about the cluster
-// (IsClusterUnavailable), and the opt-in retry of an idempotent read after
-// a retryable failure. A retry after a bad session runs on a fresh one,
+// (IsClusterUnavailable), and the opt-in retry of an idempotent read
+// after a retryable failure. A retry after a bad session runs on a fresh one,
 // the pool having discarded the old; after any other retryable failure it
 // may run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {

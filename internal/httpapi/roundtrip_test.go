@@ -1,8 +1,9 @@
 // The good path of the v2 surface is one round trip against the live qdbd
-// fixture, the in-process twin of the e2e flow: generated tables of one
-// column list are created over HTTP, read empty, ingested in one body,
-// read and queried in every format, deleted, re-created over what the
-// delete leaves behind, and deleted again. What went in comes back out:
+// fixture, the in-process twin of the e2e flow: generated tables that
+// share one column list are created over HTTP, read empty, ingested in
+// one body, read and queried in every format, deleted, re-created over
+// what the delete leaves behind, and deleted again. What went in comes
+// back out:
 // each response equals the encoder run directly over the cluster, and the
 // direct read passes table.Check against the rows generated, so the bytes
 // on the wire carry the rows written.
@@ -63,9 +64,9 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 }
 
 // checkQuery queries tbl over the cluster and compares what comes back
-// with the rows generated: the read-back a query sees, which after an
-// async push is ahead of the bulk reader's (internal/AGENTS.md, the
-// ingest).
+// with the rows generated. This is the view a query has, which after an
+// async push is ahead of what the bulk reader sees (internal/AGENTS.md,
+// the ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	rec, err := s.c.Query(context.Background(), qdb.User{}, tbl.Select())
@@ -79,9 +80,9 @@ func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	table.Check(t, tbl, rec)
 }
 
-// checkReadFormats reads tbl over HTTP in every format, whole and, when
-// picked names columns, under that subset, and compares each body with
-// the stream encoder run directly.
+// checkReadFormats reads tbl over HTTP in every format, once whole and,
+// when picked is non-nil, once more restricted to those columns, and
+// compares each body with the stream encoder run directly.
 func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	t.Helper()
 	cases := []struct {
@@ -138,12 +139,12 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 	return r
 }
 
-// TestRoundtrip: the round trip above, per iteration over one to three generated
-// tables of one column list.
+// TestRoundtrip: the round trip above, run per iteration over one to
+// three generated tables that share one column list.
 func TestRoundtrip(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
-		// 1. the tables: the first drawn whole, the rest of its columns
+		// 1. the tables: the first drawn whole, the rest generated over its columns
 		first := table.Generate(rt)
 		tables := []table.Table{first}
 		for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
@@ -194,11 +195,11 @@ func TestRoundtrip(t *testing.T) {
 		}
 
 		// 5. read and query each in every format: the rows written are the
-		// rows generated, and every wire carries the encoder's own bytes.
-		// After an async push a query sees the rows at once and the bulk
-		// reader only once the server has flushed: before that it answers
-		// none of them, or some twice while the flush runs (qdbd
-		// 3.15.0.dev0, both writers), so async reads back through the query
+		// rows generated, and every format's body carries the encoder's own
+		// bytes. After an async push a query sees the rows at once but the
+		// bulk reader only once the server has flushed: before that it answers
+		// none of them, or some twice while the flush runs (qdbd 3.15.0.dev0,
+		// both writers), so the async mode is read back through the query
 		// alone
 		for _, tbl := range tables {
 			s.checkQuery(rt, tbl)

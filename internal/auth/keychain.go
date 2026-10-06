@@ -79,20 +79,21 @@ func derive(passphrase string, cost config.Argon2id) (key, error) {
 	return keyFrom(prk)
 }
 
-// keychain holds the derived keys: mint is the first configured
-// passphrase's key, verify accepts every configured passphrase's, by
-// kid (rolling keys).
+// keychain holds the derived keys: mint is the key of the first
+// configured passphrase; verify holds the key of every configured
+// passphrase, indexed by kid, which is what lets keys roll.
 type keychain struct {
 	mint   key
 	verify map[string]key
 }
 
-// validateAuth refuses what this package cannot use, naming the config
-// key: every passphrase non-empty and unique (a repeated entry would
-// derive the same key twice), the costs at least one pass over one MiB,
-// the lane count within the argon2 API's uint8, the access TTL positive.
-// As the consumer of these values this package owns the checks; config
-// only parses shape.
+// validateAuth refuses what this package cannot use and names the
+// config key in the error. Every passphrase must be non-empty and
+// unique (a repeated entry would derive the same key twice), time and
+// memory must each be at least 1 (one pass, one MiB), parallelism must
+// fit the argon2 API's uint8, and the access TTL must be positive. This
+// package consumes these values, so it owns the checks; config only
+// parses shape.
 func validateAuth(a config.Auth) error {
 	seen := map[string]bool{}
 	for i, s := range a.TokenSecrets {
@@ -139,8 +140,9 @@ func ephemeral() (keychain, error) {
 	return keychain{mint: k, verify: map[string]key{k.kid: k}}, nil
 }
 
-// newKeychain derives every configured passphrase once, first entry
-// minting, or falls back to an ephemeral key.
+// newKeychain derives a key from every configured passphrase once, the
+// first entry's key being the minting key, or falls back to an
+// ephemeral key when no passphrase is configured.
 func newKeychain(a config.Auth) (keychain, error) {
 	if err := validateAuth(a); err != nil {
 		return keychain{}, err

@@ -40,7 +40,7 @@ func decoderOf(contentType string) (encoding.Decoder, bool) {
 	return d, ok
 }
 
-// acceptedTypes names the media types decoders holds, sorted, for the 415.
+// acceptedTypes lists the keys of decoders, sorted, for the 415 detail.
 func acceptedTypes() string {
 	return strings.Join(slices.Sorted(maps.Keys(decoders)), ", ")
 }

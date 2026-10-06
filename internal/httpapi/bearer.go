@@ -31,8 +31,8 @@ func bearerToken(r *http.Request) (token string, present bool) {
 
 // unauthorized answers 401 with the RFC 6750 challenge: a bare Bearer
 // when no token was presented, error="invalid_token" when one was and
-// failed. detail says which failure, since a genuine token's expiry is
-// no oracle and the verifier already tells the two apart.
+// failed. detail names the failure; naming an expired genuine token
+// leaks nothing, and the verifier already tells the two apart.
 func unauthorized(w http.ResponseWriter, present bool, detail string) {
 	challenge := "Bearer"
 	if present {

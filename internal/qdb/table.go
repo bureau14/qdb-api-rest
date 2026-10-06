@@ -9,10 +9,10 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
 
-// ErrInvalidColumn is a column no table can be created with: a type word
-// outside the schema vocabulary, or a symtable where the type does not
-// take one. It is the caller's error and is found before any session is
-// leased.
+// ErrInvalidColumn is the create error for a column no table can be
+// created with: a type word outside the schema vocabulary, or a symtable
+// on a type that does not take one. It is the caller's error and is
+// found before any session is leased.
 var ErrInvalidColumn = errors.New("qdb: invalid column")
 
 // Column is one column of a table to create, in the schema vocabulary:
@@ -64,10 +64,10 @@ func columnInfos(cols []Column) ([]qdbapi.TsColumnInfo, error) {
 	return infos, nil
 }
 
-// CreateTable creates the table name as u, with cols after the implied
-// $timestamp column, sharded by shard. An invalid column is answered
-// before a session is leased. A create is never retried: it is not a
-// read.
+// CreateTable creates the table called name, as user u, with cols after
+// the implied $timestamp column and a shard size of shard. An invalid
+// column is reported before a session is leased. A create is never
+// retried: it is not a read.
 func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard time.Duration, cols []Column) error {
 	infos, err := columnInfos(cols)
 	if err != nil {
@@ -82,14 +82,15 @@ func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
 }
 
-// IsTableExists reports whether err is the cluster refusing a create
+// IsTableExists reports whether err means the cluster refused a create
 // because the name is taken. The HTTP layer maps it to 409.
 func IsTableExists(err error) bool {
 	return errors.Is(err, qdbapi.ErrAliasAlreadyExists)
 }
 
-// IsTableNotFound reports whether err is the cluster knowing no entry of
-// that name. The HTTP layer maps it to 404 where the name is the resource.
+// IsTableNotFound reports whether err means the cluster knows no entry
+// of that name. The HTTP layer maps it to 404 where the name is the
+// resource.
 func IsTableNotFound(err error) bool {
 	return errors.Is(err, qdbapi.ErrAliasNotFound)
 }

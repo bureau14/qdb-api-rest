@@ -44,9 +44,9 @@ func closeCluster(t *testing.T, c *Cluster) {
 // anonymous names the anonymous user.
 var anonymous = User{}
 
-// TestRejectedQueryReusesSession: a malformed query is rejected by the
-// cluster, which is an answer: the session goes back to the pool and the
-// breaker counts a success.
+// TestRejectedQueryReusesSession: the cluster rejects a malformed query,
+// and a rejection is an answer, so the session goes back to the pool and
+// the breaker counts a success.
 func TestRejectedQueryReusesSession(t *testing.T) {
 	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(nil), nil)
@@ -80,8 +80,9 @@ func TestPerUserCapAndSharing(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 6 {
 		wg.Go(func() {
-			// The cap is checked while the session is held, so through
-			// Call: Query has already returned it by the time it answers.
+			// The cap is checked while the session is held, so the check runs
+			// inside Call: Query has already returned the session by the time it
+			// answers.
 			err := c.Call(context.Background(), anonymous, func(s *Session) error {
 				rec, err := s.fetch("SELECT 1")
 				if rec != nil {
@@ -130,8 +131,8 @@ func TestBreakerOpensOnUnreachable(t *testing.T) {
 	}
 }
 
-// TestRetryOnceReturnsAfterRetryableFailure: a call that always fails
-// retryably is attempted exactly twice with WithReadRetry.
+// TestRetryOnceOnRetryableFailure: a call that always fails retryably
+// is attempted exactly twice with WithReadRetry.
 func TestRetryOnceOnRetryableFailure(t *testing.T) {
 	qdbtest.Require(t, qdbtest.InsecureURI)
 	c := New(insecureConfig(nil), nil)

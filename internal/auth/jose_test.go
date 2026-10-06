@@ -70,8 +70,8 @@ func TestJoseDecryptsOurTokens(t *testing.T) {
 	})
 }
 
-// Every dir+A256GCM compact JWE go-jose mints under our derived key and
-// kid passes our verifier.
+// Every dir+A256GCM compact JWE that go-jose mints under our derived key
+// and kid passes our verifier.
 func TestOurVerifierAcceptsJose(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		secrets := secretsGen().Draw(rt, "secrets")

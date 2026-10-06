@@ -16,8 +16,8 @@ import (
 )
 
 // maxBodyBytes caps every request body: a QuasarDB query is a line of
-// text and a login is two fields, and one line bounds what a request can
-// make the server read.
+// text and a login is two fields, so a cap sized for one line bounds
+// what a request can make the server read.
 const maxBodyBytes = 1 << 20
 
 // readBody reads a capped request body whole, answering 413 over the cap
@@ -68,10 +68,10 @@ func retryAfter(d time.Duration) string {
 }
 
 // writeClusterError maps a failed cluster call onto the wire by who
-// failed: the breaker open or the cluster unreachable is 503, anything
-// the cluster answered is the caller's problem at answered (400 for a
-// query, 401 for a login), and a caller whose context has ended gets
-// nothing at all.
+// failed: an open breaker or an unreachable cluster is 503; anything
+// the cluster itself answered is the caller's fault and gets the status
+// answered (400 for a query, 401 for a login); a caller whose context
+// has ended gets nothing at all.
 func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
 	switch {

@@ -18,18 +18,18 @@ import (
 // encoders' chunk, so one fetch is one record batch on the Arrow wire.
 const readBatchRows = 65536
 
-// ReadOptions narrows a table read. Columns nil reads every column, $table
-// and $timestamp first; named, exactly those in that order, the specials
-// only when named. Start and End are both set or both zero; the binding
-// judges the pair, before any session is leased for the fetch. BatchRows
-// zero is readBatchRows.
+// ReadOptions narrows a table read. A nil Columns reads every column,
+// $table and $timestamp first; a named list reads exactly those, in
+// that order, with the specials only when named. Start and End are both
+// set or both zero; the binding judges the pair when the reader opens,
+// before any fetch. A zero BatchRows means readBatchRows.
 type ReadOptions struct {
 	Columns    []string
 	Start, End time.Time
 	BatchRows  int
 }
 
-// readerOptions is o as the bulk reader takes it, over the one table
+// readerOptions is o as the bulk reader takes it, for the single table
 // name. A zero range is no range: the binding reads the whole table.
 func (o ReadOptions) readerOptions(name string) qdbapi.ReaderOptions {
 	return qdbapi.NewReaderOptions().
@@ -39,10 +39,10 @@ func (o ReadOptions) readerOptions(name string) qdbapi.ReaderOptions {
 		WithBatchSize(cmp.Or(o.BatchRows, readBatchRows))
 }
 
-// ErrUnknownColumn is a read that names a column the table does not have.
-// The reader itself refuses one only once it has rows to fetch; the
-// schema of an empty table is answered from its metadata, which finds it
-// first.
+// ErrUnknownColumn is the read error for a column the table does not
+// have. The reader itself refuses such a read only once it has rows to
+// fetch; the schema of an empty table is built from the table's
+// metadata, which catches the unknown column first.
 var ErrUnknownColumn = errors.New("qdb: unknown column")
 
 // specialFields are the two columns every table has and the reader
@@ -52,9 +52,10 @@ var specialFields = map[string]arrow.Field{
 	"$timestamp": {Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()},
 }
 
-// dataFields is the table's own columns as the reader answers them: the
-// binding's Arrow type of each column type, nullable, in the table's
-// order, keyed by name for the requested subset.
+// dataFields is the table's own columns as the reader answers them, each
+// nullable and in the binding's Arrow type for its column type: as a
+// list in the table's order, and as a map by name for picking a
+// requested subset.
 func dataFields(cols []qdbapi.TsColumnInfo) ([]arrow.Field, map[string]arrow.Field) {
 	fields := make([]arrow.Field, len(cols))
 	byName := make(map[string]arrow.Field, len(cols))
@@ -108,8 +109,9 @@ func emptyBatch(schema *arrow.Schema) arrow.RecordBatch {
 // the last. There is always at least one step.
 type Batches = iter.Seq2[arrow.RecordBatch, error]
 
-// lent turns the reader's owned batches into the lent Batches over
-// schema, the schema the reader answers.
+// lent turns the batches the reader owns into the lent Batches. schema
+// is the schema the reader answers; it shapes the schema-only step an
+// empty table yields.
 func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		// The binding hands out one owned reference per batch and wants it
@@ -138,10 +140,10 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 	}
 }
 
-// Read reads the table name under o through the bulk reader and hands its
-// batches to sink, one per fetch, the next fetched only when sink's step
-// returns. An error before sink runs is the table's, the range's or a
-// column's; sink's own error is returned as is.
+// Read reads the table called name under o through the bulk reader and
+// hands its batches to sink, one per fetch, the next fetched only when
+// sink's step returns. An error before sink runs comes from the table,
+// the range or a column; sink's own error is returned unchanged.
 func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) error {
 	// Everything that can refuse the read runs before the sink, so a caller
 	// that has to decide a status (the HTTP handler) decides it before the
@@ -149,7 +151,8 @@ func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) err
 	//
 	//  1. open the reader: the binding judges the range and the batch size,
 	//     the cluster the table's existence;
-	//  2. fetch the table's columns, the schema an empty table answers;
+	//  2. fetch the table's columns, which is where an empty table's schema
+	//     comes from;
 	//  3. shape that schema under o, which finds an unknown column;
 	//  4. run the sink over the lent batches, the reader closing after it.
 
