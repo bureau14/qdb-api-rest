@@ -89,7 +89,7 @@ package owns: `docs/brief.md`, "Project structure". Hard decisions:
   import and which imports neither; open `internal/model/AGENTS.md`
   before adding a type there.
 - Encoders live in `internal/encoding`; open `internal/encoding/AGENTS.md`
-  before touching an encoder, a wire shape or a cell rendering.
+  before touching an encoder, a wire shape or the text of a cell.
 - The v2 handlers, the problem body and the bearer middleware live in
   `internal/httpapi`; open `internal/httpapi/AGENTS.md` before touching
   a handler, an error mapping or a route.

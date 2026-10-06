@@ -115,7 +115,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A statement without a result set is a nil batch, which every
-	// encoder renders as empty; only a real batch has buffers to free.
+	// encoder encodes as empty; only a real batch has buffers to free.
 	if rec != nil {
 		defer rec.Release()
 	}
@@ -123,7 +123,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	cw := &countingWriter{w: w}
 	if err := enc.Encode(ctx, cw, rec); err != nil {
 		// Before the first byte the failure is this process's, a column
-		// the encoder cannot render: 500. After it, or once the caller
+		// the encoder cannot encode: 500. After it, or once the caller
 		// has left, the stream is cut and only the log hears of it.
 		switch {
 		case ctx.Err() != nil:
