@@ -140,7 +140,7 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 // TestReadDropsTrailingNUL pins a C API defect, sc-19829: the bulk
 // reader's Arrow path drops one trailing NUL byte from a string cell,
 // while the query answers the byte. When this test fails, the C API has
-// been fixed: delete the test and let the fixture's drawText draw NUL.
+// been fixed: delete the test and let the fixture's drawString draw NUL.
 func TestReadDropsTrailingNUL(t *testing.T) {
 	c := cluster.NewInsecure(t)
 	tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
