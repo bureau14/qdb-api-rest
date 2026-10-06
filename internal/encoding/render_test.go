@@ -1,10 +1,10 @@
 // The rendering encoders are pinned by one round trip against the live
 // qdbd fixture: a generated table is read back as the binding's record
 // batch, encoded as JSON, NDJSON and CSV, each body decoded with the
-// standard library, and every cell compared with the table that was
-// written, nulls included. What the fixture cannot write (NaN, the empty
-// string, the characters CSV quotes, invalid UTF-8) is pinned byte for
-// byte on one hand-built batch.
+// standard library, and every cell compared with the batch encoded,
+// nulls included, which the fixture's Check has proven to be the table
+// written. What the fixture cannot write (NaN, the empty string,
+// invalid UTF-8) is pinned byte for byte on one hand-built batch.
 package encoding
 
 import (
@@ -21,7 +21,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
@@ -134,16 +133,16 @@ func decodeCSV(t failer, body []byte) []wireColumn {
 	return cols
 }
 
-// wordOf is the wire type of a table column type.
-func wordOf(kind qdbapi.TsColumnType) string {
-	switch kind {
-	case qdbapi.TsColumnInt64:
+// wordOf is the wire type word of a column's Arrow type.
+func wordOf(dt arrow.DataType) string {
+	switch dt.ID() {
+	case arrow.INT64:
 		return "int64"
-	case qdbapi.TsColumnDouble:
+	case arrow.FLOAT64:
 		return "double"
-	case qdbapi.TsColumnString, qdbapi.TsColumnSymbol:
+	case arrow.STRING:
 		return "string"
-	case qdbapi.TsColumnBlob:
+	case arrow.BINARY:
 		return "blob"
 	default:
 		return "timestamp"
@@ -176,71 +175,62 @@ func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, e
 }
 
 // checkValues compares every valid slot of a rendered column with the
-// value that was written.
-func checkValues[V any](t failer, name string, valid []bool, want []V, got func(int) V, equal func(V, V) bool) {
+// value encoded.
+func checkValues[V any](t failer, name string, want arrow.Array, value func(int) V, got func(int) V, equal func(V, V) bool) {
 	t.Helper()
-	for i, ok := range valid {
-		if ok && !equal(got(i), want[i]) {
-			t.Fatalf("%s row %d: %v on the wire, %v written", name, i, got(i), want[i])
+	for i := range want.Len() {
+		if want.IsValid(i) && !equal(got(i), value(i)) {
+			t.Fatalf("%s row %d: %v on the wire, %v encoded", name, i, got(i), value(i))
 		}
 	}
 }
 
 func same[V comparable](a, b V) bool { return a == b }
 
-// nanosOf is a timestamp column's cells as nanoseconds since the epoch.
-func nanosOf(data qdbapi.ColumnData) []int64 {
-	var nanos []int64
-	for _, ts := range qdbapi.GetColumnDataTimestampUnsafe(data) {
-		nanos = append(nanos, ts.UnixNano())
-	}
-	return nanos
-}
-
-// checkCells compares one rendered column with the column that was
-// written: name, wire type where carried, every validity bit, and every
-// value parsed back from its text.
-func checkCells(t failer, want table.Column, got wireColumn) {
+// checkCells compares one rendered column with the column encoded: name,
+// wire type where carried, every validity bit, and every value parsed
+// back from its text.
+func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 	t.Helper()
-	if got.name != want.Name {
-		t.Fatalf("column %q on the wire, %q written", got.name, want.Name)
+	if got.name != f.Name {
+		t.Fatalf("column %q on the wire, %q encoded", got.name, f.Name)
 	}
-	if got.kind != "" && got.kind != wordOf(want.Type) {
-		t.Fatalf("%s: type %q on the wire, want %q", want.Name, got.kind, wordOf(want.Type))
+	if got.kind != "" && got.kind != wordOf(f.Type) {
+		t.Fatalf("%s: type %q on the wire, want %q", f.Name, got.kind, wordOf(f.Type))
 	}
-	if len(got.cells) != len(want.Valid) {
-		t.Fatalf("%s: %d rows on the wire, %d written", want.Name, len(got.cells), len(want.Valid))
+	if len(got.cells) != want.Len() {
+		t.Fatalf("%s: %d rows on the wire, %d encoded", f.Name, len(got.cells), want.Len())
 	}
-	for i, valid := range want.Valid {
-		if got.cells[i].valid != valid {
-			t.Fatalf("%s row %d: valid %v on the wire, %v written", want.Name, i, got.cells[i].valid, valid)
+	for i := range want.Len() {
+		if got.cells[i].valid != want.IsValid(i) {
+			t.Fatalf("%s row %d: valid %v on the wire, %v encoded", f.Name, i, got.cells[i].valid, want.IsValid(i))
 		}
 	}
-	switch want.Type {
-	case qdbapi.TsColumnInt64:
-		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataInt64Unsafe(want.Data), parsed(t, want.Name, got.cells, parseInt), same[int64])
-	case qdbapi.TsColumnDouble:
-		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataDoubleUnsafe(want.Data), parsed(t, want.Name, got.cells, parseFloat), same[float64])
-	case qdbapi.TsColumnTimestamp:
-		checkValues(t, want.Name, want.Valid, nanosOf(want.Data), parsed(t, want.Name, got.cells, parseTimestamp), same[int64])
-	case qdbapi.TsColumnString, qdbapi.TsColumnSymbol:
-		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataStringUnsafe(want.Data), parsed(t, want.Name, got.cells, parseText), same[string])
-	case qdbapi.TsColumnBlob:
-		checkValues(t, want.Name, want.Valid, qdbapi.GetColumnDataBlobUnsafe(want.Data), parsed(t, want.Name, got.cells, base64.StdEncoding.DecodeString), bytes.Equal)
+	switch a := want.(type) {
+	case *array.Int64:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseInt), same[int64])
+	case *array.Float64:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseFloat), same[float64])
+	case *array.Timestamp:
+		checkValues(t, f.Name, a, nanosReader(a), parsed(t, f.Name, got.cells, parseTimestamp), same[int64])
+	case *array.String:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseText), same[string])
+	case *array.Binary:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, base64.StdEncoding.DecodeString), bytes.Equal)
 	default:
-		t.Fatalf("%s: unexpected column type %v", want.Name, want.Type)
+		t.Fatalf("%s: unexpected column type %s", f.Name, f.Type)
 	}
 }
 
-// checkRendered compares a rendered body with the columns that were
-// written, in order.
-func checkRendered(t failer, want []table.Column, got []wireColumn) {
+// checkRendered compares a rendered body with the batch encoded, column
+// by column in order.
+func checkRendered(t failer, rec arrow.RecordBatch, got []wireColumn) {
 	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("%d columns on the wire, %d written", len(got), len(want))
+	if int64(len(got)) != rec.NumCols() {
+		t.Fatalf("%d columns on the wire, %d encoded", len(got), rec.NumCols())
 	}
-	for i, col := range want {
-		checkCells(t, col, got[i])
+	for i, f := range rec.Schema().Fields() {
+		checkCells(t, f, rec.Column(i), got[i])
 	}
 }
 
@@ -255,14 +245,16 @@ func TestRenderedRoundTrip(t *testing.T) {
 		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
 
-		want := table.Columns(tbl)
-		names := make([]string, len(want))
-		for i, col := range want {
-			names[i] = col.Name
+		// The batch is the table written; the wire is then checked against
+		// the batch, so one comparer, the fixture's, decides what was written.
+		table.Check(rt, tbl, rec)
+		names := make([]string, rec.NumCols())
+		for i, f := range rec.Schema().Fields() {
+			names[i] = f.Name
 		}
-		checkRendered(rt, want, decodeJSON(rt, encode(rt, JSON{}, rec)))
-		checkRendered(rt, want, decodeNDJSON(rt, encode(rt, NDJSON{}, rec), names))
-		checkRendered(rt, want, decodeCSV(rt, encode(rt, CSV{}, rec)))
+		checkRendered(rt, rec, decodeJSON(rt, encode(rt, JSON{}, rec)))
+		checkRendered(rt, rec, decodeNDJSON(rt, encode(rt, NDJSON{}, rec), names))
+		checkRendered(rt, rec, decodeCSV(rt, encode(rt, CSV{}, rec)))
 	})
 }
 
