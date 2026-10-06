@@ -5,7 +5,7 @@ append-only, newest first. Conventions: `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 | Milestone                       | State       | Note                                                                   |
 | ------------------------------- | ----------- | ---------------------------------------------------------------------- |
@@ -40,22 +40,19 @@ In flight:
 
 Next:
 
-1. The table fixture moves to the Arrow writer: `internal/qdbtest/table`
-   holds a record batch, pushes through `ArrowWriter`, renders CSV through
-   the encoder and checks by batch equality (`internal/AGENTS.md`, Tests).
-2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+1. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
    file joining `codecs` and the round trip's draw of body formats
    (`internal/encoding/AGENTS.md`, The seam; `internal/httpapi/AGENTS.md`,
    Tests); `Content-Encoding: gzip|zstd` on the ingest.
-3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+2. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-4. `scripts/cicd/40.test-e2e.sh` in the build step; the first
+3. `scripts/cicd/40.test-e2e.sh` in the build step; the first
    Buildkite run of the flow is M2's exit.
-5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-6. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
+5. File upstream against `qdb-api-go`, no local patch (`docs/brief.md`,
    Vendoring): `HandleType.APIVersion` and `APIBuild` release the static
    string from `qdb_version()` / `qdb_build()` through `qdb_release` with
    a nil handle, which `client.h` documents as API-managed and not to be
@@ -99,6 +96,15 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-06 -- the table fixture holds one record batch; fixture-arrow-plan.md deleted
+
+- The fixture pushes through the Arrow writer and is checked by array
+  equality; the column-type map is the binding's
+  (`TsColumnType.ArrowType`, qdb-api-go PR 126). Owner decisions:
+  QuasarDB's column types stay the fixture's vocabulary;
+  `internal/model` imports no binding. The rules to `internal/AGENTS.md`
+  (Tests, the read) and `internal/encoding/AGENTS.md` (Tests).
 
 ## 2026-10-05 -- the ingest decodes to Arrow; arrow-ingest-plan.md deleted
 
