@@ -1,8 +1,8 @@
 // The Arrow encoder is pinned by one round trip against the live qdbd
 // fixture: a generated table is read back as the binding's record batch,
 // encoded with a batch size small enough that rows span batches, decoded
-// with the IPC reader, and compared cell by cell with the table that was
-// written.
+// with the IPC reader, and compared column by column with the batch
+// encoded, which the fixture's Check has proven to be the table written.
 package encoding
 
 import (
@@ -65,6 +65,9 @@ func TestArrowRoundTrip(t *testing.T) {
 		table.Create(rt, c, tbl)
 		rec := run(rt, c, tbl.Select())
 		defer rec.Release()
+		// The batch is the table written; the wire is then checked against
+		// the batch, so one comparer, the fixture's, decides what was written.
+		table.Check(rt, tbl, rec)
 
 		// A batch size below the row count is what exercises slicing and
 		// the offset rebasing of string and blob columns.
@@ -78,14 +81,16 @@ func TestArrowRoundTrip(t *testing.T) {
 		if !schema.Equal(rec.Schema()) {
 			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
 		}
-		if wantBatches := int((int64(len(tbl.Index)) + batchRows - 1) / batchRows); batches != wantBatches {
-			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, len(tbl.Index), batchRows)
+		if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
+			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
 		}
 		if batches == 0 {
 			return // no rows: the schema and the marker are the whole stream
 		}
-		for i, col := range table.Columns(tbl) {
-			table.CheckColumn(rt, col, cols[i])
+		for i, f := range rec.Schema().Fields() {
+			if !array.Equal(rec.Column(i), cols[i]) {
+				rt.Fatalf("%s: on the wire\n%v\nencoded\n%v", f.Name, cols[i], rec.Column(i))
+			}
 		}
 		for _, col := range cols {
 			col.Release()
