@@ -188,7 +188,7 @@ brief, or a plan section -- never a log entry.
 
 ASCII only, no emojis, `--` for dashes; `npx prettier --write` after
 touching any Markdown file. Documents read top to bottom; definitions
-before use.
+before use. Prose follows the root `AGENTS.md`, Prose.
 
 ## Checks
 

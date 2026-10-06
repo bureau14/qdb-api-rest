@@ -68,3 +68,27 @@ path: it applies or checks all of the above after the fact, reconciles
 the code against the plan that promised its comments when one is
 given, and its worked example is in
 `.claude/skills/doc-discipline/narrative.md`.
+
+## Prose
+
+Comments and documents read like a colleague explaining the code, in
+plain sentences. The rules:
+
+1. Every sentence has a subject and a verb and says who does what.
+   Write "the fixture compares the batch with the table it wrote", not
+   "the comparison is the fixture's".
+2. One idea per sentence. A colon introduces one example or one list
+   of nouns, never a chain of clauses; a semicolon joins nothing.
+3. No ellipsis: a sentence does not drop its verb, and a possessive
+   does not stand in for a clause ("the decoders' decode_test.go").
+4. No rhetoric: no "X, not Y" contrasts except to record a rejected
+   alternative, no aphorisms, no mirrored clauses, no "the one", "and
+   nothing else", "exactly" or "never" added for emphasis rather than
+   meaning.
+5. Name the thing: "the standard library parses the body", not "read
+   back with the standard library"; "`Check`", not "the fixture's
+   proof".
+
+Read every comment or paragraph back as a colleague would say it
+aloud. A sentence that no one would say is rewritten. The facts it
+carried are kept; nothing is added.
