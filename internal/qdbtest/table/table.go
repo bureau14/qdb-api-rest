@@ -5,9 +5,9 @@
 // table leaves behind, and Create creates the table, pushes its batch
 // through the Arrow writer and removes it on the test's cleanup. Check
 // and CheckColumn compare what a read answers with the batch written, by
-// array equality. WithTable is the batch as an ingest body carries it,
-// for a test that pushes through its own door (an HTTP route). Rules:
-// internal/AGENTS.md, Tests.
+// array equality. WithTable and Body are the batch as an ingest body
+// carries it, for a test that pushes through its own door (an HTTP
+// route). Rules: internal/AGENTS.md, Tests.
 package table
 
 import (
@@ -68,13 +68,20 @@ var columnTypes = []qdbapi.TsColumnType{
 // indexStart is the first index value; every index begins here.
 var indexStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// drawText draws a string or symbol value: the two share one generator,
-// since symbol values become symtable entries the server rejects
-// arbitrary bytes in. Never empty, since the server stores the empty
-// string as null, and never a NUL, which the bulk reader drops from the
-// end of a string (sc-19829).
-func drawText(rt *rapid.T) string {
-	return rapid.StringMatching(`[a-zA-Z0-9]{1,16}`).Draw(rt, "text")
+// drawSymbol draws a symbol value: a symtable entry, which the server
+// rejects arbitrary bytes in. Never empty, since the server stores the
+// empty string as null.
+func drawSymbol(rt *rapid.T) string {
+	return rapid.StringMatching(`[a-zA-Z0-9]{1,16}`).Draw(rt, "symbol")
+}
+
+// drawString draws a string value: the characters the text wires must
+// quote or escape (a space, a comma, a quote, <&>, an LF) among plain
+// ones. Never empty, since the server stores the empty string as null,
+// and never a NUL, which the bulk reader drops from the end of a string
+// (sc-19829).
+func drawString(rt *rapid.T) string {
+	return rapid.StringMatching(`[a-zA-Z0-9 ,"<&>\n]{1,16}`).Draw(rt, "string")
 }
 
 // drawTime draws a timestamp value in the range the result set accepts.
@@ -95,7 +102,11 @@ func appendValue(rt *rapid.T, kind qdbapi.TsColumnType, b array.Builder) {
 		// rapid.Float64 draws neither NaN, the server's null, nor an infinity.
 		b.Append(rapid.Float64().Draw(rt, "double"))
 	case *array.StringBuilder:
-		b.Append(drawText(rt))
+		if kind == qdbapi.TsColumnSymbol {
+			b.Append(drawSymbol(rt))
+		} else {
+			b.Append(drawString(rt))
+		}
 	case *array.BinaryBuilder:
 		b.Append(rapid.SliceOfN(rapid.Byte(), 1, 64).Draw(rt, "blob"))
 	case *array.TimestampBuilder:
@@ -305,6 +316,50 @@ func WithTable(t T, tbl Table) arrow.RecordBatch {
 	fields := append([]arrow.Field{{Name: "$table", Type: qdbapi.TsColumnString.ArrowType()}}, rec.Schema().Fields()...)
 	cols := append([]arrow.Array{table}, rec.Columns()...)
 	out := array.NewRecordBatch(arrow.NewSchema(fields, nil), cols, rec.NumRows())
+	t.Cleanup(out.Release)
+	return out
+}
+
+// Body is the tables as one ingest body carries them: their WithTable
+// batches concatenated, which needs one column list. Released on t's
+// cleanup. An encoder run over it is a body of that format.
+func Body(t T, tables ...Table) arrow.RecordBatch {
+	t.Helper()
+	// One batch for every table, so a body of any format is one encoder
+	// run, with no header to strip and no line to join:
+	//
+	//  1. one WithTable batch per table; they share a schema, since one
+	//     body is one column list;
+	//  2. concatenate per column;
+	//  3. one batch over the first's schema, released on cleanup.
+
+	// 1. one batch per table
+	parts := make([]arrow.RecordBatch, len(tables))
+	for i, tbl := range tables {
+		parts[i] = WithTable(t, tbl)
+	}
+
+	// 2. concatenate per column
+	schema := parts[0].Schema()
+	cols := make([]arrow.Array, schema.NumFields())
+	rows := int64(0)
+	for i := range cols {
+		chunks := make([]arrow.Array, len(parts))
+		for j, p := range parts {
+			chunks[j] = p.Column(i)
+		}
+		var err error
+		if cols[i], err = array.Concatenate(chunks, memory.DefaultAllocator); err != nil {
+			t.Fatalf("concatenate %s: %v", schema.Field(i).Name, err)
+		}
+		defer cols[i].Release()
+	}
+	for _, p := range parts {
+		rows += p.NumRows()
+	}
+
+	// 3. one batch
+	out := array.NewRecordBatch(schema, cols, rows)
 	t.Cleanup(out.Release)
 	return out
 }
