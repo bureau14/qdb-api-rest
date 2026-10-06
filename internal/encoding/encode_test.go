@@ -32,10 +32,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// decode reads every batch of an IPC stream and concatenates the batches
-// per column, returning the schema, the columns and the batch count. A
-// stream with no batch has no columns to return.
-func decode(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
+// readIPC parses an IPC stream and returns its schema, its columns with
+// every batch concatenated, and the number of batches. A stream without
+// a batch returns no columns.
+func readIPC(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
 	t.Helper()
 	r, err := ipc.NewReader(bytes.NewReader(stream))
 	if err != nil {
@@ -105,8 +105,8 @@ func cellOf(t failer, raw json.RawMessage) cell {
 	}
 }
 
-// decodeJSON reads the columnar body.
-func decodeJSON(t failer, body []byte) []wireColumn {
+// readJSON parses the columnar JSON body.
+func readJSON(t failer, body []byte) []wireColumn {
 	t.Helper()
 	var doc struct {
 		Columns []struct {
@@ -126,9 +126,9 @@ func decodeJSON(t failer, body []byte) []wireColumn {
 	return cols
 }
 
-// decodeNDJSON reads one object per line into the named columns; no rows
-// is an empty body.
-func decodeNDJSON(t failer, body []byte, names []string) []wireColumn {
+// readNDJSON parses one object per line into the named columns. An empty
+// body has no rows.
+func readNDJSON(t failer, body []byte, names []string) []wireColumn {
 	t.Helper()
 	cols := make([]wireColumn, len(names))
 	for i, name := range names {
@@ -154,8 +154,8 @@ func decodeNDJSON(t failer, body []byte, names []string) []wireColumn {
 	return cols
 }
 
-// decodeCSV reads the header and the records; the empty field is null.
-func decodeCSV(t failer, body []byte) []wireColumn {
+// readCSV parses the header and the records. An empty field is null.
+func readCSV(t failer, body []byte) []wireColumn {
 	t.Helper()
 	records, err := csv.NewReader(bytes.NewReader(body)).ReadAll()
 	if err != nil {
@@ -292,9 +292,9 @@ func TestRenderedRoundTrip(t *testing.T) {
 		for i, f := range rec.Schema().Fields() {
 			names[i] = f.Name
 		}
-		checkRendered(rt, rec, decodeJSON(rt, encode(rt, JSON{}, rec)))
-		checkRendered(rt, rec, decodeNDJSON(rt, encode(rt, NDJSON{}, rec), names))
-		checkRendered(rt, rec, decodeCSV(rt, encode(rt, CSV{}, rec)))
+		checkRendered(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
+		checkRendered(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
+		checkRendered(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
 	})
 }
 
@@ -320,7 +320,7 @@ func TestArrowRoundTrip(t *testing.T) {
 			rt.Fatalf("encode: %v", err)
 		}
 
-		schema, cols, batches := decode(rt, buf.Bytes())
+		schema, cols, batches := readIPC(rt, buf.Bytes())
 		if !schema.Equal(rec.Schema()) {
 			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
 		}
@@ -344,7 +344,7 @@ func TestArrowRoundTrip(t *testing.T) {
 // TestArrowNilBatch: a statement without a result set is a complete
 // stream with no fields and no batches.
 func TestArrowNilBatch(t *testing.T) {
-	schema, _, batches := decode(t, encode(t, Arrow{}, nil))
+	schema, _, batches := readIPC(t, encode(t, Arrow{}, nil))
 	if schema.NumFields() != 0 || batches != 0 {
 		t.Fatalf("%d fields and %d batches, want none", schema.NumFields(), batches)
 	}
