@@ -1,7 +1,7 @@
-// The encoders share one fixture: a query run as the anonymous user and
-// its encoding; the comparison with the generated table that was written
-// is the fixture's (internal/qdbtest/table). Each format's own decoder
-// lives with that format's test.
+// Helpers shared by encode_test.go and decode_test.go. run executes a
+// query as the anonymous user, and encode runs an encoder over a batch.
+// The generated tables come from internal/qdbtest/table, which also
+// compares what a test read back with what it wrote.
 package encoding
 
 import (
@@ -16,8 +16,8 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// failer is the slice of testing.TB the helpers need, so *testing.T and
-// *rapid.T both fit.
+// failer is the part of testing.TB the helpers use, so a *testing.T and
+// a *rapid.T both fit.
 type failer interface {
 	Helper()
 	Fatalf(string, ...any)

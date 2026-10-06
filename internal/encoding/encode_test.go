@@ -1,8 +1,12 @@
-// The Arrow encoder is pinned by one round trip against the live qdbd
-// fixture: a generated table is read back as the binding's record batch,
-// encoded with a batch size small enough that rows span batches, decoded
-// with the IPC reader, and compared column by column with the batch
-// encoded, which the fixture's Check has proven to be the table written.
+// Tests for the encoders. The two round trips need a live qdbd. Each
+// generates a table, writes it, queries it back as a record batch,
+// encodes that batch in every format of its family, parses the output
+// with the standard library and compares the result with the batch.
+// The fixture's Check proves first that the batch is the table that was
+// written. The other tests need no cluster. TestEdgeCells pins the
+// exact bytes of values the fixture never generates, and the stream
+// tests pin the stream path of every encoder on the same hand-built
+// batch.
 package encoding
 
 import (
@@ -61,58 +65,6 @@ func decode(t failer, stream []byte) (*arrow.Schema, []arrow.Array, int) {
 		}
 	}
 	return r.Schema(), cols, batches
-}
-
-// TestArrowRoundTrip: what the encoder puts on the wire decodes to the
-// batch it was given, whatever the types, the nulls and the row
-// count, across batch boundaries.
-func TestArrowRoundTrip(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, c, tbl)
-		rec := run(rt, c, tbl.Select())
-		defer rec.Release()
-		// The batch is the table written; the wire is then checked against
-		// the batch, so one comparer, the fixture's, decides what was written.
-		table.Check(rt, tbl, rec)
-
-		// A batch size below the row count is what exercises slicing and
-		// the offset rebasing of string and blob columns.
-		batchRows := int64(rapid.IntRange(1, 16).Draw(rt, "batch rows"))
-		var buf bytes.Buffer
-		if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
-			rt.Fatalf("encode: %v", err)
-		}
-
-		schema, cols, batches := decode(rt, buf.Bytes())
-		if !schema.Equal(rec.Schema()) {
-			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
-		}
-		if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
-			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
-		}
-		if batches == 0 {
-			return // no rows: the schema and the marker are the whole stream
-		}
-		for i, f := range rec.Schema().Fields() {
-			if !array.Equal(rec.Column(i), cols[i]) {
-				rt.Fatalf("%s: on the wire\n%v\nencoded\n%v", f.Name, cols[i], rec.Column(i))
-			}
-		}
-		for _, col := range cols {
-			col.Release()
-		}
-	})
-}
-
-// TestArrowNilBatch: a statement without a result set is a complete
-// stream with no fields and no batches.
-func TestArrowNilBatch(t *testing.T) {
-	schema, _, batches := decode(t, encode(t, Arrow{}, nil))
-	if schema.NumFields() != 0 || batches != 0 {
-		t.Fatalf("%d fields and %d batches, want none", schema.NumFields(), batches)
-	}
 }
 
 // cell is one decoded cell: whether it holds a value, and the value's
@@ -344,6 +296,58 @@ func TestRenderedRoundTrip(t *testing.T) {
 		checkRendered(rt, rec, decodeNDJSON(rt, encode(rt, NDJSON{}, rec), names))
 		checkRendered(rt, rec, decodeCSV(rt, encode(rt, CSV{}, rec)))
 	})
+}
+
+// TestArrowRoundTrip: what the encoder puts on the wire decodes to the
+// batch it was given, whatever the types, the nulls and the row
+// count, across batch boundaries.
+func TestArrowRoundTrip(t *testing.T) {
+	c := cluster.NewInsecure(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		tbl := table.Generate(rt)
+		table.Create(rt, c, tbl)
+		rec := run(rt, c, tbl.Select())
+		defer rec.Release()
+		// The batch is the table written; the wire is then checked against
+		// the batch, so one comparer, the fixture's, decides what was written.
+		table.Check(rt, tbl, rec)
+
+		// A batch size below the row count is what exercises slicing and
+		// the offset rebasing of string and blob columns.
+		batchRows := int64(rapid.IntRange(1, 16).Draw(rt, "batch rows"))
+		var buf bytes.Buffer
+		if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
+			rt.Fatalf("encode: %v", err)
+		}
+
+		schema, cols, batches := decode(rt, buf.Bytes())
+		if !schema.Equal(rec.Schema()) {
+			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
+		}
+		if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
+			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
+		}
+		if batches == 0 {
+			return // no rows: the schema and the marker are the whole stream
+		}
+		for i, f := range rec.Schema().Fields() {
+			if !array.Equal(rec.Column(i), cols[i]) {
+				rt.Fatalf("%s: on the wire\n%v\nencoded\n%v", f.Name, cols[i], rec.Column(i))
+			}
+		}
+		for _, col := range cols {
+			col.Release()
+		}
+	})
+}
+
+// TestArrowNilBatch: a statement without a result set is a complete
+// stream with no fields and no batches.
+func TestArrowNilBatch(t *testing.T) {
+	schema, _, batches := decode(t, encode(t, Arrow{}, nil))
+	if schema.NumFields() != 0 || batches != 0 {
+		t.Fatalf("%d fields and %d batches, want none", schema.NumFields(), batches)
+	}
 }
 
 // edgeBatch is one hand-built batch of what the fixture does not draw
