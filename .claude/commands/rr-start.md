@@ -375,46 +375,44 @@ every code claim carries a path, for example `path/to/document.md` or
 summarize the source-of-truth document; report only what the task must
 honor.
 
-Each section opens with its number and name on a bold line of its
-own, `**N. Name**`, and its content starts on the next line. The section
-line is never a markdown list item: a `1. ` prefix joins it to the
-numbered list above or below it, and the renderer then renumbers the
-entries of Decisions, Open questions and Proposed commits as if they
-were sections. The numbered lists inside a section start at 1.
+Each section is a markdown heading, `# Name`, on a line of its own
+with a blank line before and after it. Sections carry no numbers. A
+numbered list appears only where a section asks for one, and it starts
+at 1.
 
-1. **Workflow** -- one line acknowledging the rules above and the
-   feature branch name you will use (`sc-19567/rr-<slug>`), not yet
-   created.
-2. **Position** -- at most five lines: milestone, what is in flight,
-   what the log says comes next, how the task relates to that.
-3. **Brief** -- prose for the owner to read, at most 200 words, no
-   tables, no paths: the one section whose claims the sections below
-   evidence instead of carrying paths themselves. Three paragraphs:
-   what the task is and what is true when it is done; how it will be
-   done, the approach and the shape of the change in plain words; how
-   it fits what is in flight and what it leaves for later. Written for
-   a reader who has not opened the sources: this is the explanation,
-   the rest of the report is its evidence.
-4. **Decisions** -- a numbered list, one entry per design choice from
-   Shape the task, one to three lines each: the choice, the
-   alternative it beats, the reason, and `settled by <path>` or
-   `proposal`. Write "none" if the task leaves no choice to make.
-5. **Constraints** -- a table, one row per decision, constraint or
-   gotcha that applies:
-   `| constraint | source (path or path:line) | effect on the task |`
-6. **Code involved** -- one line per file or package in the scoped set:
-   path, then what it does and how the task touches it.
-7. **Open questions** -- a numbered list of everything the task
-   description contradicts or leaves open, and every choice Shape the
-   task found was not yours to make. Ask; do not resolve by
-   assumption. Write "none" if there are none.
-8. **Proposed commits** -- numbered one-line commit subjects in the
-   order you would land them. Commit 1 is always the plan:
-   `docs(plan): <slug>-plan.md, <subject>`; it is the only commit the
-   next go-ahead authorizes. Then at most ten build commits: the
-   outline the plan document will refine, so the owner can redirect
-   before the plan is written. The list closes with the Buildkite
-   verification step (see Lifecycle); it is not counted as a commit.
+- `# Workflow` -- one line acknowledging the rules above and the
+  feature branch name you will use (`sc-19567/rr-<slug>`), not yet
+  created.
+- `# Position` -- at most five lines: milestone, what is in flight,
+  what the log says comes next, how the task relates to that.
+- `# Brief` -- prose for the owner to read, at most 200 words, no
+  tables, no paths: the one section whose claims the sections below
+  evidence instead of carrying paths themselves. Three paragraphs:
+  what the task is and what is true when it is done; how it will be
+  done, the approach and the shape of the change in plain words; how
+  it fits what is in flight and what it leaves for later. Written for
+  a reader who has not opened the sources: this is the explanation,
+  the rest of the report is its evidence.
+- `# Decisions` -- a numbered list, one entry per design choice from
+  Shape the task, one to three lines each: the choice, the
+  alternative it beats, the reason, and `settled by <path>` or
+  `proposal`. Write "none" if the task leaves no choice to make.
+- `# Constraints` -- a table, one row per decision, constraint or
+  gotcha that applies:
+  `| constraint | source (path or path:line) | effect on the task |`
+- `# Code involved` -- one line per file or package in the scoped set:
+  path, then what it does and how the task touches it.
+- `# Open questions` -- a numbered list of everything the task
+  description contradicts or leaves open, and every choice Shape the
+  task found was not yours to make. Ask; do not resolve by
+  assumption. Write "none" if there are none.
+- `# Proposed commits` -- numbered one-line commit subjects in the
+  order you would land them. Commit 1 is always the plan:
+  `docs(plan): <slug>-plan.md, <subject>`; it is the only commit the
+  next go-ahead authorizes. Then at most ten build commits: the
+  outline the plan document will refine, so the owner can redirect
+  before the plan is written. The list closes with the Buildkite
+  verification step (see Lifecycle); it is not counted as a commit.
 
 Correct: the brief says the decoder reads the whole body into one
 record batch per table before anything is pushed, so a malformed row
