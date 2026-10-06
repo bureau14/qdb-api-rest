@@ -1,8 +1,8 @@
-// Package model is the server's neutral representation of table data,
-// Arrow by indirection: the types the layers hand each other, which no
-// one of them owns. The encoders and decoders encode and decode it, the
-// cluster binding fills and pushes it. The package does no I/O and knows
-// no wire format and no C API.
+// Package model is the server's neutral representation of table data.
+// It is Arrow by indirection: the types the layers hand each other,
+// which none of them owns. The encoders and decoders encode and decode
+// it, and the cluster binding fills and pushes it. The package does no
+// I/O and knows no wire format and no C API.
 package model
 
 import "github.com/apache/arrow-go/v18/arrow"

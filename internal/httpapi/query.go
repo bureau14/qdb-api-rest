@@ -15,13 +15,14 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// maxBodyBytes caps every request body: a QuasarDB query is a line of
+// maxBodyBytes caps every request body. A QuasarDB query is a line of
 // text and a login is two fields, so a cap sized for one line bounds
 // what a request can make the server read.
 const maxBodyBytes = 1 << 20
 
-// readBody reads a capped request body whole, answering 413 over the cap
-// and 400 when it cannot be read; false means the response is written.
+// readBody reads a capped request body whole. It answers 413 over the
+// cap and 400 when the body cannot be read. A false result means the
+// response has been written.
 func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	var tooLarge *http.MaxBytesError
@@ -36,10 +37,10 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return body, true
 }
 
-// isQueryText reports whether a Content-Type names query text: text/plain
-// or application/sql, absent counting as text/plain. A charset parameter
-// is neither honored nor checked; the body bytes reach the C API
-// unchanged.
+// isQueryText reports whether a Content-Type names query text, which is
+// text/plain or application/sql. An absent header counts as text/plain.
+// A charset parameter is neither honored nor checked. The body bytes
+// reach the C API unchanged.
 func isQueryText(contentType string) bool {
 	if contentType == "" {
 		return true
@@ -62,16 +63,16 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 }
 
 // retryAfter renders d as Retry-After wants it: whole seconds, rounded
-// up so a client never comes back early.
+// up, so a client does not come back early.
 func retryAfter(d time.Duration) string {
 	return strconv.FormatInt(int64((d+time.Second-1)/time.Second), 10)
 }
 
 // writeClusterError maps a failed cluster call onto the wire by who
-// failed: an open breaker or an unreachable cluster is 503; anything
+// failed. An open breaker or an unreachable cluster is 503. Anything
 // the cluster itself answered is the caller's fault and gets the status
-// answered (400 for a query, 401 for a login); a caller whose context
-// has ended gets nothing at all.
+// in answered (400 for a query, 401 for a login). A caller whose
+// context has ended gets no response at all.
 func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
 	switch {
@@ -88,7 +89,7 @@ func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, an
 }
 
 // handleQuery runs the body as a query and streams the batch in the
-// negotiated format. The status is decided before the first byte: the
+// negotiated format. The status is decided before the first byte. The
 // batch is materialized before anything is written, so every cluster
 // error is known up front.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +99,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be text/plain or application/sql")
 		return
 	}
-	// The body is capped and read whole; it is never inspected.
+	// The body is capped and read whole. It is not inspected.
 	q, ok := readBody(w, r)
 	if !ok {
 		return
@@ -115,16 +116,17 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A statement without a result set is a nil batch, which every
-	// encoder encodes as empty; only a real batch has buffers to free.
+	// encoder encodes as empty. Only a real batch has buffers to free.
 	if rec != nil {
 		defer rec.Release()
 	}
 	w.Header().Set("Content-Type", enc.ContentType())
 	cw := &countingWriter{w: w}
 	if err := enc.Encode(ctx, cw, rec); err != nil {
-		// Before the first byte the failure is this process's, a column
-		// the encoder cannot encode: 500. After it, or once the caller
-		// has left, the stream is cut and only the log hears of it.
+		// Before the first byte the failure is this process's own, such
+		// as a column the encoder cannot encode, and the answer is 500.
+		// After the first byte, or once the caller has left, the stream
+		// is cut and only the log hears of it.
 		switch {
 		case ctx.Err() != nil:
 			observe.Logger(ctx).DebugContext(ctx, "response abandoned by the caller", slog.Int64("bytes", cw.n), observe.Err(err))
