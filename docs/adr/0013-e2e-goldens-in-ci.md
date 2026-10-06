@@ -1,4 +1,4 @@
-# ADR-0013: e2e goldens run in Buildkite; measured numbers are the bench's
+# ADR-0013: e2e goldens run in Buildkite and measured numbers are the bench's
 
 Status: accepted
 Date: 2026-09-17
@@ -8,7 +8,7 @@ Date: 2026-09-17
 Three activities shared the name "e2e": checking that the built binary
 returns the right response, checking that it is a drop-in for the old
 server, and measuring time to first byte, memory and wall clock. The
-first two have a yes/no answer; the third produces a number somebody
+first two have a yes/no answer. The third produces a number somebody
 reads. Filing them together put performance numbers into milestone
 criteria of a harness that has no result files, made performance
 budgets a CI gate on shared agents, and left the harness out of
@@ -16,8 +16,8 @@ Buildkite altogether, so no milestone closed on CI evidence of the
 binary as a client sees it.
 
 The v1 goldens were defined as "what the old server said". v2 has no
-old server to capture from, so that definition does not extend to v2;
-and v1 deviates from the old server deliberately in a few places
+old server to capture from, so that definition does not extend to v2.
+And v1 deviates from the old server deliberately in a few places
 (brief, Compatibility contract, "Deliberate deviations"), which a
 capture from the old server cannot describe.
 
@@ -31,30 +31,30 @@ capture from the old server cannot describe.
    never as a timing. The assessment bench answers how fast, how much
    memory, and whether a real v1 client reads the same data from
    the old and the new server. The first three run in Buildkite on
-   every platform and gate; the bench runs on a developer machine and
+   every platform and gate. The bench runs on a developer machine and
    gates nothing.
 2. **A number is the bench's.** Time to first byte, RSS, throughput and
    wall clock are measured by the bench and live in its result files.
    No milestone criterion, e2e assertion or CI gate is a measured
    number. Performance budgets are not CI gates.
 3. **A golden is an audited expected response.** A run somebody looked
-   at, judged correct and committed; later runs are compared with it
+   at, judged correct and committed. Later runs are compared with it
    byte for byte, with no canonicalization and no tolerance. A v2
    golden is captured from the server under test and audited against an
    independent source. A v1 golden is captured from the old server,
-   whose behaviour is the specification. Capture never runs in CI; a
+   whose behaviour is the specification. Capture never runs in CI. A
    golden changes only in a reviewed commit.
 4. **No v1 golden exercises a deliberate deviation.** A v1 golden is
-   what the old server said and nothing else: the same files are
-   replayed against the old server and against the server under test.
-   A case whose answer v1 deliberately changes is not a golden; the
-   brief specifies the deviation.
+   what the old server said. The same files are replayed against the
+   old server and against the server under test. A case whose answer
+   v1 deliberately changes is not a golden. The brief specifies the
+   deviation.
 5. **Text is compared as bytes, Arrow IPC as decoded content.** JSON,
-   NDJSON and CSV bodies are compared byte for byte; gzip after
+   NDJSON and CSV bodies are compared byte for byte, and gzip after
    decompression. The Arrow format leaves the value of a null slot and
    of padding undefined, and the batch's buffers are the C API's,
    handed through zero-copy, so an Arrow body has no stable bytes.
-   Decoding normalizes both: a Go tool in the harness reads the
+   Decoding normalizes both. A Go tool in the harness reads the
    stream with `arrow-go`, prints the schema and encodes the batches
    through the CSV encoder, and the result is compared byte for byte
    with a small schema golden and with the audited CSV golden of the
@@ -67,43 +67,44 @@ capture from the old server cannot describe.
 
 ## Consequences
 
-- Every milestone closes on CI evidence of the binary; the first
+- Every milestone closes on CI evidence of the binary. The first
   shippable binary is CI-proven as a drop-in at the byte level.
 - The old server is needed in two places only, both local operator
   steps: capturing v1 goldens and the bench's old-server runs.
-  Replay needs the committed goldens and nothing else.
-- Byte-shape compatibility is CI's; semantic compatibility at full
+  Replay needs only the committed goldens.
+- Byte-shape compatibility is CI's. Semantic compatibility at full
   size through a real client stays a by-product of the bench run that
   measures the same pair.
 - The comparator is `cmp` and knows nothing about a case. The list of
-  v1 deviations is the brief's table; no golden query selects a `COUNT`.
-- CI loads the dataset on every platform; e2e cases bound their own
+  v1 deviations is the brief's table. No golden query selects a `COUNT`.
+- CI loads the dataset on every platform. e2e cases bound their own
   result size, and no e2e case selects the whole table.
 - A performance regression is caught by a person running the bench, not
   by a build. A local bench threshold is an addition the bench can ask
   for.
 - The harness builds one Go tool with the server's toolchain and
-  environment; it may import any package of this repository, the cgo
+  environment. It may import any package of this repository, the cgo
   binding included.
 - The full-size semantic check of the Arrow path through a real client
   (pyarrow into DataFrames, fingerprinted against the native client) is
   the bench's `http-arrow@new-rest` run.
-- An encoder change that alters bytes fails the goldens by design;
-  recapturing is an audited, reviewed step.
+- An encoder change that alters bytes fails the goldens by design.
+  Recapturing is an audited, reviewed step.
 
 ## Alternatives rejected
 
-| Alternative                                       | Why not                                                                                                                                    |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Performance budgets as CI gates                   | shared agents make a timing bound flaky or meaningless; materialization puts most of it outside this binary                                |
-| Numbers recorded by the e2e harness               | a second home for what the bench measures; nothing gates on them                                                                           |
-| A comparator rule per deviation                   | hides the deviation in shell code and grows with every one                                                                                 |
-| Editing a captured body to what v1 answers        | the replay against the old server stops proving the capture                                                                                |
-| A sha256 in place of a large expected body        | a failure has nothing to diff against                                                                                                      |
-| A canonicalizing or tolerance comparator          | output is deterministic; an unexpected byte is a bug worth seeing                                                                          |
-| Arrow IPC compared as raw bytes                   | the format leaves null slots and padding undefined; stable bytes would be an accident of one C API release                                 |
-| Arrow IPC left to the property test alone         | the binary's negotiation, multi-batch stream and compression, over real nulls, would never be driven from outside                          |
-| pyarrow or pandas as the decoder in the harness   | no pyarrow wheels on FreeBSD, a venv on every agent, Python in the permanent path; pandas turns a nullable int64 into float64              |
-| A decoder independent of the CSV encoder          | a second encoding needs a second audited golden; the CSV golden is audited on its own, so an encoder bug cannot hide behind the comparison |
-| e2e kept out of CI until the resilience milestone | every earlier milestone, the first shippable binary included, would close on local evidence only                                           |
-| The red `v1` suite in CI before the wrappers      | a permanently red step teaches everyone to ignore the build                                                                                |
+| Alternative                                       | Why not                                                                                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Performance budgets as CI gates                   | shared agents make a timing bound flaky or meaningless, and materialization puts most of it outside this binary                                  |
+| Numbers recorded by the e2e harness               | a second home for what the bench measures, and nothing gates on them                                                                             |
+| A comparator rule per deviation                   | hides the deviation in shell code and grows with every one                                                                                       |
+| Editing a captured body to what v1 answers        | the replay against the old server stops proving the capture                                                                                      |
+| A sha256 in place of a large expected body        | a failure has nothing to diff against                                                                                                            |
+| A canonicalizing or tolerance comparator          | output is deterministic, and an unexpected byte is a bug worth seeing                                                                            |
+| Arrow IPC compared as raw bytes                   | the format leaves null slots and padding undefined, so stable bytes would be an accident of one C API release                                    |
+| Arrow IPC left to the property test alone         | the binary's negotiation, multi-batch stream and compression, over real nulls, would never be driven from outside                                |
+| pyarrow or pandas as the decoder in the harness   | no pyarrow wheels on FreeBSD, a venv on every agent, Python in the permanent path, and pandas turns a nullable int64 into float64                |
+| A decoder independent of the CSV encoder          | a second encoding needs a second audited golden, while the CSV golden is audited on its own, so an encoder bug cannot hide behind the comparison |
+|                                                   |
+| e2e kept out of CI until the resilience milestone | every earlier milestone, the first shippable binary included, would close on local evidence only                                                 |
+| The red `v1` suite in CI before the wrappers      | a permanently red step teaches everyone to ignore the build                                                                                      |
