@@ -39,7 +39,7 @@ insecure login is anonymous.
    is idempotent.
 3. Query each empty table in every format: JSON keeps the columns with
    empty `data`, NDJSON is an empty body, CSV the header alone, Arrow a
-   schema with no batches (`internal/encoding/AGENTS.md`, Rendering).
+   schema with no batches (`internal/encoding/AGENTS.md`, The text formats).
    Proves the schema path before any row exists.
 4. `POST /api/v2/rows`: the generated rows, their `$table` column
    naming the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`,
@@ -59,15 +59,15 @@ Every assertion is pass or fail; nothing is timed (ADR-0013 2).
 One expected value, the generated CSV in the CSV encoder's dialect
 (`encoding/csv` RFC 4180, header row, LF). The CSV response is
 compared raw. JSON, NDJSON and Arrow IPC responses are decoded by the
-harness's Go tool and rendered through `internal/encoding`'s CSV
+harness's Go tool and encoded through `internal/encoding`'s CSV
 encoder, then compared with the same file: the rule ADR-0013 5 already
-sets for Arrow, applied to every rendered format. The CSV path is thus
+sets for Arrow, applied to every text format. The CSV path is thus
 proven against a source the encoders never touched, and the other
 three are proven equal to it.
 
 One fact of the tree bounds the generated data (verified 2026-09-18):
-CSV renders null and the empty string as the same empty field
-(`internal/encoding/AGENTS.md`, Rendering), so the generator never
+CSV writes null and the empty string as the same empty field
+(`internal/encoding/AGENTS.md`, The text formats), so the generator never
 emits an empty string, and the ingest decoder reads an empty CSV field
 as null.
 
@@ -80,7 +80,7 @@ toolchain and environment (ADR-0013, Consequences):
   `rows.ndjson` and `rows.arrow` (one batch per `chunkRows`, the IPC
   streaming format), every column type, nulls, the awkward string
   (`"`, `,`, `<&>`), nanosecond timestamps, negative and extreme
-  integers, NaN excluded (it renders as null and would not round-trip).
+  integers, NaN excluded (it encodes as null and would not round-trip).
   The seed is printed by the driver so a failure reproduces.
 - `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
   through the package's own CSV encoder.
@@ -169,7 +169,7 @@ no commit touches code, tests or the Makefile.
 | Error rows are Go tests only                       | the e2e proves the flow, not the surface; the tables are pinned in `httpapi` | 401/413/415/400 goldens                                   |
 | M2 -- Tables and ingest, later milestones renumber | the flow needs the two endpoints; they are small and unblock later work      | growing M1; the suite as an M7 exit                       |
 | Ingest bodies: CSV, NDJSON and Arrow IPC now       | the flow ingests the same rows three ways; the property tests come with them | CSV only, the rest in the ingestion milestone             |
-| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every rendered format; one expected file         | a renderer per format in shell; row-count checks for JSON |
+| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every text format; one expected file             | an encoder per format in shell; row-count checks for JSON |
 | The Go tool generates the rows                     | rapid-style generation shares the vocabulary of the property tests           | an awk generator; a checked-in fixture CSV                |
 | `e2e-plan.md` and `bench-plan.md` become permanent | they outgrew scaffolding; specifications with one home each                  | folding them into `AGENTS.md`s; keeping them as plans     |
 | The flow runs on both clusters                     | the same flow on two parallel environments; only the login differs           | insecure only                                             |

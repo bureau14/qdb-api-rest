@@ -47,7 +47,7 @@ qdbd is a persistent background service, never started by a test:
 - The REST server under test is the only process the harness starts and
   stops, via pidfile helpers copied from nats-connector's `common.sh`.
   Every server the harness starts, and every golden capture, runs under
-  `TZ=UTC`: the v1 JSON renders timestamps in the server's local
+  `TZ=UTC`: the v1 JSON encodes timestamps in the server's local
   time zone, so goldens are portable only with the zone pinned.
 
 ## Dataset
@@ -134,7 +134,7 @@ anonymous. Every assertion is pass or fail; nothing is timed.
 3. Each empty table queried in every format: JSON keeps the columns
    with empty `data`, NDJSON is an empty body, CSV the header alone,
    Arrow a schema with no batches (`internal/encoding/AGENTS.md`,
-   Rendering). Proves the schema path before any row exists.
+   The text formats). Proves the schema path before any row exists.
 4. `POST /api/v2/rows`: the generated rows, whose `$table` column names
    the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`, as
    Arrow IPC for `e2e_arrow`, each answered 200 with the row count.
@@ -157,7 +157,7 @@ The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
 4180, header row, LF), so the CSV path is proven against a source the
 encoders never touched and the other three formats are proven equal to
 it. One fact of the tree bounds the data (verified 2026-09-18): CSV
-renders null and the empty string alike, so the generator emits no
+writes null and the empty string alike, so the generator emits no
 empty string and the ingest decoder reads an empty CSV field as null.
 
 ### The tool
@@ -170,7 +170,7 @@ repository, the cgo binding included (ADR-0013, Consequences).
   `rows.arrow` (the IPC streaming format, one batch per `chunkRows`)
   for the same rows: every column type, nulls, the awkward string
   (`"`, `,`, `<&>`), nanosecond timestamps, negative and extreme
-  integers; NaN excluded, since it renders as null and would not
+  integers; NaN excluded, since it encodes as null and would not
   round-trip. The driver prints the seed so a failure reproduces.
 - `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
   through the package's own CSV encoder. The JSON it reads is the
@@ -287,7 +287,7 @@ credentials`; unverifiable token -> `Invalid authentication token`;
   message is the binding's error, a space, and the query result's
   `ErrorMessage()` (golden: `query_execute (operation=query_execute,
 query=SELECT FROM): The provided query is invalid. expected FROM`).
-  The binding's `wrapError` rendering is identical between the old
+  The binding's `wrapError` message is identical between the old
   server's vendored binding and ours.
 - The find wart executes the raw find expression through the binding's
   `Find().ExecuteString` (`qdb_query_find`); `qdb_get_tagged` plays no
@@ -426,7 +426,7 @@ the flow on 2026-09-18 (ADR-0014); those rows are gone with it.
 | The v2 e2e is one flow, generated data, no goldens | proves the basic flow with little code and no audit liability (ADR-0014)     | ten captured cases and an operator capture cycle          |
 | Error rows are Go tests only                       | the e2e proves the flow, not the surface; the tables are pinned in `httpapi` | 401/413/415/400 goldens                                   |
 | Ingest bodies: CSV, NDJSON and Arrow IPC           | the flow ingests the same rows three ways; the property tests come with them | CSV only, the rest in the ingestion milestone             |
-| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every rendered format; one expected file         | a renderer per format in shell; row-count checks for JSON |
+| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every text format; one expected file             | an encoder per format in shell; row-count checks for JSON |
 | The Go tool generates the rows                     | rapid-style generation shares the vocabulary of the property tests           | an awk generator; a checked-in fixture CSV                |
 | The flow runs on both clusters                     | the same flow on two parallel environments; only the login differs           | insecure only                                             |
 | A driver with named options                        | two URLs on a command line need names                                        | positional URLs; environment variables                    |

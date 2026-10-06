@@ -721,7 +721,7 @@ readable top to bottom.
   package (RFC 9562 -- use it instead of vendoring a third-party UUID
   library, e.g. for token `jti` claims), and `encoding/json/v2` /
   `encoding/json/jsontext` where their streaming, strictness or
-  appenders help an encoder (`internal/encoding` renders cells through
+  appenders help an encoder (`internal/encoding` writes cells through
   the `jsontext` appenders).
 - **CI**: Buildkite, all platforms; all tests run in Buildkite
   (qdb-nats-connector is the reference for how this should feel). The

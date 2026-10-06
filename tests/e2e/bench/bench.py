@@ -403,7 +403,7 @@ def wait_for_port(port, seconds=60):
 def start_server(cmd, port, log_path, pid_path):
     if port_open(port):
         die(f"port {port} is already in use; stop the stray server first")
-    env = dict(os.environ, TZ="UTC")  # the v1 JSON renders server-local time
+    env = dict(os.environ, TZ="UTC")  # the v1 JSON encodes server-local time
     with open(log_path, "ab") as log_file:
         proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file, env=env)
     pathlib.Path(pid_path).write_text(f"{proc.pid}\n")
