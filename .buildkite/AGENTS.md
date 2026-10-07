@@ -38,7 +38,10 @@ all of this should feel.
   Both daemons' logs, console output and error dumps are uploaded with
   the test report through the plugin's `job.artifacts` block
   (`steps/_build.yml`), the way quasardb's test step uploads its server
-  logs, together with the rapid fail files of a failed property test.
+  logs, together with the rapid fail files of a failed property test:
+  the exact draws of the failing case, which rapid writes on the flaky
+  verdict as well, gitignored so nothing else keeps them, and replayable
+  with `-rapid.failfile`.
   The archive is made inside the test command (`scripts/cicd/AGENTS.md`),
   because post-command and pre-exit hooks run plugins first and the
   repository last, so nothing a hook produces reaches the upload.
