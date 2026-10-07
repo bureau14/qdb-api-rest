@@ -362,12 +362,13 @@ of H1 to H3 holds. A Windows run that passes is a sample as well: its
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
-and the console files; the console `.out.txt` is the same stream as
-`qdbd.json` and runs about one second past it at archive time, because
-the JSON file is flushed on the interval and the console is unbuffered,
-so the console file is the one to read for the last entries. The
-daemon's level is `detailed`, so the log holds every request's `debug`
-entries. The only warnings are the startup ones (security disabled, the
+and the console files. The daemon applied the submodule's settings:
+its configuration dump at startup says `logger/flush_interval = 100`,
+`log_level = detailed` and `json_file_output = True`, so the log holds
+every request's `debug` entries. The console `.out.txt` is the same
+stream as `qdbd.json`; at archive time it held two entries more, both
+emitted in the same second as the tar, which is the interval's lag, so
+the console file is the one to read for the last entries. The only warnings are the startup ones (security disabled, the
 eviction threshold below the baseline), identical on both variants.
 
 ## Rationale
