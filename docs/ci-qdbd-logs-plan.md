@@ -564,6 +564,37 @@ WARP client connected, by SSH as the image's administrator or through
 `qm guest exec` on the host; each keeps its last checkout of the
 pipeline with the daemon dists and the Go toolchain.
 
+### 2026-10-07: the in-place H6 loop, no death in an hour
+
+On agent `default-windows-amd64-h-0`, taken out of the pool by stopping
+its Buildkite service, a loop of draw a schema, create the table, bulk
+read it empty, remove it (`internal/qdb/h6loop_test.go`, `TestH6Loop`,
+not committed) ran against the insecure daemon with the watcher
+attached, as the image's administrator user rather than the agent's
+service user. Fifty minutes and about six thousand checks at two per
+second: both daemons alive, no exit line. The suite's four deaths came
+from about twenty-eight hundred round-trip cases over twenty-eight
+runs, so the bare empty read of a fresh table does not kill the daemon
+at the suite's rate. H6 as the whole story is refuted; the empty read
+may still be the last request of a sequence that matters. The
+traffic-carrying daemon's working set grew from about 50 MB to about
+280 MB over the hour, and its private bytes from 100 MB to 345 MB,
+which the next samples keep an eye on.
+
+The next in-place loop is `TestRoundtrip` itself, the reproducer the
+suite already is (`rt.test`, built from `internal/httpapi`), run
+against the insecure daemon until a run fails, so that the watcher's
+exit code decides H4a, H5 and H4b.
+
+How the agent is driven, for the next session: SSH as the image's
+administrator over the WARP private network, `bash.exe` from Git for
+Windows, scripts copied to `C:\BuildkiteAgent\` (`rtrun.sh`,
+`rtstatus.sh`), the test step's own helpers sourced from the checkout
+under `C:\BuildkiteAgent\builds\<agent>\quasar-1\qdb-api-rest`.
+A detached launch through `Start-Process` breaks the Go toolchain
+(`compile.exe` exits 0xC0000142), so the loop runs in the foreground
+of a long-lived SSH session instead.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
