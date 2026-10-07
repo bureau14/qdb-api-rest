@@ -353,12 +353,72 @@ the first 503 was answered; the daemon log around that time says which
 of H1 to H3 holds. A Windows run that passes is a sample as well: its
 `TestRoundtrip` duration goes into the tally.
 
+### 2026-10-07: build 93, both Windows variants, the daemon vanishes silently
+
+Build 93 is the second build of phase 1's head (`7f9e1d8`, documents
+only above `f3868df`). Both Windows jobs failed; every other platform
+passed. What the archives and the job logs say:
+
+- The insecure daemon's log ends on a routine pipeline-flush entry, 22 s
+  after start on core2 and 16 s on haswell, with no entry at error or
+  panic level, no "signal caught", no backtrace and no error dump. The
+  console stderr file is empty on both. H1 and H2 are refuted for these
+  two samples: the daemon neither reported a crash nor logged a reason
+  to exit.
+- The secure daemon on the same agent, same binary, kept logging until
+  the archive was taken. Only the insecure daemon disappears.
+- The Go side never saw an in-flight request fail. In all five failed
+  samples (build 90's three, build 93's two) the first error is a
+  refused connect, or a refused `reader_init`, which opens a new
+  connection; no test reported a reset or a closed connection. A refused
+  connect is TCP's answer when nothing listens on the port, so the
+  listener is gone. H3 as written ("alive but stops answering") is
+  refuted for the listener; whether the process is alive is not known,
+  because nothing records that yet.
+- The death is not tied to `TestRoundtrip` or to the Arrow read: in
+  build 93 it happened during the small query and read tests, before
+  `TestRoundtrip` ran a case; build 90 placed it at 7 s, 382 s and
+  532 s into `TestRoundtrip`. The last requests the daemon logged were
+  `SELECT` evaluates on test tables; at `detailed` level it logs
+  evaluates and sessions, not creates, pushes or bulk reads, so the
+  request in flight, if any, is not in the daemon log.
+- The job log cannot place the death on the test timeline either: `go
+test ./...` buffers each package's output until the package finishes,
+  so every `=== RUN` line of a package carries the package's end time.
+- A connection accepted and left open with no logged request is normal:
+  the passing run has several (one open 6 s before any entry, one 10 s).
+- The daemon logs its memory only at start (a 38 MiB process, the agent
+  at 15 % of 32 GiB), so the samples carry no memory trend. It runs as
+  community edition: 8 concurrent sessions, 8 GiB in memory; at the end
+  3 sessions (core2) and 2 (haswell) were open.
+
+H4, written before the next sample: the insecure qdbd process is
+terminated by a path that bypasses its signal and SEH handlers and its
+logger, such as a fast-fail, a stack overflow, an allocation failure
+that escapes the handler, or a kill from outside the process.
+
+| hypothesis                       | confirmed by                                                                                                                                                                                                     | refuted by                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| H4a: a crash outside the handler | an Application log event 1000 ("Application Error") for `qdbd.exe` at the death time, whose exception code names the kind (stack overflow, fast-fail, access violation, heap corruption), or a 1001 error report | no event for `qdbd.exe` around the death time |
+| H4b: killed from outside         | no Application Error event, and `tasklist` at trap time shows no `qdbd.exe` for the insecure instance; a Defender operational event 1116 or 1117 names the file                                                  | an Application Error event (then H4a)         |
+| H4c: alive but not listening     | `tasklist` at trap time still shows the insecure instance's pid                                                                                                                                                  | the pid is gone                               |
+
+The telemetry for H4 is the next commit: on Windows the EXIT trap also
+writes `logs/windows-events-<epoch>.txt` with the Application log's
+events 1000, 1001 and 1026 and the Defender operational log's 1116 and
+1117 from the last two hours, and `tasklist` filtered on `qdbd.exe`; the
+test-report plugin uploads it next to the archives. PowerShell
+`Get-WinEvent` is used rather than `wevtutil` because MSYS bash rewrites
+arguments that start with `/` as paths.
+
 ### Samples
 
-| build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries              | error dump | failing draws |
-| ----- | --------------- | --------------- | --- | ------- | ------------- | -------------------------------------- | ---------- | ------------- |
-| 91    | `01a11503-8a62` | windows-core2   | 1   | passed  | 557 s         | async pipeline flushes, no error entry | none       | none          |
-| 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry | none       | none          |
+| build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                 | error dump | failing draws                                                                         |
+| ----- | --------------- | --------------- | --- | ------- | ------------- | ------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
+| 91    | `01a11503-8a62` | windows-core2   | 1   | passed  | 557 s         | async pipeline flushes, no error entry                                    | none       | none                                                                                  |
+| 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry                                    | none       | none                                                                                  |
+| 93    | `01a11510-7353` | windows-core2   | 1   | failed  | not reached   | a connection accepted, then two seconds of pipeline flushes, then nothing | none       | `TestReadTableRange` and `TestReadAnswersRowsWritten`, both at `create`, breaker open |
+| 93    | `01a11510-7357` | windows-haswell | 1   | failed  | not reached   | a connection accepted, then one second of flushes, then nothing           | none       | `TestReadTableRange` at `create`, breaker open                                        |
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
@@ -446,13 +506,16 @@ Phase 1:
 8. `/doc-discipline all` on the touched paths, one small commit per finding; then `/doc-discipline check` with this plan.
 9. Verify, first samples: push `sc-19567/rr-ci-qdbd-logs`, build its head (API-created, branch-filter bypass, full SHA; `.buildkite/AGENTS.md`), wait. Then re-run each Windows job once through the API. Tabulate every run in this plan. Green or red, the archives of every Windows run are downloaded and read; a red Windows run is the sample the unit exists for and is not "fixed".
 
-Phases 2 to 4: commits added to this plan as each phase starts, under
+Phase 2, from the build 93 samples:
+
+10. `docs(plan): ci-qdbd-logs-plan.md, build 93 died silently on both Windows variants; H4 and the Windows event telemetry`
+11. `build(deps): bump qdb-test-setup to the squash commit of PR 5` (PR 5 merged 2026-10-07 as `877cda6`, the same tree as its head)
+12. `ci(cicd): on Windows the EXIT trap records the Application and Defender events and whether qdbd is alive`
+13. `ci(buildkite): the build step uploads the Windows event capture with the test report`
+14. Verify: push, build the head, then a second build of the same head; tabulate both Windows runs of each; read every failed run's event capture against H4.
+
+Phases 3 and 4: commits added to this plan as each phase starts, under
 the method above.
-
-Before the merge stage, in every case:
-
-- `build(deps): bump qdb-test-setup to the squash commit of PR 5`, then
-  one more build with each Windows job re-run once as above.
 
 ## Open questions and recommendations
 
