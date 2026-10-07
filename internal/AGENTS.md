@@ -166,6 +166,10 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   secure cluster's test user (`SecureUser`), and `Require`, which fails
   fast with the start hint when a port does not answer. Nothing is
   skipped under `-short`.
+- The REST server's log in a test is shown only when the test fails
+  (`internal/httpapi/readiness_test.go`, `observeContext`), so a
+  live-daemon failure can be read from the server's side as well as the
+  daemon's.
 - A test that needs rows draws a table with `internal/qdbtest/table`
   (`Generate`, then `Create` on a `*qdb.Cluster`). The table holds its
   rows as one record batch in the binding's Arrow types and pushes it

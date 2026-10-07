@@ -19,7 +19,7 @@ var epoch = time.Unix(1_700_000_000, 0)
 // default auth config, so the key is ephemeral and argon2id costs nothing.
 func tokensAt(t *testing.T, now time.Time) *auth.Tokens {
 	t.Helper()
-	tk, err := auth.New(observeContext(), config.Default().Auth, func() time.Time { return now })
+	tk, err := auth.New(observeContext(t), config.Default().Auth, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func challenge(t *testing.T, tk *auth.Tokens, authorization string) (*httptest.R
 		seen = &c
 		w.WriteHeader(http.StatusNoContent)
 	})
-	ctx := auth.WithTokens(observeContext(), tk)
+	ctx := auth.WithTokens(observeContext(t), tk)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/x", nil)
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)

@@ -25,16 +25,32 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 		defer cancel()
 		_ = c.Close(ctx)
 	})
-	ctx := qdb.WithCluster(observeContext(), c)
+	ctx := qdb.WithCluster(observeContext(t), c)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/status/readiness", nil)
 	resp := httptest.NewRecorder()
 	NewHandler().ServeHTTP(resp, req)
 	return resp
 }
 
-// observeContext carries a discarding logger so handlers can log.
-func observeContext() context.Context {
-	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+// observeContext carries a REST server logger whose output is shown with
+// the test's own when the test fails, and discarded otherwise. A failed
+// round trip against the live daemon is read from three sides: the
+// test's draws, the server's log and the daemon's log
+// (docs/ci-qdbd-logs-plan.md while it is alive; internal/AGENTS.md, Tests).
+//
+// The level is debug for the duration of that investigation, so a
+// failure shows every request the server saw with its details; it
+// returns to the default when the plan is deleted.
+func observeContext(t testing.TB) context.Context {
+	// The buffer is per test, so a passing test adds no output and a failing
+	// one shows every request the server saw, in order.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	t.Cleanup(func() {
+		if t.Failed() && buf.Len() > 0 {
+			t.Logf("REST server log:\n%s", buf.String())
+		}
+	})
 	return observe.WithLogger(context.Background(), logger)
 }
 

@@ -47,7 +47,7 @@ func newServer(t *testing.T) server {
 func newServerOn(t *testing.T, c *qdb.Cluster) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
-	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
+	ctx := auth.WithTokens(qdb.WithCluster(observeContext(t), c), tk)
 	return server{ctx: ctx, c: c, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
 }
 
