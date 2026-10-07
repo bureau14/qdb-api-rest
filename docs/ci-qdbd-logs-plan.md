@@ -548,8 +548,17 @@ moments earlier, before any row is pushed, over a new client session.
 | H6: the empty bulk read of a fresh table kills qdbd | an in-place loop of create, empty bulk read, delete over the C API reproducing the death on an agent, with the watcher's exit code                | the loop running for an hour and more without a death while the full suite still dies |
 | H5 and H4b, refined by the exit code                | the next death's exit code: an NTSTATUS says a fault (H4a after all), a small integer an exit from inside qdbd (H5), 1 or 0xC000013A a kill (H4b) |                                                                                       |
 
+Experiment A's tally, builds 105 to 109: ten Windows runs, one death,
+the secure daemon's, while the idle insecure daemon survived every run.
+The conclusion the experiment was designed for: the death follows the
+traffic. The experiment stays switched on in `30.test.sh` until the
+investigation ends, so every further Windows run is a sample of the
+same kind. The tally since build 91: four deaths in twenty-eight runs.
+
 The in-place reproduction is the next step, on an agent paused out of
-the Buildkite pool (owner, 2026-10-07): the Windows agents are Proxmox
+the Buildkite pool (owner, 2026-10-07; the API token lacks the
+`write_agents` scope, so the agent's Windows service is stopped on the
+machine instead, and started again when the loop is over): the Windows agents are Proxmox
 VMs on the Hetzner hosts, reachable over the private network with the
 WARP client connected, by SSH as the image's administrator or through
 `qm guest exec` on the host; each keeps its last checkout of the
@@ -575,7 +584,16 @@ pipeline with the daemon dists and the Go toolchain.
 | 98    | `01a11563-7e7a` | windows-haswell | 1   | passed  | 550 s         | not read; watch file: no exit                                                    | none; WER active, 1001 for another program                    | none                                                                                             |
 | 99    | `01a11563-8d87` | windows-core2   | 1   | passed  | 555 s         | not read; watch file: no exit                                                    | none                                                          | none                                                                                             |
 | 99    | `01a11563-8d8a` | windows-haswell | 1   | passed  | 549 s         | not read; watch file: no exit                                                    | none                                                          | none                                                                                             |
+| 105   | `01a11599-2d6f` | windows-core2   | 1   | passed  | 554 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 105   | `01a11599-2d72` | windows-haswell | 1   | passed  | 550 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 106   | `01a11599-59d4` | windows-core2   | 1   | passed  | 555 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 106   | `01a11599-59d7` | windows-haswell | 1   | passed  | 549 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 107   | `01a11599-7c8f` | windows-core2   | 1   | passed  | 550 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
 | 107   | `01a11599-7c93` | windows-haswell | 1   | failed  | 176 s         | secure daemon (the traffic): nine SELECT evaluates, then nothing; insecure alive | none; no Windows fault event; exit code lost (watcher defect) | `TestRoundtrip`, the empty bulk read right after the create of `mzzkzcacrdbdocnj`, `[4,3,2,2,5]` |
+| 108   | `01a11599-a818` | windows-core2   | 1   | passed  | 537 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 108   | `01a11599-a81a` | windows-haswell | 1   | passed  | 552 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 109   | `01a1159e-12bc` | windows-core2   | 1   | passed  | 550 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
+| 109   | `01a1159e-12be` | windows-haswell | 1   | passed  | 559 s         | not read; both daemons alive                                                     | none                                                          | none                                                                                             |
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
