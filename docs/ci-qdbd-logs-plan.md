@@ -856,6 +856,24 @@ death at the same instruction in the first run makes the layout the
 whole explanation and gives the qdbd team a deterministic reproduction
 in any context.
 
+### 2026-10-08: page heap is too slow to decide, so the SSH-logon loop runs long instead
+
+Full page heap on the release `qdbd.exe` (`gflags /p /enable qdbd.exe
+/full`, from the SSH logon on `h-1`) made one round-trip case take
+sixty-nine minutes and did not fault in it. One case is no sample, so
+the experiment says nothing either way; it also says the decoded bytes
+are probably not an exact-size allocation of their own, or page heap
+would have put an unmapped page right after them. Page heap is
+disabled again on `h-1` (`gflags /p` lists no application).
+
+The question the earlier eleven passes left open is tested directly
+now: the same release loop, from the SSH logon on `h-1`, with the
+watcher and first-chance procdump, up to fourteen runs. A death there
+removes the context from the explanation; fourteen passes against a
+death rate of one in two to eight runs as a service would make the
+context real and leave the logon type and token, the parent process
+and the environment as the candidates.
+
 All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
