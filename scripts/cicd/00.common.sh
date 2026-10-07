@@ -231,7 +231,7 @@ cicd_archive_qdbd_logs_on_exit() {
 export -f cicd_archive_qdbd_logs_on_exit
 
 # cicd_record_windows_events -- write logs/windows-events-<epoch>.txt: the
-# qdbd.exe processes alive now, the state of Windows Error Reporting, the
+# qdbd.exe (or qdbdd.exe, the debug build) processes alive now, the state of Windows Error Reporting, the
 # Application log's crash and error-report events, and the Defender
 # operational log's detection events, each from the last two hours. Windows
 # only; the test-report plugin uploads the file (.buildkite/steps/_build.yml).
@@ -257,8 +257,9 @@ cicd_record_windows_events() {
     local out="logs/windows-events-$(date +%s).txt"
     mkdir -p logs
     {
-        echo "=== tasklist qdbd.exe ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+        echo "=== tasklist qdbd.exe and qdbdd.exe ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
         tasklist.exe //FI "IMAGENAME eq qdbd.exe" //V 2>&1
+        tasklist.exe //FI "IMAGENAME eq qdbdd.exe" //V 2>&1
         echo
         echo "=== Windows Error Reporting: WerSvc and the Disabled policy value"
         powershell.exe -NoProfile -NonInteractive -Command \
@@ -278,7 +279,7 @@ cicd_record_windows_events() {
 export -f cicd_record_windows_events
 
 # cicd_watch_qdbd_start -- Windows: start windows-qdbd-watch.ps1 in the
-# background, which holds a handle on every running qdbd.exe, samples its
+# background, which holds a handle on every running qdbd.exe or qdbdd.exe, samples its
 # memory, threads and handles once a second and records its exit code and
 # exit time in logs/qdbd-watch-<epoch>.txt. A no-op elsewhere. Call it after
 # cd "${BASE_DIR}", before the tests; cicd_archive_qdbd_logs_on_exit stops it.

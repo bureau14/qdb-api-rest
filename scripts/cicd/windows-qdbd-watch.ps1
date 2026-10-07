@@ -1,5 +1,5 @@
-# windows-qdbd-watch.ps1 -- hold a handle on every qdbd.exe that is running
-# when the script starts, sample each one's memory, threads and handles once a
+# windows-qdbd-watch.ps1 -- hold a handle on every qdbd.exe (or qdbdd.exe, the
+# debug build's name) that is running when the script starts, sample each one's memory, threads and handles once a
 # second, and record each one's exit code and exit time. Writes to the file
 # named by -Out, one line per event, flushed per line, until every watched
 # process has exited or the script is killed. Started by
@@ -33,9 +33,9 @@ function Write-Line([string]$line) {
 # code readable later. The command line, from WMI, tells the insecure daemon
 # (-a 127.0.0.1:2836) from the secure one (2838), so a reader does not need
 # the daemon logs for that.
-$watched = @(Get-Process -Name qdbd -ErrorAction SilentlyContinue)
+$watched = @(Get-Process -Name qdbd, qdbdd -ErrorAction SilentlyContinue)
 if ($watched.Count -eq 0) {
-    Write-Line "start: no qdbd.exe is running"
+    Write-Line "start: no qdbd.exe or qdbdd.exe is running"
     exit 0
 }
 foreach ($p in $watched) {
@@ -68,4 +68,4 @@ while ($watched.Count -gt 0) {
     }
     $watched = $alive
 }
-Write-Line "end: every watched qdbd.exe has exited"
+Write-Line "end: every watched daemon has exited"
