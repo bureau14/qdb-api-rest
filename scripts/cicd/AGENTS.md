@@ -27,9 +27,9 @@ in `.buildkite/` (see its `AGENTS.md`).
   `cicd_assert_qdb_tree` then `cicd_setup_qdb_env` -- lint included,
   since golangci-lint's typecheck compiles the cgo package. Never export
   `CGO_*` from a step script.
-- qdbd's logs reach Buildkite only from inside a step command: Buildkite
-  runs the repository's post-command and pre-exit hooks after the
-  test-report plugin's post-command upload. `30.test.sh` installs
+- qdbd's logs reach Buildkite only from inside a step command, because
+  the repository's hooks run after the plugin's upload (`.buildkite/AGENTS.md`,
+  "qdbd runs in CI"). `30.test.sh` installs
   `cicd_archive_qdbd_logs_on_exit` as its EXIT trap, which archives both
   daemons' logs through the submodule's `cleanup.sh` without stopping
   them, and `_build.yml` uploads `logs/qdbd-logs-*.tar.gz`. A later test
