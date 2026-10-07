@@ -5,6 +5,7 @@
 #   cicd_assert_qdb_tree    -- fail fast when the C API artifact is absent
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
+#   cicd_archive_qdbd_logs_on_exit -- EXIT trap: archive both daemons' logs, keep the exit status
 #
 # Sourced by 10.lint.sh, 20.build.sh and 30.test.sh; not a pipeline
 # step (scripts/cicd/AGENTS.md).
@@ -164,3 +165,46 @@ cicd_setup_qdb_env() {
 }
 
 export -f cicd_setup_qdb_env
+
+# cicd_archive_qdbd_logs_on_exit -- EXIT trap for a test step script: archive
+# both qdbd daemons' log directories, console files and error dumps into
+# logs/, then exit with the status the script was exiting with.
+#
+# Install it after cd "${BASE_DIR}" with `trap cicd_archive_qdbd_logs_on_exit
+# EXIT`. The archives are the submodule's (scripts/tests/setup/cleanup.sh,
+# archive), so they have the shape hooks/pre-exit produces, and the test-report
+# plugin uploads them from logs/qdbd-logs-*.tar.gz (.buildkite/steps/_build.yml).
+# qdbd keeps running; hooks/pre-exit stops it.
+#
+# Inputs:  BASE_DIR -- the checkout; cleanup.sh resolves its paths from the cwd.
+# Outputs: logs/qdbd-logs-<epoch>-{insecure,secure}.tar.gz, when a log
+#          directory exists.
+cicd_archive_qdbd_logs_on_exit() {
+    # The archive has to happen here, inside the command, and not in a hook:
+    # Buildkite runs the repository's post-command and pre-exit hooks after the
+    # plugin's post-command hook, which is the upload. The steps:
+    #
+    #  1. capture the script's exit status before anything else can change it;
+    #  2. archive through the submodule in a subshell that cannot fail the
+    #     step: a missing tar or log directory is not a test failure;
+    #  3. exit with the captured status so a red test stays red.
+
+    # 1. The first line of the handler reads $? of the exiting command.
+    local status=$?
+    trap - EXIT
+
+    # 2. cleanup.sh sources config.sh (set -xe, argument parsing) and defines
+    # archive; the subshell keeps both out of this shell. qdbd stays up: its
+    # log is flushed every QDB_LOG_FLUSH_INTERVAL_MS and on a fatal signal,
+    # and stopping would SIGKILL it, which flushes nothing.
+    (
+        cd "${BASE_DIR}" \
+            && source scripts/tests/setup/cleanup.sh \
+            && archive
+    ) || echo "cicd_archive_qdbd_logs_on_exit: archiving the qdbd logs failed; the step's status is unchanged" >&2
+
+    # 3. The status of the tests, not of the archive.
+    exit "${status}"
+}
+
+export -f cicd_archive_qdbd_logs_on_exit
