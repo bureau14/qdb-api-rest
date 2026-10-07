@@ -682,6 +682,69 @@ installed on the agent for this) reads from it, without symbols:
 The dump is the artifact for the qdbd R&D team, with the build id and
 the frames above; a copy is kept off the agent.
 
+### 2026-10-08: a debug daemon with symbols, harvested from the siege agents
+
+Where qdbd's symbols are, verified against the quasardb tree and the
+build agents:
+
+- quasardb compiles with `/Z7` (`cmake_modules/compiler_flags.cmake`,
+  `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded`): the debug records are
+  embedded in the object files, and the linker runs with `/DEBUG:FULL`,
+  which merges them into one PDB next to the executable. The executable
+  carries only an RSDS record naming that PDB (`Q:\bin64\Debug\qdbdd.pdb`
+  in the debug `qdbdd.exe` of quasardb-build 2762; its sections are code
+  and data, no debug section). The PDB is never packaged: no artifact of
+  quasardb-build's Windows variants carries one, and the release builds
+  are linked without debug information, so a release `qdbd.exe` has no
+  PDB anywhere. That is why the dump `qdbd_13660.dmp` cannot be
+  symbolized.
+- The debug PDB exists on the siege build agent's checkout from the
+  moment the linker finishes until the next job's checkout cleans the
+  tree, which is minutes to hours. The Windows siege agents
+  (`siege-windows-amd64-h-0` to `h-3`) are Proxmox VMs on the Hetzner
+  hosts 3 and 4, reachable like the default agents. SMB between the VMs
+  is closed; files move through a `tar -I zstd` archive and scp via the
+  operator's machine (a debug `qdbdd.exe` and its PDB compress eightfold).
+- The pair in use: `qdbdd.exe` and `qdbdd.pdb` of quasardb-build 2785
+  (`bf816772bd`, branch `mk-timeout-protocol-compatibility`, which is
+  master `22f54da872` plus one commit that removes tests and five lines
+  of `qdb/timeseries/types.hpp`), taken from `siege-windows-amd64-h-1`'s
+  `bin64/Debug` right after the link, with `qdb_user_addd.exe` and
+  `qdb_cluster_keygend.exe`. `symchk` confirms the PDB matches the
+  executable's signature. A copy of both archives (core2 from `h-1`,
+  haswell from `h-3`) is on the operator's machine.
+- The debug daemon asserts `cfg.is_sane()` at startup
+  (`apps/qdbd/config_validator.cpp:422`) on the submodule's test
+  configuration: `cluster.statistics_refresh_interval` is 500 ms there
+  and the minimum is one second (`qdb/config/cluster.hpp:73`). The
+  release build only warns. The loop runs the daemons on a copy of
+  `default.qdbd.cfg` with the interval at one second
+  (`CONFIG_INSECURE` and `CONFIG_SECURE` point at it); nothing else in
+  the configuration differs from CI.
+
+The two loops started on 2026-10-07, both in session 0 with procdump
+attached to both daemons and the watcher running, each in a workspace
+outside the agent's build directory (`C:\BuildkiteAgent\rr\qdb-api-rest`,
+the branch cloned from a bundle, the dists from the artifact store, and
+`rt.test` built there):
+
+- `default-windows-amd64-h-0`, service `qdb-rtsvc` as the agent
+  account, the debug `qdbdd.exe` with its PDB in `qdb/bin`, so the next
+  death yields a dump that `cdb` can read with symbols. The watcher and
+  the event capture were taught the debug name (`qdbdd.exe`), which is
+  what the submodule's `binaries.sh` falls back to when `qdbd.exe` is
+  absent.
+- `default-windows-amd64-h-1`, service `qdb-rtsvcsys` as LocalSystem,
+  the release `qdbd.exe` of quasardb-build 2782 (master `22f54da872`).
+  This is the one-variable experiment for the service-context question:
+  session 0 as before, a different account with different privileges.
+  A death here says the session, not the agent account, is the
+  discriminator; a long run of passes says the account is.
+
+Both agents' Buildkite services are stopped for the duration; the jobs
+they were running retry elsewhere (quasardb's steps retry on agent
+loss, `.buildkite/steps/_test.yml`).
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
