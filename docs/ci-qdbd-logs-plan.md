@@ -627,8 +627,8 @@ sample.
 
 ### 2026-10-07: the exit code is 0xC0000005, an access violation
 
-The service loop, restarted with the watcher's handle fix, passed its
-first run and lost the insecure daemon in its second, at 13:03:28 UTC,
+The service loop, restarted with the watcher's handle fix, passed
+three runs and lost the insecure daemon in its fourth, at 13:03:28 UTC,
 37 minutes after the daemons started. The watcher's exit line:
 
     exit pid=7448 code=-1073741819 hex=0xC0000005
