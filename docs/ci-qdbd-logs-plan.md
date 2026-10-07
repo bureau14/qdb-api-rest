@@ -1,6 +1,6 @@
 # Plan: the qdbd death under TestRoundtrip on Windows
 
-Status: draft
+Status: approved
 
 This is a troubleshooting unit. Its scope is not known in advance, so
 the commits after the first phase are decided by evidence, not listed
