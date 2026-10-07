@@ -333,6 +333,28 @@ The method, which every later commit follows:
 
 Each phase's commits are added to this plan when the phase starts.
 
+### 2026-10-07: hypotheses before the first sample (build 91)
+
+Phase 1 is the head of build 91 (`f3868df`). Each Windows job is re-run
+once after its first run finishes. Three hypotheses about the death,
+each with the observation that confirms it and the one that refutes it:
+
+| hypothesis                                                         | confirmed by                                                                                                                             | refuted by                                                                         |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| H1: qdbd crashes (a fatal signal or Windows structured exception)  | a "signal caught" panic entry with a backtrace at the end of the insecure daemon's log, and a `qdbd_<pid>_error_dump.log` in its archive | a log that ends without such an entry, and no error dump                           |
+| H2: qdbd exits on its own account (a limit, a fatal error it logs) | a last log entry at error or panic level that names the reason, and no error dump                                                        | a log that ends mid-flight with no error or panic entry                            |
+| H3: qdbd is alive but stops answering (a stall, a port, the agent) | log entries after the first refused `reader_init`, or the console files showing the process alive at stop time                           | no entry after the death and `Taskkill` in `stop-services.sh` reporting no process |
+
+The server's log of the failed test names the request in flight when
+the first 503 was answered; the daemon log around that time says which
+of H1 to H3 holds. A Windows run that passes is a sample as well: its
+`TestRoundtrip` duration goes into the tally.
+
+### Samples
+
+| build | job | variant | run | outcome | TestRoundtrip | daemon log's last entries | error dump | failing draws |
+| ----- | --- | ------- | --- | ------- | ------------- | ------------------------- | ---------- | ------------- |
+
 ## Rationale
 
 | decision                                                                          | why                                                                                                                                                                                                 | rejected, and why                                                                                                                                | gained                                                            | given up                                                                                                                              | settled by                                                                      |
