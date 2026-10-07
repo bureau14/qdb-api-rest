@@ -231,9 +231,9 @@ Comment gains:
 
 #### `internal/httpapi/readiness_test.go`, `observeContext`
 
-Becomes `observeContext(t testing.TB) context.Context`: the buffer is
-kept and written to `t.Log` in a `t.Cleanup` when `t.Failed()`. Doc
-comment:
+Becomes `observeContext(t testing.TB) context.Context`: the handler is
+built with `slog.LevelDebug`, the buffer is kept and written to `t.Log`
+in a `t.Cleanup` when `t.Failed()`. Doc comment:
 
 ```
 // observeContext carries a REST server logger whose output is shown with
@@ -241,6 +241,10 @@ comment:
 // round trip against the live daemon is read from three sides: the
 // test's draws, the server's log and the daemon's log
 // (docs/ci-qdbd-logs-plan.md while it is alive; internal/AGENTS.md, Tests).
+//
+// The level is debug for the duration of that investigation, so a
+// failure shows every request the server saw with its details; it
+// returns to the default when the plan is deleted.
 ```
 
 Body: one overview comment saying the buffer is per test so a passing
@@ -302,11 +306,14 @@ evidence narrows it.
 
 The method, which every later commit follows:
 
-- Each run of the Windows jobs is one sample. A build's two Windows jobs
-  are retried through the API (`PUT jobs/<id>/retry`) until each has run
-  at least three times, and the outcome, duration of `TestRoundtrip`,
-  and, for a failure, the daemon log's last entries, the error dump and
-  the failing draws are tabulated in this plan under a dated heading.
+- Each run of the Windows jobs is one sample. On every build of this
+  unit, each of the two Windows jobs is re-run once through the API
+  (`PUT jobs/<id>/retry`) after its first run finishes, so a build
+  yields two samples per variant. More re-runs per build only when the
+  tally proves two are not enough. The outcome, the duration of
+  `TestRoundtrip` and, for a failure, the daemon log's last entries,
+  the error dump and the failing draws are tabulated in this plan under
+  a dated heading.
 - A hypothesis is written down with the observation that would confirm
   it and the one that would refute it before the next sample is taken.
   A hypothesis the samples refute is recorded as refuted and not tried
@@ -321,27 +328,27 @@ The method, which every later commit follows:
   with `-rapid.failfile`. If the cause is unrelated to the payload (a
   resource limit, a port, the agent), the phase records that and stops.
 - Phase 4 (the reproduction): a C or C++ program against the C API in
-  the quasardb or qdb-api-c tree, and a Shortcut story for the qdbd R&D
-  team carrying it, under the QuasarDB workflow.
+  the quasardb or qdb-api-c tree. Where the ticket for the qdbd R&D team
+  goes is decided then, by the owner, and only if a reproduction exists.
 
 Each phase's commits are added to this plan when the phase starts.
 
 ## Rationale
 
-| decision                                                         | why                                                                                                                                                        | rejected, and why                                                                                                                | gained                                          | given up                                               | settled by                                                                      |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| The unit is the investigation; the log upload is its phase 1     | the owner's annotation on the first plan: a free-form troubleshooting task with the three goals above                                                      | a unit per phase: the scope is unknown, so the cut cannot be made in advance                                                     | one plan carries the evidence end to end        | the fixed commit list                                  | owner, 2026-10-07 (plannotator annotation)                                      |
-| Evidence before conclusions; every claim carries its observation | the owner asked for strictly evidence-driven debugging                                                                                                     | reasoning from the payload shapes or the nightly: the three payloads share nothing and the nightly differs by a test-only commit | no wasted phase on a refuted guess              | speed on the first sample                              | owner, 2026-10-07                                                               |
-| Both Windows jobs are retried repeatedly on every build          | the failure is intermittent: build 90 failed three of four Windows runs, haswell passed on retry                                                           | one run per build: one sample tells nothing about an intermittent failure                                                        | samples with telemetry                          | agent time                                             | owner, 2026-10-07                                                               |
-| Archive inside the test command through an EXIT trap             | Buildkite runs the repository's post-command and pre-exit hooks after the plugin's upload                                                                  | a repository hook: its archive lands after the upload (build 90 job log)                                                         | the archive exists when the plugin uploads      | a trap in every test script of the step                | Buildkite hooks documentation; owner, 2026-10-07                                |
-| Upload through `job.artifacts`, not `artifact_paths`             | the logs belong with the test report; quasardb's test step does the same                                                                                   | `artifact_paths`: a release artifact for something that is not one                                                               | one place to look for a job's test evidence     | nothing                                                | owner, 2026-10-07                                                               |
-| qdbd keeps running; the trap archives live logs                  | stopping is a SIGKILL that flushes nothing; qdbd flushes on a fatal signal itself; `40.test-e2e.sh` is planned after the Go tests against the same daemons | stop in the trap: no flush gained, the later e2e step loses its daemons                                                          | composes with later test scripts                | the last 100 ms of log lines of a daemon that is alive | `utils.sh` `kill_instances`; `sig_handler.cpp:626`; `docs/e2e.md`, In Buildkite |
-| The flush interval and the console files are the submodule's     | every API and tool pins the same submodule, so one change aligns them all                                                                                  | a second glob and a flag in this repo: project-local                                                                             | one archive shape for every consumer            | a dependency on PR 5                                   | owner, 2026-10-07; qdb-test-setup PR 5                                          |
-| Reuse `cleanup.sh::archive`                                      | one home for how the daemon logs are archived                                                                                                              | a tar in `00.common.sh`: a second shape to keep in step                                                                          | zero archive logic here                         | sourcing `config.sh` in a subshell                     | proposal                                                                        |
-| The rapid fail files are uploaded                                | they are the exact draws of the failing case, written even on the flaky verdict, and gitignored so nothing else keeps them                                 | reading the draws off the job log: present, but not replayable                                                                   | `-rapid.failfile` replay on an agent or locally | nothing                                                | `engine.go:290-297`; proposal                                                   |
-| The server's test log is shown on failure                        | the server is the second witness: it says which request was in flight when the daemon vanished; today its log is written to a buffer nobody reads          | logging at a level into the test output always: noise on every passing test; a file: one more artifact glob                      | the request in flight for a failed test         | one `testing.TB` argument per caller                   | `readiness_test.go:36-39`; proposal                                             |
-| Pin PR 5's head now, re-pin before the merge stage               | the owner wants samples now; the squash deletes the branch                                                                                                 | wait for the merge: samples wait with it                                                                                         | the first samples today                         | one more commit and build                              | owner, 2026-10-07                                                               |
-| The pre-exit hook's duplicate archive stays                      | removing it means editing the submodule                                                                                                                    | a local `stop-services.sh`                                                                                                       | no submodule change                             | two unused tarballs per job                            | root `AGENTS.md`, Sub-folders                                                   |
+| decision                                                                          | why                                                                                                                                                                                                 | rejected, and why                                                                                                                                | gained                                                            | given up                                                                                                                              | settled by                                                                      |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| The unit is the investigation; the log upload is its phase 1                      | the owner's annotation on the first plan: a free-form troubleshooting task with the three goals above                                                                                               | a unit per phase: the scope is unknown, so the cut cannot be made in advance                                                                     | one plan carries the evidence end to end                          | the fixed commit list                                                                                                                 | owner, 2026-10-07 (plannotator annotation)                                      |
+| Evidence before conclusions; every claim carries its observation                  | the owner asked for strictly evidence-driven debugging                                                                                                                                              | reasoning from the payload shapes or the nightly: the three payloads share nothing and the nightly differs by a test-only commit                 | no wasted phase on a refuted guess                                | speed on the first sample                                                                                                             | owner, 2026-10-07                                                               |
+| Each Windows job is re-run once on every build, no more                           | the failure is intermittent (build 90 failed three of four Windows runs) and the owner suspects a rate near one in two, so one re-run per build should show it; the owner wants few changes at once | several re-runs per build: more agent time and more moving parts before the first sample says what is needed                                     | two samples per variant per build                                 | a slower tally if the rate is lower than suspected                                                                                    | owner, 2026-10-07 (plannotator annotation)                                      |
+| Archive inside the test command through an EXIT trap                              | Buildkite runs the repository's post-command and pre-exit hooks after the plugin's upload                                                                                                           | a repository hook: its archive lands after the upload (build 90 job log)                                                                         | the archive exists when the plugin uploads                        | a trap in every test script of the step                                                                                               | Buildkite hooks documentation; owner, 2026-10-07                                |
+| Upload through `job.artifacts`, not `artifact_paths`                              | the logs belong with the test report; quasardb's test step does the same                                                                                                                            | `artifact_paths`: a release artifact for something that is not one                                                                               | one place to look for a job's test evidence                       | nothing                                                                                                                               | owner, 2026-10-07                                                               |
+| qdbd keeps running; the trap archives live logs                                   | stopping is a SIGKILL that flushes nothing; qdbd flushes on a fatal signal itself; `40.test-e2e.sh` is planned after the Go tests against the same daemons                                          | stop in the trap: no flush gained, the later e2e step loses its daemons                                                                          | composes with later test scripts                                  | the last 100 ms of log lines of a daemon that is alive                                                                                | `utils.sh` `kill_instances`; `sig_handler.cpp:626`; `docs/e2e.md`, In Buildkite |
+| The flush interval and the console files are the submodule's                      | every API and tool pins the same submodule, so one change aligns them all                                                                                                                           | a second glob and a flag in this repo: project-local                                                                                             | one archive shape for every consumer                              | a dependency on PR 5                                                                                                                  | owner, 2026-10-07; qdb-test-setup PR 5                                          |
+| Reuse `cleanup.sh::archive`                                                       | one home for how the daemon logs are archived                                                                                                                                                       | a tar in `00.common.sh`: a second shape to keep in step                                                                                          | zero archive logic here                                           | sourcing `config.sh` in a subshell                                                                                                    | proposal                                                                        |
+| The rapid fail files are uploaded                                                 | they are the exact draws of the failing case, written even on the flaky verdict, and gitignored so nothing else keeps them                                                                          | reading the draws off the job log: present, but not replayable                                                                                   | `-rapid.failfile` replay on an agent or locally                   | nothing                                                                                                                               | `engine.go:290-297`; proposal                                                   |
+| The server's test log is shown on failure, at debug level, as a temporary measure | the server is the second witness: it says which request was in flight when the daemon vanished; today its log is written to a buffer nobody reads; the owner accepts debug level for the samples    | logging into the test output always: noise on every passing test; a file: one more artifact glob; info level: may not name the request in flight | every request the server saw, with its details, for a failed test | one `testing.TB` argument per caller; the level returns to the default when this plan is deleted, or a Handoff item says why it stays | `readiness_test.go:36-39`; owner, 2026-10-07 (plannotator annotation)           |
+| Pin PR 5's head now, re-pin before the merge stage                                | the owner wants samples now; the squash deletes the branch                                                                                                                                          | wait for the merge: samples wait with it                                                                                                         | the first samples today                                           | one more commit and build                                                                                                             | owner, 2026-10-07                                                               |
+| The pre-exit hook's duplicate archive stays                                       | removing it means editing the submodule                                                                                                                                                             | a local `stop-services.sh`                                                                                                                       | no submodule change                                               | two unused tarballs per job                                                                                                           | root `AGENTS.md`, Sub-folders                                                   |
 
 ## Knowledge
 
@@ -355,14 +362,17 @@ Each phase's commits are added to this plan when the phase starts.
   quasardb precedent, the `artifact_paths` rejection, the hook-order
   fact, the fail files; the hook comment says its archive is unused.
 - Commit 6 (`observeContext`): the doc comment and overview carry the
-  three-witness reason; `internal/AGENTS.md`, Tests, gains the sentence.
+  three-witness reason and say the debug level is temporary;
+  `internal/AGENTS.md`, Tests, gains the sentence. The reversal of the
+  level is this plan's: it happens, or is handed off, when the plan is
+  deleted.
 - Commit 7 (`docs/log.md`): Current state only; the evidence table above
   is the plan's and moves to the ticket and the log entry when the unit
   lands.
 - The investigation's findings (phases 2 to 4) land in this plan first,
-  dated; what survives goes to the Shortcut story, to `internal/AGENTS.md`
-  if a rule for the tests follows, and to the log entry that deletes the
-  plan.
+  dated; what survives goes to the ticket if one follows, to
+  `internal/AGENTS.md` if a rule for the tests follows, and to the log
+  entry that deletes the plan.
 
 ## How the knowledge lands
 
@@ -393,10 +403,10 @@ Phase 1:
 3. `ci(cicd): cicd_archive_qdbd_logs_on_exit archives both daemons' logs through the submodule's cleanup.sh`
 4. `ci(cicd): 30.test.sh archives the qdbd logs at exit, whatever the tests' outcome`
 5. `ci(buildkite): the build step uploads the qdbd log archives and the rapid fail files with the test report`
-6. `test(httpapi): the REST server's log is shown when a test fails`
+6. `test(httpapi): the REST server's log is shown at debug level when a test fails`
 7. `docs(log): CI uploads qdbd's logs; the windows-core2 death is both Windows variants, three of four runs`
 8. `/doc-discipline all` on the touched paths, one small commit per finding; then `/doc-discipline check` with this plan.
-9. Verify, first samples: push `sc-19567/rr-ci-qdbd-logs`, build its head (API-created, branch-filter bypass, full SHA; `.buildkite/AGENTS.md`), wait. Then retry both Windows jobs until each has run three times. Tabulate every run in this plan. Green or red, the archives of every Windows run are downloaded and read; a red Windows run is the sample the unit exists for and is not "fixed".
+9. Verify, first samples: push `sc-19567/rr-ci-qdbd-logs`, build its head (API-created, branch-filter bypass, full SHA; `.buildkite/AGENTS.md`), wait. Then re-run each Windows job once through the API. Tabulate every run in this plan. Green or red, the archives of every Windows run are downloaded and read; a red Windows run is the sample the unit exists for and is not "fixed".
 
 Phases 2 to 4: commits added to this plan as each phase starts, under
 the method above.
@@ -404,17 +414,11 @@ the method above.
 Before the merge stage, in every case:
 
 - `build(deps): bump qdb-test-setup to the squash commit of PR 5`, then
-  one more build with the Windows jobs retried as above.
+  one more build with each Windows job re-run once as above.
 
 ## Open questions and recommendations
 
-1. Should the windows jobs be retried to three runs each on every build
-   of this unit, or more? Recommendation: three per build, more only
-   when the tally shows the failure rate needs it.
-2. Where does the ticket for the qdbd R&D team go? Recommendation: a
-   Shortcut story under the QuasarDB workflow, team R&D, with the
-   reproduction attached, opened only when phase 4 has a reproduction or
-   phase 2 has a daemon-side cause with no reproduction possible.
-3. Should the REST server's log level in the tests be raised to debug
-   for the samples? Recommendation: no until a sample shows the info
-   level does not say which request was in flight.
+None. The owner settled the three the first revision carried: one
+re-run of each Windows job per build, the ticket's destination is a
+question for when a reproduction exists, and the server's test log runs
+at debug level as a temporary measure.
