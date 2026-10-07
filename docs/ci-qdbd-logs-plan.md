@@ -909,8 +909,12 @@ gigabytes of `qdbd.json` in four hours and filled `h-0`'s disk
 run the daemons at `info`, and the dumps carry what the log was read
 for.
 
-On `h-1` the release loop from the SSH logon has passed eight runs so
-far and continues.
+On `h-1` the release loop from the SSH logon passed all fourteen runs
+(two hours twenty minutes of traffic, both daemons alive at the end),
+twenty-five consecutive passes with the earlier eleven, against four
+deaths in about fifteen service runs of the same binaries on the same
+agents. The service context is a real factor, through the heap layout;
+what the service start changes in the layout is not established.
 
 All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
