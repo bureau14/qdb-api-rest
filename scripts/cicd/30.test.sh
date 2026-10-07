@@ -5,6 +5,8 @@
 # cicd_setup_go_toolchain) for the qdb-test-report plugin.
 # At exit, whatever the tests' outcome, both qdbd daemons' logs are archived
 # into logs/ for the test-report plugin to upload (cicd_archive_qdbd_logs_on_exit).
+# On Windows a watcher records every qdbd.exe's exit code for the same upload
+# (cicd_watch_qdbd_start).
 
 set -euxo pipefail
 
@@ -25,6 +27,10 @@ cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
 cicd_assert_qdb_tree
 cicd_setup_qdb_env
+
+# The watcher takes its handles before the first request, so a death at any
+# point of the run has its exit code recorded (windows-qdbd-watch.ps1).
+cicd_watch_qdbd_start
 
 # On Windows the generated test binaries run through the -exec wrapper,
 # which converts PATH to Windows format so the loader resolves the MinGW

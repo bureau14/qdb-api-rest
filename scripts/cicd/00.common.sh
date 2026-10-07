@@ -7,6 +7,7 @@
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #   cicd_archive_qdbd_logs_on_exit -- EXIT trap: archive both daemons' logs, keep the exit status
 #   cicd_record_windows_events -- Windows: the Application and Defender events and whether qdbd is alive, into logs/
+#   cicd_watch_qdbd_start   -- Windows: start the watcher that records every qdbd.exe's exit code
 #
 # Sourced by 10.lint.sh, 20.build.sh and 30.test.sh; not a pipeline
 # step (scripts/cicd/AGENTS.md).
@@ -176,7 +177,8 @@ export -f cicd_setup_qdb_env
 # archive), so they have the shape hooks/pre-exit produces, and the test-report
 # plugin uploads them from logs/qdbd-logs-*.tar.gz (.buildkite/steps/_build.yml).
 # On Windows it also records what the system knows about the daemons
-# (cicd_record_windows_events). qdbd keeps running; hooks/pre-exit stops it.
+# (cicd_record_windows_events) and stops the watcher cicd_watch_qdbd_start
+# started. qdbd keeps running; hooks/pre-exit stops it.
 #
 # Inputs:  BASE_DIR -- the checkout; cleanup.sh resolves its paths from the cwd.
 # Outputs: logs/qdbd-logs-<epoch>-{insecure,secure}.tar.gz, when a log
@@ -190,7 +192,8 @@ cicd_archive_qdbd_logs_on_exit() {
     #  2. archive through the submodule in a subshell that cannot fail the
     #     step: a missing tar or log directory is not a test failure;
     #  3. on Windows, record the system's account of the daemons, which is
-    #     the only account there is when qdbd dies without logging;
+    #     the only account there is when qdbd dies without logging, and stop
+    #     the watcher after it has had time to write a daemon's last state;
     #  4. exit with the captured status so a red test stays red.
 
     # 1. The first line of the handler reads $? of the exiting command.
@@ -210,8 +213,15 @@ cicd_archive_qdbd_logs_on_exit() {
     # 3. The insecure daemon has died in CI with nothing in its own log, its
     # console files or an error dump (docs/ci-qdbd-logs-plan.md, build 93), so
     # the event log is the witness for a death that bypasses its handlers.
+    # The watcher samples once a second, so two seconds cover a death right at
+    # the end; a daemon still alive would keep it running past the upload,
+    # which is why it is killed and not waited for.
     if [[ "$(uname)" == MINGW* ]]; then
         cicd_record_windows_events || echo "cicd_archive_qdbd_logs_on_exit: recording the Windows events failed; the step's status is unchanged" >&2
+        if [[ -n "${CICD_QDBD_WATCH_PID:-}" ]]; then
+            sleep 2
+            kill "${CICD_QDBD_WATCH_PID}" 2> /dev/null || true
+        fi
     fi
 
     # 4. The status of the tests, not of the archive.
@@ -259,3 +269,33 @@ cicd_record_windows_events() {
 }
 
 export -f cicd_record_windows_events
+
+# cicd_watch_qdbd_start -- Windows: start windows-qdbd-watch.ps1 in the
+# background, which holds a handle on every running qdbd.exe, samples its
+# memory, threads and handles once a second and records its exit code and
+# exit time in logs/qdbd-watch-<epoch>.txt. A no-op elsewhere. Call it after
+# cd "${BASE_DIR}", before the tests; cicd_archive_qdbd_logs_on_exit stops it.
+# The reason is in the script's header.
+#
+# Inputs:  the cwd is the checkout (logs/ is relative to it).
+# Outputs: CICD_QDBD_WATCH_PID -- the watcher's pid, for the trap; unset
+#          elsewhere.
+#          logs/qdbd-watch-<epoch>.txt, written by the watcher.
+cicd_watch_qdbd_start() {
+    if [[ "$(uname)" != MINGW* ]]; then
+        return 0
+    fi
+    mkdir -p logs
+    local out="logs/qdbd-watch-$(date +%s).txt"
+    # The script path goes through cygpath because PowerShell is a native
+    # program and MSYS converts only arguments it recognizes as paths. The
+    # watcher's own output is the file; its stdout is the step log, where a
+    # PowerShell error would otherwise vanish.
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+        -File "$(cygpath -w "${_CICD_SCRIPT_DIR}/windows-qdbd-watch.ps1")" \
+        -Out "$(cygpath -w "${out}")" &
+    export CICD_QDBD_WATCH_PID=$!
+    echo "cicd_watch_qdbd_start: pid ${CICD_QDBD_WATCH_PID} writes ${out}"
+}
+
+export -f cicd_watch_qdbd_start

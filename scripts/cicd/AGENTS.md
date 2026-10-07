@@ -35,6 +35,9 @@ in `.buildkite/` (see its `AGENTS.md`).
   them, and `_build.yml` uploads `logs/qdbd-logs-*.tar.gz`. On Windows
   the trap also writes `logs/windows-events-*.txt`
   (`cicd_record_windows_events`), the system's account of a daemon that
-  died without logging. A later test
+  died without logging, and `30.test.sh` starts `windows-qdbd-watch.ps1`
+  before the tests (`cicd_watch_qdbd_start`), which holds a handle on
+  every `qdbd.exe` so its exit code survives its death, into
+  `logs/qdbd-watch-*.txt`. A later test
   script in the same step installs the same trap; its archive is a
   superset of the earlier one.
