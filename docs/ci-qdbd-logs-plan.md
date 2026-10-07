@@ -645,6 +645,43 @@ WER (Sysinternals procdump attached to both daemons for the loop), so
 the faulting address and the thread's stack can go to the qdbd R&D
 team with the build id of the nightly.
 
+### 2026-10-07: the crash dump, thread "a-pipe 00"
+
+The service loop with Sysinternals procdump attached to both daemons
+(`-e -ma`, a full dump at an unhandled exception) lost the insecure
+daemon three minutes into its first run, at 13:11:22 UTC, and procdump
+wrote `C:\BuildkiteAgent\dumps\qdbd_13660.dmp` (253 MB) on agent
+`default-windows-amd64-h-0`. What `cdb` (Windows debugging tools,
+installed on the agent for this) reads from it, without symbols:
+
+- The daemon is `qdbd.exe` 3.15.0.dev0, build `91476e3abe`, image
+  timestamp 2026-10-07 07:00:45, the nightly quasardb-build 2762; its
+  dist carries no PDB, so the frames below are offsets from the image
+  base, for the qdbd team to map on their build.
+- The exception: `c0000005`, a read of `0x254e5d97000`, a page-aligned
+  address, which is what a read past the end of a heap allocation
+  into the next, unmapped page looks like.
+- The faulting thread is number 18, named `a-pipe 00`, the async
+  pipeline's thread. Its stack, innermost first:
+  `KERNELBASE!RaiseException+0x6c`, `qdbd+0x1926ec6`,
+  `ntdll!RcConsolidateFrames+0x6`, `qdbd+0x3fe6e4`, `qdbd+0x452c54`,
+  `qdbd+0x597c36`, `qdbd+0x1910b93` (the thread's entry),
+  `kernel32!BaseThreadInitThunk`. `RcConsolidateFrames` is the C++
+  runtime executing a catch funclet, and the `RaiseException` above it
+  carries the access violation's own code, so the fault was caught and
+  re-raised with its original status, and that re-raise is what the
+  process died of: no "signal caught" entry, no error dump, no Windows
+  Error Reporting event.
+- The daemon's log ends at 13:11:21.893 on "flushing async pipeline
+  pipe_0 to disk: 1 entries - 19 rows" with no "rows written" line
+  after it, where every earlier flush has one within two milliseconds.
+  The fault is in the async pipeline's flush to disk, which also says
+  why the create-and-empty-read loop never died: it pushed no row.
+  The round trip draws its push mode, the async one included.
+
+The dump is the artifact for the qdbd R&D team, with the build id and
+the frames above; a copy is kept off the agent.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
