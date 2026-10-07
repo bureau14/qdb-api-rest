@@ -32,6 +32,9 @@ in `.buildkite/` (see its `AGENTS.md`).
   "qdbd runs in CI"). `30.test.sh` installs
   `cicd_archive_qdbd_logs_on_exit` as its EXIT trap, which archives both
   daemons' logs through the submodule's `cleanup.sh` without stopping
-  them, and `_build.yml` uploads `logs/qdbd-logs-*.tar.gz`. A later test
+  them, and `_build.yml` uploads `logs/qdbd-logs-*.tar.gz`. On Windows
+  the trap also writes `logs/windows-events-*.txt`
+  (`cicd_record_windows_events`), the system's account of a daemon that
+  died without logging. A later test
   script in the same step installs the same trap; its archive is a
   superset of the earlier one.

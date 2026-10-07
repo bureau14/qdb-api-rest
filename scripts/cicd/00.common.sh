@@ -6,6 +6,7 @@
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #   cicd_archive_qdbd_logs_on_exit -- EXIT trap: archive both daemons' logs, keep the exit status
+#   cicd_record_windows_events -- Windows: the Application and Defender events and whether qdbd is alive, into logs/
 #
 # Sourced by 10.lint.sh, 20.build.sh and 30.test.sh; not a pipeline
 # step (scripts/cicd/AGENTS.md).
@@ -174,7 +175,8 @@ export -f cicd_setup_qdb_env
 # EXIT`. The archives are the submodule's (scripts/tests/setup/cleanup.sh,
 # archive), so they have the shape hooks/pre-exit produces, and the test-report
 # plugin uploads them from logs/qdbd-logs-*.tar.gz (.buildkite/steps/_build.yml).
-# qdbd keeps running; hooks/pre-exit stops it.
+# On Windows it also records what the system knows about the daemons
+# (cicd_record_windows_events). qdbd keeps running; hooks/pre-exit stops it.
 #
 # Inputs:  BASE_DIR -- the checkout; cleanup.sh resolves its paths from the cwd.
 # Outputs: logs/qdbd-logs-<epoch>-{insecure,secure}.tar.gz, when a log
@@ -187,7 +189,9 @@ cicd_archive_qdbd_logs_on_exit() {
     #  1. capture the script's exit status before anything else can change it;
     #  2. archive through the submodule in a subshell that cannot fail the
     #     step: a missing tar or log directory is not a test failure;
-    #  3. exit with the captured status so a red test stays red.
+    #  3. on Windows, record the system's account of the daemons, which is
+    #     the only account there is when qdbd dies without logging;
+    #  4. exit with the captured status so a red test stays red.
 
     # 1. The first line of the handler reads $? of the exiting command.
     local status=$?
@@ -203,8 +207,55 @@ cicd_archive_qdbd_logs_on_exit() {
             && archive
     ) || echo "cicd_archive_qdbd_logs_on_exit: archiving the qdbd logs failed; the step's status is unchanged" >&2
 
-    # 3. The status of the tests, not of the archive.
+    # 3. The insecure daemon has died in CI with nothing in its own log, its
+    # console files or an error dump (docs/ci-qdbd-logs-plan.md, build 93), so
+    # the event log is the witness for a death that bypasses its handlers.
+    if [[ "$(uname)" == MINGW* ]]; then
+        cicd_record_windows_events || echo "cicd_archive_qdbd_logs_on_exit: recording the Windows events failed; the step's status is unchanged" >&2
+    fi
+
+    # 4. The status of the tests, not of the archive.
     exit "${status}"
 }
 
 export -f cicd_archive_qdbd_logs_on_exit
+
+# cicd_record_windows_events -- write logs/windows-events-<epoch>.txt: the
+# qdbd.exe processes alive now, the Application log's crash and error-report
+# events, and the Defender operational log's detection events, each from the
+# last two hours. Windows only; the test-report plugin uploads the file
+# (.buildkite/steps/_build.yml).
+#
+# Inputs:  the cwd is the checkout (logs/ is relative to it).
+# Outputs: logs/windows-events-<epoch>.txt. A query that fails leaves its
+#          error in the file and fails nothing else.
+cicd_record_windows_events() {
+    # Windows records a process death that bypasses the process's own handlers
+    # (a fast-fail, a stack overflow, an allocation failure, a kill from
+    # outside) in the Application log: event 1000 carries the exception code
+    # and the faulting module, 1001 is the error report, 1026 the .NET variant.
+    # Defender's 1116 and 1117 name a file it detected or acted on. tasklist
+    # says whether the daemons are still alive at this point. The queries go
+    # through PowerShell, not wevtutil, because MSYS bash rewrites arguments
+    # that start with "/" as paths; tasklist's switches are written "//FI", the
+    # doubled slash the submodule uses for Taskkill, which MSYS turns into one.
+    # Each query is tried on its own, so one that fails (a log the agent user
+    # cannot read) leaves the others intact.
+    local out="logs/windows-events-$(date +%s).txt"
+    mkdir -p logs
+    {
+        echo "=== tasklist qdbd.exe ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+        tasklist.exe //FI "IMAGENAME eq qdbd.exe" //V 2>&1
+        echo
+        echo "=== Application log, events 1000 1001 1026, last two hours"
+        powershell.exe -NoProfile -NonInteractive -Command \
+            "Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000,1001,1026; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Stop | Format-List TimeCreated,Id,ProviderName,Message | Out-String -Width 4096" 2>&1
+        echo
+        echo "=== Microsoft-Windows-Windows Defender/Operational, events 1116 1117, last two hours"
+        powershell.exe -NoProfile -NonInteractive -Command \
+            "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=1116,1117; StartTime=(Get-Date).AddHours(-2)} -ErrorAction Stop | Format-List TimeCreated,Id,Message | Out-String -Width 4096" 2>&1
+    } > "${out}"
+    echo "cicd_record_windows_events: wrote ${out}"
+}
+
+export -f cicd_record_windows_events
