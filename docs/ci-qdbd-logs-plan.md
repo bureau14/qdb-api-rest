@@ -473,6 +473,35 @@ threads and handles every second, and on exit writes the exit code and
 time, all into `logs/qdbd-watch-<epoch>.txt`; the event capture also
 records the WER service state. The plugin uploads the watch file.
 
+### 2026-10-07: builds 98 and 99, the watcher works, all four Windows runs passed
+
+Both builds of head `e2b9fe9` passed on both Windows variants. What the
+watch files and the event captures say:
+
+- The watcher took its handles on both daemons before the first test and
+  sampled each once a second until the trap killed it; the start line
+  carries each pid's command line, so `-a 127.0.0.1:2836` names the
+  insecure daemon directly. Over a passing run the insecure daemon's
+  working set grows about five-fold and the secure one's by two thirds;
+  threads and handles end within ten of where they started. No exit line,
+  as expected of a passing run.
+- Windows Error Reporting is active on the agents: the Application log
+  of build 98 holds event 1001 reports for other programs (a quasardb
+  integration test's `RADAR_PRE_LEAK_64` report on core2, a Chrome
+  installer's crashpad report on haswell), written for the same agent
+  user. `WerSvc` shows `Stopped`, start type `Manual`, which is its
+  on-demand default. The registry query printed nothing. So build 97's
+  empty Application log is a finding: qdbd did not fault through WER.
+  H4a is refuted for build 97 unless the exit code says otherwise.
+- The tally after builds 91 to 99: three of eighteen Windows runs
+  failed.
+
+H4a is now the least likely branch; H5 (an exit from inside qdbd) and
+H4b (a kill from outside) stand, and the next failing run's watch file
+decides between them by the exit code. Experiment A starts on this head,
+as the owner ordered: the tests' traffic moves to the secure daemon and
+the insecure one idles.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                 | error dump                                        | failing draws                                                                         |
@@ -489,6 +518,10 @@ records the WER service state. The plugin uploads the watch file.
 | 96    | `01a1152d-fc27` | windows-haswell | 1   | passed  | 553 s         | not read                                                                  | none                                              | none                                                                                  |
 | 97    | `01a1152e-1803` | windows-core2   | 1   | failed  | not reached   | a connection accepted and "accepting", then nothing, 72 s after start     | none; no Windows fault event; the process is gone | `TestReadTableRange`, `TestReadAnswersRowsWritten`, at `create`, breaker open         |
 | 97    | `01a1152e-1806` | windows-haswell | 1   | passed  | 553 s         | not read                                                                  | none                                              | none                                                                                  |
+| 98    | `01a11563-7e76` | windows-core2   | 1   | passed  | 558 s         | not read; watch file: no exit, both daemons sampled to the end            | none; WER active, 1001 for another program        | none                                                                                  |
+| 98    | `01a11563-7e7a` | windows-haswell | 1   | passed  | 550 s         | not read; watch file: no exit                                             | none; WER active, 1001 for another program        | none                                                                                  |
+| 99    | `01a11563-8d87` | windows-core2   | 1   | passed  | 555 s         | not read; watch file: no exit                                             | none                                              | none                                                                                  |
+| 99    | `01a11563-8d8a` | windows-haswell | 1   | passed  | 549 s         | not read; watch file: no exit                                             | none                                              | none                                                                                  |
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
@@ -587,6 +620,14 @@ Phase 2, from the build 93 samples:
 16. `ci(cicd): on Windows 30.test.sh watches every qdbd.exe for its exit code and samples its memory and threads`
 17. `ci(buildkite): the build step uploads the qdbd watch file with the test report`
 18. Verify: push, build the head twice; read every failed run's watch file against H4 and H5.
+19. `ci(cicd): the Windows event capture records the Windows Error Reporting state`
+20. `docs(plan): ci-qdbd-logs-plan.md, builds 98 and 99 passed, the watcher works, WER is active on the agents`
+
+Experiment A, the secure daemon:
+
+21. `test(qdbtest): QDBTEST_TRAFFIC_TO_SECURE binds every insecure test to the secure daemon`
+22. `ci(cicd): on Windows 30.test.sh moves the tests' traffic to the secure daemon`
+23. Verify: push, build the head until ten Windows runs are tabulated; a death of the secure daemon follows the traffic, a death of the idle insecure one follows the instance.
 
 Phases 3 and 4: commits added to this plan as each phase starts, under
 the method above.
@@ -604,9 +645,10 @@ builds 91 to 97. The submodule is pinned to PR 5's squash commit
   the owner asked, in this order: first the exit-code watcher (commits
   16 and 17 above), then an experiment that points the tests at the
   secure daemon, then a bisection by test.
-- Experiment A, the secure daemon: a switch in `internal/qdbtest/cluster`
-  (an environment variable `30.test.sh` sets on Windows, or on every
-  platform) makes `NewInsecure` bind the secure cluster, with the
+- Experiment A, the secure daemon: a switch in `internal/qdbtest`
+  (an environment variable `30.test.sh` sets on Windows only, the
+  owner's choice of 2026-10-07, so the other platforms stay a control)
+  makes every insecure binding use the secure cluster, with the
   fixture's key files, so all traffic moves to port 2838 and the
   insecure daemon idles. Secure dies: the death follows the traffic.
   Insecure dies while idle: it follows the instance or the port. Ten
