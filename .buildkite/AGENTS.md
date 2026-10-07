@@ -35,6 +35,15 @@ all of this should feel.
   build step after the Go tests (ADR-0013; the step is specified in
   `docs/e2e.md`, "In Buildkite"); until its step script exists it
   is not in CI. The services and dists it needs are already present.
+  Both daemons' logs, console output and error dumps are uploaded with
+  the test report through the plugin's `job.artifacts` block
+  (`steps/_build.yml`), the way quasardb's test step uploads its server
+  logs, together with the rapid fail files of a failed property test.
+  The archive is made inside the test command (`scripts/cicd/AGENTS.md`),
+  because post-command and pre-exit hooks run plugins first and the
+  repository last, so nothing a hook produces reaches the upload.
+  Buildkite's `artifact_paths` is not used: the logs are not a release
+  artifact.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.

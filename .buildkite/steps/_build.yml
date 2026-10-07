@@ -5,6 +5,11 @@ key: build-{slug}
 # c-api, server and utils dists that the qdb-artifacts plugin extracts into
 # qdb/, the QuasarDB project layout. The e2e harness (tests/e2e/) is not
 # in CI (.buildkite/AGENTS.md).
+#
+# The test step archives both qdbd daemons' logs into logs/ at its exit
+# (scripts/cicd/30.test.sh) and the test-report plugin uploads them with the
+# report, together with the rapid fail files a failed property test wrote;
+# the pre-exit hook runs after the upload, so its own archive is unused.
 
 commands:
   - echo \"+++ Start services\"
@@ -31,6 +36,11 @@ plugins:
       job:
         variant: {slug}
         junit_input_path: "test-reports/*.xml"
+        artifacts:
+          - name: "qdbd logs"
+            input_path: "logs/qdbd-logs-*.tar.gz"
+          - name: "rapid fail files"
+            input_path: "internal/**/testdata/rapid/**/*.fail"
 
 timeout_in_minutes: 60
 

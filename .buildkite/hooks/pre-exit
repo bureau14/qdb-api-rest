@@ -4,6 +4,10 @@
 # is idempotent: a no-op when nothing was started (scripts/tests/setup, the
 # qdb-test-setup submodule; never edited here). The e2e harness is not in CI,
 # so there is nothing else to stop (unlike qdb-nats-connector's hook).
+#
+# stop-services.sh archives the log directories as well, but this hook runs
+# after the test-report plugin has uploaded, so the archive Buildkite shows is
+# the one scripts/cicd/30.test.sh made at its exit.
 set -uo pipefail
 
 SCRIPT="scripts/tests/setup/stop-services.sh"
