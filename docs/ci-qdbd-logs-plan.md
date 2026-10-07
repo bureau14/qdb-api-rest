@@ -824,58 +824,50 @@ Experiment A, the secure daemon:
 Phases 3 and 4: commits added to this plan as each phase starts, under
 the method above.
 
-## Status for the next session (2026-10-07, written before a context reset)
+## Status for the next session (2026-10-07, after the in-place reproduction)
 
-The branch is `sc-19567/rr-ci-qdbd-logs`, pushed; the head carries the
-telemetry of phase 1 and the Windows event capture, both verified in
-builds 91 to 97. The submodule is pinned to PR 5's squash commit
-(`877cda6`). Nothing is merged. The owner's decisions in the session:
+The branch is `sc-19567/rr-ci-qdbd-logs`, pushed; commits after
+`4a02b86` are unsigned at the owner's request (1Password was away).
+Nothing is merged. What the unit established, in the order of its
+goals:
 
-- The second sample per head is a second build of the same commit
-  (Buildkite cannot retry a passed job).
-- The investigation continues from the samples, strictly by evidence;
-  the owner asked, in this order: first the exit-code watcher (commits
-  16 and 17 above), then an experiment that points the tests at the
-  secure daemon, then a bisection by test.
-- Experiment A, the secure daemon: a switch in `internal/qdbtest`
-  (an environment variable `30.test.sh` sets on Windows only, the
-  owner's choice of 2026-10-07, so the other platforms stay a control)
-  makes every insecure binding use the secure cluster, with the
-  fixture's key files, so all traffic moves to port 2838 and the
-  insecure daemon idles. Secure dies: the death follows the traffic.
-  Insecure dies while idle: it follows the instance or the port. Ten
-  runs are the minimum at a rate near one in five.
-- Experiment B, the bisection: disable every test but one and re-enable
-  tests selectively, one build pair per step, until the death is
-  observed again; the set that first reproduces it is the payload of
-  phase 3. The owner asked for this after experiment A.
+1. The daemon's account of its death: there is none, because the death
+   is an access violation (`0xC0000005`, a read at a page boundary) on
+   the async pipeline's thread `a-pipe 00` during a flush to disk,
+   caught and re-raised by qdbd's own exception translation, which
+   leaves no log entry, no error dump and no Windows Error Reporting
+   event. The full dump of one death is
+   `C:\BuildkiteAgent\dumps\qdbd_13660.dmp` on agent
+   `default-windows-amd64-h-0` and a copy is in the owner's hands;
+   qdbd build `91476e3abe` (3.15.0.dev0, quasardb-build 2762), no
+   PDB in the dist. The dated headings above carry the stack offsets.
+2. The payload: the round trip's async pushes. The death follows the
+   traffic (experiment A), never happens in a loop without pushes (the
+   H6 loop), and happens only when qdbd runs in the agent's service
+   context (session 0, the `buildkite` account): eleven clean runs
+   from a user session against deaths in the first and fourth runs as
+   a service, on the same machine with the same binaries. A reading
+   that fits all of it, offered to the qdbd team as a hypothesis and
+   not a finding: a buffer over-read in the flush that is latent
+   everywhere and faults only where the heap layout leaves the next
+   page unmapped. The smallest sequence is not yet known: a loop of
+   async pushes and flushes against the C API is the next narrowing
+   step, and it must run in the service context to be a test at all.
+3. The reproduction and the ticket: not done. The reproduction exists
+   as `TestRoundtrip` under the temporary WinSW service
+   (`rtsvc.sh`, kept in this plan's dated headings), not yet as a C
+   program. Where the ticket goes is the owner's call.
 
-How the samples are read, so the next session does not rediscover it:
+What is left on the agent and in the tree: the agent's Buildkite
+service was started again and the temporary `qdb-rtsvc` service
+removed; `C:\BuildkiteAgent\tools` (procdump, the debugging tools)
+and `C:\BuildkiteAgent\dumps` stay until the owner says otherwise.
+`QDBTEST_TRAFFIC_TO_SECURE` is still set on Windows in `30.test.sh`,
+and `observeContext` still logs at debug level; both are experiment
+settings to reverse before the merge stage, or to hand off.
 
-- The plugin uploads to Cloudflare R2, bucket `qdb-cicd-artifacts`,
-  endpoint and credentials in the cicd account's SSM under
-  `/services/buildkite/config/artifacts/object-store/` (`endpoint-url`,
-  `r2/access-key-id`) and
-  `/services/buildkite/credentials/artifacts/r2/secret-access-key`;
-  `aws sso login --sso-session qdb` first. `aws s3 cp --endpoint-url
-<endpoint> --recursive` with those as `AWS_ACCESS_KEY_ID` and
-  `AWS_SECRET_ACCESS_KEY`, region `auto`. The public domain
-  `cicd-artifacts.quasar.ai` sits behind Cloudflare Access and answers
-  `curl` with a login page.
-- The key is
-  `qdb-api-rest/refs/heads/<branch>/reports/builds/<build uuid>/variants/<variant>/jobs/<job uuid>/artifacts/<qdbd-logs|rapid-fail-files|windows-events>/...`;
-  the build uuid is `id` in the build's JSON, the job uuid is the job's
-  `id`.
-- The job log (`bk api pipelines/qdb-api-rest/builds/<n>/jobs/<id>/log`,
-  field `content`) carries the test output with every line of a package
-  stamped at the package's end, the `cicd_record_windows_events` lines,
-  and the plugin's upload lines.
-- Building a head: `bk api --method POST pipelines/qdb-api-rest/builds`
-  with the full SHA, the branch and `ignore_pipeline_branch_filters`;
-  one request creates one build, so parse the answer from a file, not a
-  pipe. Then `PUT jobs/<id>/reprioritize` with priority 100 for every
-  `scheduled` job. The Windows agents are shared with quasardb-build's
-  nightly tests and a job can wait twenty minutes for one.
+How the agents are reached is in the dated heading "the in-place H6
+loop".
 
 ## Open questions and recommendations
 

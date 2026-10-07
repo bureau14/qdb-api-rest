@@ -36,17 +36,16 @@ all eight platforms, and `v1@new-rest` fingerprints equal to
 
 In flight:
 
-- qdbd dies under `TestRoundtrip` on the Windows agents, both CPU
-  variants, intermittently (three of four Windows runs of build 90, and
-  the same agent passed build 89): the insecure daemon stops answering
-  from a `reader_init` on, after a create, an empty read and an ingest
-  of the same tables. The qdbd nightly moved by one test-only commit
-  between the last pass and the failures, so it is not the only change.
-  The build step uploads both daemons' logs, console output and error
-  dumps, the rapid fail files and the server's log of a failed test. The
-  investigation reads those samples and records them in
-  `docs/ci-qdbd-logs-plan.md` while it is alive. A reproduction against
-  the C API and a quasardb ticket follow if the daemon is at fault.
+- qdbd dies on the Windows agents of an access violation on its async
+  pipeline thread during a flush to disk, caught and re-raised by its
+  own exception translation, so nothing is logged; it happens only in
+  the agent's service context (session 0) and only under the tests'
+  pushes. A full crash dump of one death and the build id are in hand;
+  the smallest reproducing sequence against the C API, and the ticket
+  for the qdbd team, are what remains (`docs/ci-qdbd-logs-plan.md`
+  while it is alive). The build step uploads both daemons' logs, the
+  rapid fail files, the Windows event capture and the watcher's exit
+  codes with every test report.
 
 Next:
 
