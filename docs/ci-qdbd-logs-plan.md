@@ -874,6 +874,44 @@ death rate of one in two to eight runs as a service would make the
 context real and leave the logon type and token, the parent process
 and the environment as the candidates.
 
+### 2026-10-08: the debug daemon asserts before it can crash: an invalid int64 column index
+
+The debug daemon on `h-2` (LocalSystem) ended its third run seventy
+minutes in, not with an access violation but with
+`Assertion failed: idx.valid(), file ..\..\qdb/kernel/containers/ts/indexer.hpp, line 239`
+on its stderr, then an orderly shutdown and exit code -3, which is
+`emergency_shutdown` on `SIGABRT` (`apps/qdbd/runner.cpp:304,338`).
+Line 239 is `compute_index` for an int64 column:
+`compute_index_arithmetic<int64_column_index>` followed by
+`BOOST_ASSERT(idx.valid())`. An int64 index is invalid when the
+non-null count exceeds the count, when the first, last, minimum or
+maximum value is the type's "none" sentinel while the column has
+non-null values, or when the running sum is that sentinel
+(`qdb/metadata/column_index.hpp:91-100,152-161,217-229`). The release
+build skips the assertion and continues with the invalid index. No
+dump exists for this death: it is not an exception, and procdump was
+filtered to access violations.
+
+Whether the invalid index and the decoder's over-read are one bug or
+two is open. Both happen on the async pipeline's flush thread; a
+decoder that reads past the end of a too-short input would decode
+garbage and could produce exactly such an index, and a test that draws
+the int64 sentinel value as data would too. The next debug death
+decides it, with symbols: the debug loops on `h-0` and `h-2` now run
+with `cdb` attached to both daemons instead of procdump, which writes
+a full dump at the first-chance access violation and hands the
+exception on, and a full dump at `qdbdd!_wassert` before `abort()`
+runs (the breakpoint resolves; the CRT is linked statically).
+
+The debug daemon at the `detailed` log level wrote sixty-three
+gigabytes of `qdbd.json` in four hours and filled `h-0`'s disk
+(uploads to it failed, the daemon's log writes with it); the loops now
+run the daemons at `info`, and the dumps carry what the log was read
+for.
+
+On `h-1` the release loop from the SSH logon has passed eight runs so
+far and continues.
+
 All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
