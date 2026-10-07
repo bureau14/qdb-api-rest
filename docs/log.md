@@ -40,23 +40,36 @@ In flight:
 
 Next:
 
-1. The prose audit (root `AGENTS.md`, Prose) of every other comment and
+1. CI captures qdbd's logs: the build step archives both daemons' log
+   directories at the end of its command and uploads the archives as job
+   artifacts on every outcome, the way quasardb's test step uploads its
+   server logs. Today `scripts/tests/setup/cleanup.sh` tars them into
+   `logs/qdbd-logs-*.tar.gz` from the pre-exit hook, after the artifact
+   upload, so nothing reaches Buildkite.
+2. qdbd dies on windows-core2 under `TestRoundtrip`: the insecure daemon
+   is gone at `reader_init` in both runs of build 90's windows-core2 job
+   (jobs 01a113a2-3d10 and 01a113fb-aa2f, nightly 2741, quasardb
+   f29250ae), while windows-haswell passed on the same nightly and build
+   89 passed on core2 with nightly 2720. The cause is unknown until item
+   1 gives us a daemon log. A quasardb ticket follows if the daemon is at
+   fault.
+3. The prose audit (root `AGENTS.md`, Prose) of every other comment and
    document in the project, one package or document per unit.
    `tests/e2e/bench/bench.py` is left out: the bench retires once the
    rewrite beats the old server (`docs/brief.md`, Testing doctrine).
-2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+4. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
    file joining `codecs` and the round trip's draw of body formats
    (`internal/encoding/AGENTS.md`, The seam, and `internal/httpapi/AGENTS.md`,
    Tests), and `Content-Encoding: gzip|zstd` on the ingest.
-3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+5. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-4. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+6. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+7. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-6. File upstream against `qdb-api-go`, with no local patch
+8. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
