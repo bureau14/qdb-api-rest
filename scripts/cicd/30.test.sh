@@ -32,6 +32,15 @@ cicd_setup_qdb_env
 # point of the run has its exit code recorded (windows-qdbd-watch.ps1).
 cicd_watch_qdbd_start
 
+# On Windows the tests' traffic moves to the secure daemon and the insecure
+# one idles (internal/qdbtest, TrafficToSecure): the insecure daemon has died
+# there under the tests, and this says whether the death follows the traffic
+# or the instance (docs/ci-qdbd-logs-plan.md, experiment A). Windows only, so
+# the other platforms stay the control.
+if [[ "$(uname)" == MINGW* ]]; then
+    export QDBTEST_TRAFFIC_TO_SECURE=1
+fi
+
 # On Windows the generated test binaries run through the -exec wrapper,
 # which converts PATH to Windows format so the loader resolves the MinGW
 # runtime DLLs under the Buildkite service context (see the wrapper).
