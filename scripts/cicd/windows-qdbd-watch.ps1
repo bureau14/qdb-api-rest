@@ -26,15 +26,20 @@ function Write-Line([string]$line) {
     Add-Content -Path $Out -Value "$stamp $line"
 }
 
-# Get-Process opens the handle that keeps the exit code readable; the command
-# line, from WMI, tells the insecure daemon (--address 127.0.0.1:2836) from the
-# secure one (2838), so a reader does not need the daemon logs for that.
+# Get-Process alone opens no handle: the Process object opens one lazily, and
+# after the process is gone that open fails, so HasExited turns true with the
+# exit code and exit time empty (build 107's haswell sample). Reading Handle
+# opens the handle now and the object keeps it, which is what makes the exit
+# code readable later. The command line, from WMI, tells the insecure daemon
+# (-a 127.0.0.1:2836) from the secure one (2838), so a reader does not need
+# the daemon logs for that.
 $watched = @(Get-Process -Name qdbd -ErrorAction SilentlyContinue)
 if ($watched.Count -eq 0) {
     Write-Line "start: no qdbd.exe is running"
     exit 0
 }
 foreach ($p in $watched) {
+    $null = $p.Handle
     $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)" -ErrorAction SilentlyContinue).CommandLine
     Write-Line "start pid=$($p.Id) started=$($p.StartTime.ToUniversalTime().ToString('o')) cmd=$cmd"
 }
