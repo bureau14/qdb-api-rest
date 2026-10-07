@@ -422,18 +422,73 @@ at 225 MB after the full run, the secure one at 80 MB), and both
 finding and not a permission problem. The tally after builds 91 to 95:
 two of ten Windows runs failed, both in one build.
 
+### 2026-10-07: builds 96 and 97, the first sample with the system's account
+
+Build 97's windows-core2 run failed; the other three Windows runs of
+the pair passed (build 97's linux-core2 job also failed, with exit
+status -1 and its agent `lost` mid-run, which is the agent and not the
+branch). What the first event capture of a failing run says:
+
+- `tasklist` at trap time lists one `qdbd.exe`, pid 8512, which is the
+  secure daemon by its own log. The insecure daemon, pid 4776, is gone.
+  H4c (alive but not listening) is refuted.
+- The Application log holds no event 1000, 1001 or 1026 in the two
+  hours before, and the Defender operational log no 1116 or 1117. H4a
+  is not confirmed, and not refuted either: event 1000 is written by
+  the Windows Error Reporting service, and the agents' state of that
+  service is unknown. The next capture records it (`WerSvc` status and
+  the `Disabled` value of the Windows Error Reporting key).
+- The insecure daemon's log ends on "accepting", the line after a
+  "connection accepted" for the fourth connection of a burst: three
+  connections opened and closed within a millisecond each (the
+  fixture's port probes), then one kept. Build 93's two samples show the
+  same burst one and two seconds before their end. The death follows a
+  new client connection within two seconds in all three samples that
+  have a daemon log.
+- On the outside-kill branch of H4b: every Windows agent is one agent
+  per host (`bk api agents`, distinct hostnames), so no other Buildkite
+  job runs on the machine; quasardb's own cleanup
+  (`scripts/cicd/service-cleanup.sh`, `scripts/tests/setup/utils.sh`)
+  kills by image name, which would take the secure daemon too. Nothing
+  in this repository kills a process.
+
+H5, written before the next sample: the insecure daemon ends through a
+process exit rather than a fault, during or right after a new session's
+handshake. The exit code decides between the branches: a Windows status
+such as access violation, stack overflow, fast-fail or heap corruption
+says a fault that WER did not record (H4a); a small integer says
+`exit()` from inside qdbd (H5); a code set by another process says a
+kill (H4b).
+
+| hypothesis            | confirmed by                                                                   | refuted by              |
+| --------------------- | ------------------------------------------------------------------------------ | ----------------------- |
+| H4a, fault            | exit code is an NTSTATUS (0xC0000005, 0xC00000FD, 0xC0000409, 0xC0000374)      | a small exit code, or 1 |
+| H5, qdbd exits itself | exit code 0, 1 or another small integer, with no fault event                   | an NTSTATUS exit code   |
+| H4b, killed           | exit code 1 or 0xC000013A (console close), with WER enabled and no fault event | an NTSTATUS fault code  |
+
+The telemetry for H5 is the next commit: on Windows `30.test.sh` starts
+a watcher before the tests, a background PowerShell that holds a handle
+on every `qdbd.exe`, samples each one's working set, private bytes,
+threads and handles every second, and on exit writes the exit code and
+time, all into `logs/qdbd-watch-<epoch>.txt`; the event capture also
+records the WER service state. The plugin uploads the watch file.
+
 ### Samples
 
-| build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                 | error dump | failing draws                                                                         |
-| ----- | --------------- | --------------- | --- | ------- | ------------- | ------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
-| 91    | `01a11503-8a62` | windows-core2   | 1   | passed  | 557 s         | async pipeline flushes, no error entry                                    | none       | none                                                                                  |
-| 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry                                    | none       | none                                                                                  |
-| 93    | `01a11510-7353` | windows-core2   | 1   | failed  | not reached   | a connection accepted, then two seconds of pipeline flushes, then nothing | none       | `TestReadTableRange` and `TestReadAnswersRowsWritten`, both at `create`, breaker open |
-| 93    | `01a11510-7357` | windows-haswell | 1   | failed  | not reached   | a connection accepted, then one second of flushes, then nothing           | none       | `TestReadTableRange` at `create`, breaker open                                        |
-| 94    | `01a11521-1a25` | windows-core2   | 1   | passed  | 550 s         | not read                                                                  | none       | none                                                                                  |
-| 94    | `01a11521-1a27` | windows-haswell | 1   | passed  | 558 s         | not read                                                                  | none       | none                                                                                  |
-| 95    | `01a11521-6893` | windows-core2   | 1   | passed  | 554 s         | not read                                                                  | none       | none                                                                                  |
-| 95    | `01a11521-6896` | windows-haswell | 1   | passed  | 550 s         | not read                                                                  | none       | none                                                                                  |
+| build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                 | error dump                                        | failing draws                                                                         |
+| ----- | --------------- | --------------- | --- | ------- | ------------- | ------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 91    | `01a11503-8a62` | windows-core2   | 1   | passed  | 557 s         | async pipeline flushes, no error entry                                    | none                                              | none                                                                                  |
+| 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry                                    | none                                              | none                                                                                  |
+| 93    | `01a11510-7353` | windows-core2   | 1   | failed  | not reached   | a connection accepted, then two seconds of pipeline flushes, then nothing | none                                              | `TestReadTableRange` and `TestReadAnswersRowsWritten`, both at `create`, breaker open |
+| 93    | `01a11510-7357` | windows-haswell | 1   | failed  | not reached   | a connection accepted, then one second of flushes, then nothing           | none                                              | `TestReadTableRange` at `create`, breaker open                                        |
+| 94    | `01a11521-1a25` | windows-core2   | 1   | passed  | 550 s         | not read                                                                  | none                                              | none                                                                                  |
+| 94    | `01a11521-1a27` | windows-haswell | 1   | passed  | 558 s         | not read                                                                  | none                                              | none                                                                                  |
+| 95    | `01a11521-6893` | windows-core2   | 1   | passed  | 554 s         | not read                                                                  | none                                              | none                                                                                  |
+| 95    | `01a11521-6896` | windows-haswell | 1   | passed  | 550 s         | not read                                                                  | none                                              | none                                                                                  |
+| 96    | `01a1152d-fc24` | windows-core2   | 1   | passed  | 559 s         | not read                                                                  | none                                              | none                                                                                  |
+| 96    | `01a1152d-fc27` | windows-haswell | 1   | passed  | 553 s         | not read                                                                  | none                                              | none                                                                                  |
+| 97    | `01a1152e-1803` | windows-core2   | 1   | failed  | not reached   | a connection accepted and "accepting", then nothing, 72 s after start     | none; no Windows fault event; the process is gone | `TestReadTableRange`, `TestReadAnswersRowsWritten`, at `create`, breaker open         |
+| 97    | `01a1152e-1806` | windows-haswell | 1   | passed  | 553 s         | not read                                                                  | none                                              | none                                                                                  |
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
@@ -528,6 +583,10 @@ Phase 2, from the build 93 samples:
 12. `ci(cicd): on Windows the EXIT trap records the Application and Defender events and whether qdbd is alive`
 13. `ci(buildkite): the build step uploads the Windows event capture with the test report`
 14. Verify: push, build the head, then a second build of the same head; tabulate both Windows runs of each; read every failed run's event capture against H4.
+15. `docs(plan): ci-qdbd-logs-plan.md, build 97 core2 died with no Windows fault event and the process gone; H5 and the exit-code watcher`
+16. `ci(cicd): on Windows 30.test.sh watches every qdbd.exe for its exit code and samples its memory and threads`
+17. `ci(buildkite): the build step uploads the qdbd watch file with the test report`
+18. Verify: push, build the head twice; read every failed run's watch file against H4 and H5.
 
 Phases 3 and 4: commits added to this plan as each phase starts, under
 the method above.
