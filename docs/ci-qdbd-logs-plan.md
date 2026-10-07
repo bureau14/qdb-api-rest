@@ -625,6 +625,26 @@ still died, so the job object is not the cause). The watcher's exit
 code, from the service loop restarted with the handle fix, is the next
 sample.
 
+### 2026-10-07: the exit code is 0xC0000005, an access violation
+
+The service loop, restarted with the watcher's handle fix, passed its
+first run and lost the insecure daemon in its second, at 13:03:28 UTC,
+37 minutes after the daemons started. The watcher's exit line:
+
+    exit pid=7448 code=-1073741819 hex=0xC0000005
+
+H4a is confirmed: qdbd dies of an access violation that neither its
+own structured-exception handler nor Windows Error Reporting records.
+H5 (an exit from inside qdbd) and H4b (a kill from outside) are
+refuted. The daemon's log ends the same way as every sample, a burst
+of `SELECT` evaluates, then nothing: the fault happens before the
+handler's "signal caught" entry can be written, or on a path the
+handler does not cover. What is needed next is the fault itself, a
+memory dump taken at the exception by a tool that does not depend on
+WER (Sysinternals procdump attached to both daemons for the loop), so
+the faulting address and the thread's stack can go to the qdbd R&D
+team with the build id of the nightly.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
