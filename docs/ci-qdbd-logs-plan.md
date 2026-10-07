@@ -741,8 +741,12 @@ the branch cloned from a bundle, the dists from the artifact store, and
   A death here says the session, not the agent account, is the
   discriminator; a long run of passes says the account is.
 
-Both agents' Buildkite services are stopped for the duration; the jobs
-they were running retry elsewhere (quasardb's steps retry on agent
+- `default-windows-amd64-h-2`, service `qdb-rtsvcsys` as LocalSystem,
+  the same debug `qdbdd.exe` and PDB as `h-0`: a second symbol source,
+  and a second sample of session 0 without the agent account.
+
+All three agents' Buildkite services are stopped for the duration; the
+jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
 
 ### Samples
