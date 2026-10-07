@@ -1,63 +1,126 @@
-# Plan: the build step uploads qdbd's logs with the test report
+# Plan: the qdbd death under TestRoundtrip on Windows
 
 Status: draft
 
+This is a troubleshooting unit. Its scope is not known in advance, so
+the commits after the first phase are decided by evidence, not listed
+here in full, and this plan is revised as the evidence comes in. Every
+claim about the failure in this document carries where it was observed.
+Nothing is concluded from intuition.
+
 ## Outcome
 
-When this unit lands, every per-platform build step uploads an archive of
-each qdbd daemon's log directory and console output with its test report,
-whether the Go tests pass or fail. The report page of a job links the
-archives under "qdbd logs". The archives hold every log line up to a tenth
-of a second before a daemon stops or dies, because the qdb-test-setup
-submodule now starts qdbd with a short log flush interval.
+The goals, in this order, each pursued as far as the evidence allows:
 
-Left for later units: the windows-core2 daemon death itself (`docs/log.md`,
-Next), and the e2e step's own log handling when `scripts/cicd/40.test-e2e.sh`
-joins the build step.
+1. Why qdbd dies under `TestRoundtrip` on the Windows agents: the
+   daemon's own account of its death, from its log, its console output
+   and its error dump.
+2. What payload produces it: the request sequence and the generated
+   tables, narrowed until the smallest sequence that kills the daemon is
+   known, or until the evidence says the payload is not the cause.
+3. A reproduction in C or C++ against the C API, and a ticket for the
+   qdbd R&D team carrying it.
+
+A later goal may turn out impossible (the payload is not the cause, or
+the cause is outside qdbd); then this unit records what was established
+and stops there.
+
+Phase 1 is the telemetry that every later phase reads. When it lands,
+every per-platform build step uploads an archive of each qdbd daemon's
+log directory, console output and error dump with its test report,
+whether the Go tests pass or fail, plus the rapid fail files the tests
+wrote, and the REST server's log for a failed test.
 
 ## Verified facts
 
-- Buildkite runs the post-command and pre-exit hooks plugins first and the
-  repository last. Evidence: the hooks documentation's job hook order
-  table ("post-command: Plugin (vendored), Plugin (non-vendored),
-  Repository, Agent"), and the windows-core2 job of build 90
-  (`01a113fb-aa2f-4133-9f0f-4ae9d39e187d`): the plugin's post-command
-  hook logged "Generating test report" at timestamp 1791336722072 and the
-  repository pre-exit hook started at 1791336727068, after the upload.
+### The failure
+
+- Three occurrences, all in build 90 (`qdb-api-rest`, commit `9653c1b`,
+  branch `sc-19567/rr-prose-audit-touched`): windows-core2 first attempt
+  (job `01a113a2-8267-499b-b140-68443dd1fe66`, finished 2026-10-07
+  00:03Z), windows-haswell first attempt
+  (`01a113a2-826a-4177-9ef3-51958bb5826d`, 00:02Z), windows-core2 manual
+  retry (`01a113fb-aa2f-4133-9f0f-4ae9d39e187d`, 01:32Z). The
+  windows-haswell manual retry passed (`01a113fb-b57d-4ecb-ab85-88f7bc0dc63e`).
+  Both CPU variants fail; the failure is intermittent.
+- The signature is the same in all three: inside `TestRoundtrip`, a read
+  over HTTP fails with 503 and `reader_init (operation=reader_init,
+tables=1): Connection refused.` (`roundtrip_test.go:102`,
+  `checkReadFormats`); rapid's replay fails earlier at `create` with
+  `circuit breaker open`, so rapid reports "flaky test, can not
+  reproduce"; `TestRoundtripDeduplicated` then finds qdbd not answering
+  on 2836. The insecure daemon is gone from the first failing read on.
+- The daemon dies late: `TestRoundtrip` had run 532 s, 382 s and about
+  7 s (the retry, where only a handful of cases ran before the death)
+  when it failed; it passed in 553 s on windows-core2 in build 89.
+- The failing cases' first tables (fixture `columnTypes` order: 0 int64,
+  1 double, 2 string, 3 symbol, 4 blob, 5 timestamp): 5 columns
+  `[5,0,1,3,2]`, 1 row; 5 columns `[5,5,3,3,2]`, 29 rows; 3 columns
+  `[4,4,0]`, 1 row. No type, width or row count is common to all three.
+  The read that failed follows a create, an empty read and an ingest of
+  the same tables (`roundtrip_test.go:166-212`), so the death happened
+  during the ingest or during `reader_init` itself; which one is unknown
+  until a daemon log exists.
+- The qdbd nightly differs by one commit between the last pass and the
+  failures: build 89 ran quasardb-build 2720 (`9c0a2b1903`), build 90
+  ran 2741 (`f29250aed8`, "Disable test-runner reconnect tests on
+  Windows", tests only; quasardb `git log 9c0a2b1903..f29250aed8`).
+  `ea118bba37` "Replace the server B-Tree accumulator" is in both.
+  Builds 66 to 89 all passed windows-core2 except one unrelated failure
+  (68) and one cancellation (88) (`bk api pipelines/qdb-api-rest/builds`).
+- The same agent (`default-windows-amd64-h-2-79Mort`) passed build 89
+  and failed both build 90 core2 runs; haswell failed on a different
+  agent. The agent is not the discriminator.
+
+### The telemetry
+
+- Buildkite runs the post-command and pre-exit hooks plugins first and
+  the repository last (hooks documentation, job hook order table). In
+  build 90's retry job the plugin's post-command hook logged "Generating
+  test report" at 1791336722072 and the repository pre-exit hook started
+  at 1791336727068, after the upload. Any archive a hook makes misses
+  the upload.
 - The test-report plugin uploads in its post-command hook
-  (`~/git/qdb-test-report-buildkite-plugin`, origin/master `3f2d988`,
-  `hooks/post-command`). A `job.artifacts` item is `{name, input_path}`
-  (`plugin.yml`); a glob is resolved against the job's cwd and matches
-  files only; an empty match is a warning, never a failure
-  (`lib/artifact_inputs.py`, `_collect_for_artifact` and
-  `collect_artifact_files`). quasardb's test step uploads its server logs
-  through this block (`~/git/quasardb/.buildkite/steps/_test.yml:36-40`).
-- `cleanup.sh::archive` in the submodule writes
-  `logs/qdbd-logs-<epoch>-{insecure,secure}.tar.gz` relative to the cwd,
-  only for a log directory that exists (`scripts/tests/setup/cleanup.sh`,
-  `archive_log_dir`; `config.sh`, `QDB_LOG_ARCHIVE_PATH`). At PR 5's head
+  (`~/git/qdb-test-report-buildkite-plugin`, origin/master `3f2d988`).
+  A `job.artifacts` item is `{name, input_path}`; a glob is resolved
+  against the job's cwd with `recursive=True` and matches files only; an
+  empty match warns and never fails (`lib/artifact_inputs.py`).
+- `cleanup.sh::archive` writes
+  `logs/qdbd-logs-<epoch>-{insecure,secure}.tar.gz` relative to the cwd
+  for each log directory that exists. At qdb-test-setup PR 5's head
   (`147c4d2b3bb6c551e9c8a33acd615ad9c1eb0518`) each archive also carries
-  the daemon's console files `qdbd_log_<mode>.{out,err}.txt` when they
-  exist, and `start-services.sh` passes `--log-flush-interval` from
+  the daemon's console files `qdbd_log_<mode>.{out,err}.txt`, and
+  `start-services.sh` passes `--log-flush-interval` from
   `QDB_LOG_FLUSH_INTERVAL_MS`, default 100.
 - `stop-services.sh` kills with `pkill -SIGKILL` and `Taskkill //F`
-  (`scripts/tests/setup/utils.sh`, `kill_instances`), so stopping qdbd
-  flushes nothing. qdbd's default flush interval is 3 s, floor 10 ms
-  (quasardb `qdb/log/config.hpp:18,33`).
+  (`utils.sh`, `kill_instances`); stopping flushes nothing. qdbd's
+  default flush interval is 3 s (quasardb `qdb/log/config.hpp:18`).
+- On a fatal signal or Windows structured exception qdbd logs
+  "signal caught" with a backtrace at panic level, flushes the log, and
+  writes `qdbd_<pid>_error_dump.log` into its log directory
+  (`qdb/application/sig_handler.cpp:591-626`,
+  `qdb/sys/seh_translation.cpp:34-47`, `apps/qdbd/runner.cpp:443-452`).
+  The log directory archive therefore carries the crash account when
+  the death is a crash. A death with no such entry is not a crash.
+- rapid writes a fail file under `testdata/rapid/<Test>/` on every
+  failure, the flaky verdict included (`vendor/pgregory.net/rapid/engine.go:290-297`);
+  the path is gitignored (`**/testdata/rapid/`), so nothing is in the
+  checkout for CI to replay (`git ls-files` shows none).
+- The httpapi tests give the REST server a JSON logger writing into a
+  `bytes.Buffer` that nothing reads (`internal/httpapi/readiness_test.go:36-39`,
+  `observeContext`). The server's own account of a request (the access
+  line, the error mapping) is lost today.
 - `30.test.sh` runs with `set -euxo pipefail` and changes to `BASE_DIR`
-  before the tests (`scripts/cicd/30.test.sh:7,17`). `logs/`, `*.out.txt`
-  and `*.err.txt` are gitignored (`.gitignore`).
-- No other API or tool pipeline uploads qdbd logs: qdb-api-go,
-  qdb-api-python and qdb-nats-connector have the same pre-exit hook and
-  no artifacts block (their `.buildkite/` trees, 2026-10-07).
-- The PR 5 head commit is on the branch
-  `sc-19918/capture-complete-qdbd-logs-in-ci-archives` of
-  `bureau14/qdb-test-setup`; a squash-merge replaces it with one commit
-  on master, and the branch is deleted (the QuasarDB workflow).
+  before the tests (`scripts/cicd/30.test.sh:7,17`). `logs/`,
+  `*.out.txt`, `*.err.txt` and `**/testdata/rapid/` are gitignored.
+- No other API or tool pipeline uploads qdbd logs (qdb-api-go,
+  qdb-api-python, qdb-nats-connector `.buildkite/`, 2026-10-07).
 
 ## Design
 
-### `scripts/cicd/00.common.sh`
+### Phase 1: telemetry
+
+#### `scripts/cicd/00.common.sh`
 
 Header list gains one line:
 
@@ -65,13 +128,13 @@ Header list gains one line:
 #   cicd_archive_qdbd_logs_on_exit -- EXIT trap: archive both daemons' logs, keep the exit status
 ```
 
-New function, appended after `cicd_setup_qdb_env`, with its comment block
-in the file's convention:
+New function, appended after `cicd_setup_qdb_env`, in the file's
+comment-block convention:
 
 ```
 # cicd_archive_qdbd_logs_on_exit -- EXIT trap for a test step script: archive
-# both qdbd daemons' log directories and console files into logs/, then exit
-# with the status the script was exiting with.
+# both qdbd daemons' log directories, console files and error dumps into
+# logs/, then exit with the status the script was exiting with.
 #
 # Install it after cd "${BASE_DIR}" with `trap cicd_archive_qdbd_logs_on_exit
 # EXIT`. The archives are the submodule's (scripts/tests/setup/cleanup.sh,
@@ -98,8 +161,8 @@ cicd_archive_qdbd_logs_on_exit() {
 
     # 2. cleanup.sh sources config.sh (set -xe, argument parsing) and defines
     # archive; the subshell keeps both out of this shell. qdbd stays up: its
-    # logs are flushed every QDB_LOG_FLUSH_INTERVAL_MS, and stopping would
-    # SIGKILL it, which flushes nothing.
+    # log is flushed every QDB_LOG_FLUSH_INTERVAL_MS and on a fatal signal,
+    # and stopping would SIGKILL it, which flushes nothing.
     (
         cd "${BASE_DIR}" \
             && source scripts/tests/setup/cleanup.sh \
@@ -113,20 +176,19 @@ cicd_archive_qdbd_logs_on_exit() {
 export -f cicd_archive_qdbd_logs_on_exit
 ```
 
-Qualifies for a narrative under `narrative.md` rule 3: the order of the
-three steps matters (reading `$?` first, re-raising last), and the
-subshell is a deliberate construct.
+Narrated under `narrative.md` rule 3: the order of the three steps
+matters and the subshell is a deliberate construct.
 
-### `scripts/cicd/30.test.sh`
+#### `scripts/cicd/30.test.sh`
 
-Header comment gains one sentence after the JUnit sentence:
+Header gains, after the JUnit sentence:
 
 ```
 # At exit, whatever the tests' outcome, both qdbd daemons' logs are archived
 # into logs/ for the test-report plugin to upload (cicd_archive_qdbd_logs_on_exit).
 ```
 
-After `cd "${BASE_DIR}"`, before `cicd_setup_go_toolchain`:
+After `cd "${BASE_DIR}"`:
 
 ```
 # The archive runs inside this command because the plugin uploads before any
@@ -134,37 +196,32 @@ After `cd "${BASE_DIR}"`, before `cicd_setup_go_toolchain`:
 trap cicd_archive_qdbd_logs_on_exit EXIT
 ```
 
-Bare otherwise (rule 1: the trap line says everything).
+#### `.buildkite/steps/_build.yml`
 
-### `.buildkite/steps/_build.yml`
-
-The header comment gains:
+Header gains:
 
 ```
 # The test step archives both qdbd daemons' logs into logs/ at its exit
 # (scripts/cicd/30.test.sh) and the test-report plugin uploads them with the
-# report; the pre-exit hook runs after the upload, so its own archive is unused.
+# report, together with the rapid fail files a failed property test wrote;
+# the pre-exit hook runs after the upload, so its own archive is unused.
 ```
 
 The plugin block gains:
 
 ```
-  - bureau14/qdb-test-report#master:
-      title: "Test report {slug}"
-      job:
-        variant: {slug}
-        junit_input_path: "test-reports/*.xml"
         artifacts:
           - name: "qdbd logs"
             input_path: "logs/qdbd-logs-*.tar.gz"
+          - name: "rapid fail files"
+            input_path: "internal/**/testdata/rapid/**/*.fail"
 ```
 
-`python3 pipeline.py check` passes after the change (`.buildkite/AGENTS.md`,
-Layout).
+`python3 pipeline.py check` passes after the change.
 
-### `.buildkite/hooks/pre-exit`
+#### `.buildkite/hooks/pre-exit`
 
-The comment gains one sentence:
+Comment gains:
 
 ```
 # stop-services.sh archives the log directories as well, but this hook runs
@@ -172,9 +229,25 @@ The comment gains one sentence:
 # the one scripts/cicd/30.test.sh made at its exit.
 ```
 
-No code change.
+#### `internal/httpapi/readiness_test.go`, `observeContext`
 
-### `scripts/cicd/AGENTS.md`
+Becomes `observeContext(t testing.TB) context.Context`: the buffer is
+kept and written to `t.Log` in a `t.Cleanup` when `t.Failed()`. Doc
+comment:
+
+```
+// observeContext carries a REST server logger whose output is shown with
+// the test's own when the test fails, and discarded otherwise. A failed
+// round trip against the live daemon is read from three sides: the
+// test's draws, the server's log and the daemon's log
+// (docs/ci-qdbd-logs-plan.md while it is alive; internal/AGENTS.md, Tests).
+```
+
+Body: one overview comment saying the buffer is per test so a passing
+test adds no output and a failing one shows every request the server
+saw, in order. Every caller passes its `t`. Bare otherwise (rule 2).
+
+#### `scripts/cicd/AGENTS.md`
 
 Contract gains one bullet:
 
@@ -189,108 +262,159 @@ Contract gains one bullet:
   superset of the earlier one.
 ```
 
-### `.buildkite/AGENTS.md`
+#### `.buildkite/AGENTS.md`
 
 The "qdbd runs in CI" fact gains:
 
 ```
-  Both daemons' logs are uploaded with the test report through the
-  plugin's `job.artifacts` block (`steps/_build.yml`), the way quasardb's
-  test step uploads its server logs. The archive is made inside the test
-  command (`scripts/cicd/AGENTS.md`), because post-command and pre-exit
-  hooks run plugins first and the repository last, so nothing a hook
-  produces reaches the upload. Buildkite's `artifact_paths` is not used:
-  the logs are not a release artifact.
+  Both daemons' logs, console output and error dumps are uploaded with
+  the test report through the plugin's `job.artifacts` block
+  (`steps/_build.yml`), the way quasardb's test step uploads its server
+  logs, together with the rapid fail files of a failed property test.
+  The archive is made inside the test command (`scripts/cicd/AGENTS.md`),
+  because post-command and pre-exit hooks run plugins first and the
+  repository last, so nothing a hook produces reaches the upload.
+  Buildkite's `artifact_paths` is not used: the logs are not a release
+  artifact.
 ```
 
-### `scripts/tests/setup` (submodule)
+#### `internal/AGENTS.md`, Tests
 
-Pinned to `147c4d2b3bb6c551e9c8a33acd615ad9c1eb0518`, the head of
-qdb-test-setup PR 5, in commit 2. Re-pinned to PR 5's squash commit on
-master in commit 7, before the merge stage: the PR branch is deleted at
-merge and its head may stop being fetchable.
+One sentence: the REST server's log in a test is shown only when the
+test fails (`observeContext`), so a live-daemon failure can be read
+from the server's side as well as the daemon's.
 
-### `docs/log.md`
+#### `scripts/tests/setup` (submodule)
 
-Current state: Next item 1 leaves; item 2 loses the sentence "The cause is
-unknown until item 1 gives us a daemon log" and becomes startable as
-written. Last updated date set. One entry:
+Pinned to `147c4d2b3bb6c551e9c8a33acd615ad9c1eb0518` (PR 5's head) in
+commit 2; re-pinned to PR 5's squash commit on master before the merge
+stage, because the squash-merge deletes the branch that holds the head.
 
-```
-## 2026-10-07 -- CI uploads qdbd's logs with the test report; ci-qdbd-logs-plan.md deleted
+#### `docs/log.md`
 
-- Owner decisions: the archive is made inside the test command and
-  uploaded through the test-report plugin, never `artifact_paths`; the
-  flush interval and the console files are qdb-test-setup's (PR 5). The
-  rules went to `scripts/cicd/AGENTS.md` and `.buildkite/AGENTS.md`.
-```
+Current state, after phase 1: Next item 1 leaves; item 2 is rewritten
+from the evidence above (both Windows variants, three occurrences, the
+nightly ruled out as the only change, the signature) and points at this
+plan while it is alive. Later phases rewrite item 2 again as the
+evidence narrows it.
 
-The entry is written when the plan is deleted, in the merge stage, not in
-this unit's commits. The Current state change is commit 6.
+### Phases 2 to 4: the investigation
+
+The method, which every later commit follows:
+
+- Each run of the Windows jobs is one sample. A build's two Windows jobs
+  are retried through the API (`PUT jobs/<id>/retry`) until each has run
+  at least three times, and the outcome, duration of `TestRoundtrip`,
+  and, for a failure, the daemon log's last entries, the error dump and
+  the failing draws are tabulated in this plan under a dated heading.
+- A hypothesis is written down with the observation that would confirm
+  it and the one that would refute it before the next sample is taken.
+  A hypothesis the samples refute is recorded as refuted and not tried
+  again.
+- Phase 2 (the cause): the daemon log around the death answers whether
+  qdbd crashed (a "signal caught" entry and an error dump), exited, or
+  stopped answering while alive. The server's log answers which request
+  was in flight. Only then is a cause named.
+- Phase 3 (the payload): if the cause points at a request, the fail
+  files replay the draws locally against a Windows daemon when one is
+  available, or the request is narrowed on an agent through the Go test
+  with `-rapid.failfile`. If the cause is unrelated to the payload (a
+  resource limit, a port, the agent), the phase records that and stops.
+- Phase 4 (the reproduction): a C or C++ program against the C API in
+  the quasardb or qdb-api-c tree, and a Shortcut story for the qdbd R&D
+  team carrying it, under the QuasarDB workflow.
+
+Each phase's commits are added to this plan when the phase starts.
 
 ## Rationale
 
-| decision                                                                | why                                                                                                                              | rejected, and why                                                                                                | gained                                       | given up                                         | settled by                                                                  |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------- |
-| Archive inside the test command through an EXIT trap                    | Buildkite runs the repository's post-command and pre-exit hooks after the plugin's post-command upload                           | a repository post-command or pre-exit hook: its archive lands after the upload (build 90 job log)                | the archive exists when the plugin uploads   | a trap in every test script of the step          | Buildkite hooks documentation; owner, 2026-10-07                            |
-| Upload through the plugin's `job.artifacts`, not `artifact_paths`       | the logs belong with the test report, not in the release artifact tab; quasardb's test step does the same                        | `artifact_paths`: a regular artifact for something that is not one                                               | one place to look for a job's test evidence  | nothing                                          | owner, 2026-10-07                                                           |
-| qdbd keeps running; the trap archives live logs                         | stopping is a SIGKILL that flushes nothing, and `40.test-e2e.sh` is planned to run against the same daemons after the Go tests   | stop in the trap: no flush gained and the later e2e step loses its daemons                                       | composes with later test scripts in the step | the last flush interval of log lines, now 100 ms | `utils.sh` `kill_instances`; `docs/e2e.md`, In Buildkite; owner, 2026-10-07 |
-| The flush interval and the console files are the submodule's            | every API and tool pins the same submodule, so one change aligns them all                                                        | a second artifact glob for `qdbd_log_*.txt` here, and a flag in this repo's step: project-local, nothing aligned | one archive shape for every consumer         | a dependency on PR 5 landing                     | owner, 2026-10-07; qdb-test-setup PR 5                                      |
-| Reuse `cleanup.sh::archive` instead of a second tar                     | one home for how the daemon logs are archived; the glob also matches the pre-exit hook's archives                                | a tar in `00.common.sh`: a second shape to keep in step with the submodule's                                     | zero archive logic in this repo              | sourcing `config.sh` in a subshell               | proposal                                                                    |
-| The helper is one trap function in `00.common.sh`                       | the only caller is a trap; shared helpers live in `00.common.sh` so `40.test-e2e.sh` can install the same trap                   | a separate archive function plus a trap wrapper: two names for one use                                           | one line per test script                     | nothing                                          | `scripts/cicd/AGENTS.md`, Contract                                          |
-| Pin PR 5's head now, re-pin to the squash commit before the merge stage | the owner wants to debug the windows-core2 death now, before PR 5 lands; the squash-merge deletes the branch that holds the head | wait for the merge: the investigation waits with it                                                              | the first build with complete logs today     | one more commit and one more build               | owner, 2026-10-07                                                           |
-| The pre-exit hook's duplicate archive stays                             | removing it means editing the submodule, which this repo never does; the duplicate is written after the upload and gitignored    | skip `cleanup` in the hook: a local copy of `stop-services.sh`                                                   | no submodule change                          | two unused tarballs per job on the agent         | root `AGENTS.md`, Sub-folders                                               |
+| decision                                                         | why                                                                                                                                                        | rejected, and why                                                                                                                | gained                                          | given up                                               | settled by                                                                      |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| The unit is the investigation; the log upload is its phase 1     | the owner's annotation on the first plan: a free-form troubleshooting task with the three goals above                                                      | a unit per phase: the scope is unknown, so the cut cannot be made in advance                                                     | one plan carries the evidence end to end        | the fixed commit list                                  | owner, 2026-10-07 (plannotator annotation)                                      |
+| Evidence before conclusions; every claim carries its observation | the owner asked for strictly evidence-driven debugging                                                                                                     | reasoning from the payload shapes or the nightly: the three payloads share nothing and the nightly differs by a test-only commit | no wasted phase on a refuted guess              | speed on the first sample                              | owner, 2026-10-07                                                               |
+| Both Windows jobs are retried repeatedly on every build          | the failure is intermittent: build 90 failed three of four Windows runs, haswell passed on retry                                                           | one run per build: one sample tells nothing about an intermittent failure                                                        | samples with telemetry                          | agent time                                             | owner, 2026-10-07                                                               |
+| Archive inside the test command through an EXIT trap             | Buildkite runs the repository's post-command and pre-exit hooks after the plugin's upload                                                                  | a repository hook: its archive lands after the upload (build 90 job log)                                                         | the archive exists when the plugin uploads      | a trap in every test script of the step                | Buildkite hooks documentation; owner, 2026-10-07                                |
+| Upload through `job.artifacts`, not `artifact_paths`             | the logs belong with the test report; quasardb's test step does the same                                                                                   | `artifact_paths`: a release artifact for something that is not one                                                               | one place to look for a job's test evidence     | nothing                                                | owner, 2026-10-07                                                               |
+| qdbd keeps running; the trap archives live logs                  | stopping is a SIGKILL that flushes nothing; qdbd flushes on a fatal signal itself; `40.test-e2e.sh` is planned after the Go tests against the same daemons | stop in the trap: no flush gained, the later e2e step loses its daemons                                                          | composes with later test scripts                | the last 100 ms of log lines of a daemon that is alive | `utils.sh` `kill_instances`; `sig_handler.cpp:626`; `docs/e2e.md`, In Buildkite |
+| The flush interval and the console files are the submodule's     | every API and tool pins the same submodule, so one change aligns them all                                                                                  | a second glob and a flag in this repo: project-local                                                                             | one archive shape for every consumer            | a dependency on PR 5                                   | owner, 2026-10-07; qdb-test-setup PR 5                                          |
+| Reuse `cleanup.sh::archive`                                      | one home for how the daemon logs are archived                                                                                                              | a tar in `00.common.sh`: a second shape to keep in step                                                                          | zero archive logic here                         | sourcing `config.sh` in a subshell                     | proposal                                                                        |
+| The rapid fail files are uploaded                                | they are the exact draws of the failing case, written even on the flaky verdict, and gitignored so nothing else keeps them                                 | reading the draws off the job log: present, but not replayable                                                                   | `-rapid.failfile` replay on an agent or locally | nothing                                                | `engine.go:290-297`; proposal                                                   |
+| The server's test log is shown on failure                        | the server is the second witness: it says which request was in flight when the daemon vanished; today its log is written to a buffer nobody reads          | logging at a level into the test output always: noise on every passing test; a file: one more artifact glob                      | the request in flight for a failed test         | one `testing.TB` argument per caller                   | `readiness_test.go:36-39`; proposal                                             |
+| Pin PR 5's head now, re-pin before the merge stage               | the owner wants samples now; the squash deletes the branch                                                                                                 | wait for the merge: samples wait with it                                                                                         | the first samples today                         | one more commit and build                              | owner, 2026-10-07                                                               |
+| The pre-exit hook's duplicate archive stays                      | removing it means editing the submodule                                                                                                                    | a local `stop-services.sh`                                                                                                       | no submodule change                             | two unused tarballs per job                            | root `AGENTS.md`, Sub-folders                                                   |
 
 ## Knowledge
 
-- Commit 2 (submodule bump): no prose; the submodule carries its own.
-- Commit 3 (`00.common.sh`): the function's comment block and the
-  narrative above carry the hook-order reason (evidence: Verified facts,
-  first item), the live-archive reason (`kill_instances`, flush interval)
-  and the subshell reason (`config.sh` runs `set -xe` and parses
-  arguments). `scripts/cicd/AGENTS.md` gains the Contract bullet.
-- Commit 4 (`30.test.sh`): the header sentence and the trap comment; no
-  new reason.
+- Commit 2 (submodule bump): no prose.
+- Commit 3 (`00.common.sh`): the function's comment block and overview
+  carry the hook-order reason, the live-archive reason (`kill_instances`,
+  the flush interval, the signal handler's flush) and the subshell
+  reason. `scripts/cicd/AGENTS.md` gains the Contract bullet.
+- Commit 4 (`30.test.sh`): the header sentence and the trap comment.
 - Commit 5 (`_build.yml`, `pre-exit`, `.buildkite/AGENTS.md`): the
-  template comment and the Facts paragraph carry the quasardb precedent,
-  the `artifact_paths` rejection and the hook-order fact; the hook
-  comment says its archive is unused.
-- Commit 6 (`docs/log.md`): Current state only.
-- Rationale rows with no code home: "pin PR 5's head now, re-pin before
-  merge" lives in commit 7's subject and in this plan only; it dies with
-  the plan, which is right, since nothing remains to defend once the
-  squash commit is pinned.
+  quasardb precedent, the `artifact_paths` rejection, the hook-order
+  fact, the fail files; the hook comment says its archive is unused.
+- Commit 6 (`observeContext`): the doc comment and overview carry the
+  three-witness reason; `internal/AGENTS.md`, Tests, gains the sentence.
+- Commit 7 (`docs/log.md`): Current state only; the evidence table above
+  is the plan's and moves to the ticket and the log entry when the unit
+  lands.
+- The investigation's findings (phases 2 to 4) land in this plan first,
+  dated; what survives goes to the Shortcut story, to `internal/AGENTS.md`
+  if a rule for the tests follows, and to the log entry that deletes the
+  plan.
 
 ## How the knowledge lands
 
-1. Run `/doc-discipline read` before the first code commit.
-2. Write every commit's comments and `AGENTS.md` rows from the Design
-   and Knowledge sections, in the same commit as the code.
+1. `/doc-discipline read` before the first code commit (done 2026-10-07).
+2. Every commit's comments and `AGENTS.md` rows come from Design and
+   Knowledge, in the same commit as the code.
 3. A why that arises while building and is not in this plan is written
    where it is decided, with its evidence, or asked of the owner through
    the question tool before the commit.
-4. After commit 6, run `/doc-discipline all scripts/cicd .buildkite`
-   and make one small commit per finding.
-5. Before the build-stage message, run
-   `/doc-discipline check scripts/cicd .buildkite docs/ci-qdbd-logs-plan.md`
-   and fix every "Unlanded from the plan" finding with a small commit, or
-   report why it was dropped.
-6. After every `.buildkite` change, run `python3 .buildkite/pipeline.py check`
+4. After commit 7, `/doc-discipline all scripts/cicd .buildkite internal/httpapi/readiness_test.go`,
+   one small commit per finding.
+5. Before each build-stage message,
+   `/doc-discipline check scripts/cicd .buildkite internal docs/ci-qdbd-logs-plan.md`;
+   every "Unlanded from the plan" finding is fixed with a small commit
+   or reported with the reason it was dropped.
+6. After every `.buildkite` change, `python3 .buildkite/pipeline.py check`
    from a venv with `.buildkite/requirements.txt` and `BUILDKITE_BRANCH`
    set.
+7. Every sample and every hypothesis goes into this plan under a dated
+   heading before the next sample is taken.
 
 ## Commits
 
-1. `docs(plan): ci-qdbd-logs-plan.md, the build step uploads qdbd's logs with the test report`
+Phase 1:
+
+1. `docs(plan): ci-qdbd-logs-plan.md, the build step uploads qdbd's logs with the test report` (landed, `6dcabcb`); revised by `docs(plan): ci-qdbd-logs-plan.md, the unit is the qdbd death investigation and the upload is its telemetry`.
 2. `build(deps): bump qdb-test-setup to the head of PR 5, flush interval and console files`
 3. `ci(cicd): cicd_archive_qdbd_logs_on_exit archives both daemons' logs through the submodule's cleanup.sh`
 4. `ci(cicd): 30.test.sh archives the qdbd logs at exit, whatever the tests' outcome`
-5. `ci(buildkite): the build step uploads the qdbd log archives with the test report`
-6. `docs(log): CI captures qdbd's logs; the windows-core2 qdbd death is next`
-7. `/doc-discipline all scripts/cicd .buildkite`, one small commit per finding; then `/doc-discipline check scripts/cicd .buildkite docs/ci-qdbd-logs-plan.md`.
-8. `build(deps): bump qdb-test-setup to the squash commit of PR 5`, as soon as the squash commit exists; before the merge stage in every case.
-9. Verify: push `sc-19567/rr-ci-qdbd-logs`, build its head in Buildkite (API-created, branch-filter bypass, full SHA; `.buildkite/AGENTS.md`), wait for the result. Green: report the build number and confirm one job's report page links "qdbd logs" with both archives. Red: fix with further small commits on this branch, push, build again. The Verify step runs after commit 6 for the owner's debugging and again after commit 8.
+5. `ci(buildkite): the build step uploads the qdbd log archives and the rapid fail files with the test report`
+6. `test(httpapi): the REST server's log is shown when a test fails`
+7. `docs(log): CI uploads qdbd's logs; the windows-core2 death is both Windows variants, three of four runs`
+8. `/doc-discipline all` on the touched paths, one small commit per finding; then `/doc-discipline check` with this plan.
+9. Verify, first samples: push `sc-19567/rr-ci-qdbd-logs`, build its head (API-created, branch-filter bypass, full SHA; `.buildkite/AGENTS.md`), wait. Then retry both Windows jobs until each has run three times. Tabulate every run in this plan. Green or red, the archives of every Windows run are downloaded and read; a red Windows run is the sample the unit exists for and is not "fixed".
+
+Phases 2 to 4: commits added to this plan as each phase starts, under
+the method above.
+
+Before the merge stage, in every case:
+
+- `build(deps): bump qdb-test-setup to the squash commit of PR 5`, then
+  one more build with the Windows jobs retried as above.
 
 ## Open questions and recommendations
 
-1. Should the windows-core2 job of the first green build be inspected in this unit, or does the daemon log go straight to the next unit? Recommendation: this unit only confirms the archives are linked; reading them is the next unit.
+1. Should the windows jobs be retried to three runs each on every build
+   of this unit, or more? Recommendation: three per build, more only
+   when the tally shows the failure rate needs it.
+2. Where does the ticket for the qdbd R&D team go? Recommendation: a
+   Shortcut story under the QuasarDB workflow, team R&D, with the
+   reproduction attached, opened only when phase 4 has a reproduction or
+   phase 2 has a daemon-side cause with no reproduction possible.
+3. Should the REST server's log level in the tests be raised to debug
+   for the samples? Recommendation: no until a sample shows the info
+   level does not say which request was in flight.
