@@ -231,10 +231,10 @@ cicd_archive_qdbd_logs_on_exit() {
 export -f cicd_archive_qdbd_logs_on_exit
 
 # cicd_record_windows_events -- write logs/windows-events-<epoch>.txt: the
-# qdbd.exe processes alive now, the Application log's crash and error-report
-# events, and the Defender operational log's detection events, each from the
-# last two hours. Windows only; the test-report plugin uploads the file
-# (.buildkite/steps/_build.yml).
+# qdbd.exe processes alive now, the state of Windows Error Reporting, the
+# Application log's crash and error-report events, and the Defender
+# operational log's detection events, each from the last two hours. Windows
+# only; the test-report plugin uploads the file (.buildkite/steps/_build.yml).
 #
 # Inputs:  the cwd is the checkout (logs/ is relative to it).
 # Outputs: logs/windows-events-<epoch>.txt. A query that fails leaves its
@@ -244,8 +244,11 @@ cicd_record_windows_events() {
     # (a fast-fail, a stack overflow, an allocation failure, a kill from
     # outside) in the Application log: event 1000 carries the exception code
     # and the faulting module, 1001 is the error report, 1026 the .NET variant.
-    # Defender's 1116 and 1117 name a file it detected or acted on. tasklist
-    # says whether the daemons are still alive at this point. The queries go
+    # Defender's 1116 and 1117 name a file it detected or acted on, and event
+    # 1000 is written by the Windows Error Reporting service, so its state
+    # (the WerSvc service and the Disabled policy value) says whether an empty
+    # Application log means no fault or no reporting. tasklist says whether
+    # the daemons are still alive at this point. The queries go
     # through PowerShell, not wevtutil, because MSYS bash rewrites arguments
     # that start with "/" as paths; tasklist's switches are written "//FI", the
     # doubled slash the submodule uses for Taskkill, which MSYS turns into one.
@@ -256,6 +259,10 @@ cicd_record_windows_events() {
     {
         echo "=== tasklist qdbd.exe ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
         tasklist.exe //FI "IMAGENAME eq qdbd.exe" //V 2>&1
+        echo
+        echo "=== Windows Error Reporting: WerSvc and the Disabled policy value"
+        powershell.exe -NoProfile -NonInteractive -Command \
+            "Get-Service WerSvc -ErrorAction Stop | Format-List Name,Status,StartType | Out-String; Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting' -ErrorAction Stop | Format-List Disabled,DontShowUI | Out-String" 2>&1
         echo
         echo "=== Application log, events 1000 1001 1026, last two hours"
         powershell.exe -NoProfile -NonInteractive -Command \
