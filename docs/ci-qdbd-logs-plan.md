@@ -745,6 +745,39 @@ the branch cloned from a bundle, the dists from the artifact store, and
   the same debug `qdbdd.exe` and PDB as `h-0`: a second symbol source,
   and a second sample of session 0 without the agent account.
 
+### 2026-10-08: the release daemon dies as LocalSystem, so the session is the discriminator, not the account
+
+The LocalSystem loop on `default-windows-amd64-h-1` lost the insecure
+release daemon (quasardb-build 2782, `22f54da872`) in its eighth run,
+seventy minutes after the daemons started, on the same signature as
+every earlier death: exit code `0xC0000005`, the daemon's log ending on
+"flushing async pipeline pipe_0 to disk: 1 entries - 1 rows" with no
+"rows written" after it, no error entry, no error dump, nothing on
+stderr, and the test's first error a `create` refused by the open
+circuit breaker. procdump wrote `C:\BuildkiteAgent\dumps\qdbd_4700.dmp`
+on `h-1`; a copy is on the operator's machine as
+`qdbd_4700-h1-localsystem-release-22f54da872.dmp`. `cdb` reads the same
+shape as the earlier dump: thread "a-pipe 00", `KERNELBASE!RaiseException`
+above `ntdll!RcConsolidateFrames`, an access violation reading the
+page-aligned address `0x2272fcd3000`, then three frames in `qdbd.exe`
+(`+0x3d4e99`, `+0x429144`, `+0x56e276` on this build) and the thread
+entry. So the agent account, its privileges and the Buildkite agent's
+environment are not what makes the daemon die: LocalSystem in session 0
+dies the same way. What session 0 and the user session do not share
+remains the candidate list: the non-interactive window station and its
+desktop heap, the absence of a logon session with a user profile, and
+whatever the process inherits from the service control manager
+(priority class, the console, the job object of the service).
+
+The catch funclet's re-raise is the only exception the second-chance
+dumps carry, and it hides the faulting frame. From this heading on all
+three loops run procdump with `-e 1 -f C0000005 -n 3`, which writes a
+full dump at the first-chance access violation, before qdbd's handler
+runs, and keeps the unhandled re-raise's dump as well. The debug loops
+on `h-0` and `h-2` were restarted for that and lost their first run,
+which the debug daemon had not finished in eighty minutes (the release
+daemon finishes one in about ten).
+
 All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
