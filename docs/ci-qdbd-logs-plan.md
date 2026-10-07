@@ -778,6 +778,70 @@ on `h-0` and `h-2` were restarted for that and lost their first run,
 which the debug daemon had not finished in eighty minutes (the release
 daemon finishes one in about ten).
 
+### 2026-10-08: the fault itself, from a first-chance dump: a Stream VByte decode reads past the end of its input
+
+The LocalSystem loop on `h-1`, restarted with first-chance capture,
+lost the insecure release daemon again in its second run, eleven
+minutes after the start, and procdump wrote the first-chance dump
+`qdbd_2784.dmp` (a copy is on the operator's machine, suffixed
+`firstchance`). Without symbols, `cdb` still reads the instruction and
+its operands:
+
+- The faulting instruction is `movdqu xmm0, xmmword ptr [rdx]`, an
+  unaligned sixteen-byte load, at `rdx = 0x2c94e39aff1`, fifteen bytes
+  before the page boundary at `0x2c94e39b000`. `!address` says the
+  bytes before the boundary are the last of a committed 64 KB run of a
+  segment heap and the page after it is reserved, not committed. The
+  load spans the boundary; the first byte on the reserved page is the
+  access violation.
+- The surrounding code is a shuffle-table decode loop: `movdqu` from
+  the input, `pshufb` with a mask from a table in the image, a store,
+  then the next `movdqu` four bytes further on (`r8`, `rdx`, `rax` hold
+  `...afed`, `...aff1`, `...aff5`). Sixteen-byte loads advancing by the
+  encoded length of a group of four values, four bytes when every value
+  fits in one byte, is Stream VByte's SSE decoder
+  (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c:13-32`).
+- The library documents the over-read: "Our decoding functions may read
+  (but not use) STREAMVBYTE_PADDING extra bytes beyond the compressed
+  data: the user needs to ensure that this region is allocated"
+  (`thirdparty/streamvbyte-2.0.0/include/streamvbyte.h:52-69`,
+  `STREAMVBYTE_PADDING` is 16). qdbd calls the decoder from
+  `qdb/compression/streamvbyte.cpp:39`, `delta_rle_streamvbyte.cpp:190-203`,
+  `rle.cpp:197` and `delta4c.cpp:596,639`; which of them decodes during
+  the async pipeline's flush to disk, and whether its input buffer
+  carries the padding, is what the debug daemon's symbols will say.
+  The exception is raised on thread "a-pipe 00" with the same three
+  frames below the decoder as every earlier dump, so this is the one
+  bug, not a second one.
+- The two later dumps of the same death are the re-raise from the
+  catch funclet (`KERNELBASE!RaiseException`), first-chance and then
+  unhandled; the daemon's own handler never sees the original fault
+  because the catch funclet consumes it.
+
+So the daemon dies of a read of up to fifteen bytes past the end of a
+heap buffer that holds Stream VByte data. It is latent everywhere and
+faults only when the buffer ends within fifteen bytes of the end of a
+committed heap run, which is what the context changes.
+
+What the context does not change, measured on `h-1`: the daemon's
+process heap is the Segment Heap (signature `ddeeddee`, `!heap -s`)
+both when started from the SSH logon and as a service; and the SSH
+logon on these agents is itself session 0 (`(Get-Process -Id $PID).SessionId`
+prints 0 for the SSH shell), so the "session 1" the earlier heading
+assigned to the SSH runs was never measured, and the eleven passes
+there were session-0 runs as Administrator with a network logon. The
+remaining differences between the contexts that die and the one that
+did not are the logon type and token, the parent process (WinSW with
+its job object against sshd) and the environment, none of which
+should move a heap commit boundary; the eleven passes are also within
+the odds of luck at the observed death rate. The deciding experiment
+runs now on `h-1`: full page heap for `qdbd.exe` (`gflags /p /enable
+qdbd.exe /full`), which puts every allocation at the end of a page with
+an unmapped page after it, then the round trip from the SSH logon. A
+death at the same instruction in the first run makes the layout the
+whole explanation and gives the qdbd team a deterministic reproduction
+in any context.
+
 All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
