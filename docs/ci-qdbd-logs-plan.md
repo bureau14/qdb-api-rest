@@ -411,6 +411,17 @@ test-report plugin uploads it next to the archives. PowerShell
 `Get-WinEvent` is used rather than `wevtutil` because MSYS bash rewrites
 arguments that start with `/` as paths.
 
+### 2026-10-07: builds 94 and 95, the H4 telemetry works, all four Windows runs passed
+
+Both builds of head `45f77d0` passed on both Windows variants. The
+event capture of build 94's core2 run shows the shape a failing sample
+will have: `tasklist` lists both `qdbd.exe` processes (the insecure one
+at 225 MB after the full run, the secure one at 80 MB), and both
+`Get-WinEvent` queries ran with the agent user's rights and answered
+"No events were found", so an empty answer on a failing run is a
+finding and not a permission problem. The tally after builds 91 to 95:
+two of ten Windows runs failed, both in one build.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                 | error dump | failing draws                                                                         |
@@ -419,6 +430,10 @@ arguments that start with `/` as paths.
 | 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry                                    | none       | none                                                                                  |
 | 93    | `01a11510-7353` | windows-core2   | 1   | failed  | not reached   | a connection accepted, then two seconds of pipeline flushes, then nothing | none       | `TestReadTableRange` and `TestReadAnswersRowsWritten`, both at `create`, breaker open |
 | 93    | `01a11510-7357` | windows-haswell | 1   | failed  | not reached   | a connection accepted, then one second of flushes, then nothing           | none       | `TestReadTableRange` at `create`, breaker open                                        |
+| 94    | `01a11521-1a25` | windows-core2   | 1   | passed  | 550 s         | not read                                                                  | none       | none                                                                                  |
+| 94    | `01a11521-1a27` | windows-haswell | 1   | passed  | 558 s         | not read                                                                  | none       | none                                                                                  |
+| 95    | `01a11521-6893` | windows-core2   | 1   | passed  | 554 s         | not read                                                                  | none       | none                                                                                  |
+| 95    | `01a11521-6896` | windows-haswell | 1   | passed  | 550 s         | not read                                                                  | none       | none                                                                                  |
 
 What the first archives show (build 91, both Windows variants): each
 archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
