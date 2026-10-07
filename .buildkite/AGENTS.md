@@ -41,7 +41,11 @@ all of this should feel.
   logs, together with the rapid fail files of a failed property test:
   the exact draws of the failing case, which rapid writes on the flaky
   verdict as well, gitignored so nothing else keeps them, and replayable
-  with `-rapid.failfile`.
+  with `-rapid.failfile`. On Windows the same block uploads
+  `logs/windows-events-*.txt`, the Application and Defender event log
+  entries and the `qdbd.exe` processes alive at the end of the test
+  step, because the insecure daemon has died there with nothing in its
+  own log (`scripts/cicd/00.common.sh`, `cicd_record_windows_events`).
   The archive is made inside the test command (`scripts/cicd/AGENTS.md`),
   because post-command and pre-exit hooks run plugins first and the
   repository last, so nothing a hook produces reaches the upload.
