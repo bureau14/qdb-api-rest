@@ -10,8 +10,9 @@ key: build-{slug}
 # (scripts/cicd/30.test.sh) and the test-report plugin uploads them with the
 # report, together with the rapid fail files a failed property test wrote
 # and, on Windows, the system's record of the daemons (the Application and
-# Defender events, the qdbd.exe processes alive); the pre-exit hook runs
-# after the upload, so its own archive is unused.
+# Defender events, the qdbd.exe processes alive) and the watcher's record of
+# every qdbd.exe's exit code; the pre-exit hook runs after the upload, so its
+# own archive is unused.
 
 commands:
   - echo \"+++ Start services\"
@@ -45,6 +46,8 @@ plugins:
             input_path: "internal/**/testdata/rapid/**/*.fail"
           - name: "windows events"
             input_path: "logs/windows-events-*.txt"
+          - name: "qdbd watch"
+            input_path: "logs/qdbd-watch-*.txt"
 
 timeout_in_minutes: 60
 

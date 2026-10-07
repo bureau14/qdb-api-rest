@@ -45,7 +45,9 @@ all of this should feel.
   `logs/windows-events-*.txt`, the Application and Defender event log
   entries and the `qdbd.exe` processes alive at the end of the test
   step, because the insecure daemon has died there with nothing in its
-  own log (`scripts/cicd/00.common.sh`, `cicd_record_windows_events`).
+  own log (`scripts/cicd/00.common.sh`, `cicd_record_windows_events`),
+  and `logs/qdbd-watch-*.txt`, every `qdbd.exe`'s exit code and its
+  memory and thread samples (`scripts/cicd/windows-qdbd-watch.ps1`).
   The archive is made inside the test command (`scripts/cicd/AGENTS.md`),
   because post-command and pre-exit hooks run plugins first and the
   repository last, so nothing a hook produces reaches the upload.
