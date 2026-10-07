@@ -916,6 +916,66 @@ All three agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
 
+### 2026-10-08: handoff to the qdbd R&D team, as the evidence stands
+
+What to report, in the order a reader needs it:
+
+1. **Symptom.** On the Windows CI agents `qdbd.exe` 3.15.0.dev0 dies
+   with exit code `0xC0000005` under the qdb-api-rest round-trip test,
+   leaving no log entry, no error dump and no Windows Error Reporting
+   event, because the access violation is caught by a catch funclet
+   and re-raised (`RaiseException` above `RcConsolidateFrames`), and
+   that re-raise is what ends the process. Every death is on thread
+   "a-pipe 00" during "flushing async pipeline pipe_0 to disk".
+2. **Fault.** First-chance dump `qdbd_2784.dmp` (build `22f54da872`,
+   quasardb-build 2782, release, no PDB exists for release builds):
+   `movdqu xmm0, [rdx]` with `rdx` fifteen bytes before the end of a
+   committed segment-heap run, the next page reserved. The loop is
+   Stream VByte's SSE decoder (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c`),
+   whose header says the decoder may read `STREAMVBYTE_PADDING` (16)
+   bytes beyond the input and that the caller must allocate them
+   (`include/streamvbyte.h:52-69`). qdbd decodes from a view of exactly
+   the compressed size into the serialized input, "zero copy"
+   (`qdb/compression/streamvbyte.hpp:86-116`, and the same shape in
+   `delta_rle_streamvbyte.cpp`, `rle.cpp`, `delta4c.cpp`). Twenty-seven
+   `qdbd.exe` frames below the decoder in the dump, offsets only.
+3. **A second observation, debug build.** `qdbdd.exe` of
+   quasardb-build 2785 (`bf816772bd`, master plus a test-only commit)
+   under the same test asserted
+   `idx.valid()` at `qdb/kernel/containers/ts/indexer.hpp:239`
+   (`compute_index` for an int64 column) seventy minutes in, on the
+   same thread, and exited through `emergency_shutdown` with -3. Not
+   yet known whether this is the same bug seen earlier (a decoder that
+   reads a too-short view decodes garbage) or a second one (the int64
+   "none" sentinel drawn as data); the loops with `cdb` attached decide
+   it with a symbolized dump at the assert or at the fault.
+4. **Context.** The death needs the service context: as a Windows
+   service (the Buildkite agent's account, or LocalSystem) it dies in
+   one of two to eight runs; from an SSH logon as Administrator on the
+   same machine, same binaries, twenty-three consecutive runs passed.
+   Both contexts are session 0 and both use the Segment Heap; the
+   mechanism is the heap layout at the end of a committed run, and what
+   the service start changes in that layout is not established. Full
+   page heap makes the daemon too slow to use (one case in sixty-nine
+   minutes).
+5. **Artifacts.** On the operator's machine: `qdbd_13660.dmp` (build
+   `91476e3abe`, second chance), `qdbd_4700-h1-localsystem-release-22f54da872.dmp`
+   (second chance), `qdbd_2784-h1-localsystem-release-22f54da872-firstchance.dmp`
+   with `qdbd_2784-fc.txt` and `heap-2784.txt`; the debug pairs
+   `dbgpair-bf816772bd-{core2,haswell}.tar.zst` (`qdbdd.exe`,
+   `qdbdd.pdb`, the debug `qdb_user_addd.exe` and
+   `qdb_cluster_keygend.exe`). On the agents: `C:\BuildkiteAgent\dumps`
+   on `h-0`, `h-1`, `h-2`.
+6. **Fix shape, for the team to judge.** Either give the decoders an
+   input with sixteen readable bytes after the compressed data (a copy
+   into a padded buffer, or a serialization format that always
+   trails the compressed bytes by at least sixteen bytes), or decode
+   the last group of four values with scalar code. The test-only
+   reproduction: any Stream VByte decode whose input ends at a page
+   boundary with the next page unmapped (`VirtualAlloc` two pages,
+   place the compressed bytes at the end of the first, free the
+   second), which the C API tests can carry without a server.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
