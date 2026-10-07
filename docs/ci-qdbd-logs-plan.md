@@ -595,6 +595,36 @@ A detached launch through `Start-Process` breaks the Go toolchain
 (`compile.exe` exits 0xC0000142), so the loop runs in the foreground
 of a long-lived SSH session instead.
 
+### 2026-10-07: the context decides, the round-trip loop in two contexts on one agent
+
+On the same agent `default-windows-amd64-h-0`, the same `rt.test`
+binary (`TestRoundtrip` from `internal/httpapi`) against the same
+daemon dists, in two contexts:
+
+- From an SSH session as the image's administrator user (session 1):
+  eleven consecutive runs passed, about two hours, both daemons alive
+  throughout, the traffic-carrying daemon's working set settling near
+  150 MB.
+- As a Windows service (a WinSW copy next to the agent's own, running
+  as the `buildkite` service account in session 0, the way the agent
+  runs its jobs): the insecure daemon died 73 seconds into the first
+  run, on the same signature, a burst of `SELECT` evaluates then
+  nothing, no error entry, no error dump, nothing on stderr.
+
+At the suite's rate of about one death in seven runs, eleven passes
+have about one chance in five of being luck, and a death on the first
+service run about one in seven; together they say the service context
+is where the daemon dies and the user session is where it does not.
+The owner recalled that the agent runs as a service and that what it
+spawns runs restricted; the loop bears that out. What the service
+context changes for qdbd: session 0 with the non-interactive window
+station and its 768 KB desktop heap (`SharedSection=1024,20480,768`
+on the image), the `buildkite` account's privileges, and the job object
+the agent puts a job's processes in (absent from the WinSW copy, which
+still died, so the job object is not the cause). The watcher's exit
+code, from the service loop restarted with the handle fix, is the next
+sample.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
