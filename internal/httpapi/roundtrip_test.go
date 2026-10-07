@@ -49,7 +49,7 @@ func ingestBodyOf(t table.T, tables []table.Table) string {
 // the rows generated; the fixture's tables fit one batch.
 func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	err := s.c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
+	err := s.c.Read(context.Background(), s.user, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
 		for rec, err := range batches {
 			if err != nil {
 				return err
@@ -69,7 +69,7 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 // the ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), qdb.User{}, tbl.Select())
+	rec, err := s.c.Query(context.Background(), s.user, tbl.Select())
 	if err != nil {
 		t.Fatalf("query %s: %v", tbl.Name, err)
 	}

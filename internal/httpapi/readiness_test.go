@@ -57,9 +57,8 @@ func observeContext(t testing.TB) context.Context {
 // TestReadinessOKAgainstLiveCluster: a reachable cluster answers 200 with
 // no Retry-After and an empty body.
 func TestReadinessOKAgainstLiveCluster(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
 	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
+	qdbtest.BindInsecure(t, &cfg)
 	resp := probe(t, cfg)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("readiness = %d, want 200", resp.Code)

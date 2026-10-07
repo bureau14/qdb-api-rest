@@ -27,6 +27,7 @@ import (
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
 // T is the slice of testing.TB the fixture needs; *testing.T and *rapid.T
@@ -398,9 +399,10 @@ func entries(tbl Table) []string {
 	return names
 }
 
-// call runs f as the anonymous user.
+// call runs f as the fixture's caller (qdbtest.Caller).
 func call(c *qdb.Cluster, f func(*qdb.Session) error) error {
-	return c.Call(context.Background(), qdb.User{}, f)
+	name, secret := qdbtest.Caller()
+	return c.Call(context.Background(), qdb.User{Username: name, SecretKey: secret}, f)
 }
 
 // RemoveOnCleanup removes tbl and its symtables on t's cleanup, however

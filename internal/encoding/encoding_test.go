@@ -12,6 +12,7 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
@@ -23,11 +24,12 @@ type failer interface {
 	Fatalf(string, ...any)
 }
 
-// run executes q as the anonymous user and fails the test on error. The
-// caller releases the batch it returns.
+// run executes q as the fixture's caller (qdbtest.Caller) and fails the
+// test on error. The caller releases the batch it returns.
 func run(t failer, c *qdb.Cluster, q string) arrow.RecordBatch {
 	t.Helper()
-	rec, err := c.Query(context.Background(), qdb.User{}, q)
+	name, secret := qdbtest.Caller()
+	rec, err := c.Query(context.Background(), qdb.User{Username: name, SecretKey: secret}, q)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}

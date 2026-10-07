@@ -20,11 +20,13 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// insecureConfig is the default config pointed at the insecure cluster,
-// with the pool sizes overridden per test.
-func insecureConfig(mutate func(*config.Config)) config.Config {
+// insecureConfig is the default config pointed at the insecure cluster
+// (or the secure one under qdbtest.TrafficToSecure), which fails t when
+// that cluster is down, with the pool sizes overridden per test.
+func insecureConfig(t *testing.T, mutate func(*config.Config)) config.Config {
+	t.Helper()
 	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
+	qdbtest.BindInsecure(t, &cfg)
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -41,25 +43,31 @@ func closeCluster(t *testing.T, c *Cluster) {
 	}
 }
 
-// anonymous names the anonymous user.
+// anonymous names the anonymous user, for the tests whose cluster is
+// never reached.
 var anonymous = User{}
+
+// caller is the fixture's caller (qdbtest.Caller) as a User.
+func caller() User {
+	name, secret := qdbtest.Caller()
+	return User{Username: name, SecretKey: secret}
+}
 
 // TestRejectedQueryReusesSession: the cluster rejects a malformed query,
 // and a rejection is an answer, so the session goes back to the pool and
 // the breaker counts a success.
 func TestRejectedQueryReusesSession(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	c := New(insecureConfig(nil), nil)
+	c := New(insecureConfig(t, nil), nil)
 	defer closeCluster(t, c)
 
-	_, err := c.Query(context.Background(), anonymous, "NOT A QUERY")
+	_, err := c.Query(context.Background(), caller(), "NOT A QUERY")
 	if err == nil {
 		t.Fatal("want an error for a malformed query")
 	}
 	if qdbapi.IsBadSession(err) {
 		t.Fatalf("a malformed query should not condemn the session: %v", err)
 	}
-	if s := c.poolFor(anonymous).Stats(); s.Idle != 1 {
+	if s := c.poolFor(caller()).Stats(); s.Idle != 1 {
 		t.Fatalf("rejected query did not return the session: %+v", s)
 	}
 	if st, n := c.breaker.state, c.breaker.failures; st != breakerClosed || n != 0 {
@@ -70,8 +78,7 @@ func TestRejectedQueryReusesSession(t *testing.T) {
 // TestPerUserCapAndSharing: one user's concurrent calls never exceed the
 // per-user cap, and two User values with the same name share one pool.
 func TestPerUserCapAndSharing(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	c := New(insecureConfig(func(cfg *config.Config) {
+	c := New(insecureConfig(t, func(cfg *config.Config) {
 		cfg.Pool.PerUserMax = 2
 		cfg.Pool.MaxSessions = 8
 	}), nil)
@@ -83,12 +90,12 @@ func TestPerUserCapAndSharing(t *testing.T) {
 			// The cap is checked while the session is held, so the check runs
 			// inside Call: Query has already returned the session by the time it
 			// answers.
-			err := c.Call(context.Background(), anonymous, func(s *Session) error {
+			err := c.Call(context.Background(), caller(), func(s *Session) error {
 				rec, err := s.fetch("SELECT 1")
 				if rec != nil {
 					rec.Release()
 				}
-				if st := c.poolFor(anonymous).Stats(); st.InUse > 2 {
+				if st := c.poolFor(caller()).Stats(); st.InUse > 2 {
 					t.Errorf("per-user cap exceeded: %+v", st)
 				}
 				return err
@@ -134,12 +141,11 @@ func TestBreakerOpensOnUnreachable(t *testing.T) {
 // TestRetryOnceOnRetryableFailure: a call that always fails retryably
 // is attempted exactly twice with WithReadRetry.
 func TestRetryOnceOnRetryableFailure(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	c := New(insecureConfig(nil), nil)
+	c := New(insecureConfig(t, nil), nil)
 	defer closeCluster(t, c)
 
 	attempts := 0
-	err := c.Call(context.Background(), anonymous, func(*Session) error {
+	err := c.Call(context.Background(), caller(), func(*Session) error {
 		attempts++
 		return qdbapi.ErrConnectionReset // retryable
 	}, WithReadRetry())
@@ -154,8 +160,7 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 // TestSecureDialAsOwnUser: the readiness probe dials the secure cluster
 // as the REST API's own user and runs the query.
 func TestSecureDialAsOwnUser(t *testing.T) {
-	qdbtest.Require(t, qdbtest.SecureURI)
-	c := New(secureConfig(), nil)
+	c := New(secureConfig(t), nil)
 	defer closeCluster(t, c)
 
 	if err := c.Probe(context.Background()); err != nil {
@@ -164,21 +169,20 @@ func TestSecureDialAsOwnUser(t *testing.T) {
 }
 
 // secureConfig is the default config pointed at the secure cluster, the
-// REST API's own user being the fixture's test user.
-func secureConfig() config.Config {
+// REST API's own user being the fixture's test user; it fails t when the
+// cluster is down.
+func secureConfig(t *testing.T) config.Config {
+	t.Helper()
 	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.SecureURI
-	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
-	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
+	qdbtest.BindSecure(t, &cfg)
 	return cfg
 }
 
 // TestAuthenticate: the secure cluster accepts its user and refuses a
 // wrong secret, the refusal being an answer that leaves the breaker
-// closed and no pool behind; the anonymous user passes the insecure one.
+// closed and no pool behind; the fixture's caller passes the insecure one.
 func TestAuthenticate(t *testing.T) {
-	qdbtest.Require(t, qdbtest.SecureURI)
-	c := New(secureConfig(), nil)
+	c := New(secureConfig(t), nil)
 	defer closeCluster(t, c)
 
 	ctx := context.Background()
@@ -198,11 +202,10 @@ func TestAuthenticate(t *testing.T) {
 		t.Fatal("a refused credential opened the breaker")
 	}
 
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	i := New(insecureConfig(nil), nil)
+	i := New(insecureConfig(t, nil), nil)
 	defer closeCluster(t, i)
-	if err := i.Authenticate(ctx, anonymous); err != nil {
-		t.Fatalf("anonymous refused by the insecure cluster: %v", err)
+	if err := i.Authenticate(ctx, caller()); err != nil {
+		t.Fatalf("the caller refused by the insecure cluster: %v", err)
 	}
 }
 
@@ -250,15 +253,14 @@ func (c *fakeClock) advance(d time.Duration) {
 // idle_timeout is reaped away, so the map is bounded by distinct users,
 // not by logins.
 func TestIdleUserPoolEvicted(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
 	clk := &fakeClock{now: time.Unix(1_700_000_000, 0)}
-	c := New(insecureConfig(func(cfg *config.Config) {
+	c := New(insecureConfig(t, func(cfg *config.Config) {
 		cfg.Pool.IdleTimeout = time.Minute
 		cfg.Pool.MaxLifetime = time.Hour
 	}), clk.Now)
 	defer closeCluster(t, c)
 
-	if _, err := c.Query(context.Background(), anonymous, "SELECT 1"); err != nil {
+	if _, err := c.Query(context.Background(), caller(), "SELECT 1"); err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if s := c.Stats(); s.Users != 1 {
@@ -268,7 +270,7 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 	// Past idle_timeout the pool's own reaper closes the idle session; the
 	// test runs that pass itself instead of waiting for the tick.
 	clk.advance(2 * time.Minute)
-	up := c.poolFor(anonymous)
+	up := c.poolFor(caller())
 	up.Reap()
 	deadline := time.Now().Add(10 * time.Second)
 	for s := up.Stats(); s.Idle != 0 || s.Closing != 0; s = up.Stats() {

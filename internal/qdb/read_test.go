@@ -19,6 +19,7 @@ import (
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -68,14 +69,20 @@ func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow
 	return array.NewRecordBatch(schema, cols, rows)
 }
 
-// read reads table name under o as the anonymous user into one batch
+// caller is the fixture's caller (qdbtest.Caller) as a User.
+func caller() qdb.User {
+	name, secret := qdbtest.Caller()
+	return qdb.User{Username: name, SecretKey: secret}
+}
+
+// read reads table name under o as the fixture's caller into one batch
 // the caller owns, asserting that no batch exceeded BatchRows. Each
 // batch is only lent by the sequence and is released when the step
 // returns, so it is retained here.
 func read(t *rapid.T, c *qdb.Cluster, name string, o qdb.ReadOptions) arrow.RecordBatch {
 	t.Helper()
 	var batches []arrow.RecordBatch
-	err := c.Read(context.Background(), qdb.User{}, name, o, func(seq qdb.Batches) error {
+	err := c.Read(context.Background(), caller(), name, o, func(seq qdb.Batches) error {
 		for rec, err := range seq {
 			if err != nil {
 				return err
@@ -156,13 +163,13 @@ func TestReadDropsTrailingNUL(t *testing.T) {
 	// A string value aliases the batch's buffer, which a lent batch frees
 	// when the step returns, so the read copies it out.
 	cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
-	queried, err := c.Query(context.Background(), qdb.User{}, "SELECT c0 FROM "+tbl.Name)
+	queried, err := c.Query(context.Background(), caller(), "SELECT c0 FROM "+tbl.Name)
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	defer queried.Release()
 	var read string
-	err = c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
+	err = c.Read(context.Background(), caller(), tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
 		for rec, err := range seq {
 			if err != nil {
 				return err

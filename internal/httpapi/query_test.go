@@ -21,6 +21,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -33,11 +34,12 @@ type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
 	handler http.Handler
-	token   string // an anonymous access token
+	user    qdb.User // the fixture's caller (qdbtest.Caller)
+	token   string   // an access token of user
 }
 
-// newServer binds the insecure fixture cluster and mints one anonymous
-// access token, the caller every query here runs as.
+// newServer binds the insecure fixture cluster and mints one access
+// token of the fixture's caller, the user every query here runs as.
 func newServer(t *testing.T) server {
 	t.Helper()
 	return newServerOn(t, cluster.NewInsecure(t))
@@ -48,7 +50,13 @@ func newServerOn(t *testing.T, c *qdb.Cluster) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
 	ctx := auth.WithTokens(qdb.WithCluster(observeContext(t), c), tk)
-	return server{ctx: ctx, c: c, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
+	name, secret := qdbtest.Caller()
+	u := qdb.User{Username: name, SecretKey: secret}
+	token, err := tk.Mint(auth.Claims{Username: name, SecretKey: secret, Typ: "access", SessionID: "sid-1", ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server{ctx: ctx, c: c, handler: NewHandler(), user: u, token: token}
 }
 
 // post sends body to path with the given headers, nil meaning none.
@@ -71,7 +79,7 @@ func (s server) query(body string, headers map[string]string) *httptest.Response
 // endpoint must answer these exact bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), qdb.User{}, q)
+	rec, err := s.c.Query(context.Background(), s.user, q)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}

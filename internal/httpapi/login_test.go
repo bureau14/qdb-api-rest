@@ -37,11 +37,12 @@ func tokenOf(t *testing.T, resp *httptest.ResponseRecorder) tokenResponse {
 	return tr
 }
 
-// TestLoginThenQuery: an anonymous login on the insecure cluster answers
-// the RFC 6749 shape, and its token opens the query endpoint.
+// TestLoginThenQuery: the fixture's caller's login on the insecure
+// cluster (anonymous, unless the traffic moved) answers the RFC 6749
+// shape, and its token opens the query endpoint.
 func TestLoginThenQuery(t *testing.T) {
 	s := newServer(t)
-	tr := tokenOf(t, s.login(`{"username":"","secret_key":""}`))
+	tr := tokenOf(t, s.login(fmt.Sprintf(`{"username":%q,"secret_key":%q}`, s.user.Username, s.user.SecretKey)))
 	if tr.TokenType != "Bearer" || tr.AccessToken == "" || tr.ExpiresIn != int64(config.Default().Auth.AccessTTL.Seconds()) {
 		t.Fatalf("token response %+v", tr)
 	}

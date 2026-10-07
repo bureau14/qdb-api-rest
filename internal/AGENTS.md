@@ -165,7 +165,13 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   fixture has one home, `internal/qdbtest`: the URIs, the key files, the
   secure cluster's test user (`SecureUser`), and `Require`, which fails
   fast with the start hint when a port does not answer. Nothing is
-  skipped under `-short`.
+  skipped under `-short`. A test of the insecure cluster binds it through
+  `BindInsecure` and calls as `Caller`, the anonymous user; with
+  `QDBTEST_TRAFFIC_TO_SECURE` set both become the secure cluster and its
+  test user, so the insecure daemon idles while the suite runs. That is
+  the experiment that tells whether the daemon's death on the Windows
+  agents follows the traffic or the instance (`docs/ci-qdbd-logs-plan.md`
+  while it is alive); `scripts/cicd/30.test.sh` sets it on Windows.
 - The REST server's log in a test is shown only when the test fails
   (`internal/httpapi/readiness_test.go`, `observeContext`), so a
   live-daemon failure can be read from the server's side as well as the

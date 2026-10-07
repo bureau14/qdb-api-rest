@@ -27,7 +27,7 @@ func (s server) readTable(name, params string, headers map[string]string) *httpt
 func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.ReadOptions) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	err := s.c.Read(context.Background(), qdb.User{}, name, o, func(batches qdb.Batches) error {
+	err := s.c.Read(context.Background(), s.user, name, o, func(batches qdb.Batches) error {
 		return e.EncodeStream(context.Background(), &buf, batches)
 	})
 	if err != nil {

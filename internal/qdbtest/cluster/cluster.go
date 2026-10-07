@@ -14,13 +14,13 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 )
 
-// NewInsecure binds a cluster to the insecure fixture, fails fast when
-// it is down, and closes the cluster on t's cleanup.
+// NewInsecure binds a cluster to the insecure fixture (or the secure one
+// under qdbtest.TrafficToSecure), fails fast when it is down, and closes
+// the cluster on t's cleanup.
 func NewInsecure(t testing.TB) *qdb.Cluster {
 	t.Helper()
-	qdbtest.Require(t, qdbtest.InsecureURI)
 	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
+	qdbtest.BindInsecure(t, &cfg)
 	return bind(t, cfg)
 }
 
@@ -28,11 +28,8 @@ func NewInsecure(t testing.TB) *qdb.Cluster {
 // test user as the REST API's own user, for the test's life.
 func NewSecure(t testing.TB) *qdb.Cluster {
 	t.Helper()
-	qdbtest.Require(t, qdbtest.SecureURI)
 	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.SecureURI
-	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
-	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
+	qdbtest.BindSecure(t, &cfg)
 	return bind(t, cfg)
 }
 
