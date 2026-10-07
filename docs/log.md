@@ -41,9 +41,11 @@ In flight:
   own exception translation, so nothing is logged; it happens only in
   the agent's service context (session 0) and only under the tests'
   pushes. A full crash dump of one death and the build id are in hand;
-  the smallest reproducing sequence against the C API, and the ticket
-  for the qdbd team, are what remains (`docs/ci-qdbd-logs-plan.md`
-  while it is alive). The build step uploads both daemons' logs, the
+  what remains, in the owner's order: the full stack with symbols, a
+  debug build of qdbd in the in-place loop, an answer to why only the
+  service context, then the smallest reproducing sequence and the
+  ticket for the qdbd team (`docs/ci-qdbd-logs-plan.md` while it is
+  alive). The build step uploads both daemons' logs, the
   rapid fail files, the Windows event capture and the watcher's exit
   codes with every test report.
 

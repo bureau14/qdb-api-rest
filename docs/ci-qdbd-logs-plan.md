@@ -869,6 +869,57 @@ settings to reverse before the merge stage, or to hand off.
 How the agents are reached is in the dated heading "the in-place H6
 loop".
 
+### Snapshot, 2026-10-07 evening: what is known, what is not, what the owner wants next
+
+Known, each with its evidence above:
+
+- The death is an access violation re-raised by qdbd's own exception
+  translation, on the async pipeline thread, during a flush to disk
+  (the dump, `qdbd_13660.dmp`; the daemon log's last line).
+- It needs the tests' pushes and follows the traffic (experiment A;
+  the H6 loop).
+- It happens in the agent's service context and not from a user
+  session on the same machine with the same binaries (eleven passes
+  against deaths in the first and fourth service runs).
+- Neither Buildkite's job object nor any process kill is involved (the
+  WinSW copy has no job object; the agent logs no kill; the exit code
+  is the exception's own status).
+
+Not known, and the owner is not satisfied until they are:
+
+- The faulting instruction and the full stack with symbols. The
+  consolidated frames hide the original fault; the dist has no PDB;
+  the stack is image offsets (`qdbd+0x3fe6e4`, `+0x452c54`,
+  `+0x597c36`, the re-raise at `+0x1926ec6`, the thread entry at
+  `+0x1910b93`) against build `91476e3abe`.
+- Why the service context. The page-layout reading above is a
+  hypothesis. What differs in session 0 and has not been tested one
+  at a time: the account (`buildkite` as a service against
+  Administrator in a session), the session itself (session 0 against
+  an interactive one, same account), the window station's desktop
+  heap, the environment the agent hands its jobs. A loop as the
+  `buildkite` account in an interactive session, or as Administrator
+  in a service, separates the account from the session.
+
+The owner's next steps, 2026-10-07:
+
+1. A full stack trace: a symbolized `qdbd.exe` of the same source, or
+   the PDB of build `91476e3abe` from the qdbd team, so `cdb` can
+   name the frames in `qdbd_13660.dmp`.
+2. A debug build of qdbd in the loop instead of the release one.
+   quasardb-build has `windows-core2-debug` and
+   `windows-haswell-debug` variants (their reports are in the artifact
+   store); on a paused agent the debug server dist goes into `qdb/`
+   in place of the release one and the service loop runs as before.
+   A debug build keeps its asserts and its symbols, so the fault
+   should name itself.
+3. An answer to the service-context question, by the one-variable
+   experiments above.
+
+The tools for all three are in place: the agent access, the service
+loop (`rtsvc.sh` under WinSW as the `buildkite` account), the watcher,
+procdump and the debugging tools on agent `h-0`.
+
 ## Open questions and recommendations
 
 None. The owner settled the three the first revision carried: one
