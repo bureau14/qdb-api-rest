@@ -3,6 +3,8 @@
 # that start-services.sh started earlier in the _build.yml chain, nothing
 # skipped. Output is converted to JUnit XML (go-junit-report, installed by
 # cicd_setup_go_toolchain) for the qdb-test-report plugin.
+# At exit, whatever the tests' outcome, both qdbd daemons' logs are archived
+# into logs/ for the test-report plugin to upload (cicd_archive_qdbd_logs_on_exit).
 
 set -euxo pipefail
 
@@ -14,6 +16,10 @@ source "${SCRIPT_DIR}/00.common.sh"
 cicd_trust_workspace
 
 cd "${BASE_DIR}"
+
+# The archive runs inside this command because the plugin uploads before any
+# repository hook runs (00.common.sh, cicd_archive_qdbd_logs_on_exit).
+trap cicd_archive_qdbd_logs_on_exit EXIT
 
 cicd_setup_go_toolchain
 cicd_setup_cpu_baseline
