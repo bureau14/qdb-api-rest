@@ -591,6 +591,58 @@ Phase 2, from the build 93 samples:
 Phases 3 and 4: commits added to this plan as each phase starts, under
 the method above.
 
+## Status for the next session (2026-10-07, written before a context reset)
+
+The branch is `sc-19567/rr-ci-qdbd-logs`, pushed; the head carries the
+telemetry of phase 1 and the Windows event capture, both verified in
+builds 91 to 97. The submodule is pinned to PR 5's squash commit
+(`877cda6`). Nothing is merged. The owner's decisions in the session:
+
+- The second sample per head is a second build of the same commit
+  (Buildkite cannot retry a passed job).
+- The investigation continues from the samples, strictly by evidence;
+  the owner asked, in this order: first the exit-code watcher (commits
+  16 and 17 above), then an experiment that points the tests at the
+  secure daemon, then a bisection by test.
+- Experiment A, the secure daemon: a switch in `internal/qdbtest/cluster`
+  (an environment variable `30.test.sh` sets on Windows, or on every
+  platform) makes `NewInsecure` bind the secure cluster, with the
+  fixture's key files, so all traffic moves to port 2838 and the
+  insecure daemon idles. Secure dies: the death follows the traffic.
+  Insecure dies while idle: it follows the instance or the port. Ten
+  runs are the minimum at a rate near one in five.
+- Experiment B, the bisection: disable every test but one and re-enable
+  tests selectively, one build pair per step, until the death is
+  observed again; the set that first reproduces it is the payload of
+  phase 3. The owner asked for this after experiment A.
+
+How the samples are read, so the next session does not rediscover it:
+
+- The plugin uploads to Cloudflare R2, bucket `qdb-cicd-artifacts`,
+  endpoint and credentials in the cicd account's SSM under
+  `/services/buildkite/config/artifacts/object-store/` (`endpoint-url`,
+  `r2/access-key-id`) and
+  `/services/buildkite/credentials/artifacts/r2/secret-access-key`;
+  `aws sso login --sso-session qdb` first. `aws s3 cp --endpoint-url
+<endpoint> --recursive` with those as `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY`, region `auto`. The public domain
+  `cicd-artifacts.quasar.ai` sits behind Cloudflare Access and answers
+  `curl` with a login page.
+- The key is
+  `qdb-api-rest/refs/heads/<branch>/reports/builds/<build uuid>/variants/<variant>/jobs/<job uuid>/artifacts/<qdbd-logs|rapid-fail-files|windows-events>/...`;
+  the build uuid is `id` in the build's JSON, the job uuid is the job's
+  `id`.
+- The job log (`bk api pipelines/qdb-api-rest/builds/<n>/jobs/<id>/log`,
+  field `content`) carries the test output with every line of a package
+  stamped at the package's end, the `cicd_record_windows_events` lines,
+  and the plugin's upload lines.
+- Building a head: `bk api --method POST pipelines/qdb-api-rest/builds`
+  with the full SHA, the branch and `ignore_pipeline_branch_filters`;
+  one request creates one build, so parse the answer from a file, not a
+  pipe. Then `PUT jobs/<id>/reprioritize` with priority 100 for every
+  `scheduled` job. The Windows agents are shared with quasardb-build's
+  nightly tests and a job can wait twenty minutes for one.
+
 ## Open questions and recommendations
 
 None. The owner settled the three the first revision carried: one
