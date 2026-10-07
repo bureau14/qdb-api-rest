@@ -818,6 +818,20 @@ its operands:
   unhandled; the daemon's own handler never sees the original fault
   because the catch funclet consumes it.
 
+The source confirms the missing padding. The generic decoder for the
+Stream VByte codec builds its input as a view of exactly the stored
+compressed size into the incoming serialized buffer, with the comment
+"zero copy decompression, we will decompress directly from the
+incoming buffer" (`qdb/compression/streamvbyte.hpp:86-116`), and
+`streamvbyte_decompressor::read` hands that view to
+`streamvbyte_decode` (`qdb/compression/streamvbyte.cpp:30-42`). The
+sibling codecs decode from `src` into the serialized input the same
+way, with no padding after the compressed bytes
+(`delta_rle_streamvbyte.cpp:175-203`, `rle.cpp:185-200`,
+`delta4c.cpp:585-642`). When the compressed bytes are the last field
+of a value whose buffer ends at a heap commit boundary, the decoder's
+last sixteen-byte load crosses it.
+
 So the daemon dies of a read of up to fifteen bytes past the end of a
 heap buffer that holds Stream VByte data. It is latent everywhere and
 faults only when the buffer ends within fifteen bytes of the end of a
