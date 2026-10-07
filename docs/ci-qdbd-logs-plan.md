@@ -306,11 +306,14 @@ evidence narrows it.
 
 The method, which every later commit follows:
 
-- Each run of the Windows jobs is one sample. On every build of this
-  unit, each of the two Windows jobs is re-run once through the API
-  (`PUT jobs/<id>/retry`) after its first run finishes, so a build
-  yields two samples per variant. More re-runs per build only when the
-  tally proves two are not enough. The outcome, the duration of
+- Each run of the Windows jobs is one sample. Every build of this unit
+  is paired with a second build of the same head, so a pair yields two
+  samples per variant. Buildkite refuses to retry a job that passed
+  (`PUT jobs/<id>/retry` and the GraphQL `jobTypeCommandRetry` both
+  answer "Only failed, timed out, canceled or expired jobs can be
+  retried", 2026-10-07), so the re-run the owner asked for is a new
+  build when the first run passes, and a retry only when it failed.
+  More runs per head only when the tally proves two are not enough. The outcome, the duration of
   `TestRoundtrip` and, for a failure, the daemon log's last entries,
   the error dump and the failing draws are tabulated in this plan under
   a dated heading.
@@ -352,8 +355,20 @@ of H1 to H3 holds. A Windows run that passes is a sample as well: its
 
 ### Samples
 
-| build | job | variant | run | outcome | TestRoundtrip | daemon log's last entries | error dump | failing draws |
-| ----- | --- | ------- | --- | ------- | ------------- | ------------------------- | ---------- | ------------- |
+| build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries              | error dump | failing draws |
+| ----- | --------------- | --------------- | --- | ------- | ------------- | -------------------------------------- | ---------- | ------------- |
+| 91    | `01a11503-8a62` | windows-core2   | 1   | passed  | 557 s         | async pipeline flushes, no error entry | none       | none          |
+| 91    | `01a11503-8a65` | windows-haswell | 1   | passed  | 549 s         | async pipeline flushes, no error entry | none       | none          |
+
+What the first archives show (build 91, both Windows variants): each
+archive carries `insecure/log/0-0-0-1/qdbd.json`, the binary `Q___LOG`
+and the console files; the console `.out.txt` is the same stream as
+`qdbd.json` and runs about one second past it at archive time, because
+the JSON file is flushed on the interval and the console is unbuffered,
+so the console file is the one to read for the last entries. The
+daemon's level is `detailed`, so the log holds every request's `debug`
+entries. The only warnings are the startup ones (security disabled, the
+eviction threshold below the baseline), identical on both variants.
 
 ## Rationale
 
