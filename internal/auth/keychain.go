@@ -1,7 +1,7 @@
-// Package auth mints and verifies the gateway's tokens:
+// Package auth mints and verifies the gateway's tokens, which are
 // compact JWE, dir + A256GCM, under keys derived from the configured
-// passphrases. This binary is the token's only producer and consumer;
-// clients treat tokens as opaque strings.
+// passphrases. This binary is the token's only producer and consumer,
+// and clients treat tokens as opaque strings.
 package auth
 
 import (
@@ -19,13 +19,13 @@ import (
 )
 
 // salt fills argon2id's required salt parameter. A constant is safe
-// here: keys derive from config alone, so there are no per-user records
-// to decorrelate. It still buys domain separation from other argon2id
-// users, and bumping the version suffix re-derives every key and kid --
-// a key rotation.
+// here, because keys derive from config alone, so there are no per-user
+// records to decorrelate. It still buys domain separation from other
+// argon2id users, and bumping the version suffix re-derives every key
+// and kid, which is a key rotation.
 var salt = []byte("qdb-rest/token-secrets/v1")
 
-// b64 is the JOSE alphabet: base64url, unpadded, and canonical -- the
+// b64 is the JOSE alphabet: base64url, unpadded, and canonical. The
 // default decoder ignores non-zero trailing padding bits, which would
 // let one token have several byte spellings.
 var b64 = base64.RawURLEncoding.Strict()
@@ -37,9 +37,9 @@ type key struct {
 	aead cipher.AEAD
 }
 
-// expand derives one purpose's bytes from stretched key material; the
-// info string is the domain separator (the encryption key and
-// the kid never derive from each other).
+// expand derives one purpose's bytes from stretched key material. The
+// info string is the domain separator, so the encryption key and the
+// kid never derive from each other.
 func expand(prk []byte, info string, n int) ([]byte, error) {
 	return hkdf.Expand(sha256.New, prk, info, n)
 }
@@ -48,13 +48,13 @@ func expand(prk []byte, info string, n int) ([]byte, error) {
 // of AES-256-GCM key under "enc", 8 bytes of kid under "kid".
 func keyFrom(prk []byte) (key, error) {
 	// The kid is public in every token header, so it must reveal
-	// nothing about the key: both expand from prk independently.
+	// nothing about the key, so both expand from prk independently.
 	enc, err := expand(prk, "enc", 32)
 	if err != nil {
 		return key{}, err
 	}
-	// 8 bytes: the kid only picks a keychain entry, it never has to
-	// resist guessing.
+	// The kid is 8 bytes, because it only picks a keychain entry and
+	// never has to resist guessing.
 	kid, err := expand(prk, "kid", 8)
 	if err != nil {
 		return key{}, err
@@ -79,9 +79,9 @@ func derive(passphrase string, cost config.Argon2id) (key, error) {
 	return keyFrom(prk)
 }
 
-// keychain holds the derived keys: mint is the key of the first
-// configured passphrase; verify holds the key of every configured
-// passphrase, indexed by kid, which is what lets keys roll.
+// keychain holds the derived keys. mint is the key of the first
+// configured passphrase, and verify holds the key of every configured
+// passphrase indexed by kid, which is what lets keys roll.
 type keychain struct {
 	mint   key
 	verify map[string]key
@@ -92,7 +92,7 @@ type keychain struct {
 // unique (a repeated entry would derive the same key twice), time and
 // memory must each be at least 1 (one pass, one MiB), parallelism must
 // fit the argon2 API's uint8, and the access TTL must be positive. This
-// package consumes these values, so it owns the checks; config only
+// package consumes these values, so it owns the checks, and config only
 // parses shape.
 func validateAuth(a config.Auth) error {
 	seen := map[string]bool{}
@@ -121,18 +121,18 @@ func validateAuth(a config.Auth) error {
 }
 
 // ephemeral is a single-key keychain from random material, the fallback
-// when no passphrase is configured: tokens then survive neither a
+// when no passphrase is configured. Tokens then survive neither a
 // restart nor a second instance. Random material needs no argon2id
 // stretching and takes the same HKDF split.
 func ephemeral() (keychain, error) {
-	// 32 random bytes already carry full key entropy; argon2id would
+	// 32 random bytes already carry full key entropy, so argon2id would
 	// add nothing.
 	prk := make([]byte, 32)
 	if _, err := rand.Read(prk); err != nil {
 		return keychain{}, err
 	}
-	// The same HKDF split as a passphrase key: downstream cannot tell
-	// the difference.
+	// The random key takes the same HKDF split as a passphrase key, so
+	// downstream cannot tell the difference.
 	k, err := keyFrom(prk)
 	if err != nil {
 		return keychain{}, err
@@ -140,8 +140,8 @@ func ephemeral() (keychain, error) {
 	return keychain{mint: k, verify: map[string]key{k.kid: k}}, nil
 }
 
-// newKeychain derives a key from every configured passphrase once, the
-// first entry's key being the minting key, or falls back to an
+// newKeychain derives a key from every configured passphrase once, with
+// the first entry's key as the minting key, or falls back to an
 // ephemeral key when no passphrase is configured.
 func newKeychain(a config.Auth) (keychain, error) {
 	if err := validateAuth(a); err != nil {
@@ -157,7 +157,7 @@ func newKeychain(a config.Auth) (keychain, error) {
 		if err != nil {
 			return keychain{}, fmt.Errorf("auth.token_secrets[%d]: %w", i, err)
 		}
-		// First entry mints; every entry verifies, keyed by kid so
+		// The first entry mints. Every entry verifies, keyed by kid so
 		// lookup needs no trial decryption.
 		if i == 0 {
 			kc.mint = k
