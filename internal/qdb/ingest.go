@@ -20,7 +20,7 @@ var ErrInvalidPushOptions = errors.New("qdb: invalid push options")
 
 // PushOptions tune one batch push, in the words the HTTP surface uses.
 // Mode is transactional, fast or async, the empty word meaning fast.
-// DeduplicationMode is drop or upsert, the empty word meaning none; either
+// DeduplicationMode is drop or upsert, the empty word meaning none. Either
 // mode needs DeduplicationColumns, which say what a duplicate is, while
 // the mode says what happens to one.
 type PushOptions struct {
@@ -44,10 +44,10 @@ var deduplicationModes = map[string]qdbapi.WriterDeduplicationMode{
 	"upsert": qdbapi.WriterDeduplicationModeUpsert,
 }
 
-// writerOptions is o as the writer takes it, or the first invalid word's
-// error. The columns and the mode come together: the binding would
-// deduplicate on every column for a bare drop, a silent widening this
-// surface refuses.
+// writerOptions is o as the writer takes it, or the error of the first
+// invalid word. The columns and the mode come together, because the
+// binding would deduplicate on every column for a bare drop, and this
+// surface refuses that silent widening.
 func (o PushOptions) writerOptions() (qdbapi.WriterOptions, error) {
 	mode, ok := pushModes[o.Mode]
 	if !ok {
@@ -70,8 +70,8 @@ func (o PushOptions) writerOptions() (qdbapi.WriterOptions, error) {
 }
 
 // IngestResult is what one push wrote and how long its two halves took:
-// Parse covers the first byte read to the end of the body, Push covers
-// the batch push call itself.
+// Parse covers the first byte read to the end of the body, and Push
+// covers the batch push call itself.
 type IngestResult struct {
 	Rows, Tables int
 	Parse, Push  time.Duration
@@ -79,7 +79,7 @@ type IngestResult struct {
 
 // Decode reads one body into one batch per table, typing each table
 // through schemaOf the first time the body names it. The error it
-// returns comes from the body or from the lookup, unchanged; on error
+// returns comes from the body or from the lookup, unchanged. On error
 // there are no batches.
 type Decode func(schemaOf model.SchemaOf) ([]model.TableBatch, error)
 
@@ -99,18 +99,19 @@ func (s *Session) schemaOf(name string) (*arrow.Schema, error) {
 // ingest runs decode under s's schema lookup and pushes its batches once
 // under opts.
 func (s *Session) ingest(decode Decode, opts qdbapi.WriterOptions) (IngestResult, error) {
-	// The lease spans the decode and the push, since the lookups need a
-	// session and the push the same one:
+	// The lease spans the decode and the push, because the lookups need a
+	// session and the push needs the same one:
 	//
-	//  1. decode the body under the held session's lookup; its error is
-	//     returned as is, nothing has been staged; Parse is its duration;
+	//  1. decode the body under the held session's lookup. Its error is
+	//     returned as is, because nothing has been staged yet. Parse is
+	//     the decode's duration;
 	//  2. release every batch when the function returns, on every path,
 	//     since the receiver of a decoded batch owns it;
-	//  3. stage every batch in one writer; Rows sums the batches' rows and
-	//     Tables counts the batches with any, since the writer skips the
-	//     rest and a header-only body answers zeros;
-	//  4. no rows: answer without a push;
-	//  5. push through the session; Push is the call's duration.
+	//  3. stage every batch in one writer. Rows sums the batches' rows,
+	//     and Tables counts the batches with any, because the writer
+	//     skips the rest and a header-only body answers zeros;
+	//  4. answer without a push when there are no rows;
+	//  5. push through the session. Push is the call's duration.
 	var res IngestResult
 
 	// 1. decode
@@ -155,9 +156,9 @@ func (s *Session) ingest(decode Decode, opts qdbapi.WriterOptions) (IngestResult
 // Ingest pushes the batches that decode reads, as user u and under o, in
 // one push. The session is held for the whole body: the tables' schemas
 // are looked up through it as the body names them, and the push runs
-// through it. Invalid options fail before a session is leased; an
+// through it. Invalid options fail before a session is leased. An
 // invalid body or an unknown table fails the whole request before the
-// push. An ingest is never retried: a push is not a read.
+// push. An ingest is never retried, because a push is not a read.
 func (c *Cluster) Ingest(ctx context.Context, u User, o PushOptions, decode Decode) (IngestResult, error) {
 	opts, err := o.writerOptions()
 	if err != nil {
