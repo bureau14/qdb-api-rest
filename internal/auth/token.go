@@ -16,10 +16,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 )
 
-// Claims is a token's payload (brief, Authentication): the reconnect
-// material, the security handles, and the times, all sealed and
-// authenticated by the JWE. Timestamps are unix seconds, the JWT
-// convention.
+// Claims is a token's payload (brief, Authentication). It carries the
+// reconnect material, the security handles, and the times, and the JWE
+// seals and authenticates all of them. Timestamps are unix seconds, the
+// JWT convention.
 type Claims struct {
 	Username   string `json:"username"`
 	SecretKey  string `json:"secret_key"`
@@ -42,17 +42,17 @@ func (c Claims) LogValue() slog.Value {
 }
 
 // ErrInvalidToken covers every token that fails to parse, decrypt or
-// decode; the reason is deliberately not surfaced to clients.
+// decode. The reason is deliberately kept from clients.
 var ErrInvalidToken = errors.New("invalid token")
 
-// ErrTokenExpired: the token verified but its exp has passed.
+// ErrTokenExpired means the token verified but its exp has passed.
 var ErrTokenExpired = errors.New("token expired")
 
-// maxTokenLength bounds what the verifier will even look at; a real
+// maxTokenLength bounds what the verifier will even look at. A real
 // token is a few hundred bytes.
 const maxTokenLength = 4096
 
-// header is the one protected header this package mints; the verifier
+// header is the protected header this package mints. The verifier
 // rejects any other shape.
 type header struct {
 	Alg string `json:"alg"`
@@ -65,10 +65,10 @@ func headerFor(kid string) string {
 	return fmt.Sprintf(`{"alg":"dir","enc":"A256GCM","kid":%q}`, kid)
 }
 
-// parseHeader decodes a protected header strictly: exactly the three
-// known fields, exactly our algorithms.
+// parseHeader decodes a protected header strictly. It accepts only the
+// three known fields and only our algorithms.
 func parseHeader(raw []byte) (header, error) {
-	// DisallowUnknownFields turns the parser into the allowlist: a zip or
+	// DisallowUnknownFields turns the parser into the allowlist. A zip or
 	// crit field, or a foreign algorithm, fails here before it can act.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -89,8 +89,8 @@ type Tokens struct {
 }
 
 // New derives the keychain from the configured passphrases, once. With
-// no passphrase configured it generates an ephemeral key and warns:
-// tokens then survive neither a restart nor a second instance.
+// no passphrase configured it generates an ephemeral key and warns,
+// because tokens then survive neither a restart nor a second instance.
 func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, error) {
 	if len(a.TokenSecrets) == 0 {
 		observe.Logger(ctx).WarnContext(ctx,
@@ -106,8 +106,9 @@ func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, err
 // AccessTTL is how long an access token minted now stays valid.
 func (t *Tokens) AccessTTL() time.Duration { return t.accessTTL }
 
-// MintAccess seals the access token of a login: session id and jti fresh
-// per login, auth_time and iat both now, exp now plus the access TTL.
+// MintAccess seals the access token of a login. The session id and jti
+// are fresh per login, auth_time and iat are both now, and exp is now
+// plus the access TTL.
 func (t *Tokens) MintAccess(username, secretKey string) (string, error) {
 	now := t.now().Unix()
 	return t.Mint(Claims{
@@ -126,28 +127,28 @@ func (t *Tokens) MintAccess(username, secretKey string) (string, error) {
 // header, empty encrypted-key segment (alg dir), random IV, ciphertext,
 // tag, each base64url. The encoded header is the AAD (RFC 7516).
 func (t *Tokens) Mint(c Claims) (string, error) {
-	// The claims are the plaintext: secret key included, all encrypted
-	// and authenticated.
+	// The claims are the plaintext, secret key included, and all of it is
+	// encrypted and authenticated.
 	plaintext, err := json.Marshal(c)
 	if err != nil {
 		return "", err
 	}
-	// The encoded header doubles as AAD: swapping it can never re-point
-	// a ciphertext at another key or mode.
+	// The encoded header doubles as AAD, so swapping it cannot re-point a
+	// ciphertext at another key or mode.
 	k := t.keys.mint
 	protected := b64.EncodeToString([]byte(headerFor(k.kid)))
-	// Fresh random IV per token; at minting volume (one per login or
-	// refresh) reuse is unreachable.
+	// Each token gets a fresh random IV. At minting volume (one per login
+	// or refresh) reuse is unreachable.
 	iv := make([]byte, k.aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
 		return "", err
 	}
 	sealed := k.aead.Seal(nil, iv, plaintext, []byte(protected))
-	// GCM appends its tag to the ciphertext; JWE carries the tag as its
-	// own segment.
+	// GCM appends its tag to the ciphertext, and JWE carries the tag as
+	// its own segment.
 	split := len(sealed) - k.aead.Overhead()
-	// Compact form: header.key.iv.ciphertext.tag; the key segment is
-	// empty under alg dir.
+	// The compact form is header.key.iv.ciphertext.tag, and the key
+	// segment is empty under alg dir.
 	return strings.Join([]string{
 		protected,
 		"",
@@ -158,16 +159,17 @@ func (t *Tokens) Mint(c Claims) (string, error) {
 }
 
 // Verify opens a compact JWE and returns its claims. Any malformed,
-// unknown-key or tampered token is ErrInvalidToken; a genuine token past
+// unknown-key or tampered token is ErrInvalidToken. A genuine token past
 // its exp is ErrTokenExpired.
 func (t *Tokens) Verify(token string) (Claims, error) {
-	// Refuse absurd input first; a real token is a few hundred bytes.
+	// Refuse absurd input first. A real token is a few hundred bytes.
 	if len(token) > maxTokenLength {
 		return Claims{}, ErrInvalidToken
 	}
-	// Five dot-separated segments, the second (encrypted key) empty
-	// under dir. Every failure from here down is the same
-	// ErrInvalidToken: distinguishing them hands an attacker an oracle.
+	// A token has five dot-separated segments, and the second (the
+	// encrypted key) is empty under dir. Every failure from here down is
+	// the same ErrInvalidToken, because distinguishing them hands an
+	// attacker an oracle.
 	parts := strings.Split(token, ".")
 	if len(parts) != 5 || parts[1] != "" {
 		return Claims{}, ErrInvalidToken
@@ -180,13 +182,13 @@ func (t *Tokens) Verify(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
-	// The kid picks the key; unknown means rotated out or foreign.
+	// The kid picks the key. An unknown kid means rotated out or foreign.
 	k, ok := t.keys.verify[h.Kid]
 	if !ok {
 		return Claims{}, ErrInvalidToken
 	}
-	// Check the nonce length: GCM panics on a wrong size, and this is
-	// attacker input.
+	// Check the nonce length, because GCM panics on a wrong size and this
+	// is attacker input.
 	iv, err := b64.DecodeString(parts[2])
 	if err != nil || len(iv) != k.aead.NonceSize() {
 		return Claims{}, ErrInvalidToken
@@ -199,20 +201,20 @@ func (t *Tokens) Verify(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
-	// One Open authenticates header (AAD), ciphertext and tag together;
-	// nothing decrypted leaves a failed Open.
+	// One Open authenticates header (AAD), ciphertext and tag together,
+	// and nothing decrypted leaves a failed Open.
 	plaintext, err := k.aead.Open(nil, iv, append(ciphertext, tag...), []byte(parts[0]))
 	if err != nil {
 		return Claims{}, ErrInvalidToken
 	}
-	// Lenient claims decode: a one-release-behind instance must accept
-	// a newer token mid-upgrade.
+	// The claims decode is lenient, because a one-release-behind instance
+	// must accept a newer token mid-upgrade.
 	var c Claims
 	if err := json.Unmarshal(plaintext, &c); err != nil {
 		return Claims{}, ErrInvalidToken
 	}
-	// Time last, on an authentic token only: an expiry answer proves it
-	// was once genuine.
+	// Time is checked last, on an authentic token only, because an expiry
+	// answer proves the token was once genuine.
 	if t.now().Unix() >= c.ExpiresAt {
 		return Claims{}, ErrTokenExpired
 	}
