@@ -5,8 +5,8 @@ Date: YYYY-MM-DD
 
 ## Context
 
-What forces are at play; what makes this decision hard or expensive to
-reverse. Link the brief/plan sections that constrain it.
+What forces are at play, and what makes this decision hard or expensive
+to reverse. Link the brief or plan sections that constrain it.
 
 ## Decision
 
