@@ -17,15 +17,15 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 
 ## Sub-folders
 
-| Folder                 | Contains                                                       | Open its `AGENTS.md` when                                                 |
-| ---------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `cmd/qdb_rest/`        | the binary: entry point, command line, build metadata          | touching flags, startup, shutdown, or the version block                   |
-| `docs/`                | project brief, plans, ADRs, project log (current state)        | starting any session; reading or writing any planning or design text      |
-| `tests/e2e/`           | e2e harness: Makefile, helpers, goldens, dataset tooling       | touching tests, goldens, the dataset, or starting a REST server for tests |
-| `internal/`            | Go packages: config, observe, tlsconf, httpapi, ...            | writing or reviewing any Go code; logging and test conventions live there |
-| `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd); has no `AGENTS.md` | never edit here; update by bumping the submodule SHA                      |
-| `scripts/cicd/`        | Buildkite step scripts (lint, build, unit tests)               | touching CI step scripts or the shared `00.common.sh` helpers             |
-| `.buildkite/`          | pipeline generator, step templates, qdb-cicd-tools submodule   | touching the CI pipeline or platform matrix                               |
+| Folder                 | Contains                                                             | Open its `AGENTS.md` when                                                     |
+| ---------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `cmd/qdb_rest/`        | the binary: entry point, command line, build metadata                | touching flags, startup, shutdown, or the version block                       |
+| `docs/`                | project brief, plans, ADRs, project log (current state)              | starting any session, or reading or writing any planning or design text       |
+| `tests/e2e/`           | e2e harness: Makefile, helpers, goldens, dataset tooling             | touching tests, goldens, the dataset, or starting a REST server for tests     |
+| `internal/`            | Go packages: config, observe, tlsconf, httpapi, ...                  | writing or reviewing any Go code, and logging and test conventions live there |
+| `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd), which has no `AGENTS.md` | never edit here, and update by bumping the submodule SHA                      |
+| `scripts/cicd/`        | Buildkite step scripts (lint, build, unit tests)                     | touching CI step scripts or the shared `00.common.sh` helpers                 |
+| `.buildkite/`          | pipeline generator, step templates, qdb-cicd-tools submodule         | touching the CI pipeline or platform matrix                                   |
 
 ## Documentation strategy
 
@@ -34,7 +34,7 @@ line or one function, the folder's `AGENTS.md` for what spans files,
 `docs/` only for what spans components. `docs/AGENTS.md` holds the
 routing table that says which document owns which kind of fact, and the
 rules of each document. Docs change in the same commit as the code they
-describe; a change that makes an `AGENTS.md` wrong is incomplete.
+describe, and a change that makes an `AGENTS.md` wrong is incomplete.
 History is git's job and appears in no document or comment.
 
 ## Code comments
@@ -61,10 +61,10 @@ comments alone tell the story:
    delete any claim the code does not bear out.
 
 `Session.ingest` in `internal/qdb/ingest.go` is the shape. This is the
-primary path: new code is written this way. `/doc-discipline read`
-loads the shape before new code or a plan is written; `/doc-discipline
+primary path, and new code is written this way. `/doc-discipline read`
+loads the shape before new code or a plan is written. `/doc-discipline
 [all|placement|narrative] [check] [paths...] [plan.md]` is the repair
-path: it applies or checks all of the above after the fact, reconciles
+path. It applies or checks all of the above after the fact, reconciles
 the code against the plan that promised its comments when one is
 given, and its worked example is in
 `.claude/skills/doc-discipline/narrative.md`.
@@ -78,7 +78,7 @@ plain sentences. The rules:
    Write "the fixture compares the batch with the table it wrote", not
    "the comparison is the fixture's".
 2. One idea per sentence. A colon introduces one example or one list
-   of nouns, never a chain of clauses; a semicolon joins nothing.
+   of nouns, never a chain of clauses, and a semicolon joins nothing.
 3. No ellipsis: a sentence does not drop its verb, and a possessive
    does not stand in for a clause ("the decoders' decode_test.go").
 4. No rhetoric: no "X, not Y" contrasts except to record a rejected
@@ -86,9 +86,9 @@ plain sentences. The rules:
    nothing else", "exactly" or "never" added for emphasis rather than
    meaning.
 5. Name the thing: "the standard library parses the body", not "read
-   back with the standard library"; "`Check`", not "the fixture's
+   back with the standard library", and "`Check`", not "the fixture's
    proof".
 
 Read every comment or paragraph back as a colleague would say it
 aloud. A sentence that no one would say is rewritten. The facts it
-carried are kept; nothing is added.
+carried are kept, and nothing is added.
