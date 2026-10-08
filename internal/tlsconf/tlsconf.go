@@ -1,6 +1,6 @@
-// Package tlsconf builds the tls.Config for the HTTPS listener: a PEM
-// certificate/key pair from disk when configured, an ephemeral
-// self-signed certificate otherwise, so TLS works with zero
+// Package tlsconf builds the tls.Config for the HTTPS listener. It loads
+// a PEM certificate/key pair from disk when configured and generates an
+// ephemeral self-signed certificate otherwise, so TLS works with zero
 // configuration.
 package tlsconf
 
@@ -33,9 +33,9 @@ const (
 	SourceEphemeral Source = "ephemeral-self-signed"
 )
 
-// Info describes the certificate the listener will serve; the caller logs
-// it (a warning for ephemeral certificates, so an unconfigured production
-// deployment is visible).
+// Info describes the certificate the listener will serve. The caller logs
+// it, as a warning for ephemeral certificates, so an unconfigured
+// production deployment is visible.
 type Info struct {
 	Source      Source
 	Fingerprint string // sha256 over the leaf certificate DER
@@ -64,9 +64,9 @@ func selfSignedNames() (dns []string, ips []net.IP) {
 	return dns, ips
 }
 
-// generateSelfSigned mints an ECDSA P-256 self-signed certificate. Ten
-// years of validity: expiry must never stop a long-running process from
-// handshaking.
+// generateSelfSigned mints an ECDSA P-256 self-signed certificate. It is
+// valid for ten years, because expiry must not stop a long-running
+// process from handshaking.
 func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -80,7 +80,7 @@ func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: "qdb_rest ephemeral"},
-		NotBefore:    now.Add(-time.Hour), // tolerate modest clock skew
+		NotBefore:    now.Add(-time.Hour), // tolerates modest clock skew
 		NotAfter:     now.AddDate(10, 0, 0),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -94,10 +94,11 @@ func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, nil
 }
 
-// loadCertificate resolves the certificate per config: the PEM pair when
-// configured, a generated one otherwise. A lone certificate or key is
-// rejected here, the one place that reads the pair, so a half-configured
-// pair can never silently serve an ephemeral certificate.
+// loadCertificate resolves the certificate per config, which is the PEM
+// pair when configured and a generated one otherwise. It rejects a lone
+// certificate or key, because it is the only place that reads the pair,
+// so a half-configured pair cannot silently serve an ephemeral
+// certificate.
 func loadCertificate(cfg config.TLS, now time.Time) (tls.Certificate, Source, error) {
 	if (cfg.Certificate == "") != (cfg.PrivateKey == "") {
 		return tls.Certificate{}, SourceFile, errors.New("tls.certificate and tls.private_key must be set together")
