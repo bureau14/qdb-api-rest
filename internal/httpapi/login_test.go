@@ -1,5 +1,5 @@
-// The login endpoint is tested against the live fixtures: a minted token
-// opens the query endpoint, the secure cluster's verdict on the
+// This file tests the login endpoint against the live fixtures. A minted
+// token opens the query endpoint, the secure cluster's verdict on the
 // credentials becomes the status, and the error rows answer problem
 // bodies.
 package httpapi
@@ -51,8 +51,8 @@ func TestLoginThenQuery(t *testing.T) {
 }
 
 // TestLoginVerdicts: the secure cluster accepts its user and refuses a
-// wrong secret with 401 and no challenge; a non-JSON body answers 415
-// and an undecodable one 400.
+// wrong secret with 401 and no challenge. A non-JSON body answers 415
+// and an undecodable one answers 400.
 func TestLoginVerdicts(t *testing.T) {
 	s := newServerOn(t, cluster.NewSecure(t))
 	name, secret := qdbtest.SecureUser(t)
@@ -84,7 +84,7 @@ func TestLoginVerdicts(t *testing.T) {
 // the breaker opens the next login carries Retry-After.
 func TestLoginUnreachable(t *testing.T) {
 	cfg := config.Default()
-	cfg.Cluster.URI = "qdb://127.0.0.1:1" // connection refused, fast
+	cfg.Cluster.URI = "qdb://127.0.0.1:1" // the connection is refused at once
 	cfg.Pool.Breaker.Failures = 1
 	c := qdb.New(cfg, nil)
 	t.Cleanup(func() {
