@@ -6,15 +6,16 @@ import (
 )
 
 // problemContentType is the media type of an RFC 9457 problem details
-// body, the one error shape every v2 endpoint answers with.
+// body, which is the one error shape every v2 endpoint answers with.
 const problemContentType = "application/problem+json"
 
-// problem is the body: the status repeated, its standard text as the
-// title, and the detail of this failure. type is omitted (about:blank,
-// the status code's meaning) and instance is omitted (the request id is
-// already a header). The word is RFC 9457's, "problem details", and
-// names the wire shape only: a problem is what a failed request answers
-// with, never a Go error, which is what a call returns.
+// problem is the body. It repeats the status, carries the standard text
+// of the status as the title, and names the detail of this failure. type
+// is omitted, because about:blank means the status code's meaning, and
+// instance is omitted, because the request id is already a header. The
+// word is RFC 9457's, "problem details", and it names the wire shape
+// only. A problem is what a failed request answers with, and never a Go
+// error, which is what a call returns.
 type problem struct {
 	Status int    `json:"status"`
 	Title  string `json:"title"`
