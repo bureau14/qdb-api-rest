@@ -19,16 +19,16 @@ const (
 	zstdCoding     coding = "zstd"
 )
 
-// negotiateCoding picks the content coding for an Accept-Encoding header:
-// the listed codings are read in order and the first one this server
-// produces wins. An absent header, no match and identity itself all mean
-// identity; the server never compresses uninvited. q weights are not
-// read: a client that wants a coding names it, the same rule the Accept
-// header follows.
+// negotiateCoding picks the content coding for an Accept-Encoding
+// header. It reads the listed codings in order, and the first one this
+// server produces wins. An absent header, no match and identity itself
+// all mean identity, because the server never compresses uninvited. It
+// does not read q weights, because a client that wants a coding names
+// it, which is the rule the Accept header follows too.
 func negotiateCoding(acceptEncoding string) coding {
 	for tok := range strings.SplitSeq(acceptEncoding, ",") {
 		// The coding name ends at the parameters (q included), which are
-		// not read; codings are case-insensitive on the wire.
+		// not read. Codings are case-insensitive on the wire.
 		name, _, _ := strings.Cut(tok, ";")
 		switch c := coding(strings.ToLower(strings.TrimSpace(name))); c {
 		case gzipCoding, zstdCoding, identityCoding:
@@ -39,11 +39,11 @@ func negotiateCoding(acceptEncoding string) coding {
 }
 
 // newCompressor opens a compressor of coding c over w at the fastest
-// level: a gateway pays CPU per byte on every response it compresses,
-// and the bytes saved are the WAN client's gain, not this process's.
-// The zstd encoder runs at concurrency one so a response spawns no
-// goroutines; its options are constants, so a construction error is a
-// programming error.
+// level, because a gateway pays CPU per byte on every response it
+// compresses, and the bytes saved are the WAN client's gain, not this
+// process's. The zstd encoder runs at concurrency one, so a response
+// spawns no goroutines. Its options are constants, so a construction
+// error is a programming error.
 func newCompressor(c coding, w io.Writer) io.WriteCloser {
 	switch c {
 	case gzipCoding:
@@ -60,15 +60,15 @@ func newCompressor(c coding, w io.Writer) io.WriteCloser {
 }
 
 // compressingWriter compresses one response body in the negotiated
-// coding. The status a handler writes is held back until the first body
-// byte, when Content-Encoding is settled and the compressor opens; a
-// handler that writes a status and no body gets that status uncompressed
-// and unlabelled, so no empty frame is ever sent. Unwrap keeps
+// coding. It holds the status a handler writes back until the first
+// body byte, when Content-Encoding is settled and the compressor opens.
+// A handler that writes a status and no body gets that status
+// uncompressed and unlabelled, so no empty frame is sent. Unwrap keeps
 // http.ResponseController working through it.
 type compressingWriter struct {
 	http.ResponseWriter
 	coding coding
-	status int            // the held-back status; 0 until WriteHeader
+	status int            // the held-back status, 0 until WriteHeader
 	z      io.WriteCloser // nil until the first body byte
 }
 
@@ -80,7 +80,7 @@ func (c *compressingWriter) WriteHeader(code int) {
 
 func (c *compressingWriter) Write(p []byte) (int, error) {
 	if c.z == nil {
-		// The first byte settles the headers: the body is compressed, so
+		// The first byte settles the headers. The body is compressed, so
 		// its coding is declared and any length a handler set is wrong.
 		if c.status == 0 {
 			c.status = http.StatusOK
@@ -111,10 +111,11 @@ func (c *compressingWriter) Unwrap() http.ResponseWriter {
 }
 
 // withCompression compresses one route's responses in the coding the
-// client asked for, problem bodies included; identity passes the writer
+// client asked for, problem bodies included. Identity passes the writer
 // through untouched. Every response of the route varies on the header,
-// so a cache never serves one client's coding to another. Applied per
-// route, never to the mux: the probes answer empty bodies.
+// so a cache does not serve one client's coding to another. It is
+// applied per route and never to the mux, because the probes answer
+// empty bodies.
 func withCompression(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Accept-Encoding")
@@ -124,7 +125,7 @@ func withCompression(next http.Handler) http.Handler {
 			return
 		}
 		cw := &compressingWriter{ResponseWriter: w, coding: c}
-		// A close error has no one left to tell: the handler has
+		// A close error has no one left to tell, because the handler has
 		// returned and the status is on the wire.
 		defer func() { _ = cw.Close() }()
 		next.ServeHTTP(cw, r)
