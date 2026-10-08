@@ -1,8 +1,8 @@
-// The integration tests of Cluster against the live qdbd fixture
-// (internal/qdbtest): breaker, per-user cap, retry-once, a rejected
-// query's session and breaker, user-pool eviction, and the secure dial as
-// the REST API's own user. The pool's own invariants and the error
-// predicates are pinned upstream in qdb-api-go.
+// This file holds the integration tests of Cluster against the live qdbd
+// fixture (internal/qdbtest): breaker, per-user cap, retry-once, a
+// rejected query's session and breaker, user-pool eviction, and the
+// secure dial as the REST API's own user. The pool's own invariants and
+// the error predicates are pinned upstream in qdb-api-go.
 package qdb
 
 import (
@@ -81,8 +81,8 @@ func TestPerUserCapAndSharing(t *testing.T) {
 	for range 6 {
 		wg.Go(func() {
 			// The cap is checked while the session is held, so the check runs
-			// inside Call: Query has already returned the session by the time it
-			// answers.
+			// inside Call, because Query has already returned the session by
+			// the time it answers.
 			err := c.Call(context.Background(), anonymous, func(s *Session) error {
 				rec, err := s.fetch("SELECT 1")
 				if rec != nil {
@@ -163,8 +163,8 @@ func TestSecureDialAsOwnUser(t *testing.T) {
 	}
 }
 
-// secureConfig is the default config pointed at the secure cluster, the
-// REST API's own user being the fixture's test user.
+// secureConfig is the default config pointed at the secure cluster, with
+// the REST API's own user set to the fixture's test user.
 func secureConfig() config.Config {
 	cfg := config.Default()
 	cfg.Cluster.URI = qdbtest.SecureURI
@@ -174,8 +174,9 @@ func secureConfig() config.Config {
 }
 
 // TestAuthenticate: the secure cluster accepts its user and refuses a
-// wrong secret, the refusal being an answer that leaves the breaker
-// closed and no pool behind; the anonymous user passes the insecure one.
+// wrong secret. The refusal is an answer, so it leaves the breaker
+// closed and creates no pool. The anonymous user passes the insecure
+// cluster.
 func TestAuthenticate(t *testing.T) {
 	qdbtest.Require(t, qdbtest.SecureURI)
 	c := New(secureConfig(), nil)
@@ -265,7 +266,7 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		t.Fatalf("want one user pool after a query, got %d", s.Users)
 	}
 
-	// Past idle_timeout the pool's own reaper closes the idle session; the
+	// Past idle_timeout the pool's own reaper closes the idle session. The
 	// test runs that pass itself instead of waiting for the tick.
 	clk.advance(2 * time.Minute)
 	up := c.poolFor(anonymous)
@@ -278,7 +279,8 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		time.Sleep(2 * time.Millisecond)
 	}
 
-	// One reap marks it empty, the next past idle_timeout evicts it.
+	// One reap marks the pool empty, and the next reap past idle_timeout
+	// evicts it.
 	c.Reap()
 	clk.advance(2 * time.Minute)
 	c.Reap()
