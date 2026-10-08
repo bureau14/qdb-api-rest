@@ -68,7 +68,7 @@ func claimsGen(rt *rapid.T) Claims {
 // Whatever goes in comes out, under any passphrase list.
 func TestMintVerifyRoundtrip(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		// Mint under a drawn keychain; Verify must return the claims
+		// Mint under a drawn keychain. Verify must return the claims
 		// bit-identical, whatever the strings contained.
 		tk := tokensFor(rt, secretsGen().Draw(rt, "secrets"))
 		c := claimsGen(rt)
