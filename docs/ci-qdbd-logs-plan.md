@@ -1217,6 +1217,18 @@ The siege agents are reachable like the default ones; `agent.sh` maps
 them as `s-0` to `s-3` (`10.64.129.43`, `10.64.131.254`,
 `10.64.130.205`, `10.64.129.108`).
 
+### 2026-10-08 04:36 UTC: all four loops run the release daemon with its PDB
+
+The owner's decision (2026-10-08): the assertion is understood and
+reproduced, nothing in this repository can work around it, and the
+debug daemon has shown no access violation in about twelve runs, so
+the debug loops stop and every loop runs the release `qdbd.exe` of
+quasardb-build 2796 with its PDB, `cdb` attached with first-chance
+access-violation capture. `h-0` and `h-3` as the agent account, `h-1`
+and `h-2` as LocalSystem, all restarted between 04:20 and 04:36 UTC
+with `rtsvc4.sh`. The debug pair stays in each workspace next to the
+release one for a swap back.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1508,10 +1520,10 @@ shell is session 0.
 
 | agent | IP            | service        | account     | daemon                                      | status script                      |
 | ----- | ------------- | -------------- | ----------- | ------------------------------------------- | ---------------------------------- |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
 | h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
 
 Each runs `~/qdb-rr-scratch/scripts/rtsvc3.sh` (copied to the service
 directory as `rtsvc.sh`) in the workspace
@@ -1584,8 +1596,7 @@ there, which can be deleted.
 ### Next experiments, in the owner's order
 
 1. The symbolized access-violation dump: the release daemon with its
-   PDB runs on `h-1` (the 04:20 heading), the debug daemon on the other
-   three.
+   PDB runs on all four agents (the 04:36 heading).
    H7 is confirmed and reproduced from C (the 02:30 and 03:33 headings).
 2. The buildkite account outside a service: the release loop
    (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
