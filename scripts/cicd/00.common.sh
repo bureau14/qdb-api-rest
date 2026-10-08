@@ -6,8 +6,8 @@
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #
-# Sourced by 10.lint.sh, 20.build.sh and 30.test.sh; not a pipeline
-# step (scripts/cicd/AGENTS.md).
+# The step scripts 10.lint.sh, 20.build.sh and 30.test.sh source this
+# file, and it is not a pipeline step (scripts/cicd/AGENTS.md).
 
 set -eu
 
@@ -22,18 +22,19 @@ export BASE_DIR
 export TEST_REPORT_DIR="${BASE_DIR}/test-reports"
 mkdir -p "${TEST_REPORT_DIR}"
 
-# cicd_trust_workspace -- the docker plugin propagates the host UID into the
-# container, and git refuses to operate on a workspace owned by a different
-# user; every step calls this before touching the checkout.
+# cicd_trust_workspace lets git operate on the checkout. The docker plugin
+# propagates the host UID into the container, and git refuses to operate on
+# a workspace owned by a different user, so every step calls this before
+# touching the checkout.
 cicd_trust_workspace() {
     git config --global --add safe.directory '*'
 }
 
-# cicd_setup_go_toolchain -- derive GO from GOROOT and validate the binary.
+# cicd_setup_go_toolchain derives GO from GOROOT and validates the binary.
 #
 # Inputs:  GOROOT  -- set by .buildkite/pipeline.py::_go_env_for_agent() from
-#                     the per-OS QDB_CICD_AGENT_GO<slug>_ROOT agent env var;
-#                     the Buildkite agent shell substitutes the value at
+#                     the per-OS QDB_CICD_AGENT_GO<slug>_ROOT agent env var.
+#                     The Buildkite agent shell substitutes the value at
 #                     job-start.
 #          GOPATH  -- set by the same mechanism from QDB_CICD_AGENT_GO<slug>_PATH.
 #
@@ -48,7 +49,7 @@ cicd_setup_go_toolchain() {
         return 1
     fi
 
-    # Windows MSYS shells report MINGW* from uname; the go binary uses .exe there.
+    # Windows MSYS shells report MINGW* from uname, and the go binary uses .exe there.
     local suffix=""
     if [[ "$(uname)" == MINGW* ]]; then
         suffix=".exe"
@@ -83,17 +84,17 @@ cicd_setup_go_toolchain() {
 
 export -f cicd_setup_go_toolchain
 
-# cicd_setup_cpu_baseline -- translate QDB_CPU_ARCHITECTURE_CORE2 into GOAMD64.
+# cicd_setup_cpu_baseline translates QDB_CPU_ARCHITECTURE_CORE2 into GOAMD64.
 #
 # QDB_CPU_ARCHITECTURE_CORE2 is quasardb's canonical "build for the legacy
-# baseline" switch, set per-platform by .buildkite/pipeline.py exactly as
-# quasardb's own pipeline does.  core2 compiles as -march=core2 (up to SSSE3
-# only); GOAMD64=v2 requires SSE4.2 and POPCNT, which Core 2 does not have,
-# so v1 is the correct floor.  The default build is -march=haswell == v3.
-# There is deliberately no positive haswell flag on either side -- absence
-# means haswell.
+# baseline" switch, which .buildkite/pipeline.py sets per platform as
+# quasardb's own pipeline does. core2 compiles as -march=core2 (up to SSSE3
+# only). GOAMD64=v2 requires SSE4.2 and POPCNT, which Core 2 does not have,
+# so v1 is the correct floor. The default build is -march=haswell, which is
+# v3. There is deliberately no positive haswell flag on either side, so
+# absence means haswell.
 #
-# Inputs:  GO -- resolved by cicd_setup_go_toolchain; call that first.
+# Inputs:  GO -- resolved by cicd_setup_go_toolchain, so call that first.
 #          QDB_CPU_ARCHITECTURE_CORE2 -- "ON", or absent on haswell/ARM legs.
 #
 # Outputs: GOAMD64 -- exported; go build and go test read it from the env.
@@ -118,14 +119,14 @@ cicd_setup_cpu_baseline() {
 
 export -f cicd_setup_cpu_baseline
 
-# cicd_assert_qdb_tree -- fail fast when the extracted C API is absent.
+# cicd_assert_qdb_tree fails fast when the extracted C API is absent.
 #
 # The vendored qdb-api-go compiles through cgo against qdb/ (locations
-# from .envrc); without the tree the failure would surface as a cgo
+# from .envrc). Without the tree the failure would surface as a cgo
 # compiler trace deep inside the build, so this turns it into one clear
-# error first.  On Linux the static archive is additionally required: the
-# binary links libqdb_api.a statically there, and a c-api package without
-# it means a quasardb build that predates QDB-19063.
+# error first. On Linux the static archive is required as well, because
+# the binary links libqdb_api.a statically there, and a c-api package
+# without it means a quasardb build that predates QDB-19063.
 cicd_assert_qdb_tree() {
     if [[ ! -d "${BASE_DIR}/qdb/lib" || ! -d "${BASE_DIR}/qdb/include" ]]; then
         echo "ERROR: expected qdb/lib and qdb/include to be present." >&2
@@ -141,13 +142,13 @@ cicd_assert_qdb_tree() {
 
 export -f cicd_assert_qdb_tree
 
-# cicd_setup_qdb_env -- load the CGO environment from the root .envrc.
+# cicd_setup_qdb_env loads the CGO environment from the root .envrc.
 #
 # bash functions share the parent shell's environment, so every `export`
-# in .envrc propagates to the calling step script.  Call it after
+# in .envrc propagates to the calling step script. Call it after
 # cicd_assert_qdb_tree (the paths must exist) and before any ${GO}
-# invocation that compiles a package importing internal/qdb -- which
-# includes golangci-lint's typecheck and `go test`.  On Windows .envrc
+# invocation that compiles a package importing internal/qdb, which
+# includes golangci-lint's typecheck and `go test`. On Windows .envrc
 # also prepends the MinGW gcc to PATH, which cgo (and `go test -race`)
 # needs to find.
 #
