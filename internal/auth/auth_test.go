@@ -15,8 +15,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 )
 
-// testCost keeps derivation around a millisecond; the production cost is
-// an operator knob, not what these properties pin.
+// testCost keeps derivation around a millisecond. The production cost is
+// an operator knob, and these properties do not pin it.
 var testCost = config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 1}
 
 // epoch is the tests' fixed clock.
@@ -103,8 +103,8 @@ func TestExpiredRejected(t *testing.T) {
 }
 
 // Rotation: a token minted under the old passphrase verifies while the
-// old passphrase is still listed, and stops the moment it is dropped;
-// re-minting under the new list propagates the rotation.
+// old passphrase is still listed, and stops the moment it is dropped.
+// Re-minting under the new list propagates the rotation.
 func TestRotationContinuity(t *testing.T) {
 	old := tokensFor(t, []string{"old passphrase"})
 	c := Claims{Username: "alice", SecretKey: "sk", Typ: "access", ExpiresAt: epoch.Unix() + 60}
@@ -129,7 +129,7 @@ func TestRotationContinuity(t *testing.T) {
 	}
 }
 
-// Any single-character change to a token stops it from verifying; the
+// Any single-character change to a token stops it from verifying. The
 // verifier returns an error and never panics.
 func TestTamperNeverVerifies(t *testing.T) {
 	alphabet := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_."
@@ -144,7 +144,8 @@ func TestTamperNeverVerifies(t *testing.T) {
 		// mutation yields a plausible token, not a cheap parse reject.
 		i := rapid.IntRange(0, len(token)-1).Draw(rt, "index")
 		r := alphabet[rapid.IntRange(0, len(alphabet)-1).Draw(rt, "replacement")]
-		// A replacement equal to the original proves nothing; skip.
+		// A replacement equal to the original proves nothing, so the test
+		// skips it.
 		if token[i] == r {
 			rt.Skip("replacement equals original")
 		}
@@ -171,15 +172,15 @@ func TestVerifyNeverPanics(t *testing.T) {
 
 // Two ephemeral keychains never accept each other's tokens.
 func TestEphemeralIsolated(t *testing.T) {
-	// Nil secrets: each New draws its own random key.
+	// With nil secrets, each New draws its own random key.
 	a := tokensFor(t, nil)
 	b := tokensFor(t, nil)
 	token, err := a.Mint(Claims{ExpiresAt: epoch.Unix() + 60})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// a's token verifies at a and dies at b -- the documented cost of
-	// running unconfigured behind a load balancer.
+	// a's token verifies at a and dies at b, which is the documented cost
+	// of running unconfigured behind a load balancer.
 	if _, err := a.Verify(token); err != nil {
 		t.Fatalf("own token rejected: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestBadConfigRefused(t *testing.T) {
 }
 
 // MintAccess fills in what a login fixes: the given user, the access
-// typ, both times set to now, and exp one TTL later; the two handles
+// typ, both times set to now, and exp one TTL later. The two handles
 // are fresh on every call.
 func TestMintAccess(t *testing.T) {
 	tk := tokensFor(t, nil)
@@ -235,11 +236,11 @@ func TestMintAccess(t *testing.T) {
 	}
 }
 
-// Changing any argon2id cost re-derives key and kid: a cost bump behaves
-// as a key rotation.
+// Changing any argon2id cost re-derives key and kid, so a cost bump
+// behaves as a key rotation.
 func TestCostChangeRollsKeys(t *testing.T) {
-	// White-box on derive: the kid fingerprints passphrase, salt and
-	// costs together, so a cost bump must roll it.
+	// This test is white-box on derive. The kid fingerprints passphrase,
+	// salt and costs together, so a cost bump must roll it.
 	bumped := config.Argon2id{Time: 2, MemoryMiB: 1, Parallelism: 1}
 	before, err := derive("passphrase", testCost)
 	if err != nil {
