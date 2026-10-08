@@ -26,31 +26,32 @@ type userPool struct {
 // Cluster binds this process to one configured cluster: the dial options,
 // the global budget, the breaker, and the per-user session pools. It is the
 // only door to a session (Call) and answers readiness on its own dial
-// (Probe). Nothing dials at startup; every session is dialed on demand.
+// (Probe). Nothing dials at startup. Every session is dialed on demand.
 type Cluster struct {
 	cfg            config.Cluster
 	poolCfg        config.Pool
 	readinessQuery string // status.readiness_query, run by Probe
 	now            func() time.Time
 
-	// budget caps the live sessions of the whole process at max_sessions:
-	// a unit is held from before a dial until the session's close returns.
+	// budget caps the live sessions of the whole process at max_sessions.
+	// A unit is held from before a dial until the session's close returns.
 	budget *budget
-	// breaker is the per-cluster circuit breaker Call gates on; dials and
-	// calls that find the cluster unavailable feed it, the readiness probe
-	// never does.
+	// breaker is the per-cluster circuit breaker that Call gates on. Dials
+	// and calls that find the cluster unavailable feed it. The readiness
+	// probe does not feed it.
 	breaker *breaker
 
 	mu    sync.Mutex           // protects users
 	users map[string]*userPool // one session pool per user, keyed by username
-	// evictStop ends the eviction goroutine and evictDone closes once it
-	// has ended; Close uses both so no eviction pass races the drain.
+	// evictStop ends the eviction goroutine, and evictDone closes once it
+	// has ended. Close uses both, so no eviction pass races the drain.
 	evictStop chan struct{}
 	evictDone chan struct{}
 }
 
-// New builds the cluster from config. now defaults to time.Now; the tests
-// pass a fake clock. The eviction goroutine starts here and stops on Close.
+// New builds the cluster from config. now defaults to time.Now, and the
+// tests pass a fake clock. The eviction goroutine starts here and stops
+// on Close.
 func New(cfg config.Config, now func() time.Time) *Cluster {
 	if now == nil {
 		now = time.Now
@@ -70,15 +71,15 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 	return c
 }
 
-// ownCredentials are the REST API's own user: config carries it as a user
-// security file only; inline credentials exist only for callers, whose
+// ownCredentials are the REST API's own user. Config carries it as a user
+// security file only. Inline credentials exist only for callers, whose
 // secrets arrive through the API.
 func (c *Cluster) ownCredentials() credentials {
 	return credentials{userSecurityFile: c.cfg.UserSecurityFile}
 }
 
 // compressionOf and encryptionOf map the config vocabulary onto the
-// binding's enums; validation has already rejected anything else.
+// binding's enums. Validation has already rejected anything else.
 func compressionOf(s string) qdbapi.Compression {
 	if s == "balanced" {
 		return qdbapi.CompBalanced
@@ -126,7 +127,7 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 }
 
 // connect dials one session for u. A budgeted dial takes a budget unit
-// first and holds it until the session's close returns; a dial that fails
+// first and holds it until the session's close returns. A dial that fails
 // gives its unit back at once.
 func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
 	if budgeted {
@@ -151,8 +152,8 @@ func (c *Cluster) dial(u credentials) func(context.Context) (qdbapi.Session, err
 	}
 }
 
-// closeBudgeted is the user pools' closer: it closes the handle and only
-// then releases its budget unit, so a session counts against max_sessions
+// closeBudgeted is the closer of the user pools. It closes the handle and
+// only then releases its budget unit, so a session counts against max_sessions
 // until qdb_close has returned and the cluster has let go of it. The pool
 // runs it on its own goroutine.
 func (c *Cluster) closeBudgeted(s qdbapi.Session) error {
@@ -179,8 +180,8 @@ func (c *Cluster) newUserPool(u credentials) *qdbapi.SessionPool {
 	return p
 }
 
-// poolFor finds or creates the user's pool; it never replaces one that
-// exists, so in-flight requests are never raced.
+// poolFor finds or creates the user's pool. It does not replace a pool
+// that exists, so an in-flight request keeps the pool it leased from.
 func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -196,11 +197,11 @@ func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
 // Session is one authenticated client session as this package sees it: the
 // narrow wrapper around the binding's session and the only way code
 // touches one. Every method runs one C API operation, so the surface the
-// server depends on is enumerable here. The one thing a caller may hold
-// afterwards is a query's record batch, which owns its C-allocated
-// buffers and frees them on release. A Session is built per checkout:
-// Call wraps the session the user's pool leased, Probe the one it dialed
-// itself. One goroutine uses a Session at a time.
+// server depends on is enumerable here. A caller may hold one thing
+// afterwards: a query's record batch, which owns its C-allocated buffers
+// and frees them on release. A Session is built per checkout. Call wraps
+// the session the user's pool leased, and Probe wraps the session it
+// dialed itself. One goroutine uses a Session at a time.
 type Session struct {
 	session qdbapi.Session
 }
@@ -209,10 +210,10 @@ func newSession(session qdbapi.Session) *Session {
 	return &Session{session: session}
 }
 
-// closeAsync closes the handle on its own goroutine: qdb_close joins the
-// handle's worker threads and can block for a long time. Only the probe's
-// own session ends here; a pooled one ends through its lease, and the pool
-// closes it the same way.
+// closeAsync closes the handle on its own goroutine, because qdb_close
+// joins the handle's worker threads and can block for a long time. Only
+// the probe's own session ends here. A pooled session ends through its
+// lease, and the pool closes it the same way.
 func (s *Session) closeAsync() {
 	go func() { _ = s.session.Close() }()
 }
@@ -220,9 +221,9 @@ func (s *Session) closeAsync() {
 // fetch runs q through the C API's Arrow path and returns the record batch
 // the binding moved out of it, which holds no reference to the session.
 // The caller owns the batch and releases it once. An error means no
-// result: a batch handed back with an error (a partial failure) is
-// released here and nil is returned. A statement that produces no result
-// set (DDL) yields a nil batch.
+// result. A batch handed back with an error (a partial failure) is
+// released here, and nil is returned. A statement that produces no
+// result set (DDL) yields a nil batch.
 func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
 	rec, err := s.session.Query(q).FetchArrow()
 	if err != nil {
@@ -259,16 +260,17 @@ type callConfig struct {
 // CallOption tunes one Call.
 type CallOption func(*callConfig)
 
-// WithReadRetry permits one transparent retry on a fresh session after a
-// retryable failure. Retry is per call, never the default: idempotence is
-// a fact only the call site knows. Idempotent reads opt in; ingestion and
-// a response that has started streaming never do.
+// WithReadRetry permits one transparent retry after a retryable failure,
+// on a fresh session when the old one went bad. Retry is decided per
+// call, because idempotence is a fact only the call site knows.
+// Idempotent reads opt in. Ingestion and a response that has started
+// streaming do not opt in.
 func WithReadRetry() CallOption {
 	return func(cc *callConfig) { cc.retry = true }
 }
 
-// callerLeft reports whether err is the caller's own context ending: it
-// says nothing about the cluster and never feeds the breaker.
+// callerLeft reports whether err is the caller's own context ending. Such
+// an error says nothing about the cluster and does not feed the breaker.
 func callerLeft(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
@@ -280,21 +282,22 @@ func (c *Cluster) feedBreaker(err error) {
 		c.breaker.recordFailure()
 		return
 	}
-	// nil or an answer -- a rejected request, a refused credential, a
-	// failure in the caller's own Go code -- means the cluster is up,
-	// whatever it said.
+	// A nil error or an answer means the cluster is up, whatever the
+	// answer said. A rejected request, a refused credential and a failure
+	// in the caller's own Go code are all answers.
 	c.breaker.recordSuccess()
 }
 
 // Call runs f against a session authenticated as u. The breaker gates the
-// call; u's pool leases a session (dialing one on demand), runs f, and
-// decides the session's fate from f's error (the binding's IsBadSession,
-// through Lease.Done). What this layer decides is per cluster: the breaker, which is fed
-// only by the errors that are evidence about the cluster
-// (IsClusterUnavailable), and the opt-in retry of an idempotent read
-// after a retryable failure. A retry after a bad session runs on a fresh one,
-// the pool having discarded the old; after any other retryable failure it
-// may run on the same session again.
+// call. u's pool leases a session, dialing one on demand, runs f, and
+// decides the session's fate from f's error through the binding's
+// IsBadSession and Lease.Done. This layer decides two things, both per
+// cluster. The first is the breaker, which is fed only by the errors
+// that are evidence about the cluster (IsClusterUnavailable). The second
+// is the opt-in retry of an idempotent read after a retryable failure. A
+// retry after a bad session runs on a fresh session, because the pool
+// discarded the old one. A retry after any other retryable failure may
+// run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -321,9 +324,9 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 
 // Query runs q as u and returns its result as an Arrow record batch the
 // caller owns and releases once. The batch outlives the session, which is
-// back in its pool before the caller reads a row, so a slow response never
-// holds one. On any error there is no batch. A statement that produces no
-// result set yields a nil batch.
+// back in its pool before the caller reads a row, so a slow response holds
+// no session. On any error there is no batch. A statement that produces
+// no result set yields a nil batch.
 func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOption) (arrow.RecordBatch, error) {
 	var rec arrow.RecordBatch
 	err := c.Call(ctx, u, func(s *Session) error {
@@ -338,11 +341,12 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOptio
 }
 
 // Authenticate proves u's credentials by one direct dial, outside the
-// user pools: a pool holds the credentials it was created with, so a
-// lease could only confirm those. The breaker gates and hears of the
-// dial; the budget does not, the session living for one handshake and
-// closing on its own goroutine. A refused dial is an answer, the
-// caller's error; an unreachable cluster is IsClusterUnavailable.
+// user pools, because a pool holds the credentials it was created with,
+// so a lease could only confirm those. The breaker gates the dial and
+// hears of its outcome. The budget does not count the dial, because the
+// session lives for one handshake and closes on its own goroutine. A
+// refused dial is an answer and the caller's error. An unreachable
+// cluster is IsClusterUnavailable.
 func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 	remaining, ok := c.breaker.allow()
 	if !ok {
@@ -363,8 +367,8 @@ func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 // Probe answers readiness. It dials a fresh session as the REST API's own
 // user (outside the pool, the budget and the breaker), runs
 // status.readiness_query, and closes the session on its own goroutine. The
-// dial proves the cluster is reachable and the REST API's own user
-// authenticates; the query proves the session serves one.
+// dial proves that the cluster is reachable and that the REST API's own
+// user authenticates. The query proves that the session serves one.
 func (c *Cluster) Probe(ctx context.Context) error {
 	hdl, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
@@ -396,8 +400,8 @@ func (c *Cluster) evict() {
 }
 
 // takeIdle removes and returns the user pools that have held nothing for
-// idle_timeout: the first pass that finds a pool empty stamps emptySince,
-// a later pass past idle_timeout takes the pool, and a pool that holds
+// idle_timeout. The first pass that finds a pool empty stamps emptySince.
+// A later pass past idle_timeout takes the pool. A pool that holds
 // anything again loses the stamp. A pool's own reaper closes its idle
 // sessions, so a pool reads as empty within one reap tick of its last
 // session expiring.
@@ -433,7 +437,7 @@ func (c *Cluster) evictOnce() {
 	}
 }
 
-// Reap runs one eviction pass; the tests drive it against a fake clock
+// Reap runs one eviction pass. The tests drive it against a fake clock
 // instead of waiting for the ticker.
 func (c *Cluster) Reap() { c.evictOnce() }
 
@@ -456,10 +460,10 @@ func (c *Cluster) Stats() ClusterStats {
 	}
 }
 
-// Close first stops eviction (and waits for its goroutine to end, so no
-// pass runs during the drain), then takes every user pool out of the map
-// and drains each within ctx, returning ctx.Err() for whatever has not
-// closed in time. The process exits regardless.
+// Close first stops eviction and waits for its goroutine to end, so no
+// pass runs during the drain. Then it takes every user pool out of the
+// map and drains each within ctx, and it returns ctx.Err() for whatever
+// has not closed in time. The process exits regardless.
 func (c *Cluster) Close(ctx context.Context) error {
 	close(c.evictStop)
 	<-c.evictDone
