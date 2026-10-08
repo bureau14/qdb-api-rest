@@ -41,7 +41,7 @@ func newHandler(format string, level slog.Level, w io.Writer) (slog.Handler, err
 }
 
 // NewLogger builds the process logger. The caller places it in the root
-// context with WithLogger; nothing installs it as a global.
+// context with WithLogger, and nothing installs it as a global.
 func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 	level, err := parseLevel(cfg.Level)
 	if err != nil {
@@ -66,7 +66,7 @@ const (
 	KeySession = "session"
 )
 
-// Err renders err under KeyError; a nil err yields an empty attr, which
+// Err renders err under KeyError. A nil err yields an empty attr, which
 // handlers omit.
 func Err(err error) slog.Attr {
 	if err == nil {
@@ -75,19 +75,21 @@ func Err(err error) slog.Attr {
 	return slog.String(KeyError, err.Error())
 }
 
-// loggerKey is the context key for the logger; unexported so only
+// loggerKey is the context key for the logger. It is unexported so only
 // WithLogger and Logger touch it.
 type loggerKey struct{}
 
 // WithLogger returns ctx carrying l. Callees reach it through
-// Logger(ctx): the logger is explicit state of the call, never a global.
+// Logger(ctx), because the logger is explicit state of the call and
+// never a global.
 func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
 }
 
 // Logger returns the logger carried by ctx. A ctx without one is a
 // programming error (a context.Background() or TODO() mid-call-chain)
-// and panics: fail fast rather than log somewhere nobody reads.
+// and panics, so the call fails fast rather than logging somewhere
+// nobody reads.
 func Logger(ctx context.Context) *slog.Logger {
 	l, ok := ctx.Value(loggerKey{}).(*slog.Logger)
 	if !ok {
@@ -97,7 +99,7 @@ func Logger(ctx context.Context) *slog.Logger {
 }
 
 // WithAttrs returns a child ctx whose logger carries attrs on every
-// record. Scope is lexical: the caller's ctx is untouched, so the attrs
+// record. Scope is lexical. The caller's ctx is untouched, so the attrs
 // end where the child ctx goes out of scope.
 func WithAttrs(ctx context.Context, attrs ...any) context.Context {
 	return WithLogger(ctx, Logger(ctx).With(attrs...))
