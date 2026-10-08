@@ -1,8 +1,8 @@
-// The table read is pinned against the live qdbd fixture: a generated
+// The table read is pinned against the live qdbd fixture. A generated
 // table, read back batch by batch, answers the rows that were written,
 // whole or as a requested subset of columns. This is the package's one
-// black-box test: the table fixture imports internal/qdb, so a white-box
-// test could not use it.
+// black-box test, because the table fixture imports internal/qdb, so a
+// white-box test could not use it.
 package qdb_test
 
 import (
@@ -25,12 +25,13 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// oneRow is a one-row batch for tbl, its $timestamp at 2020-01-01 and s
-// in its one string column; the caller releases it.
+// oneRow builds a one-row batch for tbl, with its $timestamp at
+// 2020-01-01 and s in its one string column. The caller releases it.
 func oneRow(tbl table.Table, s string) arrow.RecordBatch {
 	schema := table.Schema(tbl)
-	// One builder per field; a builder is released once it has handed its
-	// array out, since the array holds its own reference to the buffers.
+	// There is one builder per field. A builder is released once it has
+	// handed its array out, because the array holds its own reference to
+	// the buffers.
 	ts := array.NewTimestampBuilder(memory.DefaultAllocator, schema.Field(0).Type.(*arrow.TimestampType))
 	defer ts.Release()
 	ts.Append(arrow.Timestamp(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()))
@@ -110,8 +111,8 @@ func names(rec arrow.RecordBatch) []string {
 }
 
 // TestReadAnswersRowsWritten: a generated table read back in batches of
-// a drawn size answers $table, $timestamp and every column as written;
-// a drawn subset of names answers exactly those, in that order. A drawn
+// a drawn size answers $table, $timestamp and every column as written.
+// A drawn subset of names answers exactly those, in that order. A drawn
 // row count of zero is the schema-only batch.
 func TestReadAnswersRowsWritten(t *testing.T) {
 	c := cluster.NewInsecure(t)
@@ -132,7 +133,8 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 		}
 		table.Check(rt, tbl, whole)
 
-		// A subset in a drawn order; the specials are drawn like any other name.
+		// The subset is read in a drawn order, and the specials are drawn
+		// like any other name.
 		o.Columns = rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 		subset := read(rt, c, tbl.Name, o)
 		defer subset.Release()
@@ -143,10 +145,11 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 	})
 }
 
-// TestReadDropsTrailingNUL pins a C API defect, sc-19829: the bulk
+// TestReadDropsTrailingNUL pins a C API defect, sc-19829. The bulk
 // reader's Arrow path drops one trailing NUL byte from a string cell,
 // while the query answers the byte. When this test fails, the C API has
-// been fixed: delete the test and let the fixture's drawString draw NUL.
+// been fixed. Delete the test then, and let the fixture's drawString
+// draw NUL.
 func TestReadDropsTrailingNUL(t *testing.T) {
 	c := cluster.NewInsecure(t)
 	tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
