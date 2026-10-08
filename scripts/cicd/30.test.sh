@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Buildkite test step for qdb-api-rest: `go test ./...` against the qdbd
-# that start-services.sh started earlier in the _build.yml chain, nothing
-# skipped. Output is converted to JUnit XML (go-junit-report, installed by
-# cicd_setup_go_toolchain) for the qdb-test-report plugin.
+# This is the Buildkite test step for qdb-api-rest. It runs `go test
+# ./...` against the qdbd that start-services.sh started earlier in the
+# _build.yml chain, with nothing skipped. go-junit-report, installed by
+# cicd_setup_go_toolchain, converts the output to JUnit XML for the
+# qdb-test-report plugin.
 
 set -euxo pipefail
 
@@ -28,9 +29,9 @@ if [[ "$(uname)" == MINGW* ]]; then
     GO_EXTRA_FLAGS+=(-exec "bash ${SCRIPT_DIR}/windows-go-test-exec.sh")
 fi
 
-# -mod=vendor: resolve strictly from vendor/; fail loudly instead of fetching.
-# -buildvcs=false: same rhel7 uid/no-passwd VCS-stamping failure as 20.build.sh.
-# No -short: every test assumes qdbd is up (started in the build step).
+# -mod=vendor resolves strictly from vendor/ and fails loudly instead of fetching.
+# -buildvcs=false works around the same rhel7 VCS-stamping failure as 20.build.sh.
+# There is no -short, because every test assumes qdbd is up (started in the build step).
 GOAMD64="${GOAMD64:-}" \
     "${GO}" test "${GO_EXTRA_FLAGS[@]+"${GO_EXTRA_FLAGS[@]}"}" -mod=vendor -buildvcs=false -v -race ./... \
     | "${GO_JUNIT_REPORT}" -out "${TEST_REPORT_DIR}/unit-junit-report.xml" -iocopy
