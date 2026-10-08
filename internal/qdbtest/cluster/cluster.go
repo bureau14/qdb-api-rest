@@ -1,7 +1,8 @@
-// Package cluster is the cluster fixture: NewInsecure binds a
-// *qdb.Cluster to the insecure qdbd the test services run, NewSecure to
-// the secure one, for the test's life. It is a subpackage for the same reason as table: internal/qdb's own tests
-// import qdbtest, so qdbtest itself cannot import internal/qdb.
+// Package cluster is the cluster fixture. NewInsecure binds a
+// *qdb.Cluster to the insecure qdbd the test services run, and NewSecure
+// binds one to the secure qdbd, for the test's life. It is a subpackage
+// for the same reason as table. internal/qdb's own tests import qdbtest,
+// so qdbtest itself cannot import internal/qdb.
 package cluster
 
 import (
