@@ -1479,6 +1479,62 @@ account, started 06:12 UTC) run on; their results get their own
 headings. The poller on `h-1` stopped on the new dump, as designed;
 one runs on `h-3`.
 
+### 2026-10-08 06:35 UTC: the fault's shape from the page heap dump; H9, the over-read leaves the stream only when the value count is a multiple of thirty-two
+
+What `av_qdbd_8784.dmp` says (`avfault.sh`, copied home as
+`av_qdbd_8784-h1-pageheap-release-4b955fa4a4-firstchance-fault.txt`):
+
+- The decoded column held 86432 timestamps (`delta4c_read`'s
+  `depacked` vector and `streamvbyte_decode`'s `count`), and 86432 is
+  2701 times 32. The suite's dump of the 05:30 heading held 320, which
+  is 10 times 32.
+- The Stream VByte stream is the last field of the stored value:
+  `delta4c_read` subtracts the decoder's return from `remaining` and
+  fails unless nothing is left (`qdb/compression/delta4c.cpp:639-640`),
+  and in the dump the stream's end (`src` plus `remaining`) and the
+  value's end (`value.data_` plus `value.size_`) are the same address.
+- The faulting load is the last group's: its data is six bytes long and
+  ends at the value's end; the sixteen-byte load reads ten bytes past
+  it, nine of which are the bytes RocksDB keeps after the value in its
+  block, and the tenth is the first byte of page heap's guard page.
+- This time the slice is pinned (`value.pinned_` true): the decoder
+  reads RocksDB's own block buffer, not a copied string, so the
+  over-read runs off whichever allocation holds the value.
+
+The decoder's structure says when the over-read leaves the stream.
+`streamvbyte_decode` hands the SSE path `count` values; the SSE path
+decodes `count / 32` blocks of thirty-two values with sixteen-byte
+loads, each group of four values consuming four to sixteen bytes, and
+the remaining `count % 32` values are decoded by scalar code
+(`thirdparty/streamvbyte-2.0.0/src/streamvbyte_decode.c:66-73`,
+`streamvbyte_x64_decode.c:40-108`). The last SSE load therefore reads
+sixteen minus the last group's length bytes beyond that group. When
+`count % 32` is zero there is no scalar tail, and those bytes lie
+beyond the stream and the value. When a tail exists its data follows
+the SSE data and absorbs the over-read, in whole when the tail is long
+enough. The group's length is short when the four values are small,
+which delta4c makes them: the Stream VByte values are indices into the
+encoding table of deltas (`encoding_table`, 5356 entries in the dump),
+so a bucket with few distinct deltas encodes in one or two bytes per
+value.
+
+H9, written before the sample: the over-read leaves the stored value
+only when the column's value count is a multiple of thirty-two (or
+leaves a tail of fewer values than the over-read has bytes), and it
+faults when the value ends within that over-read of an unreadable page,
+which page heap arranges for every allocation. Confirmed by: the
+program's `shape` mode, which pushes a multiple of thirty-two rows into
+a fresh table with the fast push and then one more row with the async
+push, so the flush loads the stored bucket and decodes it, faulting
+within its first few iterations under page heap with the same stack.
+Refuted by: hundreds of such iterations without a fault, while the pool
+mode faults.
+
+The experiment runs on `h-1` from the SSH logon, page heap still on,
+fresh daemons, `cdb` attached (`avshape.sh`). A fault settles the
+quick reproduction for the ticket; the shrinking then removes the
+int64 column, the nulls and the second column one step at a time.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
