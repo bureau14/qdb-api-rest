@@ -1428,7 +1428,7 @@ C names included, and runs under page heap on the agent whose
 experiment ended first. It is shrunk only from a version that faults,
 one operation per step, each step recorded here before it is taken.
 
-### 2026-10-08 06:20 UTC: the C program faults under page heap with the suite's stack; the program reaches the storage read at a high rate
+### 2026-10-08 06:12 UTC: the C program faults under page heap with the suite's stack; the program reaches the storage read at a high rate
 
 Experiment A: `h-1`'s insecure release daemon (pid 8784) died at
 06:05:08 UTC under the size-limited page heap, in the program's second
@@ -1479,7 +1479,7 @@ account, started 06:12 UTC) run on; their results get their own
 headings. The poller on `h-1` stopped on the new dump, as designed;
 one runs on `h-3`.
 
-### 2026-10-08 06:35 UTC: the fault's shape from the page heap dump; H9, the over-read leaves the stream only when the value count is a multiple of thirty-two
+### 2026-10-08 06:18 UTC: the fault's shape from the page heap dump; H9, the over-read leaves the stream only when the value count is a multiple of thirty-two
 
 What `av_qdbd_8784.dmp` says (`avfault.sh`, copied home as
 `av_qdbd_8784-h1-pageheap-release-4b955fa4a4-firstchance-fault.txt`):
@@ -1535,7 +1535,7 @@ fresh daemons, `cdb` attached (`avshape.sh`). A fault settles the
 quick reproduction for the ticket; the shrinking then removes the
 int64 column, the nulls and the second column one step at a time.
 
-### 2026-10-08 06:45 UTC: experiment C, the round trip under the counters dies from the SSH logon, without a dump
+### 2026-10-08 06:24 UTC: experiment C, the round trip under the counters dies from the SSH logon, without a dump
 
 On `h-2`, from the SSH logon as Administrator, with `cdb` attached to
 the insecure release daemon for the three counting breakpoints and no
@@ -1561,7 +1561,7 @@ breakpoints printed (`dt -r1` of `data_key`) show the structure and
 not the table name; the name sits behind the `alias` slice and was not
 read.
 
-### 2026-10-08 06:55 UTC: H9 confirmed, the shape mode faults in seventy-one iterations, this time on the int64 column
+### 2026-10-08 06:28 UTC: H9 confirmed, the shape mode faults in seventy-one iterations, this time on the int64 column
 
 The shape mode (`avrepro.c`, mode `shape`: a fresh table, a fast push
 of a multiple of thirty-two rows with no nulls, an async push of one
