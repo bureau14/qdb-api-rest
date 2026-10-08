@@ -1,23 +1,23 @@
 # qdb_rest reference configuration: every key, at its built-in default.
-# Pinned to those defaults by internal/config's tests.
+# internal/config's tests pin it to those defaults.
 #
 # Load with `qdb_rest --config /etc/qdb/qdb_rest.yaml`. Every key is also
 # an environment variable and a flag named after its path (pool.max_sessions
 # is QDB_REST_POOL_MAX_SESSIONS and --pool-max-sessions). Precedence, lowest
-# to highest: these defaults, this file, the environment, flags. `${VAR}`
-# references are expanded from the environment at load time; an unset
-# variable refuses the start.
+# to highest: these defaults, this file, the environment, flags. The loader
+# expands `${VAR}` references from the environment at load time, and an
+# unset variable refuses the start.
 
 listen:
-  # HTTP listener address; empty disables the listener.
+  # HTTP listener address. Empty disables the listener.
   http: ":40080"
-  # HTTPS listener address; empty disables the listener.
+  # HTTPS listener address. Empty disables the listener.
   https: ":40443"
 
 tls:
   # PEM certificate and private key for the HTTPS listener, set together.
-  # Both empty: an ephemeral self-signed certificate is generated at every
-  # start.
+  # With both empty, an ephemeral self-signed certificate is generated at
+  # every start.
   certificate: ""
   private_key: ""
   # private_key: "${QDB_REST_TLS_KEY_PATH}"
@@ -30,40 +30,40 @@ log:
   format: "json"
 
 cluster:
-  # Cluster URI; several nodes as a comma-separated list.
+  # Cluster URI. Several nodes form a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
-  # Cluster public key file; empty means an insecure cluster.
+  # Cluster public key file. Empty means an insecure cluster.
   public_key_file: ""
   # User security file of the REST API's own user, the one it
   # authenticates as on its own behalf (the readiness probe). Required
-  # when the cluster has a public key; empty means anonymous.
+  # when the cluster has a public key, and empty means anonymous.
   user_security_file: ""
   # Client-side C API compression: none | balanced.
   compression: "none"
   # Client-cluster traffic encryption: none | aes.
   encryption: "none"
-  # C API socket timeout per session: the bound on one low-level network
+  # C API socket timeout per session, the bound on one low-level network
   # operation (a single send or receive, retried inside the C API).
-  # Whole seconds, at least 1s; 0 leaves the Go API's default.
+  # Whole seconds, at least 1s, and 0 leaves the Go API's default.
   timeout: "0s"
-  # Per session, 0 = C API default: client input buffer cap (bytes) and
-  # C API worker threads (the C API default is half the logical cores,
-  # per session).
+  # Per session, with 0 as the C API default: the client input buffer cap
+  # (bytes) and the C API worker threads (the C API default is half the
+  # logical cores, per session).
   max_in_buffer_size: 0
   parallelism: 0
-  # Per session: soft limit on connections to any one node address
-  # (0 = C API default; otherwise 2..100000).
+  # Per session, the soft limit on connections to any one node address
+  # (0 is the C API default, otherwise 2..100000).
   connections_per_address: 0
 
 pool:
-  # Sessions this process may hold across all users; readiness probes
+  # Sessions this process may hold across all users. Readiness probes
   # dial outside this budget.
   max_sessions: 64
-  # Sessions one user may hold, across all of that user's REST sessions;
-  # the anonymous user is one user.
+  # Sessions one user may hold, across all of that user's REST sessions.
+  # The anonymous user is one user.
   per_user_max: 8
-  # A session unused this long is closed; a user pool that has held no
-  # session for this long is evicted (so at most twice this after the
+  # A session unused this long is closed, and a user pool that has held
+  # no session for this long is evicted (so at most twice this after the
   # last request).
   idle_timeout: "5m"
   # A session older than this is closed instead of being reused.
@@ -77,17 +77,17 @@ pool:
 
 status:
   # Query executed by the readiness probe, as the REST API's own user,
-  # after the dial; result discarded.
+  # after the dial. The result is discarded.
   readiness_query: "SELECT 1"
 
 auth:
-  # Rolling token passphrases: the first entry mints tokens, the rest
-  # stay valid during rotation. Empty: tokens do not survive a restart
-  # and do not span multiple instances.
+  # Rolling token passphrases. The first entry mints tokens, and the rest
+  # stay valid during rotation. When empty, tokens do not survive a
+  # restart and do not span multiple instances.
   # token_secrets:
   #   - "${QDB_REST_TOKEN_SECRET}"
   argon2id:
-    # Token key-derivation cost; must be identical on every instance.
+    # Token key-derivation cost, which must be identical on every instance.
     time: 3
     memory_mib: 64
     parallelism: 4
