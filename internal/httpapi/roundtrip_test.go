@@ -1,10 +1,10 @@
 // The good path of the v2 surface is one round trip against the live qdbd
-// fixture, the in-process twin of the e2e flow: generated tables that
-// share one column list are created over HTTP, read empty, ingested in
-// one body, read and queried in every format, deleted, re-created over
-// what the delete leaves behind, and deleted again. What went in comes
-// back out:
-// each response equals the encoder run directly over the cluster, and the
+// fixture, the in-process twin of the e2e flow. The test creates
+// generated tables that share one column list over HTTP, reads them
+// empty, ingests them in one body, reads and queries them in every
+// format, deletes them, re-creates them over what the delete leaves
+// behind, and deletes them again. What went in comes back out. Each
+// response equals the encoder run directly over the cluster, and the
 // direct read passes table.Check against the rows generated, so the bytes
 // on the wire carry the rows written.
 package httpapi
@@ -34,8 +34,8 @@ func (s server) ingest(body, params string, headers map[string]string) *httptest
 	return s.post(rowsPath+"?"+params, body, headers)
 }
 
-// ingestBodyOf is the one CSV body that carries every table: the tables
-// joined into one batch by the fixture, written out by the CSV encoder.
+// ingestBodyOf is the CSV body that carries every table. The fixture
+// joins the tables into one batch, and the CSV encoder writes it out.
 func ingestBodyOf(t table.T, tables []table.Table) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -46,7 +46,7 @@ func ingestBodyOf(t table.T, tables []table.Table) string {
 }
 
 // checkRead reads tbl over the cluster and compares what comes back with
-// the rows generated; the fixture's tables fit one batch.
+// the rows generated. The fixture's tables fit one batch.
 func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	err := s.c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
@@ -144,7 +144,7 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 func TestRoundtrip(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
-		// 1. the tables: the first drawn whole, the rest generated over its columns
+		// 1. the tables: the first is drawn whole, the rest are generated over its columns
 		first := table.Generate(rt)
 		tables := []table.Table{first}
 		for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
@@ -163,7 +163,7 @@ func TestRoundtrip(t *testing.T) {
 		}
 		picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 
-		// 2. create each: 201 with its Location
+		// 2. create each table, which answers 201 with its Location
 		for _, tbl := range tables {
 			table.RemoveOnCleanup(rt, s.c, tbl)
 			resp := s.createTable(rt, createBodyOf(tbl))
@@ -175,8 +175,8 @@ func TestRoundtrip(t *testing.T) {
 			}
 		}
 
-		// 3. read the first table empty: the schema alone, in every format,
-		// and the schema is the one generated. The others share it, and an
+		// 3. read the first table empty, which answers the schema alone in
+		// every format, and the schema is the one generated. The others share it, and an
 		// empty read through the bulk reader is slow (about a tenth of a
 		// second where a filled read is milliseconds), so one table stands
 		// for all
@@ -186,7 +186,7 @@ func TestRoundtrip(t *testing.T) {
 		s.checkReadFormats(rt, first, nil)
 
 		// 4. ingest every table's rows in one body under a drawn push mode,
-		// the default included: the counts answered are the rows generated
+		// the default included. The counts answered are the rows generated
 		// and the tables that had any
 		mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
 		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, tables), "push-mode="+mode, nil))
@@ -194,13 +194,13 @@ func TestRoundtrip(t *testing.T) {
 			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 		}
 
-		// 5. read and query each in every format: the rows written are the
+		// 5. read and query each in every format. The rows written are the
 		// rows generated, and every format's body carries the encoder's own
-		// bytes. After an async push a query sees the rows at once but the
-		// bulk reader only once the server has flushed: before that it answers
-		// none of them, or some twice while the flush runs (qdbd 3.15.0.dev0,
-		// both writers), so the async mode is read back through the query
-		// alone
+		// bytes. After an async push a query sees the rows at once, but the
+		// bulk reader sees them only once the server has flushed. Before that
+		// it answers none of them, or some twice while the flush runs (qdbd
+		// 3.15.0.dev0, both writers), so the async mode is read back through
+		// the query alone
 		for _, tbl := range tables {
 			s.checkQuery(rt, tbl)
 			s.checkQueryFormats(rt, tbl)
@@ -211,8 +211,8 @@ func TestRoundtrip(t *testing.T) {
 			s.checkReadFormats(rt, tbl, picked)
 		}
 
-		// 6. delete each (204), which leaves the symtables; the same create
-		// is accepted again over them (201); a second delete is 404
+		// 6. delete each (204), which leaves the symtables. The same create
+		// is accepted again over them (201), and a second delete is 404
 		for _, tbl := range tables {
 			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
 				rt.Fatalf("delete %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
