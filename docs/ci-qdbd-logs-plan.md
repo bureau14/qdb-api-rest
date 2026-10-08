@@ -1287,6 +1287,67 @@ whether the next page is committed. The debug daemon ran about twelve
 round trips without it, the release daemon with symbols three for
 three within minutes.
 
+### 2026-10-08 05:30 UTC: the fourth release death, what the dumps say about the buffer, and the C program so far
+
+`h-3` lost its release daemon at 04:53 UTC, in its first run after the
+swap (dump `av_qdbd_9620.dmp`), on the same decoder, reached through
+`svb_decode_sse41` line 99 instead of 105. Four release loops, four
+deaths in the first run each, all in `delta4c_read` under
+`ts_table_inserter::load_bucket` on the async flush thread.
+
+The frames' locals in `av_qdbd_7260.dmp` (`h-0`, `locals.sh` and
+`bufinfo.sh` in `~/qdb-rr-scratch/scripts`) say what was being
+decoded and where it lived:
+
+- The column is a data column of type timestamp (column index 6, not
+  `$timestamp`), stored delta4c through the null filter, so it has
+  nulls. The stored bucket held 320 timestamps; the stored value is
+  1285 bytes, its compressed payload 1249 bytes.
+- `key_value::find_data_unmarshal` read the value through a
+  `rocksdb::PinnableSlice` that is not pinned: RocksDB copied the value
+  into the slice's own `std::string`, size 1285, capacity 1295, one
+  1296-byte heap block. That block ends exactly at the page boundary
+  and the next page is not committed. The decoder's last sixteen-byte
+  load starts eleven bytes before that boundary.
+
+So the over-read runs off the end of an ordinary heap allocation, the
+string RocksDB copied the stored value into. Whether it faults depends
+only on where the heap placed that block, which is why the round trip
+dies within minutes in some processes and survives hours in others.
+
+The out-of-the-box reproduction, `avrepro.c` (plain C API, the batch
+push with explicit columns, no Arrow, no REST server), has not faulted
+yet. Its versions and why each could not have:
+
+1. One int64 column, timestamps one second apart, the table removed
+   right after the async push: constant deltas take delta4c's constant
+   encoding and never reach Stream VByte, and the flush finds no stored
+   bucket. 100000 iterations, no death.
+2. Pool mode: a nullable timestamp data column with random values,
+   thirty-two tables kept alive across many async and fast pushes
+   (rows verified to land, with nulls): 200000 pushes, no death. The
+   object cache has no eviction of its own and the test limiter allows
+   gigabytes, so the flushes found their buckets in memory and decoded
+   nothing from storage.
+3. Pool mode with `qdb_trim_all` every 500 pushes and one push in ten
+   large: 200000 pushes, no death. Whether the trim makes the next
+   flush page the bucket in is not verified.
+4. Cycle mode, one round-trip case per iteration (create, async push,
+   remove, re-create, remove): 200000 cases, no death.
+
+The experiment running now (owner's direction: release daemons only,
+the program instead of the test framework): full page heap for
+`qdbd.exe` on `h-1`, limited to allocations between 500 and 2000 bytes
+(`pageheap-on.ps1`; the bounds include the 1296-byte block whether
+gflags reads them as decimal or hex), with the program in pool mode
+under the LocalSystem service and `cdb` attached. Page heap places such
+a block at the end of a page with an inaccessible page after it, so if
+the program reaches the decode of a stored timestamp column at all, it
+faults at once in any context. A fault decides that the program
+reaches the path and gives the deterministic recipe; no fault means the
+program never decodes a stored timestamp column, and the next step is
+to prove that with a breakpoint counter before changing the program.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1525,142 +1586,163 @@ The tools for all three are in place: the agent access, the service
 loop (`rtsvc.sh` under WinSW as the `buildkite` account), the watcher,
 procdump and the debugging tools on agent `h-0`.
 
-## Status for the next session (2026-10-08 01:30 UTC, four debug loops running)
+## Status for the next session (2026-10-08 05:30 UTC, page heap reproduction on h-1)
 
-Read the dated headings of 2026-10-08 above first; this section is the
-operational state only.
+Read the dated headings of 2026-10-08 above first, the last one
+(05:30) in full; this section is the operational state only. It is
+written so that a session started with `/rr-start @docs/ci-qdbd-logs-plan.md`
+can resume without anything from the conversation that wrote it.
 
 ### Where this unit lives
 
-This unit runs in its own git worktree so that regular development on
-the base branch continues in the main checkout at the same time:
-
 - Worktree: `~/git/qdb-api-rest-ci-qdbd-logs`, branch
-  `sc-19567/rr-ci-qdbd-logs`, submodules initialized. Every session on
-  this unit starts there with `/rr-start @docs/ci-qdbd-logs-plan.md`
-  and this section as the handover.
-- Main checkout: `~/git/qdb-api-rest`, on `sc-19567/rest-rewrite`.
-  Its `docs/log.md` carries one line about this unit and points here.
-  The main checkout is not touched from the worktree session; the
-  merge of this branch happens from the main checkout, after the owner
-  reviews the diff against the base.
-- Scratch, outside both trees: `~/qdb-rr-scratch/` (`agent.sh`,
-  `scripts/`, `dumps/`, `dbgpair/`, `poll/`). Nothing in it is
-  committed; the dumps are too large and the rest is operator tooling.
-  The scripts the plan names live in `scripts/` there.
+  `sc-19567/rr-ci-qdbd-logs`, pushed. Main checkout `~/git/qdb-api-rest`
+  is not touched from here. Commits made while 1Password was away are
+  unsigned; sign or leave them, the owner decides.
+- quasardb worktree: `~/git/quasardb-ci-qdbd-logs`, branch
+  `sc-19567/rr-ci-qdbd-logs` (one commit, `4b955fa4a4`, on master
+  `22f54da872`, pushed): `.buildkite/pipeline.py` sets
+  `QDB_ENABLE_DEBUG_INFO=ON` for Windows so release builds carry a PDB.
+  quasardb-build 2796 built it for the Windows release variants. The
+  branch is never merged; it is deleted when the investigation ends.
+  Its `.buildkite/tools` submodule is not checked out (the clone is
+  refused); the pipeline check runs with `~/qdb-rr-scratch/.venv-qdb-pipeline`
+  after copying the main checkout's tools in, which then must be
+  removed again before any commit.
+- Scratch, outside both trees: `~/qdb-rr-scratch/`. Nothing in it is
+  committed.
 
-### What is established
+| path                         | what it holds                                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.sh`                   | SSH as Administrator: `agent.sh h-N '<cmd>'` (default agents) or `s-N` (siege agents); `agent.sh push <h-N> <files>` to `C:\BuildkiteAgent\rr\` |
+| `pull.sh`                    | `pull.sh <h-N\|s-N> '/C:/path' <local>`: copy a file from an agent                                                                              |
+| `poll/poll.sh`, `poll/*.log` | the per-agent poller and its logs                                                                                                               |
+| `dumps/`                     | every dump copied home with its analysis; the four release first-chance dumps are `av_qdbd_*-h<N>-release-4b955fa4a4-firstchance.dmp`           |
+| `relpair/`                   | `qdbd.exe` with `qdbd.pdb` of quasardb-build 2796, core2 and haswell                                                                            |
+| `dbgpair/`                   | the debug `qdbdd.exe` with PDB of quasardb-build 2785                                                                                           |
+| `scripts/`                   | everything the agents run (below)                                                                                                               |
 
-- The death is an access violation in Stream VByte's SSE decoder
-  reading up to fifteen bytes past the end of an unpadded "zero copy"
-  input view, on the async pipeline's flush thread, re-raised by a
-  catch funclet so that qdbd's handlers never see it. First-chance
-  dump and analysis: `~/qdb-rr-scratch/dumps/`.
-- The debug daemon instead asserts `idx.valid()` in
-  `qdb/kernel/containers/ts/indexer.hpp:239` (int64 column index); one
-  observation, no dump yet, because it is not an exception.
-- Context: started by the service control manager (as the agent
-  account or as LocalSystem) it dies in one of two to eight runs; from
-  an SSH logon as Administrator, twenty-five runs passed. Both are
-  session 0, both use the Segment Heap. Never tested: the buildkite
-  account outside a service (SSH as `buildkite` works with the same
-  password), and the debug daemon outside a service.
+The scripts that matter now, all in `scripts/`:
 
-### What is running, and how to reach it
+| script                                                    | runs on        | does                                                                                                                      |
+| --------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `rtsvc4.sh`, `rtsvcstatus4.sh`, `svc-restart4.ps1`        | default agents | the round-trip loop under the service against whichever daemon `qdb/bin` holds (release `qdbd.exe` first), `cdb` attached |
+| `avrepro.c`                                               | default agents | the C reproduction; usage and modes in its header                                                                         |
+| `avsvc.sh`, `svc-restart-av.ps1`                          | default agents | the same service loop running `avrepro.exe` instead of the round trip; `AV_MODE` defaults to `pool`                       |
+| `avrun.sh`                                                | default agents | `avrepro.exe` from the SSH logon against fresh daemons                                                                    |
+| `avcheck.sh`                                              | default agents | the program's progress, the daemons, the dumps                                                                            |
+| `analyze-dbg.sh`, `srcline.sh`, `locals.sh`, `bufinfo.sh` | default agents | read a dump: `!analyze`, frames with lines, every frame's locals, the decoder's input buffer                              |
+| `swaprel.sh`                                              | default agents | unpack a release pair into `qdb/bin`                                                                                      |
+| `pageheap-on.ps1`                                         | default agents | size-limited full page heap for `qdbd.exe`                                                                                |
+| `relpdbwatch.sh`                                          | siege agents   | pack `bin64/Release/qdbd.exe` with its PDB right after the link                                                           |
+| `h7repro.c`, `h7_test.go`, `h7c-run.sh`                   | default agents | the second bug's two-row reproduction                                                                                     |
 
-Access: `~/qdb-rr-scratch/agent.sh <h-N> '<command>'` runs a command
-as Administrator over SSH (the password comes from the packer config;
-the agents are reached over the WARP private network);
-`agent.sh push <h-N> <files>` copies files to `C:\BuildkiteAgent\rr\`.
-Commands with pipes or quotes go into a script file, pushed, then run
-as `C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\<script>`. The SSH
-shell is session 0.
+### What is running
 
-| agent | IP            | service        | account     | daemon                                      | status script                      |
-| ----- | ------------- | -------------- | ----------- | ------------------------------------------- | ---------------------------------- |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                             |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | running `avsvc.sh`: `avrepro.exe` pool mode, run 1 since 05:23, `cdb` attached |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | stopped after its death at 04:34; leftover daemons from an SSH run             |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | stopped after its death at 04:36; leftover secure daemon                       |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | stopped after its death at 04:53; leftover secure daemon                       |
 
-Each runs `~/qdb-rr-scratch/scripts/rtsvc3.sh` (copied to the service
-directory as `rtsvc.sh`) in the workspace
-`C:\BuildkiteAgent\rr\qdb-api-rest`: the branch cloned from a bundle,
-`qdb/` from the artifact store (release c-api and utils of
-quasardb-build 2782) plus `qdbdd.exe`, `qdbdd.pdb`,
-`qdb_user_addd.exe`, `qdb_cluster_keygend.exe` of build 2785, `rt.test`
-built there. The loop restarts both daemons at service start, attaches
-`cdb` to each with `sxe -c ".dump /ma ...; gn" av` and
-`bm *!_wassert ".dump /ma ...; gc"`, starts the watcher, and runs
-`TestRoundtrip` until a run fails. Dumps land in
-`C:\BuildkiteAgent\dumps\av_qdbdd_<pid>.dmp` or
-`assert_qdbdd_<pid>.dmp`; `C:\BuildkiteAgent\cdbcheck.sh` shows the
-debuggers' logs. A run takes 72 to 85 minutes. The Buildkite agent
-service is stopped on all four (`Get-Service buildkite-agent`).
+The Buildkite agent service is stopped on all four. Every restart
+script kills leftovers first, so they need no cleanup before one.
 
-Polling, from the operator's machine: `~/qdb-rr-scratch/poll/poll.sh
-<h-N>` asks one agent for its status every four minutes, appends it to
-`~/qdb-rr-scratch/poll/<h-N>.log`, and exits on a run exit, a loop end,
-a dead daemon or a new dump. A session's background pollers die with
-the session, so the first thing a new session does is start one per
-agent in the background:
+The siege agents (`s-0` 10.64.129.43, `s-1` 10.64.131.254, `s-2`
+10.64.130.205, `s-3` 10.64.129.108) are in the Buildkite pool and run
+nothing of this unit; `C:\BuildkiteAgent\relpair-4b955fa4a4.*` and
+`C:\BuildkiteAgent\rr\relpdbwatch.sh` are leftovers there.
 
-    for h in h-0 h-1 h-2 h-3; do ~/qdb-rr-scratch/poll/poll.sh $h; done
+### How to resume, in this order
 
-(each in its own background task, so that the harness wakes the
-session when one exits). The loops on the agents run on regardless of
-the pollers; a stale poller log is not a stale loop.
+1. Start one poller per agent that runs a loop, each in its own
+   background task so the harness wakes the session when it exits:
 
-### When a dump appears
+       ~/qdb-rr-scratch/poll/poll.sh h-1
 
-1. `agent.sh push <h-N> ~/qdb-rr-scratch/scripts/analyze-dbg.sh`, then
-   `agent.sh <h-N> 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\analyze-dbg.sh C:\BuildkiteAgent\dumps\<file>.dmp'`:
-   `!analyze -v`, the faulting context and every thread's stack with
-   symbols from `qdb\bin\qdbdd.pdb` and the Microsoft symbol server.
-   For an assert dump add `.frame` on the `compute_index` frame and
-   `dv /v` plus `dx idx` to read the index fields.
-2. Copy the dump to `~/qdb-rr-scratch/dumps/` with a name that says the
-   agent, account and kind.
-3. Record the symbolized stack in this plan under a dated heading, and
-   answer: which codec decodes during the flush, whether the assert and
-   the over-read are one bug, and whether the column type varies.
-4. The loop breaks on a failed run; restart it with
-   `svc-restart3.ps1 -Svc <rtsvc|rtsvcsys> -Dir <rtsvc|rtsvcsys>` from
-   `C:\BuildkiteAgent\rr\` (it kills leftovers, deletes the daemon
-   logs, copies `rtsvc3.sh` in and starts the service).
+   `poll.sh` asks the agent's `rtsvcstatus.sh` every four minutes,
+   appends to `poll/<h-N>.log`, and exits on a daemon exit in the watch
+   file, a loop end, fewer than two daemons, or a dump that was not
+   there at its first poll. For the C program on `h-1` a faster check
+   is `agent.sh h-1 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\avcheck.sh'`.
+   Pollers die with the session; the loops on the agents do not.
+
+2. Read `h-1`'s outcome with `avcheck.sh`. A new `av_qdbd_<pid>.dmp`
+   in `C:\BuildkiteAgent\dumps` is the page heap fault; a finished run
+   ("run 1 ended") without one is the other branch.
+3. On a fault: `agent.sh push h-1 scripts/srcline.sh`, then
+   `agent.sh h-1 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\srcline.sh C:\BuildkiteAgent\dumps\<file>.dmp'`
+   and check the stack against the 04:34 heading. Same stack: the
+   program reproduces the bug deterministically under page heap. Then
+   shrink it one variable at a time (no trim; one table; fast pushes
+   only; no nulls; no int64 column) to the smallest sequence that still
+   faults, and record each step here before taking it.
+4. Without a fault: prove whether the program decodes a stored
+   timestamp column at all, before changing it. Attach `cdb` to the
+   insecure daemon with a counting breakpoint on
+   `qdbd!qdb::persistence::key_value::find_data_unmarshal<qdb::kernel::column<qdb::timespec> >`
+   and run the program for a minute. Zero hits: the program never
+   pages a timestamp column in; find what makes the round trip do it
+   (its bulk reads and queries between pushes are the next candidates).
+   Hits without a fault under page heap: the string capacity leaves
+   slack past the over-read for the sizes drawn, so vary row counts
+   toward the 320-row, 1285-byte value of the dumps.
+5. Restart a loop on an agent with
+   `agent.sh <h-N> 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\BuildkiteAgent\rr\svc-restart-av.ps1 -Svc <rtsvc|rtsvcsys> -Dir <rtsvc|rtsvcsys>'`
+   for the C program, or `svc-restart4.ps1` with the same arguments for
+   the round trip. `rtsvc` is the agent account on `h-0` and `h-3`,
+   `rtsvcsys` LocalSystem on `h-1` and `h-2`.
+
+### Gotchas on these agents
+
+- A command run over SSH that starts qdbd never returns while the
+  daemons live; run it as a local background task and kill the local
+  client afterwards. `nohup` on the agent does not outlive the session.
+- Quoting through `agent.sh` breaks on `$(...)`, pipes and nested
+  quotes; put the command in a script, push it, run it with
+  `C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\<script>`.
+- MSYS bash rewrites `/p` and similar arguments into paths; run
+  `gflags` through PowerShell (`pageheap-on.ps1`).
+- In a `cdb -c` command inside bash double quotes, backslashes in a
+  dump path are lost; write the path with forward slashes.
+- `qdb_ts_create` needs the `$timestamp` column listed first or
+  answers invalid argument.
+- `cdb`'s `sxe -c "...; gn" av` writes the first-chance dump and passes
+  the exception on; the daemon then ends with `0xC0000354` instead of
+  `0xC0000005`, which changes nothing.
+- A quasardb-build created through the API takes its message as YAML
+  filter tags; use `os: windows`, `build_type: Release`,
+  `skip_test: true` and never a conventional-commit line.
 
 ### Restoring the agents, when the owner says so
 
-On each of h-0, h-1, h-2, h-3: stop and uninstall the loop service
-(`C:\BuildkiteAgent\<rtsvc|rtsvcsys>\<rtsvc|rtsvcsys>.exe stop` then
-`uninstall`), kill `rt.test`, `cdb`, `qdbdd`, `procdump64`, `bash`,
-then `Start-Service buildkite-agent`. Keep `C:\BuildkiteAgent\dumps`
-and `C:\BuildkiteAgent\tools` until the dumps are copied; the
-workspaces under `C:\BuildkiteAgent\rr` can go. `gflags /p` must list
-no application on h-1 (it does now). The agents re-register under a
-new name suffix when the service starts.
+On `h-1` first: page heap off, through PowerShell:
+`& 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\gflags.exe' /p /disable qdbd.exe`,
+then `gflags /p` must list no application. On each of h-0 to h-3: stop
+and uninstall the loop service (`C:\BuildkiteAgent\<rtsvc|rtsvcsys>\<rtsvc|rtsvcsys>.exe stop`
+then `uninstall`), kill `rt.test`, `avrepro`, `cdb`, `qdbd`, `qdbdd`,
+`bash`, then `Start-Service buildkite-agent`. Keep
+`C:\BuildkiteAgent\dumps` and `C:\BuildkiteAgent\tools` until the
+owner releases them; the copies home cover every dump named in this
+plan. On the siege agents delete the `relpair-*` files and
+`rr\relpdbwatch.sh`. Delete the quasardb branch on origin and its
+worktree.
 
 ### Repository state
 
-Branch `sc-19567/rr-ci-qdbd-logs`, pushed, in the worktree named
-under "Where this unit lives". Two experiment settings are still on the branch and must be
-reversed or handed off before any merge: `QDBTEST_TRAFFIC_TO_SECURE` in
+Two experiment settings are on this branch and must be reversed or
+handed off before any merge: `QDBTEST_TRAFFIC_TO_SECURE` in
 `30.test.sh`, and `observeContext` at debug level. The commit that
 teaches the watcher and the event capture the debug name stays.
-Siege agents h-0 to h-3 still have a `pdbwatch.sh` leftover in
-`C:\BuildkiteAgent\` (finished) and `dbgpair-*.tar.zst` archives
-there, which can be deleted.
 
-### Next experiments, in the owner's order
+### Next, in the owner's order
 
-1. The symbolized access-violation dump: the release daemon with its
-   PDB runs on all four agents (the 04:36 heading).
-   H7 is confirmed and reproduced from C (the 02:30 and 03:33 headings).
-2. The buildkite account outside a service: the release loop
-   (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
-3. The debug daemon outside a service, for the assertion.
-4. The ticket for the qdbd team from the handoff heading above, once
-   the dump names the codec and the index field.
+1. The out-of-the-box reproduction of the decode fault, C API only,
+   no Arrow (running: page heap on `h-1`).
+2. The ticket for the qdbd team from the handoff heading, both bugs,
+   once the reproduction exists.
+3. Restore the agents and delete the quasardb branch.
 
 ## Open questions and recommendations
 
