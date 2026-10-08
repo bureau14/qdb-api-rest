@@ -1705,6 +1705,21 @@ the same as steps 1 and 2. What the ticket says, in order:
 
 Where the ticket goes is the owner's decision (plan, Outcome, goal 3).
 
+### 2026-10-08 08:05 UTC: the agents are back in the pool
+
+Owner decisions: the tickets are written by hand, outside the QuasarDB
+workflow, and no further run is needed. All eight agents were restored
+(`restore.ps1` on `h-0` to `h-3`, `siegeclean.ps1` on `s-0` to `s-3`,
+both in `~/qdb-rr-scratch/scripts`): the loop services stopped and
+uninstalled, page heap disabled, every process of the investigation
+ended, the `rr` workspaces, service directories, symbol caches and
+scripts deleted, the Buildkite agent service started; on the siege
+agents the PDB watch loops, their scripts, logs and archives removed.
+Left in place, pending the owner's word: `C:\BuildkiteAgent\dumps` and
+`C:\BuildkiteAgent\tools` (cdb, procdump) on `h-0` to `h-3`; every dump
+the plan names has a copy in `~/qdb-rr-scratch/dumps/`. The quasardb
+branch `sc-19567/rr-ci-qdbd-logs` and its worktree still exist.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1996,15 +2011,14 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                               |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shrink steps 1 and 3 faulted (`av_qdbd_14772-shape.dmp`, `av_qdbd_1164-shape.dmp`); idle, leftover secure daemon |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | shrink step 2 faulted (`av_qdbd_5696-shape.dmp`); idle, leftover secure daemon                                   |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon                 |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                            |
+| agent | IP            | service | account | daemon in `qdb/bin`                                            | state at 05:30 UTC                                                      |
+| ----- | ------------- | ------- | ------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| h-1   | 10.64.130.209 | none    | agent   | release `4b955fa4a4` (dists in the agent's own build dir only) | restored to the Buildkite pool at 08:04 UTC; `dumps` and `tools` remain |
+| h-0   | 10.64.129.249 | none    | agent   | release `4b955fa4a4` (dists in the agent's own build dir only) | restored to the Buildkite pool at 08:04 UTC; `dumps` and `tools` remain |
+| h-2   | 10.64.129.133 | none    | agent   | release `4b955fa4a4` (dists in the agent's own build dir only) | restored to the Buildkite pool at 08:04 UTC; `dumps` and `tools` remain |
+| h-3   | 10.64.130.170 | none    | agent   | release `4b955fa4a4` (dists in the agent's own build dir only) | restored to the Buildkite pool at 08:04 UTC; `dumps` and `tools` remain |
 
-The Buildkite agent service is stopped on all four. Every restart
-script kills leftovers first, so they need no cleanup before one.
+The Buildkite agent service runs on all four again.
 
 The siege agents (`s-0` 10.64.129.43, `s-1` 10.64.131.254, `s-2`
 10.64.130.205, `s-3` 10.64.129.108) are in the Buildkite pool and run
