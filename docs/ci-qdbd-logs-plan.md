@@ -1650,6 +1650,61 @@ ends it within minutes through the daemon's own firehose table. The
 program is `~/qdb-rr-scratch/scripts/avrepro.c`; its driver on the
 agents is `avshape.sh`.
 
+### 2026-10-08 06:55 UTC: the ticket for the qdbd team, with the C reproduction
+
+The data key of step 3's decode is `..ts.$qdb.firehose.col.2.bkt.001791439200000`,
+the same as steps 1 and 2. What the ticket says, in order:
+
+1. Symptom: `qdbd.exe` 3.15.0.dev0 (master `22f54da872`) on Windows
+   dies with `0xC0000005` on thread "a-pipe 00" during "flushing async
+   pipeline pipe_0 to disk", with no log entry, no error dump and no
+   Windows Error Reporting event, because the access violation is
+   caught by a catch funclet and re-raised.
+2. Fault: `svb_decode_sse41` (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c`,
+   inlined into `svb_decode_sse41_simple`) under `streamvbyte_decode`,
+   `qdb::compression::delta4c_read` (`qdb/compression/delta4c.cpp:639`),
+   `v2::delta4c_null_filter_decompressor::read`, the container codec,
+   `key_value::find_data_unmarshal`, `object_cache::find_and_pin`,
+   `ts_table_inserter::load_bucket`, `ts_async::writer::commit`. The
+   SSE decoder's last sixteen-byte load reads past the end of its input
+   by up to twelve bytes; the input is a view of exactly the stored
+   compressed size into the value RocksDB returned (its block buffer
+   when pinned, its copied string otherwise), with no padding after it.
+   The library requires `STREAMVBYTE_PADDING` readable bytes after the
+   input (`include/streamvbyte.h:52-69`). The over-read leaves the
+   value when the scalar tail (`count % 32` values) is shorter than the
+   last group's over-read, and faults when the value ends within that
+   distance of an unmapped page. Seen on a user table's timestamp
+   column (the CI suite, 320 values) and on `$qdb.firehose` column 2
+   (int64, 416 to 423 values).
+3. Reproduction, deterministic within minutes: enable page heap for the
+   daemon (`gflags /p /enable qdbd.exe /full`, a size range of 500 to
+   2000 bytes suffices), start it with the test configuration, then run
+   `avrepro.c` (plain C API) in mode `churn`: create a table, remove
+   it, pause, repeat. The daemon's firehose flush decodes its own int64
+   column and dies within about two hundred iterations. Mode `shape`
+   (a fast push of a multiple of thirty-two rows, an async push of one
+   row, remove) dies within about a hundred. Without page heap the
+   fault depends on the heap layout: the CI suite dies in one of two to
+   eight runs as a service.
+4. Fix shape, for the team: decode from a padded copy, or serialize
+   the compressed bytes with at least sixteen trailing bytes, or decode
+   the last block with scalar code.
+5. The second bug, separately: the int64 column index's running sum
+   wraps to `qdb_int64_undefined` and the debug build asserts
+   `idx.valid()` (`qdb/kernel/containers/ts/indexer.hpp:239`); two rows,
+   the int64 maximum and one, reproduce it on any push mode
+   (`h7repro.c`).
+6. Artifacts, on the operator's machine under `~/qdb-rr-scratch/dumps/`:
+   the first-chance dumps with the release PDB of quasardb-build 2796
+   (`av_qdbd_7260`, `7740`, `15336`, `9620` from the suite; `8784`
+   from the pool mode; `13952`, `14772`, `5696` from the shape mode;
+   `1164` from the churn mode), their analyses, and the release pairs
+   `relpair-4b955fa4a4-{core2,haswell}.tar.zst`; `scripts/avrepro.c`
+   and `scripts/h7repro.c`.
+
+Where the ticket goes is the owner's decision (plan, Outcome, goal 3).
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
