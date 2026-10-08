@@ -1,5 +1,6 @@
-# qdb-api-rest e2e harness -- entry point (docs/e2e.md).
-# GNU make. Every path and port lives here and is passed down explicitly.
+# The entry point of the qdb-api-rest e2e harness (docs/e2e.md).
+# It needs GNU make. Every path and port lives here and is passed down
+# explicitly.
 #
 #   make load                       dataset into the running qdbd (idempotent)
 #   make verify-dataset             export the loaded table, byte-compare with the CSV
@@ -35,15 +36,16 @@ OLD_REST_PORT  := 40080
 OLD_REST_URL   := http://127.0.0.1:$(OLD_REST_PORT)
 OLD_REST_PID   := $(E2E_DIR)/old-rest.pid
 OLD_REST_LOG   := $(E2E_DIR)/old-rest.log
-# Old-server flags (docs/bench.md, "Server lifecycle"): --local pins
-# localhost:40080; the buffer/pool sizes stop a 5.6M-row query from failing.
+# Old-server flags (docs/bench.md, "Server lifecycle"). --local pins
+# localhost:40080, and the buffer/pool sizes stop a 5.6M-row query from
+# failing.
 OLD_REST_ARGS  := --local -c $(QDB_URI) --pool-size 4 --parallelism-count 4 \
                   --max-in-buffer-size 8589934592 --log-file $(E2E_DIR)/old-rest-server.log
 
-# Server under test: either a URL of a running server, or a binary the
-# harness starts on REST_PORT with REST_ARGS. The default REST_ARGS match
-# the flags of this repo's cmd/qdb_rest; the TLS listener is disabled so a
-# test server never binds the deployment port 40443.
+# The server under test is either a URL of a running server, or a binary
+# the harness starts on REST_PORT with REST_ARGS. The default REST_ARGS
+# match the flags of this repo's cmd/qdb_rest, and the TLS listener is
+# disabled so a test server never binds the deployment port 40443.
 REST_URL     ?=
 QDB_REST_BIN ?=
 REST_PORT    ?= 40090
@@ -53,7 +55,7 @@ REST_LOG     := $(E2E_DIR)/rest.log
 
 COMMON := source $(E2E_DIR)/common.sh
 GOLDEN := $(E2E_DIR)/golden.sh
-# Golden case selection for capture/replay targets; empty means all cases.
+# Golden case selection for capture/replay targets. Empty means all cases.
 # Example: make test-v1 CASES='01-login-anonymous 08-query-seed-select'
 CASES  ?=
 
@@ -69,7 +71,8 @@ services-check:
 # ------------------------------------------------------------------ dataset
 
 # Fetch the archive named in datasets.json (or copy it from DATASETS_LOCAL_DIR)
-# and verify its sha256. Idempotent: an existing verified archive is kept.
+# and verify its sha256. It is idempotent, because an existing verified
+# archive is kept.
 download-golden:
 	@$(COMMON) && require_command jq && require_command curl; \
 	entry=$$(jq -c --arg n "$(DATASET)" --argjson r $(DATASET_ROWS) \
@@ -113,8 +116,8 @@ load: services-check extract
 	[[ "$$have" == "$(DATASET_ROWS)" ]] || die "import ended with $$have rows, expected $(DATASET_ROWS)"; \
 	log_info "$(DATASET) loaded ($$have rows)"
 
-# Fidelity: export the loaded table and compare byte-for-byte with the CSV
-# it was imported from (nulls, nanosecond timestamps, quoting).
+# Fidelity check. Export the loaded table and compare it byte for byte
+# with the CSV it was imported from (nulls, nanosecond timestamps, quoting).
 verify-dataset: load
 	@$(COMMON); mkdir -p $(E2E_DIR)/actual; \
 	export_table_csv $(DATASET) $(E2E_DIR)/actual/$(DATASET).roundtrip.csv; \
@@ -122,7 +125,8 @@ verify-dataset: load
 	    && log_info "[OK] $(DATASET) round-trip is byte-identical" \
 	    || die "[FAIL] $(DATASET) round-trip differs from $(DATASET_DIR)/$(DATASET).csv"
 
-# Operator: db.tar.zst -> archive; prints the datasets.json entry and upload command.
+# Operator step. It turns db.tar.zst into the archive and prints the
+# datasets.json entry and the upload command.
 package-dataset:
 	@[[ -n "$(SRC)" && -n "$(OUT)" ]] || { echo "usage: make package-dataset SRC=<db.tar.zst> OUT=<dir>"; exit 1; }
 	@$(E2E_DIR)/tools/package-dataset.sh "$(SRC)" "$(OUT)"
