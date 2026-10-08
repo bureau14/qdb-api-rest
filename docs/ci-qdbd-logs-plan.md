@@ -1133,6 +1133,62 @@ Artifacts on the operator's machine, `~/qdb-rr-scratch/dumps/`:
 `assert_qdbdd_10704-h3-buildkite-debug-bf816772bd.dmp` with its
 `-stack.txt` and `-raw.txt`, and `assert_qdbdd_9320-h3-fast-debug-bf816772bd-stack.txt`.
 
+### 2026-10-08 03:33 UTC: the second bug reproduces from a C program in one push
+
+`~/qdb-rr-scratch/scripts/h7repro.c` (goal 3 for the second bug): open a
+handle, create a table with one int64 column, push two rows, the int64
+maximum and one, in the mode named on the command line. Built on `h-3`
+with the agent's MinGW gcc against the release C API of quasardb-build
+2782 and run against a fresh debug daemon under `cdb`: the create
+succeeded, the fast push ended the daemon with the same assertion, and
+`cdb` wrote `assert_qdbdd_7568-c-fast.dmp`. The Go binding adds nothing
+to the trigger.
+
+Two things the program had to get right, for whoever runs it next:
+
+- `qdb_ts_create` and `qdb_ts_create_ex` list the implied `$timestamp`
+  column first, as a `qdb_ts_column_timestamp`; without it the client
+  answers invalid argument, with "Missing required $timestamp column"
+  in `qdb_get_last_error` (`qdb/client/node/ts.cpp:138-140` in
+  quasardb). The Go binding prepends that column itself
+  (`vendor/github.com/bureau14/qdb-api-go/v3/entry_timeseries_common.go:311-332`).
+- The batch push carries the row timestamps in `data.timestamps` and
+  the int64 column alone in `data.columns`, with a null schema pointer
+  so the client reads the schema from the server.
+
+`qdbsh` on the same daemon created a table without complaint, which is
+how the client-side rejection was told apart from a server one.
+
+### 2026-10-08 03:40 UTC: release symbols through a quasardb branch of the same name
+
+The release daemon has no PDB because quasardb's CI configures every
+build with `QDB_ENABLE_DEBUG_INFO=OFF` unless the environment says
+otherwise (`scripts/cicd/build/cmake.sh:26-28`), and with it off the
+linker gets `/DEBUG:NONE` in every configuration
+(`cmake_modules/linker_flags.cmake:45-50`). With it on, every
+configuration compiles with embedded debug records and links with
+`/DEBUG:FULL` (`cmake_modules/compiler_flags.cmake:66-72`), release
+included, and the release link keeps `/OPT:REF /OPT:ICF`. Debug
+information does not change code generation. The harvested debug PDB
+names functions but has no locals and no source lines for qdb code,
+which fits a Debug configuration whose default `/debug` link survived
+while the compile ran without debug records.
+
+The owner's instruction, on a colleague's advice (2026-10-08): a
+quasardb branch named `sc-19567/rr-ci-qdbd-logs`, off the latest
+master, with the switch set in the branch's own pipeline, so the
+artifacts plugin's branch matching gives this repository's builds the
+release daemon with its PDB, and master commits cannot change the
+binary under the PDB. The branch lives in the worktree
+`~/git/quasardb-ci-qdbd-logs`; its one change sets
+`QDB_ENABLE_DEBUG_INFO` to `ON` in the Windows environment of
+`.buildkite/pipeline.py`, and `pipeline.py check` passes. The PDB is
+not packaged by any step, so it is harvested from the siege agent's
+release output directory right after the link, as the debug pair was
+(`pdbwatch.sh`, adjusted to `bin64/Release/qdbd.pdb`). A Windows
+release build job takes ten to fifteen minutes on a siege agent (the
+last three master builds).
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1499,8 +1555,10 @@ there, which can be deleted.
 
 ### Next experiments, in the owner's order
 
-1. The symbolized access-violation dump (running on all four loops).
-   H7 is confirmed (the 02:30 heading); its reproduction is done.
+1. The symbolized access-violation dump (running on all four loops),
+   and the quasardb branch that gives the release daemon a PDB (the
+   03:40 heading): push, build, harvest, swap into one loop.
+   H7 is confirmed and reproduced from C (the 02:30 and 03:33 headings).
 2. The buildkite account outside a service: the release loop
    (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
 3. The debug daemon outside a service, for the assertion.
