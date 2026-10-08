@@ -938,18 +938,23 @@ What to report, in the order a reader needs it:
    and re-raised (`RaiseException` above `RcConsolidateFrames`), and
    that re-raise is what ends the process. Every death is on thread
    "a-pipe 00" during "flushing async pipeline pipe_0 to disk".
-2. **Fault.** First-chance dump `qdbd_2784.dmp` (build `22f54da872`,
-   quasardb-build 2782, release, no PDB exists for release builds):
-   `movdqu xmm0, [rdx]` with `rdx` fifteen bytes before the end of a
-   committed segment-heap run, the next page reserved. The loop is
-   Stream VByte's SSE decoder (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c`),
-   whose header says the decoder may read `STREAMVBYTE_PADDING` (16)
-   bytes beyond the input and that the caller must allocate them
-   (`include/streamvbyte.h:52-69`). qdbd decodes from a view of exactly
-   the compressed size into the serialized input, "zero copy"
-   (`qdb/compression/streamvbyte.hpp:86-116`, and the same shape in
-   `delta_rle_streamvbyte.cpp`, `rle.cpp`, `delta4c.cpp`). Twenty-seven
-   `qdbd.exe` frames below the decoder in the dump, offsets only.
+2. **Fault.** Symbolized first-chance dumps `av_qdbd_7260.dmp`,
+   `av_qdbd_7740.dmp`, `av_qdbd_15336.dmp` (quasardb-build 2796 of
+   branch `sc-19567/rr-ci-qdbd-logs`, release with PDB, master
+   `22f54da872` plus a CI-only commit): `svb_decode_sse41`
+   (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c:105`)
+   loads sixteen bytes at fifteen bytes before a page boundary with the
+   next page not committed. The header says the decoder may read
+   `STREAMVBYTE_PADDING` (16) bytes beyond the input and the caller
+   must allocate them (`include/streamvbyte.h:52-69`). The caller is
+   `qdb::compression::delta4c_read` (`qdb/compression/delta4c.cpp:596,639`)
+   under `v2::delta4c_null_filter_decompressor::read`, decoding the
+   stored values of a timestamp column out of the serialized value
+   that `persistence::key_value::find_data_unmarshal` fetched from the
+   store, while `ts_table_inserter::load_bucket` loads the bucket the
+   async flush (`ts_async::writer::commit`) merges into. The full
+   stack is in the plan's 04:34 heading and in the analyses next to
+   the dumps.
 3. **A second bug, int64 only.** `qdbdd.exe` of quasardb-build 2785
    (`bf816772bd`, master plus a test-only commit) asserts
    `idx.valid()` at `qdb/kernel/containers/ts/indexer.hpp:239`
@@ -1228,6 +1233,59 @@ access-violation capture. `h-0` and `h-3` as the agent account, `h-1`
 and `h-2` as LocalSystem, all restarted between 04:20 and 04:36 UTC
 with `rtsvc4.sh`. The debug pair stays in each workspace next to the
 release one for a swap back.
+
+### 2026-10-08 04:34 UTC: the access violation with symbols, three times in three minutes
+
+Every release loop but `h-3` lost its insecure daemon in its first run
+after the swap: `h-1` at 04:33:01, `h-0` at 04:34:41, `h-2` at
+04:36:59 UTC, two to three minutes after each start. `cdb` wrote the
+first-chance dumps `av_qdbd_7740.dmp` (`h-1`), `av_qdbd_7260.dmp`
+(`h-0`) and `av_qdbd_15336.dmp` (`h-2`); copies with their analyses are
+in `~/qdb-rr-scratch/dumps/`. The daemons then ended with
+`0xC0000354` because `cdb` stopped at the second chance with nothing
+left to read on its input, which changes nothing: the re-raise would
+have ended them anyway.
+
+The three dumps carry the same fault and the same stack, named by the
+PDB of quasardb-build 2796. Innermost first, on thread "a-pipe 00":
+
+- `svb_decode_sse41` (`thirdparty/streamvbyte-2.0.0/src/streamvbyte_x64_decode.c:105`),
+  inlined into `svb_decode_sse41_simple`, a `movdqu` load at fifteen
+  bytes before a page boundary, the page after it not committed.
+- `streamvbyte_decode`, called by `qdb::compression::delta4c_read`
+  (`qdb/compression/delta4c.cpp`, the `streamvbyte_decode` calls at
+  lines 596 and 639).
+- `qdb::compression::v2::delta4c_null_filter_decompressor::read`,
+  `delta4c_decompress<..., std::vector<qdb::timespec>>`,
+  `decoder<delta4c_null_filter_decompressor>::decode`,
+  `decompression_dispatcher::process_type`,
+  `serialization::container_compression_codec<delta4c_null_filter_compressor, std::vector<qdb::timespec>>::decode`,
+  `serialization::codec<qdb::timeseries<qdb::timespec>>::decode_values_v1`
+  and `::decode`: the stored values of a timestamp column, delta4c
+  compressed, are decoded straight out of the serialized value.
+- `qdb::persistence::key_value::find_data_unmarshal<qdb::kernel::column<qdb::timespec>>`,
+  `storage::find_data_unmarshal`, `column_persistence::find`,
+  `object_cache::find_and_pin`, `find_and_pin_column`,
+  `ts::load_column_from_directory<column<timespec>, ts_deleter>`: the
+  value comes from the key-value store, and the decoder's input is a
+  view into that stored value.
+- `load_bucket_impl<ts_table_inserter>`, `ts_table_inserter::load_bucket`,
+  `ts_entry_inserter::access_data`, `entry_primitive::unsafe_execute`,
+  `ts_async::writer::commit`, `pending_requests::write`,
+  `pipeline::async_process`: the async pipeline's flush loads the
+  bucket it is about to merge into.
+
+So the first bug, as the ticket states it: when the async flush
+merges into an existing bucket, the inserter loads the bucket's
+timestamp column from storage and decodes its delta4c payload with
+Stream VByte from a view of exactly the stored size; the SSE decoder
+reads up to fifteen bytes beyond that view, as its header documents,
+and when the stored value ends within fifteen bytes of the end of a
+committed heap run the read faults. The over-read is latent in every
+build and every context; the heap layout under the service decides
+whether the next page is committed. The debug daemon ran about twelve
+round trips without it, the release daemon with symbols three for
+three within minutes.
 
 ### Samples
 
