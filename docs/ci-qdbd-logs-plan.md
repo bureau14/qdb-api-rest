@@ -1225,6 +1225,115 @@ The tools for all three are in place: the agent access, the service
 loop (`rtsvc.sh` under WinSW as the `buildkite` account), the watcher,
 procdump and the debugging tools on agent `h-0`.
 
+## Status for the next session (2026-10-08 01:30 UTC, four debug loops running)
+
+Read the dated headings of 2026-10-08 above first; this section is the
+operational state only.
+
+### What is established
+
+- The death is an access violation in Stream VByte's SSE decoder
+  reading up to fifteen bytes past the end of an unpadded "zero copy"
+  input view, on the async pipeline's flush thread, re-raised by a
+  catch funclet so that qdbd's handlers never see it. First-chance
+  dump and analysis: `~/qdb-rr-scratch/dumps/`.
+- The debug daemon instead asserts `idx.valid()` in
+  `qdb/kernel/containers/ts/indexer.hpp:239` (int64 column index); one
+  observation, no dump yet, because it is not an exception.
+- Context: started by the service control manager (as the agent
+  account or as LocalSystem) it dies in one of two to eight runs; from
+  an SSH logon as Administrator, twenty-five runs passed. Both are
+  session 0, both use the Segment Heap. Never tested: the buildkite
+  account outside a service (SSH as `buildkite` works with the same
+  password), and the debug daemon outside a service.
+
+### What is running, and how to reach it
+
+Access: `~/qdb-rr-scratch/agent.sh <h-N> '<command>'` runs a command
+as Administrator over SSH (the password comes from the packer config;
+the agents are reached over the WARP private network);
+`agent.sh push <h-N> <files>` copies files to `C:\BuildkiteAgent\rr\`.
+Commands with pipes or quotes go into a script file, pushed, then run
+as `C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\<script>`. The SSH
+shell is session 0.
+
+| agent | IP            | service        | account     | daemon              | status script                      |
+| ----- | ------------- | -------------- | ----------- | ------------------- | ---------------------------------- |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+
+Each runs `~/qdb-rr-scratch/scripts/rtsvc3.sh` (copied to the service
+directory as `rtsvc.sh`) in the workspace
+`C:\BuildkiteAgent\rr\qdb-api-rest`: the branch cloned from a bundle,
+`qdb/` from the artifact store (release c-api and utils of
+quasardb-build 2782) plus `qdbdd.exe`, `qdbdd.pdb`,
+`qdb_user_addd.exe`, `qdb_cluster_keygend.exe` of build 2785, `rt.test`
+built there. The loop restarts both daemons at service start, attaches
+`cdb` to each with `sxe -c ".dump /ma ...; gn" av` and
+`bm *!_wassert ".dump /ma ...; gc"`, starts the watcher, and runs
+`TestRoundtrip` until a run fails. Dumps land in
+`C:\BuildkiteAgent\dumps\av_qdbdd_<pid>.dmp` or
+`assert_qdbdd_<pid>.dmp`; `C:\BuildkiteAgent\cdbcheck.sh` shows the
+debuggers' logs. A run takes 72 to 85 minutes. The Buildkite agent
+service is stopped on all four (`Get-Service buildkite-agent`).
+
+Polling, from the operator's machine (the previous session's pollers
+die with it):
+
+    for i in $(seq 1 200); do sleep 240; out=$(~/qdb-rr-scratch/agent.sh h-0 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rtsvcstatus.sh'); echo "---- $(date -u +%H:%M:%S)"; echo "$out"; echo "$out" | grep -q "exit pid=\|rtsvc: done\|qdbdd alive: [01]$\|qdbdd_.*\.dmp" && break; done
+
+### When a dump appears
+
+1. `agent.sh push <h-N> ~/qdb-rr-scratch/scripts/analyze-dbg.sh`, then
+   `agent.sh <h-N> 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\analyze-dbg.sh C:\BuildkiteAgent\dumps\<file>.dmp'`:
+   `!analyze -v`, the faulting context and every thread's stack with
+   symbols from `qdb\bin\qdbdd.pdb` and the Microsoft symbol server.
+   For an assert dump add `.frame` on the `compute_index` frame and
+   `dv /v` plus `dx idx` to read the index fields.
+2. Copy the dump to `~/qdb-rr-scratch/dumps/` with a name that says the
+   agent, account and kind.
+3. Record the symbolized stack in this plan under a dated heading, and
+   answer: which codec decodes during the flush, whether the assert and
+   the over-read are one bug, and whether the column type varies.
+4. The loop breaks on a failed run; restart it with
+   `svc-restart3.ps1 -Svc <rtsvc|rtsvcsys> -Dir <rtsvc|rtsvcsys>` from
+   `C:\BuildkiteAgent\rr\` (it kills leftovers, deletes the daemon
+   logs, copies `rtsvc3.sh` in and starts the service).
+
+### Restoring the agents, when the owner says so
+
+On each of h-0, h-1, h-2, h-3: stop and uninstall the loop service
+(`C:\BuildkiteAgent\<rtsvc|rtsvcsys>\<rtsvc|rtsvcsys>.exe stop` then
+`uninstall`), kill `rt.test`, `cdb`, `qdbdd`, `procdump64`, `bash`,
+then `Start-Service buildkite-agent`. Keep `C:\BuildkiteAgent\dumps`
+and `C:\BuildkiteAgent\tools` until the dumps are copied; the
+workspaces under `C:\BuildkiteAgent\rr` can go. `gflags /p` must list
+no application on h-1 (it does now). The agents re-register under a
+new name suffix when the service starts.
+
+### Repository state
+
+Branch `sc-19567/rr-ci-qdbd-logs`, nine unpushed commits (SSH and
+HTTPS pushes fail with an access error while the owner's agent is
+locked). Two experiment settings are still on the branch and must be
+reversed or handed off before any merge: `QDBTEST_TRAFFIC_TO_SECURE` in
+`30.test.sh`, and `observeContext` at debug level. The commit that
+teaches the watcher and the event capture the debug name stays.
+Siege agents h-0 to h-3 still have a `pdbwatch.sh` leftover in
+`C:\BuildkiteAgent\` (finished) and `dbgpair-*.tar.zst` archives
+there, which can be deleted.
+
+### Next experiments, in the owner's order
+
+1. The symbolized dump (running).
+2. The buildkite account outside a service: the release loop
+   (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
+3. The debug daemon outside a service, for the assertion.
+4. The ticket for the qdbd team from the handoff heading above, once
+   the dump names the codec and the index field.
+
 ## Open questions and recommendations
 
 None. The owner settled the three the first revision carried: one
