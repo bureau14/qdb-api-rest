@@ -8,10 +8,10 @@ import (
 )
 
 // bindingLogger adapts the process logger to qdb-api-go's package-level
-// Logger interface, which carries no context: the binding logs through a
+// Logger interface, which carries no context. The binding logs through a
 // global, so the adapter holds the logger it is given. The binding's
-// Info lines are its own housekeeping, noise at a gateway's request
-// volume, so Info maps to Debug; its Panic is not fatal here and maps to
+// Info lines are its own housekeeping and noise at a gateway's request
+// volume, so Info maps to Debug. Its Panic is not fatal here and maps to
 // Error.
 type bindingLogger struct{ log *slog.Logger }
 
@@ -38,5 +38,5 @@ func (l *bindingLogger) With(args ...any) qdbapi.Logger {
 	return &bindingLogger{log: l.log.With(args...)}
 }
 
-// compile-time check that the adapter is a complete qdbapi.Logger.
+// This compile-time check proves the adapter is a complete qdbapi.Logger.
 var _ qdbapi.Logger = (*bindingLogger)(nil)

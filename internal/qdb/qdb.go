@@ -5,14 +5,14 @@ package qdb
 
 import qdbapi "github.com/bureau14/qdb-api-go/v3"
 
-// APIVersion returns the version string of the linked libqdb_api, read via
-// qdb_version(); no handle is opened.
+// APIVersion returns the version string of the linked libqdb_api, read
+// through qdb_version(). No handle is opened.
 func APIVersion() string {
 	return qdbapi.HandleType{}.APIVersion()
 }
 
-// APIBuild returns the build identifier of the linked libqdb_api, read via
-// qdb_build(); no handle is opened.
+// APIBuild returns the build identifier of the linked libqdb_api, read
+// through qdb_build(). No handle is opened.
 func APIBuild() string {
 	return qdbapi.HandleType{}.APIBuild()
 }

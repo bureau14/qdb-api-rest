@@ -12,8 +12,8 @@ func WithCluster(ctx context.Context, c *Cluster) context.Context {
 	return context.WithValue(ctx, clusterKey{}, c)
 }
 
-// ClusterFrom returns the cluster carried by ctx and panics without one:
-// a fresh context mid-call-chain is a programming error.
+// ClusterFrom returns the cluster carried by ctx and panics without one,
+// because a fresh context mid-call-chain is a programming error.
 func ClusterFrom(ctx context.Context) *Cluster {
 	c, ok := ctx.Value(clusterKey{}).(*Cluster)
 	if !ok {

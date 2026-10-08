@@ -2,7 +2,7 @@ package qdb
 
 import "context"
 
-// budget is the process-wide ceiling on live sessions: a unit is taken
+// budget is the process-wide ceiling on live sessions. A unit is taken
 // before a user pool dials and released when the session is actually
 // closed, so a session keeps counting until its qdb_close has returned.
 type budget struct {
