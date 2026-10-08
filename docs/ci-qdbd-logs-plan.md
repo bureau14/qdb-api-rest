@@ -1561,6 +1561,50 @@ breakpoints printed (`dt -r1` of `data_key`) show the structure and
 not the table name; the name sits behind the `alias` slice and was not
 read.
 
+### 2026-10-08 06:55 UTC: H9 confirmed, the shape mode faults in seventy-one iterations, this time on the int64 column
+
+The shape mode (`avrepro.c`, mode `shape`: a fresh table, a fast push
+of a multiple of thirty-two rows with no nulls, an async push of one
+row into the same day, a pause past the flush deadline, remove) ran on
+`h-1` from the SSH logon with page heap on (`avshape.sh`), and the
+insecure release daemon faulted during the seventy-first iteration,
+within two minutes of the start; `cdb` wrote `av_qdbd_13952-shape.dmp`.
+The stack is the same decoder path as every earlier dump,
+`svb_decode_sse41` under `streamvbyte_decode`, `delta4c_read`,
+`delta4c_null_filter_decompressor::read`, `find_data_unmarshal`,
+`object_cache::find_and_pin`, but through `column<__int64>` instead of
+`column<timespec>`: the flush decoded the stored int64 column `c_int`.
+Its bounds (`shapeinfo.sh`): 423 values, an empty encoding table, a
+stream of 0x211 bytes ending two bytes before the end of a page heap
+block; the last SSE group's four bytes of data are followed by the
+seven one-byte values of the scalar tail, and the group's sixteen-byte
+load runs twelve bytes past the group, five past the stream, three into
+the guard page. So the over-read leaves the stream whenever the scalar
+tail is shorter than the last group's over-read, and a multiple of
+thirty-two is the case with no tail at all. H9 holds in that form, and
+the bug is the decoder's, for every delta4c column type: the suite's
+dumps show it on a timestamp column, the shape mode on an int64 one.
+
+The quick reproduction for the ticket is therefore: under page heap
+(`gflags /p /enable qdbd.exe /full`, with or without a size range),
+push a few hundred rows with the fast push into a fresh table, then one
+row with the async push into the same shard; repeat with fresh tables;
+the daemon dies within a hundred iterations with the stack above. Why
+the pool mode needed two hundred and forty thousand pushes while the
+shape mode needs seventy iterations is not measured; the shape mode
+decodes a freshly stored bucket on every iteration, the pool mode's
+flushes mostly merged in memory or decoded values whose tails absorbed
+the over-read.
+
+The shrinking, one variable per step, each run to a fault or three
+hundred iterations under page heap: step 1 drops the int64 column, so
+the table has the timestamp data column alone (the suite's case); step
+2 drops the timestamp data column instead, int64 alone. The program
+gains an eighth argument, `both`, `ts` or `int`, for the data columns
+it creates and pushes. Steps 1 and 2 are independent and run at the
+same time, step 1 on `h-1` and step 2 on `h-0` (page heap enabled
+there first).
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1852,12 +1896,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                               |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A faulted at 06:05 (`av_qdbd_8784.dmp`); loop ended, leftover secure daemon           |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here                      |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here            |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                             |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shape mode faulted at 06:25 (`av_qdbd_13952-shape.dmp`); shrink step 1 (`ts` columns) runs here from the logon |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | experiment B done; shrink step 2 (`int` column) runs here from the logon                                       |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon               |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                          |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
