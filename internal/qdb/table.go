@@ -67,7 +67,7 @@ func columnInfos(cols []Column) ([]qdbapi.TsColumnInfo, error) {
 // CreateTable creates the table called name, as user u, with cols after
 // the implied $timestamp column and a shard size of shard. An invalid
 // column is reported before a session is leased. A create is never
-// retried: it is not a read.
+// retried, because it is not a read.
 func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard time.Duration, cols []Column) error {
 	infos, err := columnInfos(cols)
 	if err != nil {
@@ -76,8 +76,9 @@ func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard ti
 	return c.Call(ctx, u, func(s *Session) error { return s.CreateTable(name, shard, infos...) })
 }
 
-// RemoveTable removes the table name as u, and nothing else: a symtable
-// is its own entry, which other tables may share.
+// RemoveTable removes the table called name, as user u. It leaves the
+// table's symtable in place, because a symtable is its own entry and
+// other tables may share it.
 func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
 }
