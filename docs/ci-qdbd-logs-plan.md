@@ -1189,6 +1189,34 @@ release output directory right after the link, as the debug pair was
 release build job takes ten to fifteen minutes on a siege agent (the
 last three master builds).
 
+### 2026-10-08 04:20 UTC: the release daemon with its PDB runs in the LocalSystem loop on h-1
+
+quasardb-build 2796 built the branch `sc-19567/rr-ci-qdbd-logs`
+(`4b955fa4a4`) for the Windows release variants, tests skipped: the
+build message is parsed as YAML filter tags by the pipeline generator
+(`.buildkite/tools/qdb_pipeline/selection.py`, `get_pipeline_selection`),
+so a conventional-commit message such as `ci(buildkite): ...` reads as
+an unsupported tag and fails the generation (builds 2794 and 2795);
+the message of 2796 is `os: windows`, `build_type: Release`,
+`skip_test: true`. The core2 job ran on siege `h-1` and the haswell job
+on siege `h-2`; `relpdbwatch.sh` packed `bin64/Release/qdbd.exe` with
+`qdbd.pdb` on each within a minute of the link. Both pairs are on the
+operator's machine under `~/qdb-rr-scratch/relpair/`.
+
+The core2 pair is in `h-1`'s workspace (`swaprel.sh`), and its loop
+runs `rtsvc4.sh`, which starts whichever daemon `qdb/bin` holds: the
+release `qdbd.exe` when present, the debug `qdbdd.exe` otherwise.
+`cdb` attached to both release daemons loads the PDB as private
+symbols and names `compute_index` and its siblings; the `_wassert`
+breakpoint has no match in release, as expected, and the first-chance
+access-violation capture is what this loop is for. The daemon is the
+same source as master `22f54da872` plus the pipeline change, so the
+release C API of quasardb-build 2782 in the workspace matches it.
+
+The siege agents are reachable like the default ones; `agent.sh` maps
+them as `s-0` to `s-3` (`10.64.129.43`, `10.64.131.254`,
+`10.64.130.205`, `10.64.129.108`).
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1478,12 +1506,12 @@ Commands with pipes or quotes go into a script file, pushed, then run
 as `C:\Git\bin\bash.exe C:\BuildkiteAgent\rr\<script>`. The SSH
 shell is session 0.
 
-| agent | IP            | service        | account     | daemon              | status script                      |
-| ----- | ------------- | -------------- | ----------- | ------------------- | ---------------------------------- |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| agent | IP            | service        | account     | daemon                                      | status script                      |
+| ----- | ------------- | -------------- | ----------- | ------------------------------------------- | ---------------------------------- |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4` with PDB, cdb attached | `C:\BuildkiteAgent\rtsvcstatus.sh` |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | debug, cdb attached                         | `C:\BuildkiteAgent\rtsvcstatus.sh` |
 
 Each runs `~/qdb-rr-scratch/scripts/rtsvc3.sh` (copied to the service
 directory as `rtsvc.sh`) in the workspace
@@ -1555,9 +1583,9 @@ there, which can be deleted.
 
 ### Next experiments, in the owner's order
 
-1. The symbolized access-violation dump (running on all four loops),
-   and the quasardb branch that gives the release daemon a PDB (the
-   03:40 heading): push, build, harvest, swap into one loop.
+1. The symbolized access-violation dump: the release daemon with its
+   PDB runs on `h-1` (the 04:20 heading), the debug daemon on the other
+   three.
    H7 is confirmed and reproduced from C (the 02:30 and 03:33 headings).
 2. The buildkite account outside a service: the release loop
    (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
