@@ -1,7 +1,7 @@
-# qdb-api-rest assessment bench -- entry point (docs/bench.md).
-# GNU make, macOS developer machines only; never CI. This Makefile is the
-# single source of truth for paths and ports; bench.py receives everything
-# as explicit flags and has no defaults of its own.
+# The entry point of the qdb-api-rest assessment bench (docs/bench.md).
+# It needs GNU make and runs on macOS developer machines only, never in CI.
+# This Makefile is the single source of truth for paths and ports. bench.py
+# receives everything as explicit flags and has no defaults of its own.
 #
 #   make check                     C API parity between this repo and qdb-api-python
 #   make venv                      bench venv; rebuilds the quasardb wheel on key change
@@ -39,18 +39,19 @@ FLIGHT_PORT    := 40493
 VENV  := $(BENCH_DIR)/.env
 STAMP := $(BENCH_DIR)/.stamp-wheel
 
-# Per query: WARMUP discarded warmups (qdbd needs 2-3 executions to reach
-# steady state), then REPS measured repetitions; the report shows medians
-# over the measured reps. WARMUP=0 REPS=1 for quick smokes.
+# Per query, the bench runs WARMUP discarded warmups (qdbd needs 2-3
+# executions to reach steady state), then REPS measured repetitions, and
+# the report shows medians over the measured reps. WARMUP=0 REPS=1 gives a
+# quick smoke.
 WARMUP  ?= 3
 REPS    ?= 5
 QUERIES ?=
 # qdbd <-> C API compression for every run's C-API holder. `none` is the
-# only value v1@old-rest can honor (the old server hardcodes the C API
-# default); keep runs consistent or the comparison is polluted.
+# only value v1@old-rest can honor, because the old server hardcodes the C
+# API default. Keep runs consistent, or the comparison is polluted.
 CAPI_COMPRESSION ?= none
 
-# The shipped rpath usually suffices; explicit library paths are cheap
+# The shipped rpath usually suffices, and explicit library paths are cheap
 # insurance for the quasardb extension inside the venv.
 export DYLD_LIBRARY_PATH := $(QDB_DIR)/lib
 export LD_LIBRARY_PATH   := $(QDB_DIR)/lib
@@ -75,7 +76,7 @@ check:
 
 # Bench venv. The quasardb wheel is built from the local qdb-api-python
 # checkout via that repo's canonical build (slow C++), so it is cached on
-# (qdb-api-python HEAD sha, C API sha256) in .stamp-wheel; the venv itself
+# (qdb-api-python HEAD sha, C API sha256) in .stamp-wheel. The venv itself
 # carries a copy of the stamp and is recreated whenever the wheel changes.
 venv: check
 	@key="$$(git -C $(QDB_API_PYTHON_DIR) rev-parse HEAD) $(call capi_sha,$(QDB_API_PYTHON_DIR)/qdb)"; \
