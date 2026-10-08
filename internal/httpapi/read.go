@@ -13,7 +13,8 @@ import (
 )
 
 // parseTime reads one URL parameter as RFC 3339 with any fraction, which
-// accepts the timestamp text the encoders write; absent is the zero time.
+// accepts the timestamp text the encoders write. An absent parameter is
+// the zero time.
 func parseTime(params url.Values, key string) (time.Time, error) {
 	s := params.Get(key)
 	if s == "" {
@@ -26,9 +27,10 @@ func parseTime(params url.Values, key string) (time.Time, error) {
 	return t, nil
 }
 
-// readOptions reads the URL parameters of a table read: start and end
-// as times, columns as a comma-separated list, absent meaning every
-// column. Whether the pair makes a range is the cluster call's to judge.
+// readOptions reads the URL parameters of a table read. It reads start
+// and end as times and columns as a comma-separated list, where an
+// absent columns means every column. The cluster call judges whether the
+// pair makes a range.
 func readOptions(params url.Values) (qdb.ReadOptions, error) {
 	var o qdb.ReadOptions
 	var err error
@@ -50,14 +52,15 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// The read runs inside the cluster call's sink, which holds a session
 	// for as long as the client reads. Two kinds of failure come out of it
-	// and they answer differently, so they are kept apart:
+	// and they answer differently, so the handler keeps them apart:
 	//
-	//  1. read the parameters; a bad time is the caller's 400 right here;
-	//  2. read the table, the encoder streaming inside the sink;
-	//  3. a failure of the stream: with zero bytes out it is 500, after the
+	//  1. read the parameters. A bad time is the caller's 400, answered
+	//     here;
+	//  2. read the table, with the encoder streaming inside the sink;
+	//  3. a failure of the stream. With zero bytes out it is 500. After the
 	//     first byte the stream is cut and only the log hears of it;
-	//  4. a failure of the call, before the sink ran and before any byte:
-	//     404 for an unknown table, ADR-0010's table for the rest.
+	//  4. a failure of the call, before the sink ran and before any byte.
+	//     An unknown table is 404, and ADR-0010's table answers the rest.
 
 	// 1. the parameters
 	o, err := readOptions(r.URL.Query())
@@ -67,8 +70,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	}
 	enc := negotiate(r.Header.Get("Accept"))
 	cw := &countingWriter{w: w}
-	// 2. the read. The sink keeps its own error and also returns it, so the
-	// breaker and the pool hear of a fetch that found the cluster gone.
+	// 2. the read. The sink keeps its own error and also returns it, so
+	// the breaker and the pool hear of a fetch that found the cluster gone.
 	var streamErr error
 	err = qdb.ClusterFrom(ctx).Read(ctx, caller(r), r.PathValue("name"), o, func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
