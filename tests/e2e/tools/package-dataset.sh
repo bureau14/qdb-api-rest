@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# One-off: convert the sc-19522 qdbd data directory (db.tar.zst) into the
-# distributable dataset archive described in docs/e2e.md, "Dataset":
+# This one-off script converts the sc-19522 qdbd data directory
+# (db.tar.zst) into the distributable dataset archive described in
+# docs/e2e.md, "Dataset":
 #
 #   reproduce.csv            data, no header (qdb_export convention)
 #   reproduce.import.json    qdb_import config, with shard_size
 #   metadata.json            row count, sha256 of the csv, generation date
 #
-# Starts a throwaway qdbd on the extracted data dir (port 2846, never the
-# shared service), exports, packages, prints the datasets.json entry and the
-# S3 upload command. Upload is a manual operator step (needs AWS credentials).
+# It starts a throwaway qdbd on the extracted data dir (port 2846, never
+# the shared service), exports, packages, and prints the datasets.json
+# entry and the S3 upload command. The upload is a manual operator step
+# and needs AWS credentials.
 #
 # Usage: package-dataset.sh <db.tar.zst> <output-dir>
 
