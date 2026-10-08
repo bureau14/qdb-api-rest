@@ -17,8 +17,8 @@ import (
 	"pgregory.net/rapid"
 )
 
-// envFrom builds a lookup over a fixed map, so tests never touch the real
-// environment.
+// envFrom builds a lookup over a fixed map, so tests do not touch the
+// real environment.
 func envFrom(vars map[string]string) func(string) (string, bool) {
 	return func(name string) (string, bool) {
 		value, ok := vars[name]
@@ -57,15 +57,15 @@ func values(k key) *rapid.Generator[string] {
 	case reflect.TypeFor[int64]():
 		return rapid.SampledFrom([]string{"0", "8589934592", "-1"})
 	case reflect.TypeFor[[]string]():
-		// Config owns only the list's shape; ",x" and "a,a" fold like
-		// any value (internal/auth judges their content, at startup).
+		// Config owns only the list's shape, so ",x" and "a,a" fold like
+		// any value. internal/auth judges their content at startup.
 		return rapid.SampledFrom([]string{"", "hunter2", "new phrase,old phrase", ",x", "a,a"})
 	}
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }
 
 // set writes text into cfg at the key's path through the same parser the
-// layers use, following the yaml tags; this builds the expected side of
+// layers use, following the yaml tags. This builds the expected side of
 // the fold.
 func set(t *rapid.T, cfg *Config, k key, text string) {
 	t.Helper()
@@ -103,8 +103,8 @@ func (f fileLayer) put(path string, value any) {
 	section[parts[len(parts)-1]] = value
 }
 
-// Load is the fold defaults < file < env < flags followed by validate:
-// for any drawn combination of layers over every key, it returns the
+// Load is the fold defaults < file < env < flags followed by validate.
+// For any drawn combination of layers over every key, it returns the
 // folded config exactly when validate accepts it. File values are written
 // literally or as ${VAR} references, flags by their derived name or a
 // qdbsh alias, and the file path arrives by flag or by QDB_REST_CONFIG.
@@ -127,8 +127,8 @@ func TestLoadIsTheLayerFold(t *testing.T) {
 					vars[ref], text = text, "${"+ref+"}"
 				}
 				if k.typ == reflect.TypeFor[[]string]() {
-					// The file carries a real YAML list, not the
-					// comma form the other layers use.
+					// The file carries a real YAML list, where the
+					// other layers use the comma form.
 					value, err := parseValue(k, text)
 					if err != nil {
 						rt.Fatal(err)
@@ -174,8 +174,8 @@ func TestLoadIsTheLayerFold(t *testing.T) {
 	})
 }
 
-// A ${VAR} inside a list element expands like any string value; when the
-// variable is unset, the start is refused with an error naming it.
+// A ${VAR} inside a list element expands like any string value. When the
+// variable is unset, Load refuses the start with an error naming it.
 func TestListElementsInterpolate(t *testing.T) {
 	path := writeConfig(t, "auth:\n  token_secrets:\n    - \"${TOKEN_A}\"\n    - \"literal\"\n")
 	cfg, err := load([]string{"--config", path}, map[string]string{"TOKEN_A": "hunter2"})
