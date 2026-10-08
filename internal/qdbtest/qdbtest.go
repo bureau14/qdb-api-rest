@@ -1,9 +1,9 @@
 // Package qdbtest is the qdbd fixture shared by every test that dials a
-// live cluster: the pair that scripts/tests/setup/start-services.sh
-// starts, insecure on 2836 and secure on 2838, with the key files the
-// script writes into the directory it runs from, the repository root.
-// Nothing is skipped; a cluster that is down fails the test at once with
-// the start recipe.
+// live cluster. The fixture is the pair that
+// scripts/tests/setup/start-services.sh starts, insecure on 2836 and
+// secure on 2838, with the key files the script writes into the
+// directory it runs from, the repository root. Nothing is skipped, and a
+// cluster that is down fails the test at once with the start recipe.
 package qdbtest
 
 import (
@@ -48,10 +48,10 @@ func ClusterPublicKeyFile() string { return filepath.Join(repoRoot(), "cluster_p
 func UserSecurityFile() string { return filepath.Join(repoRoot(), "user_private.key") }
 
 // SecureUser is the secure cluster's test user as a login body wants
-// it: username and secret key. They are read out of the user security
-// file only because that is the one place the start script leaves them;
-// the server itself never parses one (callers send the pair, and the
-// server's own user is a file path the C API opens).
+// it: username and secret key. The fixture reads them out of the user
+// security file because that is the only place the start script leaves
+// them. The server itself never parses one, because callers send the
+// pair and the server's own user is a file path the C API opens.
 func SecureUser(t testing.TB) (username, secretKey string) {
 	t.Helper()
 	raw, err := os.ReadFile(UserSecurityFile())
