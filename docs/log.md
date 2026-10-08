@@ -50,7 +50,15 @@ In flight:
 Next:
 
 1. The prose audit (root `AGENTS.md`, Prose) of every other comment and
-   document in the project, one package or document per unit.
+   document in the project, as one unit with one commit per file (owner
+   decision, 2026-10-08): `internal/httpapi` and its `AGENTS.md`;
+   `internal/auth`, `internal/config`, `internal/observe`,
+   `internal/tlsconf` and `internal/qdbtest`; `cmd/qdb_rest`; the root
+   `AGENTS.md` and `docs/AGENTS.md`; `docs/bench.md`, the ADRs other
+   than 0010, 0013 and 0014, and `docs/adr/README.md`; `tests/e2e`
+   (`AGENTS.md`, `README.md`, `Makefile`, `golden.sh`, and the bench's
+   `AGENTS.md`, `README.md` and `Makefile`); `scripts/cicd` and
+   `.buildkite/AGENTS.md`; `examples/qdb_rest.yaml`, kept terse.
    `tests/e2e/bench/bench.py` is left out: the bench retires once the
    rewrite beats the old server (`docs/brief.md`, Testing doctrine).
 2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
@@ -112,8 +120,9 @@ Blocked on:
 
 ## 2026-10-08 -- internal/qdb reads as plain sentences; prose-audit-qdb-plan.md deleted
 
-- No fact moved, because the plan carried none. The remaining audit
-  units stay under Current state, Next, item 1.
+- No fact moved, because the plan carried none. Owner decision: the
+  rest of the audit is one unit, listed under Current state, Next,
+  item 1.
 
 ## 2026-10-07 -- the files the encode-test unit touched read as plain sentences; prose-audit-touched-plan.md deleted
 
