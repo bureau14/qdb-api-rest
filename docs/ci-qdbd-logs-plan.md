@@ -1605,6 +1605,36 @@ it creates and pushes. Steps 1 and 2 are independent and run at the
 same time, step 1 on `h-1` and step 2 on `h-0` (page heap enabled
 there first).
 
+### 2026-10-08 06:40 UTC: shrink steps 1 and 2 both fault, and the decoded column is an int64 column the program did not create
+
+Step 1 (`h-1`, the timestamp data column alone, `avshape.sh 300 2048
+ts`) faulted in its 106th iteration, ninety-five seconds after the
+daemons started; step 2 (`h-0`, the int64 column alone, `avshape.sh
+300 2048 int`) in its 107th, ninety-five seconds as well. Both dumps
+(`av_qdbd_14772-shape.dmp` on `h-1`, `av_qdbd_5696-shape.dmp` on `h-0`)
+carry the decoder stack through `column<__int64>`, so step 1's fault
+decoded an int64 column while its table had no int64 data column.
+The three shape-mode faults decoded streams of 418, 419 and 423
+values with no encoding table and about 0x20b bytes, whatever the
+table's row count (864, 1856, 1824) and columns; the counts grow with
+the operations the program performed (about four per iteration:
+create, two pushes, remove), not with the rows it pushed. So the
+stored column the flush decodes is one of the daemon's own: the
+persisted firehose the daemon creates at startup ("creating persisted
+firehose $qdb.firehose with a shard size of 3600000ms" in every
+daemon log), which records entry events as rows, is the candidate;
+the data key read from the dumps' `find_data_unmarshal` frame names
+it or refutes it (`keyinfo.sh`).
+
+What this changes: the shape mode faults the daemon through its own
+bookkeeping table, so the recipe for the ticket is smaller than two
+pushes per table. If the key is the firehose's, step 3 removes the
+pushes: create and remove tables, nothing else, under page heap. The
+suite's dumps remain the user-table case of the same bug (a timestamp
+data column of 320 values), so the ticket states both: any stored
+delta4c column whose Stream VByte stream ends with a scalar tail
+shorter than the last SSE group's over-read.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
