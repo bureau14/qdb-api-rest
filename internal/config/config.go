@@ -30,7 +30,7 @@ import (
 )
 
 // ErrVersionRequested is returned by Load when the --version flag is
-// passed; the caller prints its build metadata and exits. The metadata
+// passed. The caller prints its build metadata and exits. The metadata
 // itself lives in package main (injected via -ldflags), which is why the
 // flag surfaces as a sentinel instead of being handled here.
 var ErrVersionRequested = errors.New("version requested")
@@ -57,10 +57,10 @@ type Log struct {
 
 // Cluster binds the process to one cluster: where it is, its public key
 // file, the REST API's own user (the user security file carrying username
-// and secret key; empty means anonymous), and the per-session C API
+// and secret key, where empty means anonymous), and the per-session C API
 // knobs. A zero knob means the C API default. Key material comes from
 // files only, the form QuasarDB's tooling produces, so no secret sits in
-// the YAML; callers' credentials arrive through the API.
+// the YAML, and callers' credentials arrive through the API.
 type Cluster struct {
 	URI                   string        `yaml:"uri" help:"cluster URI, comma-separated for several nodes"`
 	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file; empty means an insecure cluster"`
@@ -105,9 +105,9 @@ type Status struct {
 	ReadinessQuery string `yaml:"readiness_query" help:"query the readiness probe runs after its dial"`
 }
 
-// Argon2id sets the cost of deriving token keys from passphrases: what
-// one attacker guess pays. Every instance behind a load
-// balancer must run the same values; changing any of them re-derives
+// Argon2id sets the cost of deriving token keys from passphrases, which
+// is what one attacker guess pays. Every instance behind a load balancer
+// must run the same values, because changing any of them re-derives
 // every key and behaves as a key rotation.
 type Argon2id struct {
 	Time        int `yaml:"time" help:"argon2id passes over the memory"`
@@ -115,11 +115,11 @@ type Argon2id struct {
 	Parallelism int `yaml:"parallelism" help:"argon2id lanes"`
 }
 
-// Auth configures the tokens: the passphrases their keys derive from (a
-// rolling list, the first entry mints and the rest verify; empty means an
-// ephemeral key per start, so tokens survive neither a restart nor a
-// second instance behind a load balancer), the derivation cost, and how
-// long an access token stays valid.
+// Auth configures the tokens: the passphrases their keys derive from, the
+// derivation cost, and how long an access token stays valid. The
+// passphrases are a rolling list, where the first entry mints and the
+// rest verify. An empty list means an ephemeral key per start, so tokens
+// survive neither a restart nor a second instance behind a load balancer.
 type Auth struct {
 	TokenSecrets []string      `yaml:"token_secrets" help:"rolling token passphrases, first mints and the rest verify; comma-separated as a flag or variable"`
 	Argon2id     Argon2id      `yaml:"argon2id"`
@@ -170,7 +170,7 @@ func Default() Config {
 			Breaker:     Breaker{Failures: 3, OpenFor: 10 * time.Second},
 		},
 		Status: Status{ReadinessQuery: "SELECT 1"},
-		// TokenSecrets defaults to a non-nil empty slice: the defaults
+		// TokenSecrets defaults to a non-nil empty slice. The defaults
 		// round-trip through YAML (defaults()), where nil marshals as []
 		// and decodes back as a non-nil empty slice, and a single
 		// canonical empty value keeps whole-value comparisons honest.
@@ -182,8 +182,8 @@ func Default() Config {
 	}
 }
 
-// vocab lists the words each enumerated key accepts; validate checks
-// against it and the tests draw from it.
+// vocab lists the words each enumerated key accepts. validate checks
+// against it, and the tests draw from it.
 var vocab = map[string][]string{
 	"log.level":           {"debug", "info", "warn", "error"},
 	"log.format":          {"json", "console"},
@@ -200,7 +200,7 @@ type key struct {
 }
 
 // keys walks Config in declaration order and returns one key per leaf.
-// The struct is the single definition of every key; the environment
+// The struct is the single definition of every key. The environment
 // variable and the flag names derive from the path (envName, flagName).
 func keys() []key {
 	var out []key
@@ -222,7 +222,7 @@ func keys() []key {
 
 // envPrefix heads every environment variable name. The variable name is
 // the path upper-cased with dots as underscores (cluster.user_security_file
-// is QDB_REST_CLUSTER_USER_SECURITY_FILE); the flag name is the path with
+// is QDB_REST_CLUSTER_USER_SECURITY_FILE). The flag name is the path with
 // dots and underscores as hyphens (--cluster-user-security-file).
 const envPrefix = "QDB_REST_"
 
@@ -268,7 +268,7 @@ func parseValue(k key, text string) (any, error) {
 		return n, nil
 	case reflect.TypeFor[[]string]():
 		// The environment and the command line carry a list
-		// comma-separated; an element containing a comma must arrive
+		// comma-separated, so an element containing a comma must arrive
 		// through the YAML list form. Empty text is the canonical
 		// empty list (see Default).
 		if text == "" {
@@ -296,8 +296,8 @@ func placeholder(k key) string {
 var envReference = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // interpolateEnv replaces every ${VAR} in text via lookup. An unset
-// variable is an error: a silently empty secret is worse than a refused
-// start.
+// variable is an error, because a silently empty secret is worse than a
+// refused start.
 func interpolateEnv(text string, lookup func(string) (string, bool)) (string, error) {
 	var missing []string
 	expanded := envReference.ReplaceAllStringFunc(text, func(ref string) string {
@@ -325,9 +325,9 @@ type flagValues struct {
 }
 
 // usageText renders the options GNU-style (--name VALUE), the spelling
-// every QuasarDB binary uses; the flag package parses one or two dashes
+// every QuasarDB binary uses. The flag package parses one or two dashes
 // alike. Keys come in declaration order, with their default when it is
-// not empty; an alias is listed under its target.
+// not empty, and an alias is listed under its target.
 func usageText(name string, defaults *koanf.Koanf) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Usage: %s [--config FILE] [options]\n\n", name)
@@ -354,8 +354,8 @@ func usageText(name string, defaults *koanf.Koanf) string {
 }
 
 // parseFlags parses args: one string flag per key, the qdbsh aliases, and
-// the two meta flags. Every flag starts empty; what the user passed is
-// what fs.Visit reports.
+// the two meta flags. Every flag starts empty, and fs.Visit reports what
+// the user passed.
 func parseFlags(name string, args []string, defaults *koanf.Koanf, output io.Writer) (flagValues, error) {
 	parsed := flagValues{passed: map[string]string{}}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -384,9 +384,9 @@ func parseFlags(name string, args []string, defaults *koanf.Koanf, output io.Wri
 	return parsed, nil
 }
 
-// layer turns the values one source carries -- text keyed by path, as the
-// environment and the command line deliver them -- into a typed map for
-// the loader; label names the source in errors.
+// layer turns the values one source carries, text keyed by path as the
+// environment and the command line deliver them, into a typed map for
+// the loader. label names the source in errors.
 func layer(values map[string]string, label func(path string) string) (map[string]any, error) {
 	out := map[string]any{}
 	for _, k := range keys() {
@@ -416,8 +416,8 @@ func envLayer(lookup func(string) (string, bool)) (map[string]any, error) {
 
 // interpolate expands ${VAR} in every string value the file loaded,
 // list elements included (a secret in auth.token_secrets arrives this
-// way). Values only, never the raw file: comments may mention the syntax
-// freely.
+// way). It expands values only and never the raw file, so comments may
+// mention the syntax freely.
 func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 	for path, value := range k.All() {
 		switch v := value.(type) {
@@ -430,7 +430,7 @@ func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 				return err
 			}
 		case []any:
-			// koanf hands a YAML list back as []any; only its string
+			// koanf hands a YAML list back as []any, and only its string
 			// elements can carry ${VAR}.
 			for i, item := range v {
 				text, ok := item.(string)
@@ -469,7 +469,7 @@ func loadFile(k *koanf.Koanf, path string, lookup func(string) (string, bool)) e
 }
 
 // decode turns the folded layers into a Config. Unknown keys are an
-// error so a typo cannot silently fall back to a default; durations
+// error so a typo cannot silently fall back to a default. Durations
 // arrive as strings from every layer and parse here.
 func decode(k *koanf.Koanf) (Config, error) {
 	var cfg Config
@@ -531,9 +531,9 @@ func positive(key string, d time.Duration) error {
 
 // validateCluster checks only what the binding does not: the vocabulary
 // this config maps onto the binding's enums, the socket timeout (zero
-// leaves the Go API's default; otherwise whole seconds, at least one, the
-// C API's own granularity) and the buffer size (an int64 here, a uint
-// there). The C API judges the URI scheme and the knob ranges at dial.
+// leaves the Go API's default, and otherwise whole seconds of at least
+// one, the C API's own granularity) and the buffer size (an int64 here, a
+// uint there). The C API judges the URI scheme and the knob ranges at dial.
 func validateCluster(c Cluster) error {
 	if err := oneOf("cluster.compression", c.Compression); err != nil {
 		return err
