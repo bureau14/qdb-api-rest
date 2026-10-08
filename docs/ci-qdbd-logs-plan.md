@@ -1428,6 +1428,57 @@ C names included, and runs under page heap on the agent whose
 experiment ended first. It is shrunk only from a version that faults,
 one operation per step, each step recorded here before it is taken.
 
+### 2026-10-08 06:20 UTC: the C program faults under page heap with the suite's stack; the program reaches the storage read at a high rate
+
+Experiment A: `h-1`'s insecure release daemon (pid 8784) died at
+06:05:08 UTC under the size-limited page heap, in the program's second
+run of pool mode (the first run's two hundred thousand pushes passed;
+the second faulted at its push 44540, forty-two minutes after the
+daemons started). `cdb` wrote the first-chance dump `av_qdbd_8784.dmp`
+on `h-1`. Its faulting stack, read with the PDB of quasardb-build 2796
+(`srcline.sh`), is the stack of the 04:34 heading frame for frame:
+`svb_decode_sse41` inlined into `svb_decode_sse41_simple`,
+`streamvbyte_decode`, `qdb::compression::delta4c_read`,
+`v2::delta4c_null_filter_decompressor::read`, the `delta4c_decompress`
+and `decoder::decode` templates over `std::vector<qdb::timespec>`,
+`codec<timeseries<timespec>>::decode_values_v1`,
+`key_value::find_data_unmarshal<column<timespec>>`,
+`object_cache::find_and_pin`, `load_column_from_directory<column<timespec>>`,
+`load_bucket_impl<ts_table_inserter>`, `ts_table_inserter::load_bucket`,
+`ts_entry_inserter::access_data`, `entry_primitive::unsafe_execute`,
+`ts_async::writer::commit`. So the plain C API program, with no Arrow
+and no REST server, drives the daemon into the first bug: goal 3 for
+the first bug has a reproduction. What it is not yet is quick: one
+fault in about two hundred and forty thousand pushes under page heap,
+where a page heap fault is deterministic for any decode whose
+over-read crosses the block's end, so the over-read crosses the end
+only for a small fraction of the decodes. The dump's locals say which
+fraction (next heading).
+
+Experiment B refutes H8's first shape before C has run: under the
+program in pool mode, twenty thousand pushes in half a minute from the
+SSH logon with counting breakpoints (`avcount.sh prog`), the insecure
+daemon hit `ts_table_inserter::load_bucket` 7434 times,
+`find_data_unmarshal<column<timespec>>` 1287 times and
+`find_data_unmarshal<column<__int64>>` 2116 times. The program's
+flushes load their buckets from storage at a high rate; the plan's
+reading that they found them in the cache was wrong, and the
+`qdb_trim_all` the program issues is not needed for that (whether the
+trim contributes is not measured). The three breakpoints resolved to
+one address each (`symq.sh`), so the folded-symbol caveat did not
+apply to them.
+
+Page heap on `h-1` is confirmed from the registry: `GlobalFlag`
+`0x02000000`, `PageHeapFlags` `0x83`, `PageHeapSizeRangeStart` `0x1f4`
+and `PageHeapSizeRangeEnd` `0x7d0`, so gflags read the bounds as
+decimal, five hundred to two thousand bytes.
+
+Experiments C (`h-2`, counters under one `rt.test` run) and D (`h-3`,
+the round trip under the same page heap in the service as the agent
+account, started 06:12 UTC) run on; their results get their own
+headings. The poller on `h-1` stopped on the new dump, as designed;
+one runs on `h-3`.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1719,12 +1770,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                              |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A: `avsvc.sh`, `avrepro.exe` pool mode, run 1 since 05:23, `cdb` attached; poller on |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here                     |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | idle, leftover secure daemon; experiment C (counters under the round trip) goes here            |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here           |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                     |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | -------------------------------------------------------------------------------------- |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A faulted at 06:05 (`av_qdbd_8784.dmp`); loop ended, leftover secure daemon |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here            |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | idle, leftover secure daemon; experiment C (counters under the round trip) goes here   |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here  |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
