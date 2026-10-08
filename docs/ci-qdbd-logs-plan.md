@@ -1635,6 +1635,21 @@ data column of 320 values), so the ticket states both: any stored
 delta4c column whose Stream VByte stream ends with a scalar tail
 shorter than the last SSE group's over-read.
 
+### 2026-10-08 06:50 UTC: shrink step 3, create and remove alone, faults in 210 iterations
+
+Mode `churn` of `avrepro.c` (create a table, remove it, pause, nothing
+else) ran on `h-1` from the SSH logon under page heap (`avshape.sh 400
+64 both churn`) and the insecure release daemon faulted during the
+211th iteration, three minutes after the start (`av_qdbd_1164-shape.dmp`
+on `h-1`, copied home). The stack is the decoder path through
+`column<__int64>` again, the stream has 416 values, thirteen blocks of
+thirty-two and no tail, and the data key is read next. So the
+reproduction for the ticket needs no rows: a client that creates and
+removes tables in a loop, against a daemon started under page heap,
+ends it within minutes through the daemon's own firehose table. The
+program is `~/qdb-rr-scratch/scripts/avrepro.c`; its driver on the
+agents is `avshape.sh`.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1926,12 +1941,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                                                         |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shrink step 1 faulted (`av_qdbd_14772-shape.dmp`, key `$qdb.firehose` col 2); step 3 (`churn`: create and remove only) runs from the logon |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | shrink step 2 faulted (`av_qdbd_5696-shape.dmp`); idle, leftover secure daemon                                                             |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon                                           |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                                                      |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                               |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shrink steps 1 and 3 faulted (`av_qdbd_14772-shape.dmp`, `av_qdbd_1164-shape.dmp`); idle, leftover secure daemon |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | shrink step 2 faulted (`av_qdbd_5696-shape.dmp`); idle, leftover secure daemon                                   |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon                 |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                            |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
