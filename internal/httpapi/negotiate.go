@@ -15,10 +15,10 @@ var encoders = map[string]encoding.Encoder{
 	encoding.ArrowContentType:  encoding.Arrow{},
 }
 
-// negotiate picks the encoder for an Accept header: the listed media
-// ranges are read in order and the first one an encoder matches wins.
-// */*, an absent header and no match all mean JSON. q weights are not
-// read: a client that wants a format names it.
+// negotiate picks the encoder for an Accept header. It reads the listed
+// media ranges in order, and the first one an encoder matches wins. */*,
+// an absent header and no match all mean JSON. It does not read q
+// weights, because a client that wants a format names it.
 func negotiate(accept string) encoding.Encoder {
 	for rng := range strings.SplitSeq(accept, ",") {
 		// ParseMediaType lowercases the type and strips its parameters
