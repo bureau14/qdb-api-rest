@@ -10,9 +10,10 @@ import (
 )
 
 // bearerToken extracts the token of an "Authorization: Bearer <token>"
-// header: the scheme case-insensitive (RFC 9110), one token, nothing
-// else. The second result says whether a header was present at all,
-// which decides the challenge on failure.
+// header. The scheme is matched case-insensitively (RFC 9110), and the
+// header must carry one token and nothing else. The second result says
+// whether a header was present at all, which decides the challenge on
+// failure.
 func bearerToken(r *http.Request) (token string, present bool) {
 	h := r.Header.Get("Authorization")
 	if h == "" {
@@ -29,10 +30,11 @@ func bearerToken(r *http.Request) (token string, present bool) {
 	return token, true
 }
 
-// unauthorized answers 401 with the RFC 6750 challenge: a bare Bearer
-// when no token was presented, error="invalid_token" when one was and
-// failed. detail names the failure; naming an expired genuine token
-// leaks nothing, and the verifier already tells the two apart.
+// unauthorized answers 401 with the RFC 6750 challenge. The challenge
+// is a bare Bearer when no token was presented and error="invalid_token"
+// when one was presented and failed. detail names the failure. Naming
+// an expired genuine token leaks nothing, because the verifier already
+// tells the two apart.
 func unauthorized(w http.ResponseWriter, present bool, detail string) {
 	challenge := "Bearer"
 	if present {
@@ -42,14 +44,15 @@ func unauthorized(w http.ResponseWriter, present bool, detail string) {
 	writeProblem(w, http.StatusUnauthorized, detail)
 }
 
-// requireBearer authenticates one route: the token is verified with the
-// keychain from the ctx, must be an access token, and its claims ride
-// the ctx into next together with the user and session log attributes.
-// Applied per route, never to the mux: the probes stay unauthenticated.
+// requireBearer authenticates one route. It verifies the token with the
+// keychain from the ctx and requires an access token, and the token's
+// claims ride the ctx into next together with the user and session log
+// attributes. It is applied per route and never to the mux, because the
+// probes stay unauthenticated.
 func requireBearer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		// No header at all is a bare challenge; a malformed one counts
+		// No header at all gets a bare challenge. A malformed header counts
 		// as a presented, invalid token.
 		token, present := bearerToken(r)
 		switch {
@@ -60,8 +63,8 @@ func requireBearer(next http.Handler) http.Handler {
 			unauthorized(w, true, "malformed bearer credentials")
 			return
 		}
-		// Verify distinguishes a tampered or foreign token from a genuine
-		// expired one; both are 401, the detail differs.
+		// Verify tells a tampered or foreign token from a genuine expired
+		// one. Both answer 401, and the detail names which.
 		c, err := auth.TokensFrom(ctx).Verify(token)
 		switch {
 		case errors.Is(err, auth.ErrTokenExpired):
@@ -71,14 +74,14 @@ func requireBearer(next http.Handler) http.Handler {
 			unauthorized(w, true, "invalid token")
 			return
 		}
-		// A refresh token is a credential for the refresh endpoint only,
-		// never for the data plane.
+		// A refresh token is a credential for the refresh endpoint only. It
+		// never opens the data plane.
 		if c.Typ != "access" {
 			unauthorized(w, true, "not an access token")
 			return
 		}
-		// The edge enriches: claims for the handler, attributes for every
-		// line logged below.
+		// The edge enriches the ctx. The claims are for the handler, and the
+		// attributes are for every line logged below.
 		ctx = auth.WithClaims(ctx, c)
 		ctx = observe.WithAttrs(ctx, observe.KeyUser, c.Username, observe.KeySession, c.SessionID)
 		next.ServeHTTP(w, r.WithContext(ctx))
