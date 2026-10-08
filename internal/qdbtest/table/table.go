@@ -1,5 +1,5 @@
 // Package table is the generated table fixture, in building blocks that
-// stack: GenerateSchema draws a table without rows, Generate draws rows
+// stack. GenerateSchema draws a table without rows, Generate draws rows
 // into one as a record batch in the reader's types, GenerateLike draws
 // another table of the same columns, RemoveOnCleanup removes whatever a
 // table leaves behind, and Create creates the table, pushes its batch
@@ -8,8 +8,8 @@
 // array equality. WithTable and Body are the batch as an ingest body
 // carries it, for a test that pushes through its own door (an HTTP
 // route). The blocks are functions of the test's rapid.T and take no
-// options: the consumers differ only in bounds, and one set serves all.
-// Rules: internal/AGENTS.md, Tests.
+// options, because the consumers differ only in bounds, and one set
+// serves all. The rules are in internal/AGENTS.md, Tests.
 package table
 
 import (
@@ -29,8 +29,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// T is the slice of testing.TB the fixture needs; *testing.T and *rapid.T
-// both fit.
+// T is the slice of testing.TB the fixture needs, so *testing.T and
+// *rapid.T both fit.
 type T interface {
 	Helper()
 	Fatalf(string, ...any)
@@ -50,7 +50,7 @@ type Column struct {
 // record batch, $timestamp first and then the columns in order, each in
 // the Arrow type the binding's ArrowType answers for its column type. A
 // nil Batch is a table of no rows. The fixture releases the batch on
-// the test's cleanup; a test never releases it.
+// the test's cleanup, and a test never releases it.
 type Table struct {
 	Name    string
 	Columns []Column
@@ -67,21 +67,21 @@ var columnTypes = []qdbapi.TsColumnType{
 	qdbapi.TsColumnTimestamp,
 }
 
-// indexStart is the first index value; every index begins here.
+// indexStart is the first index value, and every index begins here.
 var indexStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// drawSymbol draws a symbol value: a symtable entry, in which the server
-// rejects arbitrary bytes. Never empty, since the server stores the
-// empty string as null.
+// drawSymbol draws a symbol value, which is a symtable entry, in which
+// the server rejects arbitrary bytes. The value is never empty, because
+// the server stores the empty string as null.
 func drawSymbol(rt *rapid.T) string {
 	return rapid.StringMatching(`[a-zA-Z0-9]{1,16}`).Draw(rt, "symbol")
 }
 
-// drawString draws a string value: the characters the text wires must
-// quote or escape (a space, a comma, a quote, <&>, an LF) among plain
-// ones. Never empty, since the server stores the empty string as null,
-// and never a NUL, which the bulk reader drops from the end of a string
-// (sc-19829).
+// drawString draws a string value from the characters the text wires
+// must quote or escape (a space, a comma, a quote, <&>, an LF) among
+// plain ones. The value is never empty, because the server stores the
+// empty string as null, and it never holds a NUL, which the bulk reader
+// drops from the end of a string (sc-19829).
 func drawString(rt *rapid.T) string {
 	return rapid.StringMatching(`[a-zA-Z0-9 ,"<&>\n]{1,16}`).Draw(rt, "string")
 }
@@ -94,7 +94,8 @@ func drawTime(rt *rapid.T) time.Time {
 
 // appendValue draws one value of kind into b. The server reads a stored
 // MinInt64 or NaN as null and a zero-length string or blob as null, so
-// none of them is drawn: a value read back must be the value written.
+// none of them is drawn, because a value read back must be the value
+// written.
 func appendValue(rt *rapid.T, kind qdbapi.TsColumnType, b array.Builder) {
 	switch b := b.(type) {
 	case *array.Int64Builder:
@@ -132,8 +133,8 @@ func generateArray(rt *rapid.T, kind qdbapi.TsColumnType, n, nullPct int) arrow.
 	return b.NewArray()
 }
 
-// generateIndex draws a strictly ascending $timestamp column of n rows: a
-// drawn step from a fixed start, so no two rows collide.
+// generateIndex draws a strictly ascending $timestamp column of n rows,
+// with a drawn step from a fixed start, so no two rows collide.
 func generateIndex(rt *rapid.T, n int) arrow.Array {
 	step := time.Duration(rapid.Int64Range(1, int64(time.Hour)).Draw(rt, "index step"))
 	b := array.NewTimestampBuilder(memory.DefaultAllocator, qdbapi.TsColumnTimestamp.ArrowType().(*arrow.TimestampType))
@@ -155,8 +156,8 @@ func Schema(tbl Table) *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// generateRows draws tbl's rows into its batch: a row count and one
-// null density for the whole table, so runs range from no nulls to
+// generateRows draws tbl's rows into its batch. It draws a row count and
+// one null density for the whole table, so runs range from no nulls to
 // all-null columns. The batch is released on rt's cleanup.
 func generateRows(rt *rapid.T, tbl Table) Table {
 	rows := rapid.IntRange(0, 40).Draw(rt, "rows")
@@ -201,8 +202,9 @@ func Generate(rt *rapid.T) Table {
 }
 
 // GenerateLike draws a table of tbl's columns under a fresh name, with
-// its own rows: the same names and types, a symbol column's symtable
-// named after the new table, so several tables share one column list.
+// its own rows. The columns keep the same names and types, and a symbol
+// column's symtable is named after the new table, so several tables
+// share one column list.
 func GenerateLike(rt *rapid.T, tbl Table) Table {
 	like := Table{Name: "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "table")}
 	for _, c := range tbl.Columns {
@@ -227,7 +229,7 @@ func (tbl Table) Select() string {
 	return "SELECT " + strings.Join(names, ", ") + " FROM " + tbl.Name
 }
 
-// Rows is tbl's row count; a nil batch has none.
+// Rows is tbl's row count, and a nil batch has none.
 func (tbl Table) Rows() int {
 	if tbl.Batch == nil {
 		return 0
@@ -236,7 +238,7 @@ func (tbl Table) Rows() int {
 }
 
 // batchOf is tbl's batch, retained, or an empty batch of its schema when
-// tbl has none; the caller releases it.
+// tbl has none. The caller releases it.
 func batchOf(tbl Table) arrow.RecordBatch {
 	if tbl.Batch != nil {
 		tbl.Batch.Retain()
@@ -265,9 +267,9 @@ func tableColumn(tbl Table, n int) arrow.Array {
 }
 
 // expected is the column a read of tbl answers for name, which the
-// caller releases: for $table, the table name in every row; for any
-// other name, the batch's column of that name; false when tbl has no
-// such column.
+// caller releases. For $table it is the table name in every row, and
+// for any other name it is the batch's column of that name. It is false
+// when tbl has no such column.
 func expected(tbl Table, name string) (arrow.Array, bool) {
 	if name == "$table" {
 		return tableColumn(tbl, tbl.Rows()), true
@@ -310,8 +312,8 @@ func Check(t T, tbl Table, rec arrow.RecordBatch) {
 	}
 }
 
-// WithTable is tbl's batch as an ingest body carries it: a $table column
-// of the name in front. Released on t's cleanup.
+// WithTable is tbl's batch as an ingest body carries it, with a $table
+// column of the name in front. The fixture releases it on t's cleanup.
 func WithTable(t T, tbl Table) arrow.RecordBatch {
 	t.Helper()
 	rec := batchOf(tbl)
@@ -325,16 +327,16 @@ func WithTable(t T, tbl Table) arrow.RecordBatch {
 	return out
 }
 
-// Body joins the tables into the one batch an ingest body carries: every
-// table's WithTable batch, concatenated. The tables must share a column
-// list. The batch is released on t's cleanup; an encoder run over it
-// writes a body of that format.
+// Body joins the tables into the batch an ingest body carries, which is
+// every table's WithTable batch concatenated. The tables must share a
+// column list. The fixture releases the batch on t's cleanup, and an
+// encoder run over it writes a body of that format.
 func Body(t T, tables ...Table) arrow.RecordBatch {
 	t.Helper()
 	// The tables become one batch so that a body of any format is one run
 	// of its encoder, with no header to strip and no lines to join:
 	//
-	//  1. build each table's WithTable batch; the batches share a schema
+	//  1. build each table's WithTable batch. The batches share a schema
 	//     because one body is one column list;
 	//  2. concatenate the batches column by column;
 	//  3. assemble the result under the first batch's schema and release
@@ -405,7 +407,7 @@ func call(c *qdb.Cluster, f func(*qdb.Session) error) error {
 
 // RemoveOnCleanup removes tbl and its symtables on t's cleanup, however
 // the table came to exist, tolerating what is already gone. A failed
-// removal is reported, never fatal, so a leak is visible.
+// removal is reported and never fatal, so a leak is visible.
 func RemoveOnCleanup(t T, c *qdb.Cluster, tbl Table) {
 	t.Cleanup(func() {
 		for _, name := range entries(tbl) {
@@ -427,8 +429,8 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	//
 	//  1. create the table;
 	//  2. register the removal, so a failed push leaves nothing behind;
-	//  3. no rows: return, so no session is leased for a push the writer
-	//     would skip anyway;
+	//  3. with no rows, return, so no session is leased for a push the
+	//     writer would skip anyway;
 	//  4. stage the batch in one fast-push writer and push through one
 	//     session.
 
@@ -443,7 +445,7 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	// 2. the removal, before any push
 	RemoveOnCleanup(t, c, tbl)
 
-	// 3. nothing to push: the writer skips a table of no rows, so no
+	// 3. nothing to push. The writer skips a table of no rows, so no
 	// session is leased for it
 	if tbl.Rows() == 0 {
 		return
