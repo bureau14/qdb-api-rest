@@ -1,9 +1,8 @@
-// The query endpoint is pinned against the live qdbd fixture: for a
-// generated table, each media type answers 200 with the encoder's
-// Content-Type and the bytes the encoder writes when run directly over
-// Cluster.Query; the error rows of the handler are checked one by one on
-// the same fixture. The encoders' own tests prove the bytes decode; this
-// file proves routing, negotiation and headers.
+// This file holds the query endpoint's test helpers and its compression
+// test. The good path in every media type is the round trip
+// (roundtrip_test.go), and the error rows live in errors_test.go. The
+// encoders' own tests prove the bytes decode, and this file proves
+// negotiation and headers.
 package httpapi
 
 import (
@@ -67,7 +66,7 @@ func (s server) query(body string, headers map[string]string) *httptest.Response
 	return s.post("/api/v2/query", body, headers)
 }
 
-// direct runs q over the cluster and encodes the result with e; the
+// direct runs q over the cluster and encodes the result with e. The
 // endpoint must answer these exact bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
@@ -98,7 +97,7 @@ func TestQueryCompressed(t *testing.T) {
 			if resp.Code != http.StatusOK {
 				rt.Fatalf("%s: status %d: %s", c, resp.Code, resp.Body.String())
 			}
-			// Identity is never labelled; a compressed body names its coding.
+			// Identity is never labelled. A compressed body names its coding.
 			wantLabel := string(c)
 			if c == identityCoding {
 				wantLabel = ""
