@@ -1,4 +1,4 @@
-// The qdb_rest binary: QuasarDB's HTTP front door. Serves the routes
+// The qdb_rest binary is QuasarDB's HTTP front door. It serves the routes
 // internal/httpapi assembles on an HTTP and an HTTPS listener, both
 // configured by internal/config.
 package main
@@ -27,10 +27,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
-// Build metadata, injected via -ldflags -X (composition rule:
-// scripts/cicd/AGENTS.md); no version constants live in source. goamd64
-// stays empty on non-amd64 targets and on builds that do not pin a
-// microarchitecture level.
+// The build metadata is injected via -ldflags -X, under the composition
+// rule of scripts/cicd/AGENTS.md, and no version constants live in
+// source. goamd64 stays empty on non-amd64 targets and on builds that do
+// not pin a microarchitecture level.
 var (
 	version   = "dev"
 	commit    = "unknown"
@@ -40,8 +40,8 @@ var (
 )
 
 // versionText renders the version block shared by all QuasarDB binaries
-// plus the linked C API version, the one
-// line that is not compile-time information.
+// plus the linked C API version, which is the only line that is not
+// compile-time information.
 func versionText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "quasardb rest api version: %s\n", version)
@@ -58,17 +58,18 @@ func versionText() string {
 	return b.String()
 }
 
-// shutdownGrace is the one deadline shutdown works under on SIGTERM: the
+// shutdownGrace is the deadline shutdown works under on SIGTERM. The
 // HTTP drain (in-flight requests finishing) and the pool drain (sessions
 // closing) share it. It must stay below the harness's SIGTERM-to-SIGKILL
 // window (tests/e2e/common.sh::stop_server).
 const shutdownGrace = 8 * time.Second
 
-// newServer assembles one listener's server; the HTTPS listener carries a
-// tls.Config, plain HTTP passes nil. BaseContext hands the process
-// context (and so the logger) to every request; ErrorLog routes net/http's
-// own complaints through the same handler. No global write timeout:
-// responses are streamed, so write deadlines are a per-request concern.
+// newServer assembles one listener's server. The HTTPS listener carries
+// a tls.Config, and plain HTTP passes nil. BaseContext hands the process
+// context (and so the logger) to every request, and ErrorLog routes
+// net/http's own complaints through the same handler. There is no global
+// write timeout, because responses are streamed, so write deadlines are
+// a per-request concern.
 func newServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -116,7 +117,7 @@ func serve(server *http.Server) error {
 
 // serveUntilDone serves all listeners until ctx is cancelled (SIGINT or
 // SIGTERM) or one of them fails, and returns the first terminal error
-// (nil on a clean cancel). It does not shut anything down: shutdown does,
+// (nil on a clean cancel). It does not shut anything down. shutdown does,
 // under the single shutdownGrace deadline.
 func serveUntilDone(ctx context.Context, servers []*http.Server) error {
 	errs := make(chan error, len(servers))
@@ -135,7 +136,7 @@ func serveUntilDone(ctx context.Context, servers []*http.Server) error {
 }
 
 // shutdown drains the HTTP servers first and the cluster second, both
-// under the one shutdownGrace deadline. The order matters: in-flight
+// under the shutdownGrace deadline. The order matters, because in-flight
 // requests hold sessions, so server.Shutdown returning means the cluster
 // has no callers left and its close only has idle sessions to wait for.
 func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster) {
@@ -151,7 +152,7 @@ func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster)
 
 func main() {
 	// 1. Configuration: defaults, file, environment, flags. --version and
-	//    --help are answered here and exit; a config error refuses the
+	//    --help are answered here and exit. A config error refuses the
 	//    start with exit code 2, the only startup failure that does.
 	cfg, err := config.Load("qdb_rest", os.Args[1:], os.LookupEnv, os.Stderr)
 	if errors.Is(err, config.ErrVersionRequested) {
@@ -166,9 +167,8 @@ func main() {
 		os.Exit(2)
 	}
 
-	// 2. The process logger, placed in the root context; the
-	//    root context also ends on SIGINT/SIGTERM, which is what stops
-	//    serving below.
+	// 2. The process logger, placed in the root context. The root context
+	//    also ends on SIGINT/SIGTERM, which is what stops serving below.
 	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
@@ -180,16 +180,16 @@ func main() {
 		"qdb_api_version", qdb.APIVersion())
 
 	// 3. The cluster binding. The binding's own logger is routed into ours
-	//    before anything can dial; the cluster dials nothing at startup
+	//    before anything can dial. The cluster dials nothing at startup
 	//    and travels in the context so handlers reach it there.
 	qdb.InstallLogger(logger)
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)
 
 	// 4. The token keychain, derived once from the configured
-	//    passphrases; it travels in the context like the
-	//    cluster. Derivation pays the argon2id cost per passphrase here,
-	//    at startup, never per request.
+	//    passphrases. It travels in the context like the cluster.
+	//    Derivation pays the argon2id cost per passphrase here, at
+	//    startup, and never per request.
 	tokens, err := auth.New(ctx, cfg.Auth, time.Now)
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
@@ -199,7 +199,7 @@ func main() {
 
 	// 5. The listeners, over the root context so every request inherits
 	//    the logger, the cluster and the keychain. Loading the TLS
-	//    material is the one step here that can fail.
+	//    material is the only step here that can fail.
 	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
