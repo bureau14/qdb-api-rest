@@ -82,9 +82,9 @@ func TestBearerAccessTokenPasses(t *testing.T) {
 	}
 }
 
-// TestBearerRejects: every failure is 401 with the RFC 6750 challenge --
-// a bare Bearer when nothing was presented, error="invalid_token" when
-// a token was -- and a detail that names the failure.
+// TestBearerRejects: every failure is 401 with the RFC 6750 challenge
+// and a detail that names the failure. The challenge is a bare Bearer
+// when nothing was presented and error="invalid_token" when a token was.
 func TestBearerRejects(t *testing.T) {
 	tk := tokensAt(t, epoch)
 	cases := map[string]struct {
