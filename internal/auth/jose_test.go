@@ -1,13 +1,14 @@
 package auth
 
 // go-jose is the independent JWE implementation these tests validate
-// against: a self-consistent-but-wrong encoder passes its own
-// roundtrip and fails only against another implementation. Test-only
-// dependency; it never links into the binary.
+// against, because a self-consistent-but-wrong encoder passes its own
+// roundtrip and fails only against another implementation. It is a
+// test-only dependency and never links into the binary.
 //
-// The derivation pipeline is recomputed here from the raw primitives --
-// same salt, costs and HKDF split as keychain.go -- so these tests pin
-// the derivation as a protocol, not as whatever the implementation does.
+// These tests recompute the derivation pipeline from the raw primitives,
+// with the same salt, costs and HKDF split as keychain.go, so they pin
+// the derivation as a protocol rather than as whatever the
+// implementation does.
 
 import (
 	"crypto/hkdf"
