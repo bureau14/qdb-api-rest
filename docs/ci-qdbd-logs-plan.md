@@ -2109,15 +2109,33 @@ teaches the watcher and the event capture the debug name stays.
 
 ### Next, in the owner's order
 
-1. The out-of-the-box reproduction of the decode fault, C API only,
-   no Arrow (running: page heap on `h-1`).
-2. The ticket for the qdbd team from the handoff heading, both bugs,
-   once the reproduction exists.
-3. Restore the agents and delete the quasardb branch.
+1. Review `~/qdb-rr-scratch/scripts/avrepro.c` and `h7repro.c` together
+   with the owner before anything is attached to a bug report: the
+   programs, their comments, the modes that matter (`churn` and `shape`
+   for the decoder over-read, the two-row push for the index sum), and
+   what each claims to show. The owner writes the tickets by hand,
+   outside the QuasarDB workflow, so this review is what keeps them
+   precise.
+2. The tickets, written by the owner from the heading "06:55 UTC: the
+   ticket for the qdbd team" and the reviewed programs.
+3. Closing the branch: revert `QDBTEST_TRAFFIC_TO_SECURE` in
+   `30.test.sh` and the debug level of `observeContext`, or hand them
+   off in `docs/log.md`; rewrite the log's Current state; the Buildkite
+   verify build; then this plan moves its surviving facts and is
+   deleted (`docs/AGENTS.md`, Plans).
 
 ## Open questions and recommendations
 
-None. The owner settled the three the first revision carried: one
-re-run of each Windows job per build, the ticket's destination is a
-question for when a reproduction exists, and the server's test log runs
-at debug level as a temporary measure.
+1. `C:\BuildkiteAgent\dumps` and `C:\BuildkiteAgent\tools` on `h-0` to
+   `h-3`: keep or remove. Recommendation: remove after the tickets are
+   filed; every dump named in this plan has a copy in
+   `~/qdb-rr-scratch/dumps/`.
+2. The quasardb branch `sc-19567/rr-ci-qdbd-logs` (release PDB switch)
+   and its worktree `~/git/quasardb-ci-qdbd-logs`: delete when the
+   tickets are filed, or keep while the qdbd team may want to rebuild
+   the same binary. Recommendation: keep until the team has the dumps.
+3. The seven unsigned plan commits of 2026-10-08 (1Password was away):
+   re-sign by rebase, or leave. Recommendation: leave; the branch is
+   deleted after the fast-forward merge anyway.
+4. Where the ticket's two bugs are filed (one ticket or two). Owner's
+   call; the heading above is written so it splits cleanly.
