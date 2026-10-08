@@ -8,8 +8,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 )
 
-// requestIDHeader is the id clients and load balancers propagate; it is
-// honored inbound and always echoed back.
+// requestIDHeader is the id clients and load balancers propagate. The
+// server honors it inbound and always echoes it back.
 const requestIDHeader = "X-Request-Id"
 
 // maxRequestIDLen bounds what an untrusted header may inject into logs.
@@ -41,8 +41,9 @@ func requestID(r *http.Request) string {
 	return newRequestID()
 }
 
-// responseRecorder captures status and size for the access line. Unwrap
-// keeps http.ResponseController (Flush, deadlines) working through it.
+// responseRecorder captures the status and the size for the access
+// line. Unwrap keeps http.ResponseController (Flush, deadlines) working
+// through it.
 type responseRecorder struct {
 	http.ResponseWriter
 	status int
@@ -64,9 +65,9 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 	return rec.ResponseWriter
 }
 
-// withRequestLogging tags the request context with its id, echoes the id,
-// and emits one access line when the handler returns. Only the id rides
-// on the context; lines join on it.
+// withRequestLogging tags the request context with its id, echoes the
+// id, and emits one access line when the handler returns. Only the id
+// rides on the context, and log lines join on it.
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
