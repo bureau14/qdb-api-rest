@@ -110,6 +110,11 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-08 -- internal/qdb reads as plain sentences; prose-audit-qdb-plan.md deleted
+
+- No fact moved, because the plan carried none. The remaining audit
+  units stay under Current state, Next, item 1.
+
 ## 2026-10-07 -- the files the encode-test unit touched read as plain sentences; prose-audit-touched-plan.md deleted
 
 - Owner decisions: accepted ADRs and dated entries are reworded with
