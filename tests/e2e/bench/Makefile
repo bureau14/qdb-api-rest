@@ -4,7 +4,7 @@
 # receives everything as explicit flags and has no defaults of its own.
 #
 #   make check                     C API parity between this repo and qdb-api-python
-#   make venv                      bench venv; rebuilds the quasardb wheel on key change
+#   make venv                      bench venv, which rebuilds the quasardb wheel on key change
 #   make old-server                build the old REST server (delegates to tests/e2e)
 #   make bench-native@qdbd         -> results/native@qdbd.json
 #   make bench-v1@old-rest         -> results/v1@old-rest.json
