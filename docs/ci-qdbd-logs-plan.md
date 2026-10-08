@@ -1348,6 +1348,86 @@ reaches the path and gives the deterministic recipe; no fault means the
 program never decodes a stored timestamp column, and the next step is
 to prove that with a breakpoint counter before changing the program.
 
+### 2026-10-08 05:45 UTC: H8, the operation that makes the suite's flush load a stored bucket; three experiments on the idle agents
+
+The state read over SSH at 05:40 UTC: `h-1` is in run 1 of `avrepro.exe`
+pool mode under the size-limited page heap as LocalSystem since 05:23,
+both daemons alive, no new dump, and the program progresses (its pool
+tables have been re-created thousands of times and hold hundreds of rows
+each), so the size-limited page heap does not slow the daemon the way
+the full one did. `h-0`, `h-2` and `h-3` are idle with leftover daemons
+and `cdb` attached to them; the Buildkite agent service is stopped on
+all four. One poller runs, on `h-1`. The program's progress is not
+readable while a run lasts, because `avsvc.sh` pipes its output through
+`tail -6`; the next restart of any `avrepro.exe` loop writes the output
+unbuffered to `logs/avrun-<epoch>.txt` instead.
+
+What the round-trip case does that no version of the program has done,
+read from `internal/httpapi/roundtrip_test.go:166-230`: after the push
+it queries every table through `SELECT` (`checkQuery`,
+`checkQueryFormats`), bulk-reads every table unless the mode was async,
+then deletes each table, creates it again under the same name, deletes
+it again and deletes it a third time, all within the async flush
+deadline of half a second (`scripts/tests/setup/default.qdbd.cfg:5`).
+The dumps say the flush merged into a bucket that already held 320
+timestamps and that it loaded that bucket from storage through the
+object cache's miss path (`av_qdbd_7260-...-analysis.txt:160-168`).
+The program's pool mode pushes into the same tables hundreds of times
+and never faulted, and the plan's reading was that its flushes found
+their buckets in the cache. Neither the suite's miss nor the program's
+hit has been measured, and the release link's `/OPT:ICF` folds
+identical template instantiations, so a stack frame's template argument
+names one of several folded callers (the same analysis names
+`find_and_pin_column<ts_table_aggregator>` under
+`load_bucket_impl<ts_table_inserter>`); a breakpoint therefore goes on
+the outer function and is verified to resolve to one address.
+
+H8, written before the samples: the suite's async flush misses the
+object cache because an operation between the push and the flush drops
+or bypasses the cached column, and the program lacks that operation.
+The candidates, in the order the case performs them: the `SELECT` on a
+table whose rows are pending in the pipeline, the bulk read, the delete
+and re-creation under the same name. A second shape of H8 is that one
+push is flushed as several commits to the same bucket and the first
+commit stores without caching, which the program would reach as well.
+
+| hypothesis                                                                     | confirmed by                                                                                                                                                                                                                                     | refuted by                                                                                                                                                                                |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H8: an operation of the case, absent from the program, forces the storage read | under the round trip, `load_bucket` hits that reach `find_data_unmarshal<column<timespec>>`, their keys naming tables the case queried, read or re-created; under the program in pool mode, `load_bucket` hits that never reach the storage read | the program's flushes reach the storage read at a rate like the suite's: then the path is reached and only the heap layout differs, and the page heap run on `h-1` is the deciding sample |
+| H8, second shape: one push flushes as several commits                          | storage reads under the program or the suite whose keys repeat within one flush                                                                                                                                                                  | every key read once per flush                                                                                                                                                             |
+
+The experiments, one per agent, all with the release daemon of
+quasardb-build 2796 and its PDB:
+
+- A, `h-1`, running: the program in pool mode under the size-limited
+  page heap as LocalSystem. A dump at the decoder with the stack of the
+  04:34 heading: the program reaches the path and page heap is the
+  deterministic recipe. A run that ends without one: the program did
+  not reach the path, or page heap did not cover the allocation, and B
+  and D tell which.
+- B, `h-0`, from the SSH logon against fresh daemons: `cdb` on the
+  insecure daemon with counting breakpoints on
+  `ts_table_inserter::load_bucket` and
+  `find_data_unmarshal<column<timespec>>`, each printing the frame's
+  locals and continuing, then the program in pool mode for a few
+  minutes. The counts and the keys are H8's refuting or confirming
+  observation for the program's side. Counting does not depend on the
+  heap layout, so the logon context suffices, as it did for H7.
+- C, `h-2`, the same breakpoints under one run of `rt.test` from the
+  SSH logon: the suite's side of the same measurement, and the keys say
+  which operation preceded each storage read.
+- D, `h-3`, the round trip under the same size-limited page heap, in
+  the service as the agent account, `cdb` attached: the control for the
+  oracle. A fault within a run says page heap covers the allocation and
+  A's silence means the program does not reach the path; a run without
+  a fault says the size filter misses the block and A decides nothing.
+
+Then the program: with B and C read, `avrepro.c` gains a mode `case`
+that performs the round-trip case as the test does, with the operation
+C names included, and runs under page heap on the agent whose
+experiment ended first. It is shrunk only from a version that faults,
+one operation per step, each step recorded here before it is taken.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1586,10 +1666,10 @@ The tools for all three are in place: the agent access, the service
 loop (`rtsvc.sh` under WinSW as the `buildkite` account), the watcher,
 procdump and the debugging tools on agent `h-0`.
 
-## Status for the next session (2026-10-08 05:30 UTC, page heap reproduction on h-1)
+## Status for the next session (2026-10-08 05:45 UTC, H8 and the three experiments)
 
 Read the dated headings of 2026-10-08 above first, the last one
-(05:30) in full; this section is the operational state only. It is
+(05:45) in full; this section is the operational state only. It is
 written so that a session started with `/rr-start @docs/ci-qdbd-logs-plan.md`
 can resume without anything from the conversation that wrote it.
 
@@ -1639,12 +1719,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                             |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------ |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | running `avsvc.sh`: `avrepro.exe` pool mode, run 1 since 05:23, `cdb` attached |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | stopped after its death at 04:34; leftover daemons from an SSH run             |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | stopped after its death at 04:36; leftover secure daemon                       |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | stopped after its death at 04:53; leftover secure daemon                       |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                              |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A: `avsvc.sh`, `avrepro.exe` pool mode, run 1 since 05:23, `cdb` attached; poller on |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here                     |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | idle, leftover secure daemon; experiment C (counters under the round trip) goes here            |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here           |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
