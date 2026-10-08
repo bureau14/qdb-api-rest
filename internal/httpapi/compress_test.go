@@ -46,8 +46,8 @@ func decompress(t failer, c coding, body []byte) []byte {
 	return out
 }
 
-// TestNegotiateCoding: the client's order decides, parameters and case
-// are ignored, and everything else is identity.
+// TestNegotiateCoding: the client's order decides, negotiateCoding
+// ignores parameters and case, and everything else is identity.
 func TestNegotiateCoding(t *testing.T) {
 	cases := map[string]coding{
 		"":                        identityCoding,
@@ -79,7 +79,7 @@ func compressed(handler http.HandlerFunc, acceptEncoding string) *httptest.Respo
 }
 
 // TestCompressionHeldStatus: a status without a body goes out as written,
-// unlabelled and empty; a problem body is compressed and labelled.
+// unlabelled and empty. A problem body is compressed and labelled.
 func TestCompressionHeldStatus(t *testing.T) {
 	empty := compressed(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, "gzip")
 	if empty.Code != http.StatusNoContent || empty.Header().Get("Content-Encoding") != "" || empty.Body.Len() != 0 {
