@@ -1535,6 +1535,32 @@ fresh daemons, `cdb` attached (`avshape.sh`). A fault settles the
 quick reproduction for the ticket; the shrinking then removes the
 int64 column, the nulls and the second column one step at a time.
 
+### 2026-10-08 06:45 UTC: experiment C, the round trip under the counters dies from the SSH logon, without a dump
+
+On `h-2`, from the SSH logon as Administrator, with `cdb` attached to
+the insecure release daemon for the three counting breakpoints and no
+first-chance capture (`avcount.sh rt`), one run of `rt.test`
+`TestRoundtrip` failed after 149 seconds on the suite's signature: a
+`reader_init` refused, then the circuit breaker open. The insecure
+daemon is gone and the secure one alive (`tasklist`); no dump was
+written, because the counter script's `cdb` had no `sxe av` command,
+and `cdb` is gone with the daemon. Before the death the breakpoints
+counted 59 `load_bucket` hits and 116 `find_data_unmarshal<column<timespec>>`
+hits, so under the suite the storage read of a timestamp column is
+reached more often outside `load_bucket` (the bulk reads and queries)
+than inside it, and the suite's rate per bucket load is of the same
+order as the program's.
+
+Two things this sample says. The round trip's death is not bound to the
+service context: this one happened from the logon, where twenty-five
+earlier runs had passed, with a debugger attached and breakpoints
+firing on the flush path. And the counter script is not a capture
+script: every `cdb` attach from here on carries the first-chance
+access-violation dump command, counters or not. The key dumps the
+breakpoints printed (`dt -r1` of `data_key`) show the structure and
+not the table name; the name sits behind the `alias` slice and was not
+read.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1826,12 +1852,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                     |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | -------------------------------------------------------------------------------------- |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A faulted at 06:05 (`av_qdbd_8784.dmp`); loop ended, leftover secure daemon |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here            |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | idle, leftover secure daemon; experiment C (counters under the round trip) goes here   |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here  |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                               |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | experiment A faulted at 06:05 (`av_qdbd_8784.dmp`); loop ended, leftover secure daemon           |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover daemons; experiment B (counters under the program) goes here                      |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here            |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
