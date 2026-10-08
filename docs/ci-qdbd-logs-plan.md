@@ -987,6 +987,72 @@ What to report, in the order a reader needs it:
    place the compressed bytes at the end of the first, free the
    second), which the C API tests can carry without a server.
 
+### 2026-10-08 02:05 UTC: the four debug loops have not died again; H7, the int64 sum wraps to the null sentinel
+
+The loops' state, read over SSH from each agent: every daemon alive,
+no new dump, eight debug round-trip passes since the cdb-attached
+loops started and no death among them. The one assert death remains
+the single observation of the debug daemon failing.
+
+| agent | account     | current run | passes this loop | run started (UTC) |
+| ----- | ----------- | ----------- | ---------------- | ----------------- |
+| h-0   | buildkite   | 4           | 3                | 01:40             |
+| h-2   | LocalSystem | 4           | 3                | 01:30             |
+| h-1   | LocalSystem | 2           | 1                | 01:52             |
+| h-3   | buildkite   | 2           | 1                | 01:53             |
+
+What the quasardb source at master `22f54da872` says about the
+assertion, read before the next sample:
+
+- `compute_index` for an int64 column asserts `idx.valid()`
+  (`qdb/kernel/containers/ts/indexer.hpp:236-240`). For an int64 index
+  `valid()` is the base check (the non-null count does not exceed the
+  count, the first and last elements are real values), the numeric
+  check (the minimum and maximum are real values) and the arithmetic
+  check: when the bucket has non-null values, `element_sum` is not the
+  null sentinel (`qdb/metadata/column_index.hpp:91-100,152-161,217-229`).
+- `element_sum` is `aggregation::sum(bucket).int_value`
+  (`indexer.hpp:121-133`). The int64 sum is a plain wrapping addition,
+  by SIMD or by `acc += v` (`qdb/aggregation/timeseries.cpp:194-213`),
+  and the result's constructor turns a sum equal to
+  `qdb_int64_undefined` into the undefined pair
+  (`qdb/aggregation/aggregation_result.hpp:270-290`). So a bucket whose
+  int64 values sum, modulo two to the sixty-fourth, to the sentinel
+  gets an invalid index: the debug daemon asserts, the release daemon
+  stores the index and continues.
+- The round trip draws int64 cells from the whole range above the
+  sentinel (`internal/qdbtest/table/table.go:101-103`), and rapid's
+  biased integer draw returns the range bound itself with raised
+  probability and favors small magnitudes
+  (`vendor/pgregory.net/rapid/utils.go:64-88`). The maximum and one in
+  one shard sum to the sentinel; so do the minimum above the sentinel
+  and minus one.
+- The other types cannot reach that state from the test's draws: the
+  double sentinel is NaN and the test draws neither NaN nor an
+  infinity (`table.go:104-106`), so a double sum is never NaN; the
+  timestamp index has no sum (`indexer.hpp:243-247`); blobs, strings
+  and symbols carry a base index only.
+
+H7, written before the experiment: the assertion is a second bug,
+independent of the decoder over-read. The int64 column index's running
+sum wraps on overflow, and a sum that lands on the null sentinel makes
+the index invalid, which the debug build asserts and the release build
+keeps. It is int64-only by construction. The over-read remains the
+cause of the access violation.
+
+| hypothesis                              | confirmed by                                                                                                                                                                                                                        | refuted by                                                                                                                                                                                                  |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H7: the int64 sum wraps to the sentinel | a push of two int64 rows, the maximum and one, into a fresh table on a debug daemon asserts `idx.valid()` at once, and the assert dump's `idx` shows `element_sum` equal to the sentinel with real first, last, minimum and maximum | the push passes without an assertion; or an assert dump whose `idx` is invalid in another field (a none first or last element, or a non-null count above the count), which says the decoder or another path |
+| H7 is int64-only                        | the same push with doubles and timestamps, and the type scope read from the source above, hold; every assert dump is `compute_index` for int64                                                                                      | an assert dump on `compute_index` for another type                                                                                                                                                          |
+
+The experiment: a Go test pushes the two rows into a fresh table on
+`h-3`'s live insecure debug daemon, from the SSH logon. An assertion
+does not depend on the heap layout, so the service context is not
+needed; the push into the loop's daemon costs that agent's current run
+and yields the symbolized assert dump through the attached `cdb`
+(owner, 2026-10-08: the agent with the youngest loop). `h-3`'s loop is
+restarted after the dump is read.
+
 ### Samples
 
 | build | job             | variant         | run | outcome | TestRoundtrip | daemon log's last entries                                                        | error dump                                                    | failing draws                                                                                    |
@@ -1353,7 +1419,7 @@ there, which can be deleted.
 
 ### Next experiments, in the owner's order
 
-1. The symbolized dump (running).
+1. The symbolized dump (running), and the H7 push on `h-3` (above).
 2. The buildkite account outside a service: the release loop
    (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
 3. The debug daemon outside a service, for the assertion.
