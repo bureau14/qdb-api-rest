@@ -916,7 +916,14 @@ deaths in about fifteen service runs of the same binaries on the same
 agents. The service context is a real factor, through the heap layout;
 what the service start changes in the layout is not established.
 
-All three agents' Buildkite services are stopped for the duration; the
+Since 2026-10-08 00:27 UTC `h-1` runs the same debug loop as
+LocalSystem (its release loop finished), and since 00:37 UTC
+`default-windows-amd64-h-3` (proxmox-2, taken out of the pool at the
+owner's request) runs it as the agent account, with the service
+definition copied from `h-0`. Four debug loops, two per account, each
+yielding a round-trip run about every eighty-five minutes.
+
+All four agents' Buildkite services are stopped for the duration; the
 jobs they were running retry elsewhere (quasardb's steps retry on agent
 loss, `.buildkite/steps/_test.yml`).
 
