@@ -49,31 +49,19 @@ In flight:
 
 Next:
 
-1. The prose audit (root `AGENTS.md`, Prose) of every other comment and
-   document in the project, with one commit per file, in slices of one
-   review each (owner decision, 2026-10-08): the tests of
-   `internal/httpapi`; `internal/auth`, `internal/config`,
-   `internal/observe`, `internal/tlsconf` and `internal/qdbtest`;
-   `cmd/qdb_rest`, the root `AGENTS.md`, `docs/AGENTS.md` and
-   `docs/bench.md`; the ADRs other than 0010, 0013 and 0014;
-   `tests/e2e` (`AGENTS.md`, `README.md`, `Makefile`, `golden.sh`, and
-   the bench's `AGENTS.md`, `README.md` and `Makefile`); `scripts/cicd`,
-   `.buildkite/AGENTS.md` and `examples/qdb_rest.yaml`, kept terse.
-   `tests/e2e/bench/bench.py` is left out: the bench retires once the
-   rewrite beats the old server (`docs/brief.md`, Testing doctrine).
-2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
+1. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
    file joining `codecs` and the round trip's draw of body formats
    (`internal/encoding/AGENTS.md`, The seam, and `internal/httpapi/AGENTS.md`,
    Tests), and `Content-Encoding: gzip|zstd` on the ingest.
-3. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
+2. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
    `make test-flow` driving one server per cluster
    (`docs/e2e-v2-flow-plan.md`).
-4. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+3. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-6. File upstream against `qdb-api-go`, with no local patch
+5. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -117,6 +105,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-08 -- the prose audit is complete
+
+- Every comment and document outside `tests/e2e/bench/bench.py` reads as
+  plain sentences. Owner decisions: the remainder landed as one unit
+  without a plan document, and `internal/model/AGENTS.md`,
+  `tests/e2e/tools/package-dataset.sh` and the ADR template joined it.
+  No fact moved.
 
 ## 2026-10-08 -- the internal/httpapi sources and AGENTS.md read as plain sentences; prose-audit-httpapi-plan.md deleted
 
