@@ -50,15 +50,15 @@ In flight:
 Next:
 
 1. The prose audit (root `AGENTS.md`, Prose) of every other comment and
-   document in the project, as one unit with one commit per file (owner
-   decision, 2026-10-08): `internal/httpapi` and its `AGENTS.md`;
-   `internal/auth`, `internal/config`, `internal/observe`,
-   `internal/tlsconf` and `internal/qdbtest`; `cmd/qdb_rest`; the root
-   `AGENTS.md` and `docs/AGENTS.md`; `docs/bench.md`, the ADRs other
-   than 0010, 0013 and 0014, and `docs/adr/README.md`; `tests/e2e`
-   (`AGENTS.md`, `README.md`, `Makefile`, `golden.sh`, and the bench's
-   `AGENTS.md`, `README.md` and `Makefile`); `scripts/cicd` and
-   `.buildkite/AGENTS.md`; `examples/qdb_rest.yaml`, kept terse.
+   document in the project, with one commit per file, in slices of one
+   review each (owner decision, 2026-10-08): the tests of
+   `internal/httpapi`; `internal/auth`, `internal/config`,
+   `internal/observe`, `internal/tlsconf` and `internal/qdbtest`;
+   `cmd/qdb_rest`, the root `AGENTS.md`, `docs/AGENTS.md` and
+   `docs/bench.md`; the ADRs other than 0010, 0013 and 0014;
+   `tests/e2e` (`AGENTS.md`, `README.md`, `Makefile`, `golden.sh`, and
+   the bench's `AGENTS.md`, `README.md` and `Makefile`); `scripts/cicd`,
+   `.buildkite/AGENTS.md` and `examples/qdb_rest.yaml`, kept terse.
    `tests/e2e/bench/bench.py` is left out: the bench retires once the
    rewrite beats the old server (`docs/brief.md`, Testing doctrine).
 2. The NDJSON and Arrow IPC decoders, each a `Decoder` in its format's
@@ -117,6 +117,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-08 -- the internal/httpapi sources and AGENTS.md read as plain sentences; prose-audit-httpapi-plan.md deleted
+
+- No fact moved, because the plan carried none. Owner decision: the
+  audit lands in slices of one review each, and Current state, Next,
+  item 1 names what remains.
 
 ## 2026-10-08 -- internal/qdb reads as plain sentences; prose-audit-qdb-plan.md deleted
 
