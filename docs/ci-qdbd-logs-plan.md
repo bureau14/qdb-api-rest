@@ -1926,12 +1926,12 @@ The scripts that matter now, all in `scripts/`:
 
 ### What is running
 
-| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                             |
-| ----- | ------------- | -------------- | ----------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shape mode faulted at 06:25 (`av_qdbd_13952-shape.dmp`); shrink step 1 (`ts` columns) runs here from the logon |
-| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | experiment B done; shrink step 2 (`int` column) runs here from the logon                                       |
-| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon               |
-| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                          |
+| agent | IP            | service        | account     | daemon in `qdb/bin`                | state at 05:30 UTC                                                                                                                         |
+| ----- | ------------- | -------------- | ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| h-1   | 10.64.130.209 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`, page heap on | shrink step 1 faulted (`av_qdbd_14772-shape.dmp`, key `$qdb.firehose` col 2); step 3 (`churn`: create and remove only) runs from the logon |
+| h-0   | 10.64.129.249 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`, page heap on | shrink step 2 faulted (`av_qdbd_5696-shape.dmp`); idle, leftover secure daemon                                                             |
+| h-2   | 10.64.129.133 | `qdb-rtsvcsys` | LocalSystem | release `4b955fa4a4`               | experiment C done (the round trip died at 06:15 from the logon, no dump); leftover secure daemon                                           |
+| h-3   | 10.64.130.170 | `qdb-rtsvc`    | buildkite   | release `4b955fa4a4`               | idle, leftover secure daemon; experiment D (the round trip under page heap) goes here                                                      |
 
 The Buildkite agent service is stopped on all four. Every restart
 script kills leftovers first, so they need no cleanup before one.
