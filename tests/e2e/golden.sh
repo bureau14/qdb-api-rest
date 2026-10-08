@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# v1 golden pairs: capture from the old server, replay against any server.
+# v1 golden pairs. golden.sh captures them from the old server and replays
+# them against any server.
 #
 #   golden.sh capture <base_url> [case ...]   write status/headers/body into golden/v1/<case>/
 #   golden.sh replay  <base_url> [case ...]   write them to actual/v1/<case>/ and compare
@@ -14,12 +15,13 @@
 #   auth     none | bearer | urlparam   (token from an anonymous /api/login,
 #            fetched once by the first case that needs one)
 #   compare  bytes | gunzip | login-shape
-# Captured files: status (3 digits), headers (content-type and
-# content-encoding only, lowercased, sorted; absent means absent), body (raw
-# bytes; for gunzip, the decompressed bytes). login-shape compares
+# The captured files are status (3 digits), headers (content-type and
+# content-encoding only, lowercased and sorted, where absent means absent)
+# and body (raw bytes, or for gunzip the decompressed bytes). login-shape
+# compares
 # {"token": <non-empty string>} instead of bytes, because tokens vary per call.
 #
-# Pure bash + curl + jq + gunzip. TZ=UTC comes from common.sh.
+# The script needs bash, curl, jq and gunzip. TZ=UTC comes from common.sh.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
@@ -34,14 +36,14 @@ require_command jq
 require_command gunzip
 [[ "$MODE" == capture || "$MODE" == replay ]] || die "mode must be capture or replay, got: $MODE"
 
-# Case list: arguments, or every directory with a request.json.
+# The case list is the arguments, or every directory with a request.json.
 list_cases() {
     if (( $# > 0 )); then printf '%s\n' "$@"; return; fi
     find "$GOLDEN_DIR" -mindepth 2 -maxdepth 2 -name request.json -print | xargs -n1 dirname | xargs -n1 basename | sort
 }
 
-# Anonymous login; prints the token, or nothing when the response is not a
-# login response (connection refused, 404, non-JSON body).
+# Anonymous login. It prints the token, or nothing when the response is not
+# a login response (connection refused, 404, non-JSON body).
 login() {
     local body
     body=$(curl -sS -X POST -H 'Content-Type: application/json' \
@@ -50,7 +52,7 @@ login() {
 }
 
 # One token per invocation, fetched by the first case whose auth mode needs
-# it; a selection of auth-free cases never touches /api/login.
+# it. A selection of auth-free cases never touches /api/login.
 TOKEN=""
 ensure_token() {
     [[ -n "$TOKEN" ]] && return
@@ -63,7 +65,8 @@ normalize_headers() {
     tr -d '\r' < "$1" | awk -F': ' 'tolower($1) == "content-type" || tolower($1) == "content-encoding" { print tolower($1) ": " $2 }' | sort
 }
 
-# Issue the request of one case; writes status, headers, body into <out_dir>.
+# run_case issues the request of one case and writes status, headers and
+# body into <out_dir>.
 # Usage: run_case <case> <out_dir>
 run_case() {
     local case="$1" out="$2" req="$GOLDEN_DIR/$1/request.json"
@@ -84,7 +87,8 @@ run_case() {
         args+=(--data-binary "$(jq -c .body "$req")")
     fi
     mkdir -p "$out"
-    # -g: no URL globbing ([] are literal); --compressed is deliberately NOT used.
+    # -g disables URL globbing ([] are literal). --compressed is deliberately
+    # not used.
     curl -sS -g -X "$method" "${args[@]}" -o "$out/body.raw" -D "$out/headers.raw" -w '%{http_code}' "$url" > "$out/status" \
         || die "$case: curl failed against $url"
     echo >> "$out/status"
@@ -97,7 +101,8 @@ run_case() {
     rm -f "$out/body.raw" "$out/headers.raw"
 }
 
-# Compare one replayed case against its golden files; prints the first diff.
+# compare_case compares one replayed case against its golden files and
+# prints the first diff.
 # Usage: compare_case <case> -> 0 on match
 compare_case() {
     local case="$1" gold="$GOLDEN_DIR/$1" act="$ACTUAL_DIR/$1" compare
