@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# go test -exec wrapper for Windows.
+# This is the go test -exec wrapper for Windows.
 #
-# Converts PATH to Windows format and execs the generated test binary in
-# that environment, so the Windows loader can resolve the MinGW runtime
-# and qdb DLLs under the Buildkite/WinSW service context. Changes PATH only for the test binary execution, never for
-# the parent scripts. Copied from qdb-nats-connector.
+# It converts PATH to Windows format and execs the generated test binary
+# in that environment, so the Windows loader can resolve the MinGW
+# runtime and qdb DLLs under the Buildkite/WinSW service context. It
+# changes PATH only for the test binary and never for the parent scripts.
+# It is copied from qdb-nats-connector.
 
 set -euo pipefail
 
