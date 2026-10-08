@@ -1230,6 +1230,25 @@ procdump and the debugging tools on agent `h-0`.
 Read the dated headings of 2026-10-08 above first; this section is the
 operational state only.
 
+### Where this unit lives
+
+This unit runs in its own git worktree so that regular development on
+the base branch continues in the main checkout at the same time:
+
+- Worktree: `~/git/qdb-api-rest-ci-qdbd-logs`, branch
+  `sc-19567/rr-ci-qdbd-logs`, submodules initialized. Every session on
+  this unit starts there with `/rr-start @docs/ci-qdbd-logs-plan.md`
+  and this section as the handover.
+- Main checkout: `~/git/qdb-api-rest`, on `sc-19567/rest-rewrite`.
+  Its `docs/log.md` carries one line about this unit and points here.
+  The main checkout is not touched from the worktree session; the
+  merge of this branch happens from the main checkout, after the owner
+  reviews the diff against the base.
+- Scratch, outside both trees: `~/qdb-rr-scratch/` (`agent.sh`,
+  `scripts/`, `dumps/`, `dbgpair/`, `poll/`). Nothing in it is
+  committed; the dumps are too large and the rest is operator tooling.
+  The scripts the plan names live in `scripts/` there.
+
 ### What is established
 
 - The death is an access violation in Stream VByte's SSE decoder
@@ -1279,10 +1298,18 @@ built there. The loop restarts both daemons at service start, attaches
 debuggers' logs. A run takes 72 to 85 minutes. The Buildkite agent
 service is stopped on all four (`Get-Service buildkite-agent`).
 
-Polling, from the operator's machine (the previous session's pollers
-die with it):
+Polling, from the operator's machine: `~/qdb-rr-scratch/poll/poll.sh
+<h-N>` asks one agent for its status every four minutes, appends it to
+`~/qdb-rr-scratch/poll/<h-N>.log`, and exits on a run exit, a loop end,
+a dead daemon or a new dump. A session's background pollers die with
+the session, so the first thing a new session does is start one per
+agent in the background:
 
-    for i in $(seq 1 200); do sleep 240; out=$(~/qdb-rr-scratch/agent.sh h-0 'C:\Git\bin\bash.exe C:\BuildkiteAgent\rtsvcstatus.sh'); echo "---- $(date -u +%H:%M:%S)"; echo "$out"; echo "$out" | grep -q "exit pid=\|rtsvc: done\|qdbdd alive: [01]$\|qdbdd_.*\.dmp" && break; done
+    for h in h-0 h-1 h-2 h-3; do ~/qdb-rr-scratch/poll/poll.sh $h; done
+
+(each in its own background task, so that the harness wakes the
+session when one exits). The loops on the agents run on regardless of
+the pollers; a stale poller log is not a stale loop.
 
 ### When a dump appears
 
@@ -1315,9 +1342,8 @@ new name suffix when the service starts.
 
 ### Repository state
 
-Branch `sc-19567/rr-ci-qdbd-logs`, nine unpushed commits (SSH and
-HTTPS pushes fail with an access error while the owner's agent is
-locked). Two experiment settings are still on the branch and must be
+Branch `sc-19567/rr-ci-qdbd-logs`, pushed, in the worktree named
+under "Where this unit lives". Two experiment settings are still on the branch and must be
 reversed or handed off before any merge: `QDBTEST_TRAFFIC_TO_SECURE` in
 `30.test.sh`, and `observeContext` at debug level. The commit that
 teaches the watcher and the event capture the debug name stays.
