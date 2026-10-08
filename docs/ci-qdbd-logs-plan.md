@@ -950,16 +950,22 @@ What to report, in the order a reader needs it:
    (`qdb/compression/streamvbyte.hpp:86-116`, and the same shape in
    `delta_rle_streamvbyte.cpp`, `rle.cpp`, `delta4c.cpp`). Twenty-seven
    `qdbd.exe` frames below the decoder in the dump, offsets only.
-3. **A second observation, debug build.** `qdbdd.exe` of
-   quasardb-build 2785 (`bf816772bd`, master plus a test-only commit)
-   under the same test asserted
+3. **A second bug, int64 only.** `qdbdd.exe` of quasardb-build 2785
+   (`bf816772bd`, master plus a test-only commit) asserts
    `idx.valid()` at `qdb/kernel/containers/ts/indexer.hpp:239`
-   (`compute_index` for an int64 column) seventy minutes in, on the
-   same thread, and exited through `emergency_shutdown` with -3. Not
-   yet known whether this is the same bug seen earlier (a decoder that
-   reads a too-short view decodes garbage) or a second one (the int64
-   "none" sentinel drawn as data); the loops with `cdb` attached decide
-   it with a symbolized dump at the assert or at the fault.
+   (`compute_index` for an int64 column) when a bucket's int64 values
+   sum, modulo two to the sixty-fourth, to `qdb_int64_undefined`: the
+   running sum wraps (`qdb/aggregation/timeseries.cpp:194-213`), the
+   result constructor turns that sum into the undefined pair
+   (`aggregation_result.hpp:270-290`), and the index is invalid with
+   every other field real. Two rows reproduce it on any push mode: the
+   int64 maximum and one. The release build stores the index and
+   `arithmetic_column_index::sum` then composes null for a shard whose
+   values are all present (`qdb/metadata/column_index.hpp:231-234`).
+   Symbolized dumps: `assert_qdbdd_10704` (async, thread "a-pipe 00",
+   through `ts_async::writer::commit`, `ts_table_inserter::update_bucket`
+   and the duplicate eraser) and `assert_qdbdd_9320-fast` (fast, the
+   request thread, through `batch_push::process`).
 4. **Context.** The death needs the service context: as a Windows
    service (the Buildkite agent's account, or LocalSystem) it dies in
    one of two to eight runs; from an SSH logon as Administrator on the
@@ -986,6 +992,10 @@ What to report, in the order a reader needs it:
    boundary with the next page unmapped (`VirtualAlloc` two pages,
    place the compressed bytes at the end of the first, free the
    second), which the C API tests can carry without a server.
+   For the second bug: a saturating or checked sum, or a sum that
+   steps around the sentinel; the reproduction is the two-row push
+   above, which `h7_test.go` in `~/qdb-rr-scratch/scripts` runs
+   through the Go binding.
 
 ### 2026-10-08 02:05 UTC: the four debug loops have not died again; H7, the int64 sum wraps to the null sentinel
 
@@ -1052,6 +1062,76 @@ needed; the push into the loop's daemon costs that agent's current run
 and yields the symbolized assert dump through the attached `cdb`
 (owner, 2026-10-08: the agent with the youngest loop). `h-3`'s loop is
 restarted after the dump is read.
+
+### 2026-10-08 02:30 UTC: H7 confirmed, the int64 sum wraps to the sentinel and the debug daemon asserts on any push mode
+
+The push of two int64 rows, the maximum and one, into a fresh table
+on `h-3`'s live insecure debug daemon (pid 10704, `h7_test.go` in
+`~/qdb-rr-scratch/scripts`, async mode) ended the daemon within six
+seconds of the push, at 02:30:25 UTC: stderr
+`Assertion failed: idx.valid(), file ..\..\qdb/kernel/containers/ts/indexer.hpp, line 239`,
+exit code -3, the same ending as the loop's earlier assert death on
+`h-2`. The attached `cdb` hit its `_wassert` breakpoint and wrote the
+full dump. What it says:
+
+- The thread is "a-pipe 00". The stack, innermost first: `_wassert`,
+  `qdb::kernel::compute_index` (the int64 overload),
+  `compute_index<__int64>`, three `primitive::duplicate_eraser` frames,
+  `ts_table_inserter::update_bucket`, `ts_entry_inserter::process_data`,
+  `tables_directory::entry_primitive<ts_table_inserter>::execute`,
+  `ts_async::writer::commit`, `ts_async::pending_requests::write`,
+  `ts_async::pipeline::async_process`. So the async pipeline's flush
+  recomputes the bucket's index through the duplicate eraser
+  (`qdb/kernel/primitives/detail/erase.hpp:44,256`).
+- The PDB names every frame but carries no locals (`dv` answers
+  "Private symbols are required for locals"), so the index was read
+  raw at the hidden return pointer `compute_index` received, which
+  `kv` shows as the frame's first argument. The struct, in the field
+  order of `column_index.hpp`: element count 2, non-null count 2,
+  first element (2020-01-01T00:00:00Z, the int64 maximum), last
+  element (one second later, 1), minimum (one second later, 1),
+  maximum (2020-01-01T00:00:00Z, the int64 maximum), element sum
+  `0x8000000000000000`, the sentinel. Every field but the sum is a
+  real value, which is exactly H7's confirming observation.
+- The fast push asserts the same way on the request thread
+  ("sl lo1 mux-0"): `batch_push::process`, `update_bucket`, the
+  duplicate eraser, `compute_index`. Dump `assert_qdbdd_9320-fast.dmp`
+  on `h-3`. The transactional push asserts as well, on the request thread
+  (dump `assert_qdbdd_7620-transactional.dmp`). Three modes, three
+  asserts, two rows each.
+
+H7 holds: the int64 column index's running sum wraps on overflow, a
+sum that lands on the null sentinel makes the index invalid, the debug
+build asserts and the release build stores the index. It is a second
+bug, independent of the Stream VByte over-read: a different thread in
+the fast case, no decoder in the stack, and two rows suffice. It is
+int64-only by the type scope read from the source under the 02:05
+heading, and the dumps bear it out: both are `compute_index` for
+int64. In the release build `arithmetic_column_index::sum` composes a
+sentinel sum as null (`qdb/metadata/column_index.hpp:231-234`), so an
+aggregate served from that index answers null for a shard whose
+values are all present.
+
+Two defects of the operator tooling, found on the way and fixed:
+
+- The loop script's `cdb` command lost its backslashes to the shell
+  quoting, so a dump was written under the drive-relative name
+  `C:BuildkiteAgentdumps<name>.dmp` into `cdb`'s working directory,
+  the workspace, and not into `C:\BuildkiteAgent\dumps`. The dump is
+  complete; only its place and name were wrong. `rtsvc3.sh` now writes
+  the paths with forward slashes, which `cdb` accepts; `h-3` runs the
+  fixed script, the loops on `h-0`, `h-1` and `h-2` carry the old
+  command until their next restart, and a dump from them is found as
+  `C:\BuildkiteAgent\rr\qdb-api-rest\BuildkiteAgentdumps*.dmp`.
+- An SSH command that starts the daemons does not return while they
+  run, and `nohup` with every descriptor redirected does not survive
+  the session's end either. The reproduction runs are launched in the
+  background on the operator's machine and the session is killed once
+  the dump exists.
+
+Artifacts on the operator's machine, `~/qdb-rr-scratch/dumps/`:
+`assert_qdbdd_10704-h3-buildkite-debug-bf816772bd.dmp` with its
+`-stack.txt` and `-raw.txt`, and `assert_qdbdd_9320-h3-fast-debug-bf816772bd-stack.txt`.
 
 ### Samples
 
@@ -1419,7 +1499,8 @@ there, which can be deleted.
 
 ### Next experiments, in the owner's order
 
-1. The symbolized dump (running), and the H7 push on `h-3` (above).
+1. The symbolized access-violation dump (running on all four loops).
+   H7 is confirmed (the 02:30 heading); its reproduction is done.
 2. The buildkite account outside a service: the release loop
    (`rtuser.sh`) from an SSH logon as `buildkite` on a spare agent.
 3. The debug daemon outside a service, for the assertion.
