@@ -13,6 +13,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/model"
@@ -24,7 +25,7 @@ import (
 var codecs = []struct {
 	Encoder
 	Decoder
-}{{CSV{}, CSV{}}, {NDJSON{}, NDJSON{}}}
+}{{CSV{}, CSV{}}, {NDJSON{}, NDJSON{}}, {Arrow{}, Arrow{}}}
 
 // specials are the two columns the reader answers in front of every
 // table. The fault table builds its one-column schemas on them.
@@ -190,5 +191,128 @@ func TestNDJSONSparseRows(t *testing.T) {
 	ok := i.Value(0) == 1 && i.IsNull(1) && i.Value(2) == 3 && s.Value(0) == "x" && s.Value(1) == "y" && s.IsNull(2)
 	if !ok {
 		t.Fatalf("decoded %v", rec)
+	}
+}
+
+// arrowBody writes one record batch per fill as an IPC stream over
+// fields. Each fill appends the rows of one batch into the builders, one
+// per field.
+func arrowBody(t *testing.T, fields []arrow.Field, fills ...func(b []array.Builder)) []byte {
+	t.Helper()
+	schema := arrow.NewSchema(fields, nil)
+	var recs []arrow.RecordBatch
+	for _, fill := range fills {
+		builders := make([]array.Builder, len(fields))
+		for i, f := range fields {
+			builders[i] = array.NewBuilder(memory.DefaultAllocator, f.Type)
+			defer builders[i].Release()
+		}
+		fill(builders)
+		cols := make([]arrow.Array, len(fields))
+		for i, b := range builders {
+			cols[i] = b.NewArray()
+			defer cols[i].Release()
+		}
+		rec := array.NewRecordBatch(schema, cols, int64(cols[0].Len()))
+		defer rec.Release()
+		recs = append(recs, rec)
+	}
+	return ipcStream(t, recs...)
+}
+
+// TestArrowDecodeFaults checks that each fault of a body is
+// ErrInvalidRows, and that a table schemaOf refuses surfaces the error
+// of schemaOf itself, unwrapped. The schema is checked before any
+// batch, so a type fault is found on the first row that names a table.
+func TestArrowDecodeFaults(t *testing.T) {
+	typed := func(dt arrow.DataType) *arrow.Schema {
+		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)
+	}
+	ints := constant(typed(arrow.PrimitiveTypes.Int64))
+	refused := errors.New("no such table")
+	ns := specials[1].Type
+	us := &arrow.TimestampType{Unit: arrow.Microsecond}
+	dict := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String}
+	oneRow := func(table string) func(b []array.Builder) {
+		return func(b []array.Builder) {
+			for _, b := range b {
+				switch b := b.(type) {
+				case *array.StringBuilder:
+					b.Append(table)
+				case *array.TimestampBuilder:
+					b.Append(0)
+				case *array.Int64Builder:
+					b.Append(1)
+				case *array.Float64Builder:
+					b.Append(1)
+				case *array.BinaryDictionaryBuilder:
+					if err := b.AppendString(table); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		}
+	}
+	none := func([]array.Builder) {}
+	nullTable := func(b []array.Builder) {
+		b[0].AppendNull()
+		b[1].(*array.TimestampBuilder).Append(0)
+		b[2].(*array.Int64Builder).Append(1)
+	}
+	for name, tc := range map[string]struct {
+		body     []byte
+		schemaOf model.SchemaOf
+		want     error
+	}{
+		"not a stream":      {[]byte("nope"), ints, ErrInvalidRows},
+		"no $table":         {arrowBody(t, []arrow.Field{specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, none), ints, ErrInvalidRows},
+		"no $timestamp":     {arrowBody(t, []arrow.Field{specials[0], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, none), ints, ErrInvalidRows},
+		"dictionary $table": {arrowBody(t, []arrow.Field{{Name: "$table", Type: dict}, specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
+		"null $table":       {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, nullTable), ints, ErrInvalidRows},
+		"unknown column":    {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "nope", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
+		"another type":      {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Float64}}, oneRow("a")), ints, ErrInvalidRows},
+		"$timestamp in us":  {arrowBody(t, []arrow.Field{specials[0], {Name: "$timestamp", Type: us}, {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
+		"table refused":     {arrowBody(t, []arrow.Field{specials[0], {Name: "$timestamp", Type: ns}, {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), func(string) (*arrow.Schema, error) { return nil, refused }, refused},
+	} {
+		got, err := Arrow{}.Decode(context.Background(), bytes.NewReader(tc.body), tc.schemaOf)
+		if !errors.Is(err, tc.want) || got != nil {
+			t.Errorf("%s: %v, %v", name, got, err)
+		}
+	}
+}
+
+// TestArrowInterleavedBatches checks that a stream of several batches
+// whose tables interleave decodes to one batch per table, in first-seen
+// order, with every row of each table in stream order.
+func TestArrowInterleavedBatches(t *testing.T) {
+	fields := []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true}}
+	rows := func(names ...string) func(b []array.Builder) {
+		return func(b []array.Builder) {
+			for k, n := range names {
+				b[0].(*array.StringBuilder).Append(n)
+				b[1].(*array.TimestampBuilder).Append(arrow.Timestamp(k))
+				b[2].(*array.Int64Builder).Append(int64(len(n)))
+			}
+		}
+	}
+	body := arrowBody(t, fields, rows("a", "a", "bb", "a"), rows("bb", "bb"))
+	got, err := Arrow{}.Decode(context.Background(), bytes.NewReader(body), constant(arrow.NewSchema(fields, nil)))
+	if err != nil || len(got) != 2 {
+		t.Fatalf("decode: %v, %v", got, err)
+	}
+	defer func() {
+		for _, tb := range got {
+			tb.Batch.Release()
+		}
+	}()
+	a, bb := got[0], got[1]
+	if a.Table != "a" || a.Batch.NumRows() != 3 || bb.Table != "bb" || bb.Batch.NumRows() != 3 || a.Batch.NumCols() != 2 {
+		t.Fatalf("decoded %s %v, %s %v", a.Table, a.Batch, bb.Table, bb.Batch)
+	}
+	if i := a.Batch.Column(1).(*array.Int64); i.Value(0) != 1 || i.Value(2) != 1 {
+		t.Fatalf("table a: %v", a.Batch)
+	}
+	if i := bb.Batch.Column(1).(*array.Int64); i.Value(0) != 2 || i.Value(2) != 2 {
+		t.Fatalf("table bb: %v", bb.Batch)
 	}
 }
