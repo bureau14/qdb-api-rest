@@ -155,26 +155,36 @@ these sections in this order. A section with nothing to say says
    (`path:line`, a commit, a dated session), so the executor neither
    re-verifies nor trusts what was never verified.
 3. **Design.** Every function, type and variable the unit adds or
-   changes, in the file order they will have: the signature, then its
-   comment specification in prose. The specification says three things.
-   The shape: a doc comment alone; a doc comment and a body overview;
-   numbered steps with a comment at each; one inline comment at a named
-   branch or constant; a Note on ownership, caching or I/O. The reason
-   for that shape, in plain words a reader without the skill can follow
-   ("a doc comment alone, since it is one type switch like
-   csvAppender"; "an overview, because the object is read whole before
-   anything is appended and three things can fail on the way"). A rule
-   number may follow in parentheses and never replaces the reason. The
-   claims each part carries, one per line, each with its evidence
-   (`path:line`, a test, a Rationale row): for a doc comment, the
-   contract facts; for an overview, the strategy and each step's why;
-   for a step or inline comment, the guard, threshold, ordering
-   constraint or rejected alternative that is local to it. The plan
-   carries no comment text. The executor words the comments at build
+   changes, in the file order they will have. Each entry is a sketch:
+   one fenced Go block holding the doc comment above the signature,
+   the signature, and a body made of comments where the real comments
+   will sit. The first body comment names the shape as a `style:` line
+   from the vocabulary the example below fixes, followed by a
+   `because:` line giving the reason for it in plain words a reader
+   without the skill can follow ("one type switch like csvAppender";
+   "the object is read whole before anything is appended, and three
+   things fail on the way"). A rule number may follow in parentheses
+   and never replaces the reason. Below it, one claim per `//` bullet,
+   each ending with its evidence in brackets (`path:line`, a test, a
+   Rationale row): the contract facts in the doc comment, the strategy
+   and each step's why in the overview, and the guard, threshold,
+   ordering constraint or rejected alternative at the step or line it
+   belongs to. Where step comments will sit, the bullets are numbered
+   (`// 1.`, `// 2.`). A pseudo-code statement may anchor a step
+   (`schema, err := schemaOf(name)`) and is illustrative: the code
+   commit follows the signature and the claims, not the sketch's
+   statements. A claim is one sentence, and two claims never share a
+   bullet.
+
+   The sketch is the shape and the claims, not the wording. The
+   executor rewrites every comment in the project's prose at build
    time, with the code in view, in the shape `/doc-discipline read`
-   loads. Document rows (an `AGENTS.md` bullet, a specification
-   paragraph) are specified the same way: the claims and their place,
-   not the text. Tests are designed the same way.
+   loads; it keeps every bullet as a claim and drops the evidence
+   brackets, which stay in the plan. Document rows (an `AGENTS.md`
+   bullet, a specification paragraph) are sketched the same way: a
+   fenced block of bullets under the heading they will join. Tests are
+   designed the same way.
+
 4. **Rationale.** One row per decision the unit rests on:
    `| decision | why | rejected, and why | gained | given up | settled by |`.
    "Why" is the reason the owner or the sources gave, never a
@@ -229,22 +239,50 @@ claim traceable to its evidence, and can each of its choices be defended
 from the Rationale alone? Each "no" is a gap in section 3, 4 or 5,
 filled now.
 
-Correct: the plan says `ingestCSV` gets a doc comment and a numbered
-overview, because the lease spans the decode and the push and three
-things can fail between them, and lists the overview's claims: the
-session is held for the whole body because the writer types the columns
-through it (`internal/qdb/ingest.go:266`); the batches are released on
-every path because the receiver owns them. Its Rationale row says the
-alternative was a lease per lookup, sunk by the one-held-session rule,
-giving up a schema cache; and it asks whether the empty-string exclusion
-is a decision or a limitation before writing either word.
+Correct: each Design entry is a sketch in this form, with one of the
+two styles named on the first body line:
 
-Incorrect: the plan pastes the overview as Go text, so the wording is
-frozen before the function exists and the build types in a claim the
-code does not bear out; or it says "narrated (rule 3)" and nothing
-else, so a reader without the skill learns neither the shape nor the
-reason; or the Rationale says what was chosen and not what lost, so the
-next unit tries the loser again.
+```go
+// <contract claim> [evidence]
+// <contract claim> [evidence]
+func <name>(<params>) (<results>) {
+	// style: doc comment + numbered overview + step comments
+	// because: <reason for this style in plain words>
+	//
+	// <strategy claim> [evidence]
+	//
+	// 1. <what the step achieves> because <its why> [evidence]
+	// 2. <what the step achieves> because <its why> [evidence]
+	//    - rejected: <alternative>, because <what sank it> [Rationale row]
+	// 3. <what the step achieves> [evidence]
+	//    <pseudo-code anchor, illustrative>
+}
+```
+
+```go
+// <contract claim> [evidence]
+func <name>(<params>) (<results>) {
+	// style: doc comment alone
+	// because: <reason, e.g. one type switch like csvAppender>
+	//
+	// at <branch or constant>: <local claim> [evidence]
+}
+```
+
+The style line is one of: `doc comment alone`; `doc comment + numbered
+overview + step comments`; either with `+ inline note at <line>` or
+`+ Note: on <ownership | caching | I/O>`. The Rationale row behind a
+rejected alternative is cited at the step that rejects it; and a
+question the plan cannot answer is asked before the plan is committed,
+never written as a claim.
+
+Incorrect: the plan pastes the comments as finished Go text and tells
+the build to type them in, so the wording is frozen before the function
+exists; or it describes the comments in prose ("a doc comment and a
+numbered overview; claims: ...; ...;"), so a reviewer rebuilds the
+function in their head to see what is covered; or the style line says
+"narrated (rule 3)" and nothing else; or the Rationale says what was
+chosen and not what lost, so the next unit tries the loser again.
 
 ### The plan ends with a Buildkite build
 
