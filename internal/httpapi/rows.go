@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"mime"
 	"net/http"
@@ -71,27 +72,68 @@ type ingestResponse struct {
 
 // handleIngestRows pushes the body's rows to their tables in one batch
 // as the bearer's user and answers the counts. The body streams into
-// the decoder under its cap and is never read whole. The status is
-// decided when the push has returned, because the answer is one small
-// object.
+// the decoder under its cap, decompressed when a Content-Encoding says
+// so, and is never read whole. The status is decided when the push has
+// returned, because the answer is one small object.
 func handleIngestRows(w http.ResponseWriter, r *http.Request) {
+	// The two headers are judged before any byte is read, the body is
+	// wrapped from the wire inward, and the decoder runs inside the
+	// session lease:
+	//
+	//  1. a body of a type no decoder reads gets a clear 415 instead of a
+	//     decode error;
+	//  2. a Content-Encoding this server does not read is 415 naming gzip
+	//     and zstd, the mirror of the type check;
+	//  3. the body under the ingest cap, which bounds the bytes on the
+	//     wire; the decoded size of a hostile body is not bounded, an
+	//     accepted cost inside a customer network, where the brief puts
+	//     this server;
+	//  4. the decompressor over the capped body; its open can fail on a
+	//     corrupt gzip header, which is the body's fault, 400, and it is
+	//     closed when the handler returns;
+	//  5. one call, in which the decoder runs under the held session's
+	//     schema lookup;
+	//  6. the status by who failed. A corrupt coding surfaces from the
+	//     decode as ErrInvalidRows, so it needs no arm of its own.
 	ctx := r.Context()
-	// 1. a body of a type no decoder reads gets a clear 415 instead of a
-	// decode error
+
+	// 1. the body's type
 	dec, ok := decoderOf(r.Header.Get("Content-Type"))
 	if !ok {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be one of "+acceptedTypes())
 		return
 	}
-	// 2. the body under the ingest cap
-	body := http.MaxBytesReader(w, r.Body, maxIngestBytes)
-	// 3. one call, in which the decoder runs under the held session's
-	// schema lookup
+
+	// 2. the body's coding
+	c, ok := requestCoding(r.Header.Get("Content-Encoding"))
+	if !ok {
+		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Encoding must be gzip, zstd or identity")
+		return
+	}
+
+	// 3. the cap, on the bytes on the wire
+	var body io.Reader = http.MaxBytesReader(w, r.Body, maxIngestBytes)
+
+	// 4. the decompressor, closed on return
+	if c != identityCoding {
+		z, err := newDecompressor(c, body)
+		if err != nil {
+			writeProblem(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// A close error has no one left to tell, because the decode has
+		// read what it needed and the status is decided by that.
+		defer func() { _ = z.Close() }()
+		body = z
+	}
+
+	// 5. one call under the held session's lookup
 	decode := func(schemaOf model.SchemaOf) ([]model.TableBatch, error) {
 		return dec.Decode(ctx, body, schemaOf)
 	}
 	res, err := qdb.ClusterFrom(ctx).Ingest(ctx, caller(r), pushOptions(r.URL.Query()), decode)
-	// 4. the status by who failed
+
+	// 6. the status by who failed
 	var tooLarge *http.MaxBytesError
 	switch {
 	case err == nil:

@@ -78,6 +78,13 @@ This file, Handlers, holds the table reader's.
   `qdb.ErrInvalidPushOptions` are 400. A `$table` the cluster does not
   know is 404 and fails the whole request. The rest goes through
   `writeClusterError` at 400. An ingest is never retried.
+- `Content-Encoding: gzip|zstd` on the ingest is decompressed before
+  the decoder reads the body, and any other coding, a list included, is
+  415 naming the two. The cap bounds the bytes on the wire, so the
+  decoded size of a hostile body is not bounded, because the brief
+  excludes public-internet hardening. A corrupt compressed body is 400,
+  through `ErrInvalidRows` once the decoder reads it or through the
+  gzip reader's open.
 - There is no flushing writer, because the encoder's own buffer and
   `net/http`'s chunking already stream. The handler wraps the response
   in a byte counter only, so an encode error with zero bytes out is a
@@ -99,7 +106,9 @@ This file, Handlers, holds the table reader's.
   and a problem body compresses like a result. The level is the fastest,
   there is one compressor per response, and there is no knob. The
   handler's `countingWriter` counts bytes into the compressor, and the
-  access line counts bytes on the wire.
+  access line counts bytes on the wire. The request side is
+  `newDecompressor`, the inverse of `newCompressor`, with zstd at
+  concurrency one so a request spawns no goroutines.
 - The edge enriches and handlers do not. `requireBearer` places the
   claims on the ctx and tags the logger with `observe.KeyUser` (the
   username as the token carries it, empty for anonymous) and

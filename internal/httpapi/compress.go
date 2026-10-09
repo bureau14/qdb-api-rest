@@ -131,3 +131,40 @@ func withCompression(next http.Handler) http.Handler {
 		next.ServeHTTP(cw, r)
 	})
 }
+
+// requestCoding reads the Content-Encoding of a request as one coding.
+// An absent header and identity both mean identity. The second value is
+// false for a coding this server does not read, which includes a list
+// of several.
+func requestCoding(contentEncoding string) (coding, bool) {
+	// A coding list is refused rather than unwound, because no client
+	// stacks codings on a request and unwinding is code for nobody. The
+	// name is case-insensitive on the wire, like a response coding.
+	name := strings.ToLower(strings.TrimSpace(contentEncoding))
+	switch c := coding(name); {
+	case name == "":
+		return identityCoding, true
+	case c == gzipCoding, c == zstdCoding, c == identityCoding:
+		return c, true
+	}
+	return "", false
+}
+
+// newDecompressor opens a reader of coding c over r, the inverse of
+// newCompressor. The gzip reader reads its header here, so a corrupt
+// body can fail at the open. The zstd decoder runs at concurrency one,
+// so a request spawns no goroutines, as a response spawns none.
+func newDecompressor(c coding, r io.Reader) (io.ReadCloser, error) {
+	switch c {
+	case gzipCoding:
+		return gzip.NewReader(r)
+	case zstdCoding:
+		z, err := zstd.NewReader(r, zstd.WithDecoderConcurrency(1))
+		if err != nil {
+			return nil, err
+		}
+		// IOReadCloser adapts the decoder, whose Close returns nothing.
+		return z.IOReadCloser(), nil
+	}
+	panic("httpapi: no decompressor for " + string(c))
+}
