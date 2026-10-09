@@ -21,7 +21,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   `model.TableBatch` per table, with `$timestamp` first and then the
   data columns the body carried, in first-seen order. A table with no
   rows gets no batch. `$table` routes a row and is not carried in a
-  batch. The decoder types each table the first time a row names it,
+  batch, and a row whose `$table` is null or empty is `ErrInvalidRows`.
+  The decoder types each table the first time a row names it,
   through the `model.SchemaOf` it is given, which answers the reader's
   whole-table schema. The batch therefore carries the reader's types,
   and the package declares no field of its own. The tables of one body
@@ -120,8 +121,12 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them
   as one body over `table.Body` and decodes them back to the batches it
-  drew, without a cluster. The faults of a body are one table of cases
-  per decoder.
+  drew, without a cluster. The faults of a body are one property over
+  every codec, which draws one mutation of the batch before encoding
+  it, so the fault logic is written once. What a batch cannot express,
+  bytes that are not the format and a value of the wrong kind, is one
+  short table per format. A second property shuffles the tables' rows
+  through the stream encoder.
 - A test helper that parses a body is named `read*`, because `decode`
   is the package's word for its `Decoder`. `encoding_test.go` holds the
   helpers both files share.

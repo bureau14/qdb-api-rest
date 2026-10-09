@@ -1,13 +1,17 @@
 // Tests for the decoders. They need no cluster. For every codec, the
 // round trip draws tables through the fixture, encodes them as one body
-// and checks that the decoder returns the batches that were drawn. The
-// faults a body can have are one table of cases.
+// and checks that the decoder returns the batches that were drawn; the
+// fault property draws one mutation of that body and checks that the
+// decoder refuses it; the interleaved property shuffles the tables'
+// rows through the stream encoder. What a batch cannot express is one
+// short table per format.
 package encoding
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -88,89 +92,316 @@ func TestDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCSVDecodeFaults checks that each fault of a body is ErrInvalidRows
-// naming the row and the column, and that a table schemaOf refuses
-// surfaces the error of schemaOf itself, unwrapped.
-func TestCSVDecodeFaults(t *testing.T) {
-	typed := func(dt arrow.DataType) *arrow.Schema {
-		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)
-	}
-	ints := constant(typed(arrow.PrimitiveTypes.Int64))
-	differing := func(name string) (*arrow.Schema, error) {
-		if name == "a" {
-			return typed(arrow.PrimitiveTypes.Int64), nil
+// withoutColumn is rec without column i, the caller releasing it.
+func withoutColumn(rec arrow.RecordBatch, i int) arrow.RecordBatch {
+	fields := slices.Delete(slices.Clone(rec.Schema().Fields()), i, i+1)
+	cols := slices.Delete(slices.Clone(rec.Columns()), i, i+1)
+	return array.NewRecordBatch(arrow.NewSchema(fields, nil), cols, rec.NumRows())
+}
+
+// renamedColumn is rec with column i under name, the caller releasing
+// it.
+func renamedColumn(rec arrow.RecordBatch, i int, name string) arrow.RecordBatch {
+	fields := slices.Clone(rec.Schema().Fields())
+	fields[i].Name = name
+	return array.NewRecordBatch(arrow.NewSchema(fields, nil), rec.Columns(), rec.NumRows())
+}
+
+// withNullAt is rec with slot row of column i set to null, the caller
+// releasing it. The column is rebuilt from its own values, so only the
+// two special columns, a string and a timestamp, are handled.
+func withNullAt(t failer, rec arrow.RecordBatch, i int, row int) arrow.RecordBatch {
+	t.Helper()
+	b := array.NewBuilder(memory.DefaultAllocator, rec.Column(i).DataType())
+	defer b.Release()
+	for r := range int(rec.NumRows()) {
+		if r == row || rec.Column(i).IsNull(r) {
+			b.AppendNull()
+			continue
 		}
-		return typed(arrow.PrimitiveTypes.Float64), nil
-	}
-	refused := errors.New("no such table")
-	for name, tc := range map[string]struct {
-		body     string
-		schemaOf model.SchemaOf
-		want     error
-	}{
-		"no $table":                {"$timestamp,i\n", ints, ErrInvalidRows},
-		"no $timestamp":            {"$table,i\n", ints, ErrInvalidRows},
-		"unknown column":           {"$table,$timestamp,nope\na,1970-01-01T00:00:00Z,1\n", ints, ErrInvalidRows},
-		"short record":             {"$table,$timestamp,i\na,1970-01-01T00:00:00Z\n", ints, ErrInvalidRows},
-		"unparsable cell":          {"$table,$timestamp,i\na,1970-01-01T00:00:00Z,one\n", ints, ErrInvalidRows},
-		"empty $timestamp":         {"$table,$timestamp,i\na,,1\n", ints, ErrInvalidRows},
-		"tables of differing type": {"$table,$timestamp,i\na,1970-01-01T00:00:00Z,1\nb,1970-01-01T00:00:00Z,1\n", differing, ErrInvalidRows},
-		"table refused":            {"$table,$timestamp,i\na,1970-01-01T00:00:00Z,1\n", func(string) (*arrow.Schema, error) { return nil, refused }, refused},
-	} {
-		got, err := CSV{}.Decode(context.Background(), strings.NewReader(tc.body), tc.schemaOf)
-		if !errors.Is(err, tc.want) || got != nil {
-			t.Errorf("%s: %v, %v", name, got, err)
+		switch a := rec.Column(i).(type) {
+		case *array.String:
+			b.(*array.StringBuilder).Append(a.Value(r))
+		case *array.Timestamp:
+			b.(*array.TimestampBuilder).Append(a.Value(r))
+		default:
+			t.Fatalf("withNullAt: column %s", rec.Column(i).DataType())
 		}
+	}
+	col := b.NewArray()
+	defer col.Release()
+	cols := slices.Clone(rec.Columns())
+	cols[i] = col
+	return array.NewRecordBatch(rec.Schema(), cols, rec.NumRows())
+}
+
+// retyped is schema with data column i under another type: a double for
+// an int64, an int64 for anything else.
+func retyped(schema *arrow.Schema, i int) *arrow.Schema {
+	fields := slices.Clone(schema.Fields())
+	if fields[i].Type.ID() == arrow.INT64 {
+		fields[i].Type = arrow.PrimitiveTypes.Float64
+	} else {
+		fields[i].Type = arrow.PrimitiveTypes.Int64
+	}
+	return arrow.NewSchema(fields, nil)
+}
+
+// fault is one mutation of a body before it is encoded, with the error
+// the decoder must then answer. The mutations are of the batch and of
+// the schema lookup, so one list serves every format.
+type fault struct {
+	name  string
+	apply func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error)
+}
+
+var errRefused = errors.New("no such table")
+
+// faults is every mutation the property draws from. The data column
+// indices count from 2, after $table and $timestamp. A row index is
+// drawn when the mutation needs one.
+var faults = []fault{
+	{"no $table", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		return withoutColumn(body, 0), constant(schema), ErrInvalidRows
+	}},
+	{"no $timestamp", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		return withoutColumn(body, 1), constant(schema), ErrInvalidRows
+	}},
+	{"unknown column", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		i := rapid.IntRange(2, int(body.NumCols())-1).Draw(rt, "column")
+		return renamedColumn(body, i, body.Schema().Field(i).Name+"_nope"), constant(schema), ErrInvalidRows
+	}},
+	{"null $table", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		return withNullAt(rt, body, 0, rapid.IntRange(0, int(body.NumRows())-1).Draw(rt, "row")), constant(schema), ErrInvalidRows
+	}},
+	{"null $timestamp", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		return withNullAt(rt, body, 1, rapid.IntRange(0, int(body.NumRows())-1).Draw(rt, "row")), constant(schema), ErrInvalidRows
+	}},
+	{"table refused", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		body.Retain()
+		return body, func(string) (*arrow.Schema, error) { return nil, errRefused }, errRefused
+	}},
+	{"tables of differing type", func(rt *rapid.T, body arrow.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, model.SchemaOf, error) {
+		// The lookup answers the first table's schema for the table the
+		// body names first, and a retyped one for every other table
+		body.Retain()
+		first := body.Column(0).(*array.String).Value(0)
+		other := retyped(schema, rapid.IntRange(2, schema.NumFields()-1).Draw(rt, "column"))
+		return body, func(name string) (*arrow.Schema, error) {
+			if name == first {
+				return schema, nil
+			}
+			return other, nil
+		}, ErrInvalidRows
+	}},
+}
+
+// TestDecodeFaults checks, for every codec, that a body with one drawn
+// fault decodes to ErrInvalidRows and no batches, and that a table
+// schemaOf refuses surfaces the error of schemaOf itself, unwrapped.
+// The faults are mutations of the batch before it is encoded, so one
+// list serves every format.
+func TestDecodeFaults(t *testing.T) {
+	for _, c := range codecs {
+		t.Run(c.ContentType(), func(t *testing.T) {
+			rapid.Check(t, func(rt *rapid.T) {
+				// 1. draw tables sharing a column list, with at least one row
+				// in all, because a header alone carries nothing to fault
+				first := table.Generate(rt)
+				tables := []table.Table{first}
+				for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
+					tables = append(tables, table.GenerateLike(rt, first))
+				}
+				body := table.Body(rt, tables...)
+				if body.NumRows() == 0 {
+					rt.Skip("no rows")
+				}
+				schema := table.WithTable(rt, first).Schema()
+
+				// 2. draw a fault that applies: two tables of rows for the one
+				// that compares them
+				named := map[string]bool{}
+				for _, tbl := range tables {
+					if tbl.Rows() > 0 {
+						named[tbl.Name] = true
+					}
+				}
+				applicable := faults[:len(faults)-1]
+				if len(named) > 1 {
+					applicable = faults
+				}
+				f := rapid.SampledFrom(applicable).Draw(rt, "fault")
+				mutated, schemaOf, want := f.apply(rt, body, schema)
+				defer mutated.Release()
+
+				// 3. the decoder refuses the body with the fault's error
+				got, err := c.Decode(context.Background(), bytes.NewReader(encode(rt, c, mutated)), schemaOf)
+				if !errors.Is(err, want) || got != nil {
+					rt.Fatalf("%s: %v, %v", f.name, got, err)
+				}
+			})
+		})
 	}
 }
 
-// TestNDJSONDecodeFaults checks that each fault of a body is
-// ErrInvalidRows, and that a table schemaOf refuses surfaces the error
-// of schemaOf itself, unwrapped. The first object fixes the column
-// list, so a fault in the list is a header fault and a fault in a later
-// object is a row fault.
-func TestNDJSONDecodeFaults(t *testing.T) {
-	typed := func(dt arrow.DataType) *arrow.Schema {
-		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)
-	}
-	ints := constant(typed(arrow.PrimitiveTypes.Int64))
-	strs := constant(typed(arrow.BinaryTypes.String))
-	differing := func(name string) (*arrow.Schema, error) {
-		if name == "a" {
-			return typed(arrow.PrimitiveTypes.Int64), nil
+// concatenated is the batches joined column by column under the first
+// batch's schema, the caller releasing it.
+func concatenated(t failer, recs []arrow.RecordBatch) arrow.RecordBatch {
+	t.Helper()
+	schema := recs[0].Schema()
+	cols := make([]arrow.Array, schema.NumFields())
+	rows := int64(0)
+	for i := range cols {
+		chunks := make([]arrow.Array, len(recs))
+		for j, r := range recs {
+			chunks[j] = r.Column(i)
 		}
-		return typed(arrow.PrimitiveTypes.Float64), nil
+		var err error
+		if cols[i], err = array.Concatenate(chunks, memory.DefaultAllocator); err != nil {
+			t.Fatalf("concatenate: %v", err)
+		}
+		defer cols[i].Release()
 	}
-	refused := errors.New("no such table")
-	row := `{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n"
+	for _, r := range recs {
+		rows += r.NumRows()
+	}
+	return array.NewRecordBatch(schema, cols, rows)
+}
+
+// TestDecodeInterleaved checks, for every codec, that the rows of two
+// or three tables cut into pieces and shuffled into one body decode to
+// one batch per table, in the order the body first names each, with the
+// table's rows in body order. The body is the stream encoder over the
+// pieces, so the Arrow body carries several record batches.
+func TestDecodeInterleaved(t *testing.T) {
+	for _, c := range codecs {
+		t.Run(c.ContentType(), func(t *testing.T) {
+			rapid.Check(t, func(rt *rapid.T) {
+				// 1. draw tables with rows and cut each into one to three pieces
+				first := table.Generate(rt)
+				tables := []table.Table{first}
+				for range rapid.IntRange(1, 2).Draw(rt, "more tables") {
+					tables = append(tables, table.GenerateLike(rt, first))
+				}
+				type piece struct {
+					table int
+					rows  arrow.RecordBatch // the piece without $table, for the expectation
+					body  arrow.RecordBatch // the piece with $table, for the body
+				}
+				var pieces []piece
+				for k, tbl := range tables {
+					if tbl.Rows() == 0 {
+						continue
+					}
+					with := table.WithTable(rt, tbl)
+					var cuts []int
+					if tbl.Rows() > 1 {
+						cuts = rapid.SliceOfNDistinct(rapid.IntRange(1, tbl.Rows()-1), 0, min(2, tbl.Rows()-1), rapid.ID[int]).Draw(rt, "cuts")
+						slices.Sort(cuts)
+					}
+					bounds := append(append([]int{0}, cuts...), tbl.Rows())
+					for i := range len(bounds) - 1 {
+						lo, hi := int64(bounds[i]), int64(bounds[i+1])
+						pc := piece{k, tbl.Batch.NewSlice(lo, hi), with.NewSlice(lo, hi)}
+						rt.Cleanup(pc.rows.Release)
+						rt.Cleanup(pc.body.Release)
+						pieces = append(pieces, pc)
+					}
+				}
+				if len(pieces) == 0 {
+					rt.Skip("no rows")
+				}
+				pieces = rapid.Permutation(pieces).Draw(rt, "order")
+
+				// 2. the expected batches: per table, its pieces in body order
+				var order []int
+				byTable := map[int][]arrow.RecordBatch{}
+				for _, pc := range pieces {
+					if _, seen := byTable[pc.table]; !seen {
+						order = append(order, pc.table)
+					}
+					byTable[pc.table] = append(byTable[pc.table], pc.rows)
+				}
+
+				// 3. encode the pieces as one stream and decode it
+				bodies := make([]arrow.RecordBatch, len(pieces))
+				for i, pc := range pieces {
+					bodies[i] = pc.body
+				}
+				var buf bytes.Buffer
+				if err := c.EncodeStream(context.Background(), &buf, steps(bodies, nil)); err != nil {
+					rt.Fatalf("encode: %v", err)
+				}
+				got, err := c.Decode(context.Background(), &buf, constant(table.WithTable(rt, first).Schema()))
+				if err != nil {
+					rt.Fatalf("decode: %v", err)
+				}
+
+				// 4. one batch per table, in first-seen order, rows in body order
+				if len(got) != len(order) {
+					rt.Fatalf("decoded %d tables, want %d", len(got), len(order))
+				}
+				for i, tb := range got {
+					want := concatenated(rt, byTable[order[i]])
+					if tb.Table != tables[order[i]].Name || !array.RecordEqual(want, tb.Batch) {
+						rt.Errorf("table %d decoded as %s\n%v\nwant %s\n%v", i, tb.Table, tb.Batch, tables[order[i]].Name, want)
+					}
+					want.Release()
+					tb.Batch.Release()
+				}
+			})
+		})
+	}
+}
+
+// TestDecodeFormatFaults checks the faults a batch cannot express, one
+// short table per format: bytes that are not the format, a fraction in
+// an int64 column, a value of the wrong JSON kind, a dictionary-encoded
+// $table.
+func TestDecodeFormatFaults(t *testing.T) {
+	ints := constant(arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true}), nil))
+
+	// The one Arrow body: a dictionary-encoded $table over one row
+	dict := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String}
+	tb := array.NewDictionaryBuilder(memory.DefaultAllocator, dict).(*array.BinaryDictionaryBuilder)
+	defer tb.Release()
+	if err := tb.AppendString("a"); err != nil {
+		t.Fatal(err)
+	}
+	ts := array.NewTimestampBuilder(memory.DefaultAllocator, specials[1].Type.(*arrow.TimestampType))
+	defer ts.Release()
+	ts.Append(0)
+	cols := []arrow.Array{tb.NewArray(), ts.NewArray()}
+	rec := array.NewRecordBatch(arrow.NewSchema([]arrow.Field{{Name: "$table", Type: dict}, specials[1]}, nil), cols, 1)
+	for _, c := range cols {
+		c.Release()
+	}
+	defer rec.Release()
+	dictionaryTable := ipcStream(t, rec)
+
 	for name, tc := range map[string]struct {
-		body     string
-		schemaOf model.SchemaOf
-		want     error
+		dec  Decoder
+		body []byte
 	}{
-		"not an object":            {`[1]` + "\n", ints, ErrInvalidRows},
-		"not json":                 {`{"$table":` + "\n", ints, ErrInvalidRows},
-		"no $table":                {`{"$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", ints, ErrInvalidRows},
-		"no $timestamp":            {`{"$table":"a","i":1}` + "\n", ints, ErrInvalidRows},
-		"unknown column":           {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","nope":1}` + "\n", ints, ErrInvalidRows},
-		"unknown member later":     {row + `{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","nope":1}` + "\n", ints, ErrInvalidRows},
-		"$table not a string":      {`{"$table":1,"$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", ints, ErrInvalidRows},
-		"null $timestamp":          {`{"$table":"a","$timestamp":null,"i":1}` + "\n", ints, ErrInvalidRows},
-		"absent $timestamp later":  {row + `{"$table":"a","i":1}` + "\n", ints, ErrInvalidRows},
-		"fraction in an int64":     {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1.5}` + "\n", ints, ErrInvalidRows},
-		"number in a string":       {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", strs, ErrInvalidRows},
-		"tables of differing type": {row + `{"$table":"b","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", differing, ErrInvalidRows},
-		"table refused":            {row, func(string) (*arrow.Schema, error) { return nil, refused }, refused},
+		"csv: fraction in an int64":    {CSV{}, []byte("$table,$timestamp,i\na,1970-01-01T00:00:00Z,1.5\n")},
+		"ndjson: not json":             {NDJSON{}, []byte(`{"$table":` + "\n")},
+		"ndjson: not an object":        {NDJSON{}, []byte(`[1]` + "\n")},
+		"ndjson: $table not a string":  {NDJSON{}, []byte(`{"$table":1,"$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n")},
+		"ndjson: fraction in an int64": {NDJSON{}, []byte(`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1.5}` + "\n")},
+		"ndjson: number in a string":   {NDJSON{}, []byte(`{"$table":"a","$timestamp":0,"i":1}` + "\n")},
+		"arrow: not a stream":          {Arrow{}, []byte("nope")},
+		"arrow: dictionary $table":     {Arrow{}, dictionaryTable},
 	} {
-		got, err := NDJSON{}.Decode(context.Background(), strings.NewReader(tc.body), tc.schemaOf)
-		if !errors.Is(err, tc.want) || got != nil {
+		got, err := tc.dec.Decode(context.Background(), bytes.NewReader(tc.body), ints)
+		if !errors.Is(err, ErrInvalidRows) || got != nil {
 			t.Errorf("%s: %v, %v", name, got, err)
 		}
 	}
 }
 
 // TestNDJSONSparseRows checks that a later object may omit a column,
-// which reads as null, and may name its members in any order.
+// which reads as null, and may name its members in any order. The body
+// is written by hand, because no encoder writes a sparse object.
 func TestNDJSONSparseRows(t *testing.T) {
 	schema := arrow.NewSchema(append(append([]arrow.Field{}, specials...),
 		arrow.Field{Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
@@ -191,128 +422,5 @@ func TestNDJSONSparseRows(t *testing.T) {
 	ok := i.Value(0) == 1 && i.IsNull(1) && i.Value(2) == 3 && s.Value(0) == "x" && s.Value(1) == "y" && s.IsNull(2)
 	if !ok {
 		t.Fatalf("decoded %v", rec)
-	}
-}
-
-// arrowBody writes one record batch per fill as an IPC stream over
-// fields. Each fill appends the rows of one batch into the builders, one
-// per field.
-func arrowBody(t *testing.T, fields []arrow.Field, fills ...func(b []array.Builder)) []byte {
-	t.Helper()
-	schema := arrow.NewSchema(fields, nil)
-	var recs []arrow.RecordBatch
-	for _, fill := range fills {
-		builders := make([]array.Builder, len(fields))
-		for i, f := range fields {
-			builders[i] = array.NewBuilder(memory.DefaultAllocator, f.Type)
-			defer builders[i].Release()
-		}
-		fill(builders)
-		cols := make([]arrow.Array, len(fields))
-		for i, b := range builders {
-			cols[i] = b.NewArray()
-			defer cols[i].Release()
-		}
-		rec := array.NewRecordBatch(schema, cols, int64(cols[0].Len()))
-		defer rec.Release()
-		recs = append(recs, rec)
-	}
-	return ipcStream(t, recs...)
-}
-
-// TestArrowDecodeFaults checks that each fault of a body is
-// ErrInvalidRows, and that a table schemaOf refuses surfaces the error
-// of schemaOf itself, unwrapped. The schema is checked before any
-// batch, so a type fault is found on the first row that names a table.
-func TestArrowDecodeFaults(t *testing.T) {
-	typed := func(dt arrow.DataType) *arrow.Schema {
-		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)
-	}
-	ints := constant(typed(arrow.PrimitiveTypes.Int64))
-	refused := errors.New("no such table")
-	ns := specials[1].Type
-	us := &arrow.TimestampType{Unit: arrow.Microsecond}
-	dict := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String}
-	oneRow := func(table string) func(b []array.Builder) {
-		return func(b []array.Builder) {
-			for _, b := range b {
-				switch b := b.(type) {
-				case *array.StringBuilder:
-					b.Append(table)
-				case *array.TimestampBuilder:
-					b.Append(0)
-				case *array.Int64Builder:
-					b.Append(1)
-				case *array.Float64Builder:
-					b.Append(1)
-				case *array.BinaryDictionaryBuilder:
-					if err := b.AppendString(table); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-		}
-	}
-	none := func([]array.Builder) {}
-	nullTable := func(b []array.Builder) {
-		b[0].AppendNull()
-		b[1].(*array.TimestampBuilder).Append(0)
-		b[2].(*array.Int64Builder).Append(1)
-	}
-	for name, tc := range map[string]struct {
-		body     []byte
-		schemaOf model.SchemaOf
-		want     error
-	}{
-		"not a stream":      {[]byte("nope"), ints, ErrInvalidRows},
-		"no $table":         {arrowBody(t, []arrow.Field{specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, none), ints, ErrInvalidRows},
-		"no $timestamp":     {arrowBody(t, []arrow.Field{specials[0], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, none), ints, ErrInvalidRows},
-		"dictionary $table": {arrowBody(t, []arrow.Field{{Name: "$table", Type: dict}, specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
-		"null $table":       {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, nullTable), ints, ErrInvalidRows},
-		"unknown column":    {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "nope", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
-		"another type":      {arrowBody(t, []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Float64}}, oneRow("a")), ints, ErrInvalidRows},
-		"$timestamp in us":  {arrowBody(t, []arrow.Field{specials[0], {Name: "$timestamp", Type: us}, {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), ints, ErrInvalidRows},
-		"table refused":     {arrowBody(t, []arrow.Field{specials[0], {Name: "$timestamp", Type: ns}, {Name: "i", Type: arrow.PrimitiveTypes.Int64}}, oneRow("a")), func(string) (*arrow.Schema, error) { return nil, refused }, refused},
-	} {
-		got, err := Arrow{}.Decode(context.Background(), bytes.NewReader(tc.body), tc.schemaOf)
-		if !errors.Is(err, tc.want) || got != nil {
-			t.Errorf("%s: %v, %v", name, got, err)
-		}
-	}
-}
-
-// TestArrowInterleavedBatches checks that a stream of several batches
-// whose tables interleave decodes to one batch per table, in first-seen
-// order, with every row of each table in stream order.
-func TestArrowInterleavedBatches(t *testing.T) {
-	fields := []arrow.Field{specials[0], specials[1], {Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true}}
-	rows := func(names ...string) func(b []array.Builder) {
-		return func(b []array.Builder) {
-			for k, n := range names {
-				b[0].(*array.StringBuilder).Append(n)
-				b[1].(*array.TimestampBuilder).Append(arrow.Timestamp(k))
-				b[2].(*array.Int64Builder).Append(int64(len(n)))
-			}
-		}
-	}
-	body := arrowBody(t, fields, rows("a", "a", "bb", "a"), rows("bb", "bb"))
-	got, err := Arrow{}.Decode(context.Background(), bytes.NewReader(body), constant(arrow.NewSchema(fields, nil)))
-	if err != nil || len(got) != 2 {
-		t.Fatalf("decode: %v, %v", got, err)
-	}
-	defer func() {
-		for _, tb := range got {
-			tb.Batch.Release()
-		}
-	}()
-	a, bb := got[0], got[1]
-	if a.Table != "a" || a.Batch.NumRows() != 3 || bb.Table != "bb" || bb.Batch.NumRows() != 3 || a.Batch.NumCols() != 2 {
-		t.Fatalf("decoded %s %v, %s %v", a.Table, a.Batch, bb.Table, bb.Batch)
-	}
-	if i := a.Batch.Column(1).(*array.Int64); i.Value(0) != 1 || i.Value(2) != 1 {
-		t.Fatalf("table a: %v", a.Batch)
-	}
-	if i := bb.Batch.Column(1).(*array.Int64); i.Value(0) != 2 || i.Value(2) != 2 {
-		t.Fatalf("table bb: %v", bb.Batch)
 	}
 }
