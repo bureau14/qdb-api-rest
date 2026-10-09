@@ -98,37 +98,43 @@ first).Schema()` is the reader's schema of the shared column list
 The entries are in the file order they will have. Each is a sketch:
 the shape and the claims, not the wording.
 
-### `internal/encoding/json.go`, after the `JSON` encoder
+### `internal/encoding/encoding.go`, after `timestampLayout`
 
 ```go
-// ndjsonAppender returns the function that appends one JSON token to
-// the builder b, the inverse of jsonCell: a number token into an int64
-// or a float64, a string token into a string, into a blob through
-// standard base64, or into a timestamp through RFC 3339. [facts 2, 9]
-// A token of any other kind is an error the caller wraps with the row
-// and the column. [proposal, Rationale row 2]
-func ndjsonAppender(f arrow.Field, b array.Builder) (func(tok jsontext.Token) error, error) {
-	// style: doc comment alone
-	// because: one type switch like csvAppender, and each arm is one
-	// conversion of the standard library
+// textAppender returns the function that parses one cell of text into
+// the builder b, the inverse of the text the encoders write: an integer
+// through strconv, a float through strconv, a timestamp in RFC 3339, a
+// string as its own bytes, a blob through standard base64. The text is
+// the same on the CSV and NDJSON wires, so both decoders call it.
+// [csv.go:178-211 before this unit, Rationale row 11]
+func textAppender(f arrow.Field, b array.Builder) (func(string) error, error) {
+	// style: doc comment alone + inline note at the switch
+	// because: one type switch like csvAppender, the shape arrow-go's own
+	// CSV reader takes to reach a typed Append from a dynamic schema
 	//
-	// at the default arm: an Arrow type outside the five is
-	// ErrUnsupportedType, as the encoders refuse it [internal/encoding/error.go:10-13]
-	// at the int64 arm: Token.Int refuses a fraction or an exponent,
-	// so 1.0 is a fault in an int64 column, not a cast [fact 9]
+	// at the switch: the Builder interface carries no typed Append, so the
+	// switch runs once per column and the cell path is one typed call
+	// [arrow/array/builder.go:59-72, arrow/csv/reader.go:431-441]
+	// at the switch: arrow-go's AppendValueFromString was rejected, because
+	// its grammar refuses the Z our timestamps carry, accepts a bare
+	// integer as a timestamp and reads "(null)" as null [Rationale row 11]
 }
 ```
 
+`csvAppender` leaves; `newCSVTable` calls `textAppender`.
+
+### `internal/encoding/json.go`, after the `JSON` encoder
+
 ```go
 // ndjsonTable accumulates the rows of one table: the batch's schema,
-// one builder per field with its appender, and the index of each
-// field by name. [fact 2]
+// one builder per field with its appender, and the rows appended so far.
+// [fact 2]
 type ndjsonTable struct {
 	name      string
 	schema    *arrow.Schema
 	builders  []array.Builder
-	appenders []func(jsontext.Token) error
-	index     map[string]int // schema field by column name
+	appenders []func(string) error
+	rows      int
 }
 ```
 
@@ -140,88 +146,54 @@ type ndjsonTable struct {
 // both tables. The error of schemaOf passes through as is. [fact 2]
 func newNDJSONTable(name string, names []string, schemaOf model.SchemaOf, first *ndjsonTable) (*ndjsonTable, error) {
 	// style: doc comment + numbered overview + step comments
-	// because: the same four steps as newCSVTable, and the type check
-	// across tables is the rule the Arrow writer cannot make
-	//
-	// the batch carries the reader's types, so the fields are picked from
-	// the reader's schema and none is declared here [internal/encoding/AGENTS.md, The seam]
+	// because: the same four steps as newCSVTable
 	//
 	// 1. look the table up through schemaOf and pass its error as is [fact 2]
-	// 2. pick $timestamp and the names from the schema by name; a name
-	//    the table lacks is the body's fault [csv.go:247-257]
-	// 3. a table after the first has the same type in every field,
-	//    because one body is one column list and the Arrow writer checks
-	//    one table at a time [csv.go:259-266, internal/AGENTS.md, the ingest]
-	// 4. one builder and one appender per field, and the name index [fact 2]
+	// 2. pick $timestamp and the names from the schema by name [csv.go:247-257]
+	// 3. a table after the first has the same type in every field
+	//    [csv.go:259-266, internal/AGENTS.md, the ingest]
+	// 4. one builder and one textAppender per field [fact 2]
 }
 ```
 
 ```go
-// appendObject reads one object's members into the builders of t. A
-// member the column list lacks is ErrInvalidRows naming it, a column
-// the object lacks is null, and null or absent $timestamp is an error,
-// because the index cannot be null. [Rationale row 1, csv.go:284-301]
-func (t *ndjsonTable) appendObject(dec *jsontext.Decoder) error {
+// appendRow appends one object, as the map of its raw members, to the
+// builders of t: a column the object lacks or names null is null, and
+// a null or absent $timestamp is an error, because the index cannot be
+// null. A member outside the column list is an error naming it.
+// [Rationale row 1, csv.go:284-301]
+func (t *ndjsonTable) appendRow(row map[string]jsontext.Value) error {
 	// style: doc comment + numbered overview + step comments
-	// because: the object is read member by member, and three things
-	// fail on the way
+	// because: two passes over the row, and three things fail on the way
 	//
-	// one pass over the members fills what the object names, and a
-	// second pass over the builders fills what it did not [Rationale row 1]
-	//
-	// 1. read members until the closing brace; a name outside the
-	//    column list is the body's fault, and a null member appends null
-	//    [Rationale row 1]
-	// 2. every builder the object did not reach appends null, found by
-	//    comparing the builder's length with the row count [Rationale row 1]
-	// 3. the index builder must have grown by a value, not a null
-	//    [csv.go:289-292]
+	// 1. every member must be a column of the list, $table included,
+	//    so a typo is a fault and not a silent drop [Rationale row 1]
+	// 2. walk the column list: absent or null appends null, except the
+	//    index; a string-kind value is unquoted once and every value's
+	//    text goes through textAppender, because the number text and
+	//    the string content are the CSV cell's text [Rationale row 11]
 }
 ```
-
-```go
-// batch returns the rows as one record batch and empties the builders.
-func (t *ndjsonTable) batch() model.TableBatch
-func (t *ndjsonTable) release()
-```
-
-Both are copies of the CSV table's and carry no narrative (rule 1).
-
-```go
-// readNDJSONHeader reads the first object's member names without
-// consuming its values, so the column list is fixed before any row is
-// appended. $table and $timestamp are required, and every other name
-// is a data column. [Rationale row 1, csv.go:331-357]
-func readNDJSONHeader(dec *jsontext.Decoder) (ndjsonHeader, jsontext.Value, error)
-```
-
-The header reads the first object as a `jsontext.Value` (`ReadValue`)
-and the row loop replays that value through a second decoder for row
-one, so the first object is read once from the body and appended like
-every other row. This is the one odd construct of the file, and the
-step comment says what was rejected: reading the body twice, or an
-`ndjsonTable` that learns its columns as members arrive, which would
-let a later table see a column list the first did not fix.
 
 ```go
 // Decode implements Decoder. The body is one JSON object per row, in
 // this encoder's dialect: the first object's keys fix the column list,
-// $table and $timestamp among them. [fact 9, Rationale row 1]
+// $table and $timestamp among them. [Rationale rows 1, 2]
 func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
 	// style: doc comment + numbered overview + step comments
-	// because: the same three steps as CSV.Decode, over tokens
+	// because: the same three steps as CSV.Decode, over objects
 	//
-	// one pass streams the objects into per-table builders [fact 2]
+	// each row is read as one map of raw values through json.UnmarshalDecode,
+	// so the standard library parses and this decoder only routes
+	// [Rationale row 2]
 	//
-	// 1. the first object fixes the column list and says which members
-	//    hold the table, the index and the data columns [Rationale row 1]
-	// 2. each object goes to the builders of its table; a table seen for
-	//    the first time is typed through schemaOf and must agree with the
-	//    first table's types; a top-level value that is not an object is
-	//    the body's fault [csv.go:388-421]
+	// 1. the first object fixes the column list: its keys, $table and
+	//    $timestamp among them, in its order [Rationale row 1]
+	// 2. each object goes to the builders of its table, named by its
+	//    $table member, which must be a string; a table seen for the
+	//    first time is typed through schemaOf [csv.go:388-421]
 	//    - the ctx is checked once per chunkRows rows [encoding.go:40-52]
-	//    - a read error keeps the decoder's cause in the chain, because
-	//      the HTTP cap surfaces through it [csv.go:400-402]
+	//    - a read error keeps the decoder's cause in the chain [csv.go:400-402]
 	// 3. at the end every table becomes one batch, in first-seen order [fact 2]
 }
 ```
@@ -342,22 +314,38 @@ The round trip itself is unchanged: `table.Body` in each format decodes
 to the batches drawn (fact 12).
 
 ```go
-// TestNDJSONDecodeFaults: each fault of a body is ErrInvalidRows, and
-// a table schemaOf refuses surfaces its error unwrapped. The cases:
-// not an object, no $table, no $timestamp, unknown column (first
-// object), unknown member (later object), null $timestamp, absent
-// $timestamp in a later object, a fraction in an int64 column, a
-// number in a string column, tables of differing type, table refused.
-// [fact 2 for the shape, Rationale rows 1 and 2]
+// TestDecodeFaults: one property over every codec. It draws tables
+// through the fixture, applies one drawn mutation to the body batch
+// before encoding, and checks that the decoder answers ErrInvalidRows.
+// The mutations are of the batch, so one list serves every format:
+// drop $table, drop $timestamp, rename a data column, retype a data
+// column, null one $timestamp slot, null one $table slot. A table
+// schemaOf refuses surfaces its error unwrapped, drawn as a seventh
+// case. [Rationale row 12, fact 12]
 ```
 
 ```go
-// TestArrowDecodeFaults: not a stream, no $table, no $timestamp,
-// unknown column, a body column of another type (timestamp[us]), a
-// dictionary $table, a null $table, table refused. The bodies are built
-// with ipc.NewWriter over hand-built batches, as ipcStream in
-// encode_test.go builds them. [Rationale rows 3 and 4, encode_test.go:452]
+// TestDecodeInterleaved: the rows of two or three tables shuffled into
+// one body decode to one batch per table, in first-seen order, with
+// each table's rows in body order, for every codec. The Arrow body is
+// written in several record batches. [Rationale row 5]
 ```
+
+```go
+// TestDecodeFormatFaults: what the batch cannot express, one short
+// table per codec: bytes that are not the format, a fraction in an
+// int64 column (CSV, NDJSON), a top-level value that is not an object
+// (NDJSON), a dictionary-encoded $table (Arrow). [Rationale rows 2, 4]
+```
+
+```go
+// TestNDJSONSparseRows: a later object may omit a column, which reads
+// as null, and may name its members in any order. The body is written
+// by hand, because no encoder writes a sparse object. [Rationale row 1]
+```
+
+`TestCSVDecodeFaults`, `TestNDJSONDecodeFaults`, `TestArrowDecodeFaults`,
+`TestArrowInterleavedBatches` and `arrowBody` leave.
 
 ### `internal/httpapi/compress.go`, after `withCompression`
 
@@ -499,23 +487,31 @@ deletion itself is the merge stage's work, after the plan's work lands.
 
 ## Rationale
 
-| decision                                                                                                             | why                                                                                                                                                               | rejected, and why                                                                                                                                 | gained                                | given up                                                     | settled by                                                              |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| 1. The first NDJSON object fixes the column list; an absent key in a later object is null, an unknown key is a fault | one body is one column list, as the CSV header fixes it, and sparse NDJSON is ordinary                                                                            | refusing any object whose keys differ: rejects ordinary bodies for no gain                                                                        | sparse bodies decode                  | a typo in a later object's key is a fault, not a new column  | owner, 2026-10-09                                                       |
-| 2. NDJSON parses through `jsontext` tokens, one row at a time                                                        | the brief names json v2 where streaming helps, and the encoder already appends through `jsontext`                                                                 | `json.Unmarshal` into `map[string]any`: a map per row, and an int64 above 2^53 loses precision through float64                                    | no allocation per cell, exact int64   | a second parser vocabulary in the file                       | `docs/brief.md:728-736`, `json.go:44,54`                                |
-| 3. A body column's Arrow type must equal the reader's type                                                           | the binding refuses a large or dictionary type on its side anyway, and a conversion layer is more code than the rule                                              | casting (`timestamp[us]` into `[ns]`, `large_utf8` into `utf8`): a layer the binding then re-checks                                               | one rule, one check                   | a pyarrow client must write `timestamp[ns]` and plain `utf8` | owner, 2026-10-09                                                       |
-| 4. A dictionary-encoded or null `$table` is a fault                                                                  | no client of ours sends one, and decoding the dictionary is code for nobody                                                                                       | decoding the dictionary                                                                                                                           | less code                             | pyarrow's default for a categorical column is refused        | proposal                                                                |
-| 5. Rows are sliced by runs of one `$table` value and concatenated once per table                                     | the seam hands the push one batch per table, and the common body is one table per run                                                                             | handing the binding several batches per table: `SetTable` accepts them, `model.TableBatch` does not carry them; per-row builders: a copy per cell | one copy per table, zero-copy slicing | an interleaved body costs one slice per row                  | `internal/model/model.go:13-16`, `internal/encoding/AGENTS.md` The seam |
-| 6. `Content-Encoding` names one coding; a list or anything but gzip, zstd, identity is 415                           | the mirror of the type check, and no client stacks codings on a request                                                                                           | unwinding a list: code for nobody                                                                                                                 | one token read                        | a stacked request is refused                                 | proposal                                                                |
-| 7. The zstd request decoder runs at concurrency one                                                                  | a request spawns no goroutines, as the response encoder spawns none                                                                                               | the library default: goroutines per request                                                                                                       | one reader per request, no pool       | a slower decode on a large body, unmeasured                  | ADR-0012 Decision 4 by symmetry; proposal for the request side          |
-| 8. The ingest cap bounds the bytes on the wire                                                                       | that is the request body the cap names, and the brief excludes public-internet hardening                                                                          | capping the decoded bytes: a second limit and a second 413 path                                                                                   | the cap stays one line                | the decoded size of a hostile body is unbounded              | owner, 2026-10-09                                                       |
-| 9. A corrupt compressed body is 400                                                                                  | the reader's error surfaces from the decode wrapped in `ErrInvalidRows`, the path the cap already uses; a gzip header error at construction takes the same status | a status of its own: nothing distinguishes a corrupt coding from a corrupt body to the caller                                                     | no new arm in the handler             | the detail is the library's message                          | proposal                                                                |
-| 10. Request decompression lives in `internal/httpapi/compress.go`                                                    | compression sits below the encoders, which know nothing of HTTP                                                                                                   | a decoder in `internal/encoding`: the encoders would know HTTP                                                                                    | one file for both directions          | none                                                         | ADR-0012 Decision 2                                                     |
+| decision                                                                                                             | why                                                                                                                                                               | rejected, and why                                                                                                                                                                               | gained                                | given up                                                         | settled by                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 1. The first NDJSON object fixes the column list; an absent key in a later object is null, an unknown key is a fault | one body is one column list, as the CSV header fixes it, and sparse NDJSON is ordinary                                                                            | refusing any object whose keys differ: rejects ordinary bodies for no gain                                                                                                                      | sparse bodies decode                  | a typo in a later object's key is a fault, not a new column      | owner, 2026-10-09                                                                                                                   |
+| 2. NDJSON reads each row through `json.UnmarshalDecode` into a map of raw values                                     | the text formats are for convenience and Arrow is the fast path, so the standard library parses and the decoder only routes; raw values keep an int64 exact       | walking `jsontext` tokens by hand: a parser in the package for a cost nobody measured, reversed in review                                                                                       | the decoder is routing alone          | a map and its keys per row                                       | owner, 2026-10-09                                                                                                                   |
+| 11. One `textAppender` in `encoding.go` parses a cell's text for CSV and NDJSON                                      | the cell text is the same on both wires, and the type switch is the shape arrow-go's own CSV reader takes to reach a typed `Append`                               | one switch per format: the same five conversions twice; arrow-go's `AppendValueFromString`: refuses the `Z` our timestamps carry, accepts a bare integer as a timestamp, reads `(null)` as null | one switch in the package             | NDJSON unquotes a string-kind value before the shared parser     | owner, 2026-10-09; `arrow/array/builder.go:59-72`, `arrow/csv/reader.go:431-441`, `array/timestamp.go:365-380`, `array/array.go:34` |
+| 12. The decoders' faults are one generative property over mutations of the batch                                     | one list of mutations serves every format, so the fault logic is written once                                                                                     | one hand-written table per decoder: the same cases three times, reversed in review                                                                                                              | one property for every codec          | faults a batch cannot express stay in one short per-format table | owner, 2026-10-09                                                                                                                   |
+| 3. A body column's Arrow type must equal the reader's type                                                           | the binding refuses a large or dictionary type on its side anyway, and a conversion layer is more code than the rule                                              | casting (`timestamp[us]` into `[ns]`, `large_utf8` into `utf8`): a layer the binding then re-checks                                                                                             | one rule, one check                   | a pyarrow client must write `timestamp[ns]` and plain `utf8`     | owner, 2026-10-09                                                                                                                   |
+| 4. A dictionary-encoded or null `$table` is a fault                                                                  | no client of ours sends one, and decoding the dictionary is code for nobody                                                                                       | decoding the dictionary                                                                                                                                                                         | less code                             | pyarrow's default for a categorical column is refused            | proposal                                                                                                                            |
+| 5. Rows are sliced by runs of one `$table` value and concatenated once per table                                     | the seam hands the push one batch per table, and the common body is one table per run                                                                             | handing the binding several batches per table: `SetTable` accepts them, `model.TableBatch` does not carry them; per-row builders: a copy per cell                                               | one copy per table, zero-copy slicing | an interleaved body costs one slice per row                      | `internal/model/model.go:13-16`, `internal/encoding/AGENTS.md` The seam                                                             |
+| 6. `Content-Encoding` names one coding; a list or anything but gzip, zstd, identity is 415                           | the mirror of the type check, and no client stacks codings on a request                                                                                           | unwinding a list: code for nobody                                                                                                                                                               | one token read                        | a stacked request is refused                                     | proposal                                                                                                                            |
+| 7. The zstd request decoder runs at concurrency one                                                                  | a request spawns no goroutines, as the response encoder spawns none                                                                                               | the library default: goroutines per request                                                                                                                                                     | one reader per request, no pool       | a slower decode on a large body, unmeasured                      | ADR-0012 Decision 4 by symmetry; proposal for the request side                                                                      |
+| 8. The ingest cap bounds the bytes on the wire                                                                       | that is the request body the cap names, and the brief excludes public-internet hardening                                                                          | capping the decoded bytes: a second limit and a second 413 path                                                                                                                                 | the cap stays one line                | the decoded size of a hostile body is unbounded                  | owner, 2026-10-09                                                                                                                   |
+| 9. A corrupt compressed body is 400                                                                                  | the reader's error surfaces from the decode wrapped in `ErrInvalidRows`, the path the cap already uses; a gzip header error at construction takes the same status | a status of its own: nothing distinguishes a corrupt coding from a corrupt body to the caller                                                                                                   | no new arm in the handler             | the detail is the library's message                              | proposal                                                                                                                            |
+| 10. Request decompression lives in `internal/httpapi/compress.go`                                                    | compression sits below the encoders, which know nothing of HTTP                                                                                                   | a decoder in `internal/encoding`: the encoders would know HTTP                                                                                                                                  | one file for both directions          | none                                                             | ADR-0012 Decision 2                                                                                                                 |
 
 ## Knowledge
 
 Per commit, where each why lands.
 
+- Commits 10 to 12 (the review's redirect): `textAppender` carries row 11
+  at its switch; `NDJSON.Decode` carries row 2 in its overview;
+  `appendRow` carries rows 1 and 11; `TestDecodeFaults` carries row 12.
+  `internal/encoding/AGENTS.md`, The seam, says the text wires share
+  one cell parser (row 11), and Tests says the faults are one property
+  (row 12).
 - Commit 2 (NDJSON decoder): the narrated functions `newNDJSONTable`,
   `appendObject`, `readNDJSONHeader` and `NDJSON.Decode` carry rows 1
   and 2 at the steps named in Design; `ndjsonAppender`'s int64 arm
@@ -543,7 +539,7 @@ Per commit, where each why lands.
 - Commit 9 (log): Next item 1 struck; nothing else moves, because every
   fact above has its home in an `AGENTS.md` or a comment.
 
-Every Rationale row lands at least once: 1, 2 in commits 2 and 3; 3,
+Every Rationale row lands at least once: 1, 2 in commits 2, 3 and 10 to 12; 11, 12 in commits 10 to 12; 3,
 4, 5 in commits 4 and 5; 6, 7, 8, 9, 10 in commits 7 and 8.
 
 ## How the knowledge lands
@@ -584,7 +580,12 @@ internal/encoding internal/httpapi docs/ingest-decoders-plan.md`,
 9. `docs(log): the decoders and the request codings landed; Next item 1 struck`
 10. `/doc-discipline all internal/encoding internal/httpapi docs/log.md`, one small commit per finding.
 11. `/doc-discipline check internal/encoding internal/httpapi docs/ingest-decoders-plan.md`, one small commit per unlanded reason.
-12. Verify: push `sc-19567/rr-ingest-decoders`, build its head in
+12. `docs(plan): ingest-decoders-plan.md, the review's redirect: one text parser, the standard library parses NDJSON, one fault property`
+13. `refactor(encoding): textAppender parses a cell's text for both text wires`
+14. `refactor(encoding): the NDJSON decoder reads each row through json.UnmarshalDecode`
+15. `test(encoding): the decoders' faults are one property over mutations of the batch`
+16. `/doc-discipline check internal/encoding docs/ingest-decoders-plan.md`, one small commit per unlanded reason.
+17. Verify: push `sc-19567/rr-ingest-decoders`, build its head in
     Buildkite through the API with `ignore_pipeline_branch_filters`
     and the full 40-character SHA (`.buildkite/AGENTS.md`), reprioritize
     its scheduled jobs, wait for the result. Green: report the build
