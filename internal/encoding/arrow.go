@@ -204,13 +204,14 @@ func (t *arrowTable) release() {
 }
 
 // splitRuns calls f once per run of equal $table values in rec, with the
-// table name and the row range. A null $table is ErrInvalidRows naming
-// the row, counted from offset, the rows of the batches before rec.
+// table name and the row range. A null or empty $table is ErrInvalidRows
+// naming the row, counted from offset, the rows of the batches before
+// rec.
 func splitRuns(rec arrow.RecordBatch, table int, offset int64, f func(name string, i, j int64) error) error {
 	col := rec.Column(table).(*array.String)
 	for i := 0; i < col.Len(); {
-		if col.IsNull(i) {
-			return fmt.Errorf("%w: row %d: null $table", ErrInvalidRows, offset+int64(i)+1)
+		if col.IsNull(i) || col.Value(i) == "" {
+			return fmt.Errorf("%w: row %d: no $table", ErrInvalidRows, offset+int64(i)+1)
 		}
 		// Rows of one table are usually contiguous, so a run is one slice
 		// and the common body costs one slice per table per batch. An
@@ -230,20 +231,43 @@ func splitRuns(rec arrow.RecordBatch, table int, offset int64, f func(name strin
 	return nil
 }
 
+// arrowHeader is where the two special columns sit in the stream's
+// schema.
+type arrowHeader struct {
+	table, timestamp int
+}
+
 // checkArrowHeader checks the stream's schema: $table is a utf8 column
 // and $timestamp is present. A dictionary-encoded $table is refused,
 // because no client sends one yet and the rule is one line to lift.
-func checkArrowHeader(schema *arrow.Schema) (int, error) {
-	idx := schema.FieldIndices("$table")
+func checkArrowHeader(schema *arrow.Schema) (arrowHeader, error) {
+	table, timestamp := schema.FieldIndices("$table"), schema.FieldIndices("$timestamp")
 	switch {
-	case idx == nil:
-		return 0, fmt.Errorf("%w: schema names no $table", ErrInvalidRows)
-	case !arrow.TypeEqual(schema.Field(idx[0]).Type, arrow.BinaryTypes.String):
-		return 0, fmt.Errorf("%w: $table has type %s, not utf8", ErrInvalidRows, schema.Field(idx[0]).Type)
-	case schema.FieldIndices("$timestamp") == nil:
-		return 0, fmt.Errorf("%w: schema names no $timestamp", ErrInvalidRows)
+	case table == nil:
+		return arrowHeader{}, fmt.Errorf("%w: schema names no $table", ErrInvalidRows)
+	case !arrow.TypeEqual(schema.Field(table[0]).Type, arrow.BinaryTypes.String):
+		return arrowHeader{}, fmt.Errorf("%w: $table has type %s, not utf8", ErrInvalidRows, schema.Field(table[0]).Type)
+	case timestamp == nil:
+		return arrowHeader{}, fmt.Errorf("%w: schema names no $timestamp", ErrInvalidRows)
 	}
-	return idx[0], nil
+	return arrowHeader{table: table[0], timestamp: timestamp[0]}, nil
+}
+
+// checkIndex refuses a null $timestamp in rec, naming the row counted
+// from offset, because the index cannot be null and the binding would
+// only say so at the push. The null count is kept by the array, so a
+// batch without nulls costs one read.
+func checkIndex(rec arrow.RecordBatch, timestamp int, offset int64) error {
+	col := rec.Column(timestamp)
+	if col.NullN() == 0 {
+		return nil
+	}
+	for i := range col.Len() {
+		if col.IsNull(i) {
+			return fmt.Errorf("%w: row %d: null $timestamp", ErrInvalidRows, offset+int64(i)+1)
+		}
+	}
+	return nil
 }
 
 // Decode implements Decoder. The body is an Arrow IPC stream in this
@@ -258,7 +282,8 @@ func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) (
 	//  1. open the reader, which reads the schema; a body that is not a
 	//     stream, or whose schema names no $table or $timestamp, is the
 	//     body's fault;
-	//  2. each batch is split into runs; a table seen for the first time
+	//  2. each batch is checked for a null index and split into runs; a
+	//     table seen for the first time
 	//     is typed through schemaOf against the body's schema, and every
 	//     run is kept as a retained slice, because the reader releases
 	//     the batch on its next step;
@@ -279,7 +304,7 @@ func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) (
 		return nil, fmt.Errorf("%w: stream: %w", ErrInvalidRows, err)
 	}
 	defer rd.Release()
-	table, err := checkArrowHeader(rd.Schema())
+	h, err := checkArrowHeader(rd.Schema())
 	if err != nil {
 		return nil, err
 	}
@@ -294,9 +319,13 @@ func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) (
 			return nil, err
 		}
 		rec := rd.RecordBatch()
+		if err := checkIndex(rec, h.timestamp, rows); err != nil {
+			release()
+			return nil, err
+		}
 		// The callback's error is a fault of the body or the error of
 		// schemaOf, each already in the form the caller classifies.
-		err := splitRuns(rec, table, rows, func(name string, i, j int64) error {
+		err := splitRuns(rec, h.table, rows, func(name string, i, j int64) error {
 			t, ok := tables[name]
 			if !ok {
 				var err error

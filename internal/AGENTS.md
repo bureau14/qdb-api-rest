@@ -73,7 +73,7 @@ decisions are in `docs/adr/`.
   body's failure is the whole request's failure, found before the push,
   and nothing is written. The failures are a header without `$table` or
   `$timestamp`, a name a table lacks, a field that does not parse, an
-  empty `$timestamp`, tables of differing types
+  empty `$timestamp` or `$table`, tables of differing types
   (`encoding.ErrInvalidRows`), and an unknown table (`IsTableNotFound`).
   The header's data columns are the columns written. A column the
   header lacks is null in every row. The empty field is null, and the

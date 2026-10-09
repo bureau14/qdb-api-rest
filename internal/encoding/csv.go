@@ -325,9 +325,9 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]
 	//
 	//  1. the header fixes the field count and says which fields hold the
 	//     table, the index and the data columns;
-	//  2. each record goes to the builders of its table; a table seen for
-	//     the first time is typed through schemaOf and must agree with
-	//     the first table's types;
+	//  2. each record goes to the builders of its table, which its $table
+	//     field must name; a table seen for the first time is typed
+	//     through schemaOf and must agree with the first table's types;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	rd := csv.NewReader(r)
 	rd.ReuseRecord = true
@@ -360,6 +360,11 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]
 			// Both error chains stay reachable. The sentinel decides the status,
 			// and the reader's cause reveals a body-size cap the HTTP layer set.
 			return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
+		}
+		// A row must name its table, and the empty field is CSV's null
+		if rec[h.table] == "" {
+			release()
+			return nil, fmt.Errorf("%w: row %d: empty $table", ErrInvalidRows, row)
 		}
 		t, ok := tables[rec[h.table]]
 		if !ok {

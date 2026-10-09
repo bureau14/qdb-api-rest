@@ -518,7 +518,7 @@ func readNDJSONHeader(row map[string]jsontext.Value) (map[string]bool, error) {
 }
 
 // ndjsonTableOf returns the table the row's $table member names, which
-// must be present and a string.
+// must be present, a string, and not empty.
 func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
 	v, ok := row["$table"]
 	if !ok {
@@ -527,6 +527,9 @@ func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
 	name, err := ndjsonText(v, false)
 	if err != nil {
 		return "", fmt.Errorf("$table: %w", err)
+	}
+	if name == "" {
+		return "", errors.New("empty $table")
 	}
 	return name, nil
 }
