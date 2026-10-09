@@ -32,6 +32,12 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   column and keeps the reader's cause in the chain. The error of the
   schema lookup passes through as is. The empty field is null in every
   type, because the text wires cannot carry the empty string.
+- The NDJSON decoder reads one object per row. The first object's keys
+  fix the column list, `$table` and `$timestamp` among them. A later
+  object's absent key is null, and a key outside the list is
+  `ErrInvalidRows`. A number token in an `int64` column must be an
+  integer literal, and a row is read whole as one value, because its
+  `$table` member may come after the members it routes.
 - Every encoder checks the ctx once per `chunkRows` rows. The constant
   is shared: it is the record batch size on the Arrow wire and the
   stride between ctx checks on the text wires.
