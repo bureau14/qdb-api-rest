@@ -130,7 +130,8 @@ func newArrowTable(name string, body *arrow.Schema, schemaOf model.SchemaOf) (*a
 		return nil, err
 	}
 
-	// 2. the fields, by name: $timestamp, then the body's data columns
+	// 2. the fields, by name: $timestamp, then the body's data columns.
+	// checkArrowHeader has proven $timestamp present in the body.
 	bodyFields := []int{body.FieldIndices("$timestamp")[0]}
 	for i, f := range body.Fields() {
 		if f.Name != "$table" && f.Name != "$timestamp" {
