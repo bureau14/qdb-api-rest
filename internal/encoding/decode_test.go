@@ -24,7 +24,7 @@ import (
 var codecs = []struct {
 	Encoder
 	Decoder
-}{{CSV{}, CSV{}}}
+}{{CSV{}, CSV{}}, {NDJSON{}, NDJSON{}}}
 
 // specials are the two columns the reader answers in front of every
 // table. The fault table builds its one-column schemas on them.
@@ -120,5 +120,75 @@ func TestCSVDecodeFaults(t *testing.T) {
 		if !errors.Is(err, tc.want) || got != nil {
 			t.Errorf("%s: %v, %v", name, got, err)
 		}
+	}
+}
+
+// TestNDJSONDecodeFaults checks that each fault of a body is
+// ErrInvalidRows, and that a table schemaOf refuses surfaces the error
+// of schemaOf itself, unwrapped. The first object fixes the column
+// list, so a fault in the list is a header fault and a fault in a later
+// object is a row fault.
+func TestNDJSONDecodeFaults(t *testing.T) {
+	typed := func(dt arrow.DataType) *arrow.Schema {
+		return arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: dt, Nullable: true}), nil)
+	}
+	ints := constant(typed(arrow.PrimitiveTypes.Int64))
+	strs := constant(typed(arrow.BinaryTypes.String))
+	differing := func(name string) (*arrow.Schema, error) {
+		if name == "a" {
+			return typed(arrow.PrimitiveTypes.Int64), nil
+		}
+		return typed(arrow.PrimitiveTypes.Float64), nil
+	}
+	refused := errors.New("no such table")
+	row := `{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n"
+	for name, tc := range map[string]struct {
+		body     string
+		schemaOf model.SchemaOf
+		want     error
+	}{
+		"not an object":            {`[1]` + "\n", ints, ErrInvalidRows},
+		"not json":                 {`{"$table":` + "\n", ints, ErrInvalidRows},
+		"no $table":                {`{"$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", ints, ErrInvalidRows},
+		"no $timestamp":            {`{"$table":"a","i":1}` + "\n", ints, ErrInvalidRows},
+		"unknown column":           {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","nope":1}` + "\n", ints, ErrInvalidRows},
+		"unknown member later":     {row + `{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","nope":1}` + "\n", ints, ErrInvalidRows},
+		"$table not a string":      {`{"$table":1,"$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", ints, ErrInvalidRows},
+		"null $timestamp":          {`{"$table":"a","$timestamp":null,"i":1}` + "\n", ints, ErrInvalidRows},
+		"absent $timestamp later":  {row + `{"$table":"a","i":1}` + "\n", ints, ErrInvalidRows},
+		"fraction in an int64":     {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1.5}` + "\n", ints, ErrInvalidRows},
+		"number in a string":       {`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", strs, ErrInvalidRows},
+		"tables of differing type": {row + `{"$table":"b","$timestamp":"1970-01-01T00:00:00Z","i":1}` + "\n", differing, ErrInvalidRows},
+		"table refused":            {row, func(string) (*arrow.Schema, error) { return nil, refused }, refused},
+	} {
+		got, err := NDJSON{}.Decode(context.Background(), strings.NewReader(tc.body), tc.schemaOf)
+		if !errors.Is(err, tc.want) || got != nil {
+			t.Errorf("%s: %v, %v", name, got, err)
+		}
+	}
+}
+
+// TestNDJSONSparseRows checks that a later object may omit a column,
+// which reads as null, and may name its members in any order.
+func TestNDJSONSparseRows(t *testing.T) {
+	schema := arrow.NewSchema(append(append([]arrow.Field{}, specials...),
+		arrow.Field{Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		arrow.Field{Name: "s", Type: arrow.BinaryTypes.String, Nullable: true}), nil)
+	body := `{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1,"s":"x"}` + "\n" +
+		`{"s":"y","$timestamp":"1970-01-01T00:00:01Z","$table":"a"}` + "\n" +
+		`{"$timestamp":"1970-01-01T00:00:02Z","$table":"a","i":3}` + "\n"
+	got, err := NDJSON{}.Decode(context.Background(), strings.NewReader(body), constant(schema))
+	if err != nil || len(got) != 1 {
+		t.Fatalf("decode: %v, %v", got, err)
+	}
+	defer got[0].Batch.Release()
+	rec := got[0].Batch
+	if rec.NumRows() != 3 || rec.NumCols() != 3 {
+		t.Fatalf("decoded %v", rec)
+	}
+	i, s := rec.Column(1).(*array.Int64), rec.Column(2).(*array.String)
+	ok := i.Value(0) == 1 && i.IsNull(1) && i.Value(2) == 3 && s.Value(0) == "x" && s.Value(1) == "y" && s.IsNull(2)
+	if !ok {
+		t.Fatalf("decoded %v", rec)
 	}
 }

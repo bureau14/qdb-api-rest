@@ -111,7 +111,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them
   as one body over `table.Body` and decodes them back to the batches it
-  drew, without a cluster. The faults of a body are one table of cases.
+  drew, without a cluster. The faults of a body are one table of cases
+  per decoder.
 - A test helper that parses a body is named `read*`, because `decode`
   is the package's word for its `Decoder`. `encoding_test.go` holds the
   helpers both files share.
