@@ -215,6 +215,8 @@ func splitRuns(rec arrow.RecordBatch, table int, offset int64, f func(name strin
 		// Rows of one table are usually contiguous, so a run is one slice
 		// and the common body costs one slice per table per batch. An
 		// interleaved body costs one slice per row and decodes all the same.
+		// Per-table builders fed row by row were rejected: a copy per cell
+		// where a slice copies nothing.
 		name := col.Value(i)
 		j := i + 1
 		for j < col.Len() && !col.IsNull(j) && col.Value(j) == name {
