@@ -34,11 +34,14 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   type, because the text wires cannot carry the empty string. A cell's
   text is the same on the CSV and NDJSON wires, so one `textAppender`
   in `encoding.go` parses it for both decoders.
-- The NDJSON decoder reads one object per row. The first object's keys
-  fix the column list, `$table` and `$timestamp` among them. A later
-  object's absent key is null, and a key outside the list is
-  `ErrInvalidRows`. A number token in an `int64` column must be an
-  integer literal.
+- The NDJSON decoder reads one object per row through the standard
+  library, into a map of raw values, so the library parses and the
+  decoder only routes. The first object's keys fix the column list,
+  `$table` and `$timestamp` among them, and the batch carries those
+  data columns in the table's order, because a JSON object's members
+  carry no order of their own. A later object's absent key is null, and
+  a key outside the list is `ErrInvalidRows`. A number in an `int64`
+  column must be an integer literal.
 - The Arrow decoder reads an IPC stream of any batch count. The body's
   columns are picked by name, and a body column's type must equal the
   reader's type for that name. There is no cast, because the binding
