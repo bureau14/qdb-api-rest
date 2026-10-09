@@ -456,16 +456,23 @@ func (t *ndjsonTable) appendRow(row map[string]jsontext.Value) error {
 		}
 	}
 
-	// 2. the columns, in the batch's order
+	// 2. the columns, in the batch's order, so a column the object does
+	// not name is reached as well
 	for i, f := range t.schema.Fields() {
+		// An absent member and a null member read alike, because the
+		// encoder writes null as a member and a sparse body leaves it out
 		v, ok := row[f.Name]
 		if !ok || v.Kind() == 'n' {
+			// Field 0 is $timestamp, which cannot be null, because the
+			// writer would refuse the row at the push
 			if i == 0 {
 				return errors.New("$timestamp is null or absent")
 			}
 			t.builders[i].AppendNull()
 			continue
 		}
+		// The kind check comes first, so a string in a number column is
+		// named as such rather than as a parse error on its quotes
 		text, err := ndjsonText(v, t.numeric[i])
 		if err == nil {
 			err = t.appenders[i](text)
@@ -582,7 +589,9 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 			}
 		}
 
-		// 2. the object to its table's builders
+		// 2. the object to its table's builders. A row that names no
+		// table, or names it with anything but a string, is the body's
+		// fault
 		name, err := ndjsonTableOf(row)
 		if err != nil {
 			release()
@@ -590,6 +599,10 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 		}
 		t, ok := tables[name]
 		if !ok {
+			// The first table of the body is the type reference every
+			// later table is checked against, because one body is one
+			// column list. The lookup's own error passes through unwrapped,
+			// so the handler can classify an unknown table as 404
 			var first *ndjsonTable
 			if len(order) > 0 {
 				first = order[0]
