@@ -1,8 +1,8 @@
 // The good path of the v2 surface is one round trip against the live qdbd
 // fixture, the in-process twin of the e2e flow. The test creates
 // generated tables that share one column list over HTTP, reads them
-// empty, ingests them in one body, reads and queries them in every
-// format, deletes them, re-creates them over what the delete leaves
+// empty, ingests them in one body of a drawn format under a drawn
+// request coding, reads and queries them in every format, deletes them, re-creates them over what the delete leaves
 // behind, and deletes them again. What went in comes back out. Each
 // response equals the encoder run directly over the cluster, and the
 // direct read passes table.Check against the rows generated, so the bytes
@@ -13,9 +13,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,23 +28,58 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// ingest posts body as CSV under the URL parameters.
-func (s server) ingest(body, params string, headers map[string]string) *httptest.ResponseRecorder {
+// ingest posts body under the URL parameters, as CSV when no headers
+// are given.
+func (s server) ingest(body []byte, params string, headers map[string]string) *httptest.ResponseRecorder {
 	if headers == nil {
 		headers = map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
 	}
-	return s.post(rowsPath+"?"+params, body, headers)
+	return s.post(rowsPath+"?"+params, string(body), headers)
 }
 
-// ingestBodyOf is the CSV body that carries every table. The fixture
-// joins the tables into one batch, and the CSV encoder writes it out.
-func ingestBodyOf(t table.T, tables []table.Table) string {
+// ingestBodyOf is the body in e's format that carries every table. The
+// fixture joins the tables into one batch, and the encoder writes it
+// out.
+func ingestBodyOf(t table.T, e encoding.Encoder, tables []table.Table) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := (encoding.CSV{}).Encode(context.Background(), &buf, table.Body(t, tables...)); err != nil {
+	if err := e.Encode(context.Background(), &buf, table.Body(t, tables...)); err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	return buf.String()
+	return buf.Bytes()
+}
+
+// compressedBody is body under coding c, through the server's own
+// compressor, which the round trip trusts because the response tests
+// have decoded it with the reference decoders.
+func compressedBody(t table.T, c coding, body []byte) []byte {
+	t.Helper()
+	if c == identityCoding {
+		return body
+	}
+	var buf bytes.Buffer
+	z := newCompressor(c, &buf)
+	if _, err := z.Write(body); err != nil {
+		t.Fatalf("compress: %v", err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatalf("compress: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// drawnIngest posts every table's rows in one body of a drawn format
+// under a drawn request coding, with the push mode as the parameter.
+func (s server) drawnIngest(t *rapid.T, tables []table.Table, mode string) *httptest.ResponseRecorder {
+	t.Helper()
+	contentType := rapid.SampledFrom(slices.Sorted(maps.Keys(decoders))).Draw(t, "content type")
+	c := rapid.SampledFrom([]coding{identityCoding, gzipCoding, zstdCoding}).Draw(t, "content coding")
+	body := compressedBody(t, c, ingestBodyOf(t, encoders[contentType], tables))
+	headers := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": contentType}
+	if c != identityCoding {
+		headers["Content-Encoding"] = string(c)
+	}
+	return s.ingest(body, "push-mode="+mode, headers)
 }
 
 // checkRead reads tbl over the cluster and compares what comes back with
@@ -185,11 +222,12 @@ func TestRoundtrip(t *testing.T) {
 		s.checkRead(rt, empty)
 		s.checkReadFormats(rt, first, nil)
 
-		// 4. ingest every table's rows in one body under a drawn push mode,
-		// the default included. The counts answered are the rows generated
-		// and the tables that had any
+		// 4. ingest every table's rows in one body of a drawn format under a
+		// drawn request coding and a drawn push mode, the default included.
+		// The counts answered are the rows generated and the tables that
+		// had any
 		mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
-		got := ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, tables), "push-mode="+mode, nil))
+		got := ingestResponseOf(rt, s.drawnIngest(rt, tables, mode))
 		if got.Rows != wantRows || got.Tables != wantTables {
 			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 		}
@@ -245,7 +283,7 @@ func TestRoundtripDeduplicated(t *testing.T) {
 		}
 		query := "deduplication-mode=drop&deduplication-columns=" + url.QueryEscape("$timestamp")
 		for range 2 {
-			ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, []table.Table{tbl}), query, nil))
+			ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, encoding.CSV{}, []table.Table{tbl}), query, nil))
 		}
 		s.checkRead(rt, tbl)
 	})

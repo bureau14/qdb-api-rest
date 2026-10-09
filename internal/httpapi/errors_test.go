@@ -7,6 +7,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,6 +24,13 @@ type errorRow struct {
 	headers            map[string]string
 	status             int
 	challenge          string // WWW-Authenticate, where the status has one
+}
+
+// withHeader is headers plus one more.
+func withHeader(headers map[string]string, name, value string) map[string]string {
+	out := maps.Clone(headers)
+	out[name] = value
+	return out
 }
 
 // TestErrorRows: every row answers its status, its challenge and a
@@ -69,6 +77,8 @@ func TestErrorRows(t *testing.T) {
 		// the ingest
 		"ingest: no token":                 {http.MethodPost, ingest(""), csvHeader, map[string]string{"Content-Type": encoding.CSVContentType}, http.StatusUnauthorized, "Bearer"},
 		"ingest: json body":                {http.MethodPost, ingest(""), `[]`, jsonBody, http.StatusUnsupportedMediaType, ""},
+		"ingest: unknown content-encoding": {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "br"), http.StatusUnsupportedMediaType, ""},
+		"ingest: corrupt gzip":             {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "gzip"), http.StatusBadRequest, ""},
 		"ingest: over the cap":             {http.MethodPost, ingest(""), csvHeader + strings.Repeat("qdbtest_errors_a,2020-01-01T00:00:00.000000000Z,1\n", maxIngestBytes/48+1), csvBody, http.StatusRequestEntityTooLarge, ""},
 		"ingest: unknown push mode":        {http.MethodPost, ingest("push-mode=eventually"), csvHeader, csvBody, http.StatusBadRequest, ""},
 		"ingest: unknown dedup mode":       {http.MethodPost, ingest("deduplication-mode=merge&deduplication-columns=c0"), csvHeader, csvBody, http.StatusBadRequest, ""},

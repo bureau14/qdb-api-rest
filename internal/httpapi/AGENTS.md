@@ -127,8 +127,8 @@ This file, Handlers, holds the table reader's.
   (`roundtrip_test.go`), which is the in-process twin of the e2e flow.
   One to three generated tables of one column list are created over
   HTTP. The first is read empty in every format. All are ingested in one
-  body under a drawn push mode, read whole and under a drawn column
-  subset, queried in every format, deleted, re-created over the
+  body of a drawn format, under a drawn request coding and a drawn push
+  mode, read whole and under a drawn column subset, queried in every format, deleted, re-created over the
   symtables the delete leaves, and deleted again. Under `async` the
   read-back is the query's alone, because a query sees the rows at once
   and the bulk reader only after the server's async flush. The oracle is
