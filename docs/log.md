@@ -102,6 +102,17 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-09 -- the NDJSON and Arrow IPC decoders and the request codings landed; ingest-decoders-plan.md deleted
+
+- `POST /api/v2/rows` reads CSV, NDJSON and Arrow IPC bodies under
+  `Content-Encoding: gzip|zstd`. Owner decisions: the ingest cap bounds
+  the bytes on the wire, a sparse NDJSON object reads absent as null, a
+  body's Arrow types must equal the reader's, the text wires share one
+  cell parser and the standard library parses NDJSON, and the decoders'
+  faults are one property. The rules went to `internal/encoding/AGENTS.md`
+  (The seam, Tests) and `internal/httpapi/AGENTS.md` (Handlers,
+  Middleware, Tests).
+
 ## 2026-10-08 -- the prose audit is complete
 
 - Every comment and document outside `tests/e2e/bench/bench.py` reads as
