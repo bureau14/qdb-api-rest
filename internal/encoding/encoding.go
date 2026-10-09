@@ -5,8 +5,11 @@ package encoding
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"iter"
+	"strconv"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -71,4 +74,52 @@ const timestampLayout = "2006-01-02T15:04:05.000000000Z"
 func nanosReader(a *array.Timestamp) func(i int) int64 {
 	unit := int64(a.DataType().(*arrow.TimestampType).Unit.Multiplier())
 	return func(i int) int64 { return int64(a.Value(i)) * unit }
+}
+
+// textAppender returns the function that parses one cell of text into
+// the builder b, the inverse of the text the encoders write: an integer
+// and a float through strconv, a timestamp in RFC 3339, a string as its
+// own bytes, a blob through standard base64. The cell text is the same
+// on the CSV and NDJSON wires, so both decoders call it. The function
+// returns the strconv, time or base64 error as is, and the caller adds
+// the row and the column.
+func textAppender(f arrow.Field, b array.Builder) (func(string) error, error) {
+	// The Builder interface carries no typed Append, so the switch on the
+	// concrete builder runs once per column and the cell path is one
+	// typed call, the shape arrow-go's own CSV reader takes. arrow-go's
+	// AppendValueFromString was rejected: its grammar refuses the Z our
+	// timestamps carry, accepts a bare integer as a timestamp, and reads
+	// the text "(null)" as null.
+	switch b := b.(type) {
+	case *array.Int64Builder:
+		return func(s string) error {
+			v, err := strconv.ParseInt(s, 10, 64)
+			b.Append(v)
+			return err
+		}, nil
+	case *array.Float64Builder:
+		return func(s string) error {
+			v, err := strconv.ParseFloat(s, 64)
+			b.Append(v)
+			return err
+		}, nil
+	case *array.TimestampBuilder:
+		return func(s string) error {
+			t, err := time.Parse(time.RFC3339Nano, s)
+			b.Append(arrow.Timestamp(t.UnixNano()))
+			return err
+		}, nil
+	case *array.StringBuilder:
+		return func(s string) error {
+			b.Append(s)
+			return nil
+		}, nil
+	case *array.BinaryBuilder:
+		return func(s string) error {
+			v, err := base64.StdEncoding.DecodeString(s)
+			b.Append(v)
+			return err
+		}, nil
+	}
+	return nil, unsupportedType(f)
 }

@@ -170,49 +170,9 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 	return cw.Error()
 }
 
-// csvAppender returns the function that parses one CSV field into the
-// builder b, the inverse of csvCell. The empty field appends null, and
-// any other text is parsed as the column's type. The function returns
-// the strconv or time error as is; the caller adds the row and the
-// column.
-func csvAppender(f arrow.Field, b array.Builder) (func(field string) error, error) {
-	switch b := b.(type) {
-	case *array.Int64Builder:
-		return func(s string) error {
-			v, err := strconv.ParseInt(s, 10, 64)
-			b.Append(v)
-			return err
-		}, nil
-	case *array.Float64Builder:
-		return func(s string) error {
-			v, err := strconv.ParseFloat(s, 64)
-			b.Append(v)
-			return err
-		}, nil
-	case *array.TimestampBuilder:
-		return func(s string) error {
-			t, err := time.Parse(time.RFC3339Nano, s)
-			b.Append(arrow.Timestamp(t.UnixNano()))
-			return err
-		}, nil
-	case *array.StringBuilder:
-		return func(s string) error {
-			b.Append(s)
-			return nil
-		}, nil
-	case *array.BinaryBuilder:
-		return func(s string) error {
-			v, err := base64.StdEncoding.DecodeString(s)
-			b.Append(v)
-			return err
-		}, nil
-	}
-	return nil, unsupportedType(f)
-}
-
 // csvTable accumulates the rows of one table. It holds the batch's
-// schema, one builder per field with its appender, and the CSV field
-// that feeds each builder.
+// schema, one builder per field with its text appender, and the CSV
+// field that feeds each builder.
 type csvTable struct {
 	name      string
 	schema    *arrow.Schema
@@ -269,7 +229,7 @@ func newCSVTable(name string, h csvHeader, schemaOf model.SchemaOf, first *csvTa
 	t := &csvTable{name: name, schema: arrow.NewSchema(fields, nil), fields: csvFields}
 	for _, f := range fields {
 		b := array.NewBuilder(memory.DefaultAllocator, f.Type)
-		app, err := csvAppender(f, b)
+		app, err := textAppender(f, b)
 		if err != nil {
 			b.Release()
 			t.release()

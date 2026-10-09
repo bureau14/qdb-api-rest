@@ -31,7 +31,9 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   fault in the body is `ErrInvalidRows`, which names the row and the
   column and keeps the reader's cause in the chain. The error of the
   schema lookup passes through as is. The empty field is null in every
-  type, because the text wires cannot carry the empty string.
+  type, because the text wires cannot carry the empty string. A cell's
+  text is the same on the CSV and NDJSON wires, so one `textAppender`
+  in `encoding.go` parses it for both decoders.
 - The NDJSON decoder reads one object per row. The first object's keys
   fix the column list, `$table` and `$timestamp` among them. A later
   object's absent key is null, and a key outside the list is
