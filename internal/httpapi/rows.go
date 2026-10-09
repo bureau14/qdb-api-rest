@@ -25,7 +25,9 @@ const maxIngestBytes = 64 << 20
 
 // decoders maps each media type the ingest accepts to its decoder.
 var decoders = map[string]encoding.Decoder{
-	encoding.CSVContentType: encoding.CSV{},
+	encoding.CSVContentType:    encoding.CSV{},
+	encoding.NDJSONContentType: encoding.NDJSON{},
+	encoding.ArrowContentType:  encoding.Arrow{},
 }
 
 // decoderOf picks the decoder for a Content-Type by media type alone. A
