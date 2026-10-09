@@ -153,7 +153,8 @@ func requestCoding(contentEncoding string) (coding, bool) {
 // newDecompressor opens a reader of coding c over r, the inverse of
 // newCompressor. The gzip reader reads its header here, so a corrupt
 // body can fail at the open. The zstd decoder runs at concurrency one,
-// so a request spawns no goroutines, as a response spawns none.
+// so a request spawns no goroutines, as a response spawns none, at the
+// cost of a slower decode on a large body, which is not measured.
 func newDecompressor(c coding, r io.Reader) (io.ReadCloser, error) {
 	switch c {
 	case gzipCoding:
