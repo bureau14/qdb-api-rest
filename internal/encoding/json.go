@@ -698,7 +698,9 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 	//     schemaOf and must agree with the first table's types. The row
 	//     is read whole as one value, because the $table member may come
 	//     after the members it routes, and the value is walked once for
-	//     the table and once for the members;
+	//     the table and once for the members. Unmarshalling a row into a
+	//     map was rejected: it allocates per cell, and an int64 above
+	//     2^53 loses precision on its way through a float64;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	dec := jsontext.NewDecoder(r)
 	row := newNDJSONRow()
