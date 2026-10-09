@@ -130,8 +130,10 @@ defend each choice to the owner the way you can now.
 
 Before writing it, run `/doc-discipline read`. It loads the comment
 shape and the placement ladder the build stage is held to, so the plan's
-doc comments, overviews and homes are written in that shape from the
-start rather than repaired after.
+comment specifications and homes name that shape from the start rather
+than repaired after. The skill's vocabulary names the shapes; the plan
+is still read by someone who has not loaded it, so every shape and
+reason is said in plain words.
 
 The document is `docs/<slug>-plan.md`, `Status: draft`, and carries
 these sections in this order. A section with nothing to say says
@@ -144,13 +146,26 @@ these sections in this order. A section with nothing to say says
    (`path:line`, a commit, a dated session), so the executor neither
    re-verifies nor trusts what was never verified.
 3. **Design.** Every function, type and variable the unit adds or
-   changes, in the file order they will have: the signature and the doc
-   comment it will carry (the contract, per the root `AGENTS.md`, "Code
-   comments"), and, for every function that qualifies for a narrative
-   under the skill's `narrative.md`, the numbered overview its body will
-   state, each step with its why. A function that stays bare is named
-   as bare with the rule that says so. Tests are designed the same way.
-   The executor types these texts in; it does not compose them.
+   changes, in the file order they will have: the signature, then its
+   comment specification in prose. The specification says three things.
+   The shape: a doc comment alone; a doc comment and a body overview;
+   numbered steps with a comment at each; one inline comment at a named
+   branch or constant; a Note on ownership, caching or I/O. The reason
+   for that shape, in plain words a reader without the skill can follow
+   ("a doc comment alone, since it is one type switch like
+   csvAppender"; "an overview, because the object is read whole before
+   anything is appended and three things can fail on the way"). A rule
+   number may follow in parentheses and never replaces the reason. The
+   claims each part carries, one per line, each with its evidence
+   (`path:line`, a test, a Rationale row): for a doc comment, the
+   contract facts; for an overview, the strategy and each step's why;
+   for a step or inline comment, the guard, threshold, ordering
+   constraint or rejected alternative that is local to it. The plan
+   carries no comment text. The executor words the comments at build
+   time, with the code in view, in the shape `/doc-discipline read`
+   loads. Document rows (an `AGENTS.md` bullet, a specification
+   paragraph) are specified the same way: the claims and their place,
+   not the text. Tests are designed the same way.
 4. **Rationale.** One row per decision the unit rests on:
    `| decision | why | rejected, and why | gained | given up | settled by |`.
    "Why" is the reason the owner or the sources gave, never a
@@ -172,8 +187,12 @@ these sections in this order. A section with nothing to say says
 6. **How the knowledge lands.** The instructions the executor follows,
    written out so that executing the plan executes them: run
    `/doc-discipline read` before the first code commit; write every
-   commit's comments and document rows from sections 3 and 5 in the
-   same commit as the code; a why that arises while building and is
+   commit's comments and document rows from their specifications in
+   sections 3 and 5, in the same commit as the code, so that every
+   listed claim appears once, at the place the specification names, no
+   claim is added without evidence, and a claim the code contradicts is
+   reported in the build-stage message and not written; a why that
+   arises while building and is
    not in the plan is written where it is decided, with its evidence,
    or asked of the owner through the question tool before the commit;
    after the last code commit, `/doc-discipline all <paths>` and one
@@ -196,22 +215,27 @@ plan is committed; the answer goes into the plan. What the owner leaves
 unanswered is an open question of the plan-stage message.
 
 Before committing, read the plan as the executor would: for each commit,
-can it be written from the plan alone, comments included, and can each
-of its choices be defended from the Rationale alone? Each "no" is a gap
-in section 3, 4 or 5, filled now.
+can each comment be composed from its specification alone, with every
+claim traceable to its evidence, and can each of its choices be defended
+from the Rationale alone? Each "no" is a gap in section 3, 4 or 5,
+filled now.
 
-Correct: the plan names `ingestCSV` as narrated, its overview stating
-that the session is held for the whole body because the writer types the
-columns through it, evidence `internal/qdb/ingest.go:266`; its Rationale
-row says the alternative was a lease per lookup, sunk by the
-one-held-session rule, giving up a schema cache; and it asks whether the
-empty-string exclusion is a decision or a limitation before writing
-either word.
+Correct: the plan says `ingestCSV` gets a doc comment and a numbered
+overview, because the lease spans the decode and the push and three
+things can fail between them, and lists the overview's claims: the
+session is held for the whole body because the writer types the columns
+through it (`internal/qdb/ingest.go:266`); the batches are released on
+every path because the receiver owns them. Its Rationale row says the
+alternative was a lease per lookup, sunk by the one-held-session rule,
+giving up a schema cache; and it asks whether the empty-string exclusion
+is a decision or a limitation before writing either word.
 
-Incorrect: the plan lists commits and signatures, and the reasons are
-reconstructed from the diff at build time, or guessed; or the Rationale
-says what was chosen and not what lost, so the next unit tries the loser
-again.
+Incorrect: the plan pastes the overview as Go text, so the wording is
+frozen before the function exists and the build types in a claim the
+code does not bear out; or it says "narrated (rule 3)" and nothing
+else, so a reader without the skill learns neither the shape nor the
+reason; or the Rationale says what was chosen and not what lost, so the
+next unit tries the loser again.
 
 ### The plan ends with a Buildkite build
 
@@ -248,9 +272,11 @@ commits, so nothing at build time says to run the build.
 
 The build stage follows the plan's "How the knowledge lands" section
 to the letter. Every commit carries its comments and document rows as
-the plan's Design and Knowledge sections planned them, in the shape the
-root `AGENTS.md`, "Code comments", prescribes, in the same commit as the
-code. A reason that arises while building (a rejected alternative, a
+the plan's Design and Knowledge sections specify them: the executor
+composes the wording, in the shape the root `AGENTS.md`, "Code
+comments", prescribes, and every claim the specification lists is
+present once, in the same commit as the code. A reason that arises
+while building (a rejected alternative, a
 threshold, an ordering constraint) is written where it is decided, with
 its evidence. One you would have to invent is asked through the question
 tool before the commit that needs it, never written as a guess and never
