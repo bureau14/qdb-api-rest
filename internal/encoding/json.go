@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"math"
 	"strconv"
 	"time"
@@ -677,9 +678,10 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 	return res, nil
 }
 
-// jsonResults yields the results of a body, which is the one result the
-// query answers. A body that is not a result, a result the standard
-// library cannot read, a member a result does not declare, and a value
+// jsonResults yields the results of a body: the one result the query
+// answers, or each result of the array the table reader answers. An
+// empty array yields nothing. A body that is neither, a result the
+// standard library cannot read, a member a result does not declare, and a value
 // after the body are ErrInvalidRows, which names the result, counted
 // from 1, and keeps the reader's cause in the chain. The sequence ends
 // after its first error.
@@ -688,10 +690,12 @@ func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
 	// holds one result in memory and never the body's other results:
 	//
 	//  1. peek the first token, because the shape of the body decides
-	//     the path: an object is one result, and anything else is the
-	//     body's fault;
-	//  2. read the result through readJSONResult;
-	//  3. after the body, ReadToken must answer io.EOF, because jsontext
+	//     the path: an object is one result, an array is a stream of
+	//     results, and anything else is the body's fault;
+	//  2. read the one result through readJSONResult;
+	//  3. in the array, read '[', then results until the next token is
+	//     ']', then the ']';
+	//  4. after the body, ReadToken must answer io.EOF, because jsontext
 	//     reads several top-level values without complaint and a second
 	//     value would otherwise be dropped silently.
 	return func(yield func(jsonResult, error) bool) {
@@ -701,6 +705,22 @@ func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
 			// 2. the one result
 			res, err := readJSONResult(dec, 1)
 			if !yield(res, err) || err != nil {
+				return
+			}
+		case '[':
+			// 3. the array of results
+			if _, err := dec.ReadToken(); err != nil {
+				yield(jsonResult{}, fmt.Errorf("%w: %w", ErrInvalidRows, err))
+				return
+			}
+			for n := 1; dec.PeekKind() != ']'; n++ {
+				res, err := readJSONResult(dec, n)
+				if !yield(res, err) || err != nil {
+					return
+				}
+			}
+			if _, err := dec.ReadToken(); err != nil {
+				yield(jsonResult{}, fmt.Errorf("%w: %w", ErrInvalidRows, err))
 				return
 			}
 		default:
@@ -719,7 +739,7 @@ func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
 			return
 		}
 
-		// 3. nothing after the body
+		// 4. nothing after the body
 		if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 			if err == nil {
 				err = errors.New("a value follows the body")
@@ -764,8 +784,10 @@ func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
 }
 
 // Decode implements Decoder. The body is the columnar JSON the query
-// answers, one result. The result names $table, $timestamp and the data
-// columns in any order. The type member of a column is not read.
+// answers, one result, or the array of results the table reader
+// answers. The first result fixes the column list, $table and
+// $timestamp among them, in any order, and every later result names the
+// same columns. The type member of a column is not read.
 func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
 	// A result is columnar and $table is one of its columns, at any
 	// position, so a cell cannot be routed before the $table column of its
@@ -777,7 +799,7 @@ func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([
 	//
 	//  1. each result of the body comes from jsonResults;
 	//  2. every result passes readJSONHeader, and the first result's
-	//     names fix the column list;
+	//     names fix the column list, because one body is one column list;
 	//  3. the result's columns are indexed by name once, so each row
 	//     looks its cells up without a scan;
 	//  4. each row goes to the builders of its table, which its $table
@@ -813,6 +835,9 @@ func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([
 		}
 		if list == nil {
 			list = names
+		} else if !maps.Equal(list, names) {
+			release()
+			return nil, fmt.Errorf("%w: result %d names other columns than result 1", ErrInvalidRows, n)
 		}
 
 		// 3. the columns by name

@@ -44,10 +44,12 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   order. A later object's absent key is null, and
   a key outside the list is `ErrInvalidRows`. A number in an `int64`
   column must be an integer literal.
-- The JSON decoder reads the one result the query answers, whole,
-  through the standard library, and then routes it row by row, because
-  `$table` is a column at any position. The first result fixes the
-  column list, `$table` and `$timestamp` among them. Within a result a
+- The JSON decoder reads the one result the query answers or the array
+  of results the table reader answers. It reads one result at a time,
+  whole, through the standard library, and then routes it row by row,
+  because `$table` is a column at any position. The first result fixes
+  the column list, `$table` and `$timestamp` among them, and a later
+  result names the same columns. Within a result a
   column name appears once and every column has the same number of
   cells. A member a result does not declare and a value after the body
   are `ErrInvalidRows`. The `type` member is not read, because the
