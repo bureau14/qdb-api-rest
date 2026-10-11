@@ -681,10 +681,10 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 // jsonResults yields the results of a body: the one result the query
 // answers, or each result of the array the table reader answers. An
 // empty array yields nothing. A body that is neither, a result the
-// standard library cannot read, a member a result does not declare, and a value
-// after the body are ErrInvalidRows, which names the result, counted
-// from 1, and keeps the reader's cause in the chain. The sequence ends
-// after its first error.
+// standard library cannot read, a member a result does not declare, and
+// a value after the body are ErrInvalidRows, which names the result,
+// counted from 1, and keeps the reader's cause in the chain. The
+// sequence ends after its first error.
 func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
 	// The results are read one at a time, each whole, so the decoder
 	// holds one result in memory and never the body's other results:
