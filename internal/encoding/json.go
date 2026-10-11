@@ -340,10 +340,10 @@ func writeJSONColumn(ctx context.Context, w *bufio.Writer, c jsonColumn, rows in
 	return err
 }
 
-// ndjsonTable accumulates the rows of one table. It holds the batch's
-// schema, one builder per field with its text appender, and whether
-// each field reads a JSON number or a JSON string.
-type ndjsonTable struct {
+// jsonTable accumulates the rows of one table for a JSON decoder. It
+// holds the batch's schema, one builder per field with its text
+// appender, and whether each field reads a JSON number or a JSON string.
+type jsonTable struct {
 	name      string
 	schema    *arrow.Schema
 	builders  []array.Builder
@@ -351,14 +351,12 @@ type ndjsonTable struct {
 	numeric   []bool
 }
 
-// newNDJSONTable types the body's columns by the table's schema:
-// $timestamp first, then the data columns the first object names, in
-// the table's order, because a JSON object's members carry no order of
-// their own. A name the table lacks is ErrInvalidRows. A table after the
-// first must agree with the first on every field's type, or
-// ErrInvalidRows names both tables. The error of schemaOf passes
-// through as is.
-func newNDJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf, first *ndjsonTable) (*ndjsonTable, error) {
+// newJSONTable types the body's columns by the table's schema:
+// $timestamp first, then the named data columns in the table's order. A
+// name the table lacks is ErrInvalidRows. A table after the first must
+// agree with the first on every field's type, or ErrInvalidRows names
+// both tables. The error of schemaOf passes through as is.
+func newJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf, first *jsonTable) (*jsonTable, error) {
 	// The batch carries the reader's types, so its fields are picked from
 	// the reader's schema rather than declared here, the four steps of
 	// newCSVTable:
@@ -372,6 +370,9 @@ func newNDJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf,
 	//     it;
 	//  4. make one builder and one text appender per field, and note the
 	//     JSON kind the field reads.
+	//
+	// The table's order is taken because a JSON object's members carry no
+	// order of their own.
 
 	// 1. the table's schema
 	schema, err := schemaOf(name)
@@ -402,7 +403,7 @@ func newNDJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf,
 	}
 
 	// 4. the builders and the kinds
-	t := &ndjsonTable{name: name, schema: arrow.NewSchema(fields, nil)}
+	t := &jsonTable{name: name, schema: arrow.NewSchema(fields, nil)}
 	for _, f := range fields {
 		b := array.NewBuilder(memory.DefaultAllocator, f.Type)
 		app, err := textAppender(f, b)
@@ -418,10 +419,10 @@ func newNDJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf,
 	return t, nil
 }
 
-// ndjsonText returns the cell text of a JSON value for the text
-// appender: a number's literal as it stands, or a string's content
-// unquoted. A value of the other kind is an error.
-func ndjsonText(v jsontext.Value, numeric bool) (string, error) {
+// jsonText returns the cell text of a JSON value for the text appender:
+// a number's literal as it stands, or a string's content unquoted. A
+// value of the other kind is an error.
+func jsonText(v jsontext.Value, numeric bool) (string, error) {
 	switch {
 	case numeric && v.Kind() == '0':
 		return string(v), nil
@@ -435,19 +436,45 @@ func ndjsonText(v jsontext.Value, numeric bool) (string, error) {
 	return "", fmt.Errorf("a JSON %s where a string is expected", v.Kind())
 }
 
+// appendCell appends the JSON value v to field i of t. An absent (nil)
+// or null v appends null, except in field 0, $timestamp, which cannot be
+// null. The error names the column.
+func (t *jsonTable) appendCell(i int, v jsontext.Value) error {
+	// An absent member and a null member read alike, because the encoder
+	// writes null as a member and a sparse NDJSON body leaves it out
+	if v == nil || v.Kind() == 'n' {
+		// Field 0 is $timestamp, which cannot be null, because the writer
+		// would refuse the row at the push
+		if i == 0 {
+			return errors.New("$timestamp is null or absent")
+		}
+		t.builders[i].AppendNull()
+		return nil
+	}
+	// The kind check comes first, so a string in a number column is named
+	// as such rather than as a parse error on its quotes
+	text, err := jsonText(v, t.numeric[i])
+	if err == nil {
+		err = t.appenders[i](text)
+	}
+	if err != nil {
+		return fmt.Errorf("column %s: %w", t.schema.Field(i).Name, err)
+	}
+	return nil
+}
+
 // appendRow appends one object, as the map of its raw members, to the
 // builders of t. A column the object lacks or names null is null, and a
 // null or absent $timestamp is an error, because the index cannot be
 // null. A member outside the column list is an error naming it.
-func (t *ndjsonTable) appendRow(row map[string]jsontext.Value) error {
+func (t *jsonTable) appendRow(row map[string]jsontext.Value) error {
 	// The row is checked whole and then filled column by column:
 	//
 	//  1. every member must be a column of the list, $table included, so
 	//     a typo is a fault and not a silent drop;
-	//  2. walk the column list: an absent or null member appends null,
-	//     except in the index; any other value's text goes through the
-	//     text appender, because a number's literal and a string's
-	//     content are the CSV cell's text.
+	//  2. walk the column list and append each member through appendCell,
+	//     because a number's literal and a string's content are the CSV
+	//     cell's text.
 
 	// 1. no member outside the list
 	for name := range row {
@@ -459,33 +486,15 @@ func (t *ndjsonTable) appendRow(row map[string]jsontext.Value) error {
 	// 2. the columns, in the batch's order, so a column the object does
 	// not name is reached as well
 	for i, f := range t.schema.Fields() {
-		// An absent member and a null member read alike, because the
-		// encoder writes null as a member and a sparse body leaves it out
-		v, ok := row[f.Name]
-		if !ok || v.Kind() == 'n' {
-			// Field 0 is $timestamp, which cannot be null, because the
-			// writer would refuse the row at the push
-			if i == 0 {
-				return errors.New("$timestamp is null or absent")
-			}
-			t.builders[i].AppendNull()
-			continue
-		}
-		// The kind check comes first, so a string in a number column is
-		// named as such rather than as a parse error on its quotes
-		text, err := ndjsonText(v, t.numeric[i])
-		if err == nil {
-			err = t.appenders[i](text)
-		}
-		if err != nil {
-			return fmt.Errorf("column %s: %w", f.Name, err)
+		if err := t.appendCell(i, row[f.Name]); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // batch returns the rows as one record batch and empties the builders.
-func (t *ndjsonTable) batch() model.TableBatch {
+func (t *jsonTable) batch() model.TableBatch {
 	cols := make([]arrow.Array, len(t.builders))
 	for i, b := range t.builders {
 		cols[i] = b.NewArray()
@@ -497,7 +506,7 @@ func (t *ndjsonTable) batch() model.TableBatch {
 	return model.TableBatch{Table: t.name, Batch: rec}
 }
 
-func (t *ndjsonTable) release() {
+func (t *jsonTable) release() {
 	for _, b := range t.builders {
 		b.Release()
 	}
@@ -524,14 +533,10 @@ func readNDJSONHeader(row map[string]jsontext.Value) (map[string]bool, error) {
 	return names, nil
 }
 
-// ndjsonTableOf returns the table the row's $table member names, which
-// must be present, a string, and not empty.
-func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
-	v, ok := row["$table"]
-	if !ok {
-		return "", errors.New("no $table")
-	}
-	name, err := ndjsonText(v, false)
+// jsonTableName returns the table a $table value names, which must be a
+// string and not empty.
+func jsonTableName(v jsontext.Value) (string, error) {
+	name, err := jsonText(v, false)
 	if err != nil {
 		return "", fmt.Errorf("$table: %w", err)
 	}
@@ -539,6 +544,16 @@ func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
 		return "", errors.New("empty $table")
 	}
 	return name, nil
+}
+
+// ndjsonTableOf returns the table the row's $table member names, which
+// must be present, a string, and not empty.
+func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
+	v, ok := row["$table"]
+	if !ok {
+		return "", errors.New("no $table")
+	}
+	return jsonTableName(v)
 }
 
 // Decode implements Decoder. The body is one JSON object per row, in this
@@ -556,8 +571,8 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 	//     schemaOf and must agree with the first table's types;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	dec := jsontext.NewDecoder(r)
-	tables := map[string]*ndjsonTable{}
-	var order []*ndjsonTable
+	tables := map[string]*jsonTable{}
+	var order []*jsonTable
 	var names map[string]bool
 	release := func() {
 		for _, t := range order {
@@ -603,11 +618,11 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 			// later table is checked against, because one body is one
 			// column list. The lookup's own error passes through unwrapped,
 			// so the handler can classify an unknown table as 404
-			var first *ndjsonTable
+			var first *jsonTable
 			if len(order) > 0 {
 				first = order[0]
 			}
-			if t, err = newNDJSONTable(name, names, schemaOf, first); err != nil {
+			if t, err = newJSONTable(name, names, schemaOf, first); err != nil {
 				release()
 				return nil, err
 			}
