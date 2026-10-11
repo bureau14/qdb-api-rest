@@ -410,7 +410,7 @@ func TestDecodeInterleaved(t *testing.T) {
 // TestDecodeFormatFaults checks the faults a batch cannot express, one
 // short table per format: bytes that are not the format, a fraction in
 // an int64 column, a value of the wrong JSON kind, a dictionary-encoded
-// $table.
+// $table, and a columnar JSON body of the wrong shape.
 func TestDecodeFormatFaults(t *testing.T) {
 	// Every case decodes under one schema of one int64 column, which is
 	// enough for a fault of the bytes or of a value's kind
@@ -436,6 +436,13 @@ func TestDecodeFormatFaults(t *testing.T) {
 	defer rec.Release()
 	dictionaryTable := ipcStream(t, rec)
 
+	// The JSON bodies are built from one result of one row, which every
+	// JSON case varies in one place
+	const tableCol = `{"name":"$table","type":"string","data":["a"]}`
+	const timestampCol = `{"name":"$timestamp","type":"timestamp","data":["1970-01-01T00:00:00Z"]}`
+	const iCol = `{"name":"i","type":"int64","data":[1]}`
+	result := `{"columns":[` + tableCol + `,` + timestampCol + `,` + iCol + `]}`
+
 	for name, tc := range map[string]struct {
 		dec  Decoder
 		body []byte
@@ -457,6 +464,23 @@ func TestDecodeFormatFaults(t *testing.T) {
 		// $table must be a plain utf8 column; the dictionary form is refused
 		// rather than decoded (internal/encoding/AGENTS.md, The seam)
 		"arrow: dictionary $table": {Arrow{}, dictionaryTable},
+		// the standard library's parse error surfaces as the body's fault
+		"json: not json": {JSON{}, []byte(`{"columns":`)},
+		// the body is one result or an array of results, nothing else
+		"json: not a result": {JSON{}, []byte(`1`)},
+		// a member a result does not declare is refused, so a misspelled
+		// key is not an empty result
+		"json: unknown member": {JSON{}, []byte(`{"columns":[` + tableCol + `,` + timestampCol + `],"x":1}`)},
+		// a second value after the body is refused, not dropped
+		"json: trailing value": {JSON{}, []byte(result + `{}`)},
+		// every column of a result has the same number of cells
+		"json: ragged columns": {JSON{}, []byte(`{"columns":[` + tableCol + `,` + timestampCol + `,{"name":"i","type":"int64","data":[1,2]}]}`)},
+		// a column name appears once in a result
+		"json: duplicate column": {JSON{}, []byte(`{"columns":[` + tableCol + `,` + timestampCol + `,` + iCol + `,` + iCol + `]}`)},
+		// the first result fixes the column list for the results after it
+		"json: columns differ": {JSON{}, []byte(`[` + result + `,{"columns":[` + tableCol + `,` + timestampCol + `]}]`)},
+		// the result of a nil batch names no $table
+		"json: nil result": {JSON{}, []byte(`{"columns":[]}`)},
 	} {
 		got, err := tc.dec.Decode(context.Background(), bytes.NewReader(tc.body), ints)
 		if !errors.Is(err, ErrInvalidRows) || got != nil {

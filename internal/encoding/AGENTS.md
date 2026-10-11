@@ -136,8 +136,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   drew, without a cluster. The faults of a body are one property over
   every codec, which draws one mutation of the batch before encoding
   it, so the fault logic is written once. What a batch cannot express,
-  bytes that are not the format and a value of the wrong kind, is one
-  short table per format. A second property shuffles the tables' rows
+  bytes that are not the format, a value of the wrong kind and a JSON
+  body of the wrong shape, is one short table per format. A second property shuffles the tables' rows
   through the stream encoder.
 - A test helper that parses a body is named `read*`, because `decode`
   is the package's word for its `Decoder`. `encoding_test.go` holds the
