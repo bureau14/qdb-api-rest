@@ -115,6 +115,11 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-11 -- the columnar JSON decoder landed; json-ingest-plan.md deleted
+
+- Facts moved to `internal/encoding/AGENTS.md`, The seam, and the
+  comments of `internal/encoding/json.go`.
+
 ## 2026-10-11 -- the ingest takes columnar JSON; the e2e flow starts with one basic test
 
 - Owner decisions: `POST /api/v2/rows` accepts the columnar JSON the
