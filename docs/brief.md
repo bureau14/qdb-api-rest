@@ -462,7 +462,8 @@ GET    /api/v2/session             "who am i": session/user/instance introspecti
 POST   /api/v2/query               native qdb query; streamed, content-negotiated (see above)
 POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, content-negotiated
 POST   /api/v2/rows                multi-table ingest, a $table column routes each row; body content-negotiated
-                                   (CSV, NDJSON, Arrow IPC; Content-Encoding); push and deduplication modes
+                                   (CSV, NDJSON, Arrow IPC, and the columnar JSON the query answers;
+                                   Content-Encoding); push and deduplication modes
                                    via parameters; M2, the contract is the handler's
 GET    /api/v2/tables              list tables (prefix filter, pagination)
 POST   /api/v2/tables              create table (name, shard size, columns); M2, see Tables below
@@ -848,8 +849,8 @@ starts.
   `DELETE /api/v2/tables/{name}`, `GET /api/v2/tables/{name}/rows`
   (the table reader: the bulk reader streamed through all four
   encoders) and `POST /api/v2/rows` (multi-table ingest routed by a
-  `$table` column, with CSV, NDJSON and Arrow IPC bodies,
-  `Content-Encoding`, and push and deduplication modes) with their
+  `$table` column, with CSV, NDJSON, Arrow IPC and columnar JSON
+  bodies, `Content-Encoding`, and push and deduplication modes) with their
   ingest/read roundtrip property tests per input format, and the v2 e2e
   flow (login, create, query empty, ingest, read in every format and
   coding, Testing doctrine 2) green in Buildkite.
@@ -935,6 +936,7 @@ soon as Flight SQL is measured.
 1. Access/refresh token TTL defaults (proposal: 15 min access and 7 day
    sliding refresh, with the v1 endpoint staying at 12 h).
 2. Whether v2 ingestion should also accept the v1 tables/columns JSON
-   shape for symmetry, or Arrow IPC/NDJSON/CSV only.
+   shape. v2's own columnar JSON is accepted, so that every format the
+   read answers is a format the ingest takes (owner, 2026-10-11).
 3. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
    name).
