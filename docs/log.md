@@ -49,28 +49,32 @@ In flight:
 
 Next:
 
-1. Columnar JSON ingestion: `POST /api/v2/rows` under
-   `Content-Type: application/json` reads the shape the query and the
-   table reader answer, the counterpart of the JSON encoder, as a
-   `Decoder` in `internal/encoding` with its round trip and fault
-   property, so that every read format has a decoder.
-2. One basic e2e flow, `tests/e2e/tools/e2etool gen`, `flow.sh` and
+1. One basic e2e flow, `tests/e2e/tools/e2etool gen`, `flow.sh` and
    `make test-flow`: login, create one table, ingest CSV, read back
    CSV, compared byte for byte (`docs/e2e-v2-flow-plan.md`, "Owner
    decisions (2026-10-11)").
-3. The e2e surface: the owner and the agent define together what the
+2. The e2e surface: the owner and the agent define together what the
    flow tests, and `docs/e2e.md`, "The v2 flow" is rewritten to that
    definition before any further step lands.
-4. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+3. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-6. File upstream against `qdb-api-go`, with no local patch
+5. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
    as API-managed and not to be freed.
+6. A qdbd defect, to file upstream with a canary and a fixture bound,
+   as sc-19829 is handled (`internal/AGENTS.md`, Tests). Once a bucket
+   holds the `int64` values 1 and `MaxInt64`, every later push into it
+   fails with "Invalid reply from the remote host", and qdbd logs
+   "deserialized column index type is not valid". The bulk reader
+   answers the bucket correctly. The pairs `0, MaxInt64`,
+   `-1, MaxInt64` and `1, MaxInt64-1` push fine. It reproduces on a
+   fresh qdbd 3.15.0.dev0 (build 4750f88) with or without
+   deduplication, and `TestRoundtripDeduplicated` draws it at random.
 
 Handoff to M2 (tables, reader and ingest):
 
