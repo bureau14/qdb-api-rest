@@ -686,8 +686,8 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 // counted from 1, and keeps the reader's cause in the chain. The
 // sequence ends after its first error.
 func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
-	// The results are read one at a time, each whole, so the decoder
-	// holds one result in memory and never the body's other results:
+	// The results are read one at a time, each whole, so the raw cells of
+	// one result are held at a time and never those of the whole body:
 	//
 	//  1. peek the first token, because the shape of the body decides
 	//     the path: an object is one result, an array is a stream of
