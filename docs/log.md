@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-09
+Last updated: 2026-10-11
 
 | Milestone                       | State       | Note                                                                             |
 | ------------------------------- | ----------- | -------------------------------------------------------------------------------- |
@@ -49,15 +49,24 @@ In flight:
 
 Next:
 
-1. `tests/e2e/tools/e2etool` (`gen`, `tocsv`), then `flow.sh` and
-   `make test-flow` driving one server per cluster
-   (`docs/e2e-v2-flow-plan.md`).
-2. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+1. Columnar JSON ingestion: `POST /api/v2/rows` under
+   `Content-Type: application/json` reads the shape the query and the
+   table reader answer, the counterpart of the JSON encoder, as a
+   `Decoder` in `internal/encoding` with its round trip and fault
+   property, so that every read format has a decoder.
+2. One basic e2e flow, `tests/e2e/tools/e2etool gen`, `flow.sh` and
+   `make test-flow`: login, create one table, ingest CSV, read back
+   CSV, compared byte for byte (`docs/e2e-v2-flow-plan.md`, "Owner
+   decisions (2026-10-11)").
+3. The e2e surface: the owner and the agent define together what the
+   flow tests, and `docs/e2e.md`, "The v2 flow" is rewritten to that
+   definition before any further step lands.
+4. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+5. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-4. File upstream against `qdb-api-go`, with no local patch
+6. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -101,6 +110,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-11 -- the ingest takes columnar JSON; the e2e flow starts with one basic test
+
+- Owner decisions: `POST /api/v2/rows` accepts the columnar JSON the
+  read answers (`docs/brief.md`, endpoint sketch and M2), the next unit
+  implements it, the first e2e unit is one basic test and the surface
+  is defined with the owner afterwards, the tool stays Go
+  (`docs/e2e-v2-flow-plan.md`, "Owner decisions (2026-10-11)").
 
 ## 2026-10-09 -- the NDJSON and Arrow IPC decoders and the request codings landed; ingest-decoders-plan.md deleted
 
