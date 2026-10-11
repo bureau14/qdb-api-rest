@@ -340,7 +340,8 @@ func writeJSONColumn(ctx context.Context, w *bufio.Writer, c jsonColumn, rows in
 	return err
 }
 
-// jsonTable accumulates the rows of one table for a JSON decoder. It
+// jsonTable accumulates the rows of one table for either JSON decoder,
+// NDJSON or columnar JSON, because a cell's text is the same in both. It
 // holds the batch's schema, one builder per field with its text
 // appender, and whether each field reads a JSON number or a JSON string.
 type jsonTable struct {
@@ -372,7 +373,8 @@ func newJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf, f
 	//     JSON kind the field reads.
 	//
 	// The table's order is taken because a JSON object's members carry no
-	// order of their own.
+	// order of their own, and the columnar decoder takes the same order,
+	// so both decoders give a batch of one shape.
 
 	// 1. the table's schema
 	schema, err := schemaOf(name)
@@ -636,6 +638,236 @@ func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) 
 	}
 
 	// 3. one batch per table
+	out := make([]model.TableBatch, len(order))
+	for i, t := range order {
+		out[i] = t.batch()
+		t.release()
+	}
+	return out, nil
+}
+
+// jsonResultColumn is one column object of a columnar result as the body
+// carries it. The type member is read and not checked, because the
+// reader's schema types the batch, as it does for CSV and NDJSON. Each
+// cell is kept raw, so it reads as an NDJSON cell does.
+type jsonResultColumn struct {
+	Name string           `json:"name"`
+	Type string           `json:"type"`
+	Data []jsontext.Value `json:"data"`
+}
+
+// jsonResult is one columnar result as the body carries it.
+type jsonResult struct {
+	Columns []jsonResultColumn `json:"columns"`
+}
+
+// readJSONResult reads the next value of dec as result n, counted from
+// 1. A value the standard library cannot read as a result is
+// ErrInvalidRows, which keeps the reader's cause in the chain.
+func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
+	// An unknown member is refused, because the default ignores it, and a
+	// misspelled "columns" or "data" would then ingest nothing and
+	// answer 200
+	var res jsonResult
+	if err := json.UnmarshalDecode(dec, &res, json.RejectUnknownMembers(true)); err != nil {
+		// Both error chains stay reachable. The sentinel decides the status,
+		// and the reader's cause reveals a body-size cap the HTTP layer set.
+		return jsonResult{}, fmt.Errorf("%w: result %d: %w", ErrInvalidRows, n, err)
+	}
+	return res, nil
+}
+
+// jsonResults yields the results of a body, which is the one result the
+// query answers. A body that is not a result, a result the standard
+// library cannot read, a member a result does not declare, and a value
+// after the body are ErrInvalidRows, which names the result, counted
+// from 1, and keeps the reader's cause in the chain. The sequence ends
+// after its first error.
+func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
+	// The results are read one at a time, each whole, so the decoder
+	// holds one result in memory and never the body's other results:
+	//
+	//  1. peek the first token, because the shape of the body decides
+	//     the path: an object is one result, and anything else is the
+	//     body's fault;
+	//  2. read the result through readJSONResult;
+	//  3. after the body, ReadToken must answer io.EOF, because jsontext
+	//     reads several top-level values without complaint and a second
+	//     value would otherwise be dropped silently.
+	return func(yield func(jsonResult, error) bool) {
+		// 1. the shape of the body
+		switch dec.PeekKind() {
+		case '{':
+			// 2. the one result
+			res, err := readJSONResult(dec, 1)
+			if !yield(res, err) || err != nil {
+				return
+			}
+		default:
+			// The token is read so the error names what the body holds, or
+			// keeps the reader's cause when the body could not be read
+			tok, err := dec.ReadToken()
+			if errors.Is(err, io.EOF) {
+				yield(jsonResult{}, fmt.Errorf("%w: the body is empty", ErrInvalidRows))
+				return
+			}
+			if err != nil {
+				yield(jsonResult{}, fmt.Errorf("%w: %w", ErrInvalidRows, err))
+				return
+			}
+			yield(jsonResult{}, fmt.Errorf("%w: the body is a JSON %s, not a result", ErrInvalidRows, tok.Kind()))
+			return
+		}
+
+		// 3. nothing after the body
+		if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
+			if err == nil {
+				err = errors.New("a value follows the body")
+			}
+			yield(jsonResult{}, fmt.Errorf("%w: %w", ErrInvalidRows, err))
+		}
+	}
+}
+
+// readJSONHeader returns the data columns of a result by name and its
+// row count. $table and $timestamp are required, a name appears once,
+// and every column has the same number of cells, or the error names the
+// column and the caller makes it ErrInvalidRows.
+func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
+	names := map[string]bool{}
+	rows := 0
+	for i, c := range res.Columns {
+		// jsontext refuses a duplicate member inside one object, and a
+		// duplicate column is a repeated name across the objects of the
+		// array, which it does not see
+		if names[c.Name] {
+			return nil, 0, fmt.Errorf("column %s appears twice", c.Name)
+		}
+		names[c.Name] = true
+		if i == 0 {
+			rows = len(c.Data)
+		} else if len(c.Data) != rows {
+			return nil, 0, fmt.Errorf("column %s has %d cells where column %s has %d", c.Name, len(c.Data), res.Columns[0].Name, rows)
+		}
+	}
+	switch {
+	// {"columns":[]}, the result of a nil batch, names no $table either,
+	// and is refused like a CSV header without $table
+	case !names["$table"]:
+		return nil, 0, errors.New("names no $table")
+	case !names["$timestamp"]:
+		return nil, 0, errors.New("names no $timestamp")
+	}
+	delete(names, "$table")
+	delete(names, "$timestamp")
+	return names, rows, nil
+}
+
+// Decode implements Decoder. The body is the columnar JSON the query
+// answers, one result. The result names $table, $timestamp and the data
+// columns in any order. The type member of a column is not read.
+func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
+	// A result is columnar and $table is one of its columns, at any
+	// position, so a cell cannot be routed before the $table column of its
+	// result has been read. The decoder therefore reads one result whole
+	// and then routes it row by row. A decoder that appends each cell as
+	// it reads the tokens was rejected, because the $table column may
+	// come last, and it would parse JSON by hand where the standard
+	// library parses for NDJSON.
+	//
+	//  1. each result of the body comes from jsonResults;
+	//  2. every result passes readJSONHeader, and the first result's
+	//     names fix the column list;
+	//  3. the result's columns are indexed by name once, so each row
+	//     looks its cells up without a scan;
+	//  4. each row goes to the builders of its table, which its $table
+	//     cell names; a table seen for the first time is typed through
+	//     schemaOf and must agree with the first table's types;
+	//  5. the row's cell of every field of the table is appended, in the
+	//     batch's order;
+	//  6. at the end every table becomes one batch, in first-seen order.
+	tables := map[string]*jsonTable{}
+	var order []*jsonTable
+	var list map[string]bool
+	release := func() {
+		for _, t := range order {
+			t.release()
+		}
+	}
+
+	row := int64(0)
+	n := 0
+	// 1. the results
+	for res, err := range jsonResults(jsontext.NewDecoder(r)) {
+		n++
+		if err != nil {
+			release()
+			return nil, err
+		}
+
+		// 2. the column list, fixed by the first result
+		names, rows, err := readJSONHeader(res)
+		if err != nil {
+			release()
+			return nil, fmt.Errorf("%w: result %d: %w", ErrInvalidRows, n, err)
+		}
+		if list == nil {
+			list = names
+		}
+
+		// 3. the columns by name
+		data := make(map[string][]jsontext.Value, len(res.Columns))
+		for _, c := range res.Columns {
+			data[c.Name] = c.Data
+		}
+
+		for i := range rows {
+			// The ctx is checked once per chunkRows rows, and the rows are
+			// counted from 1 across the body, as NDJSON counts them
+			row++
+			if err := checkChunk(ctx, row); err != nil {
+				release()
+				return nil, err
+			}
+
+			// 4. the row to its table's builders. A null or empty $table is
+			// the body's fault
+			name, err := jsonTableName(data["$table"][i])
+			if err != nil {
+				release()
+				return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
+			}
+			t, ok := tables[name]
+			if !ok {
+				// The first table of the body is the type reference every
+				// later table is checked against, because one body is one
+				// column list. The lookup's own error passes through
+				// unwrapped, so the handler can classify an unknown table as
+				// 404
+				var first *jsonTable
+				if len(order) > 0 {
+					first = order[0]
+				}
+				if t, err = newJSONTable(name, list, schemaOf, first); err != nil {
+					release()
+					return nil, err
+				}
+				tables[t.name] = t
+				order = append(order, t)
+			}
+
+			// 5. every field's cell. Every field has a column, because
+			// newJSONTable picked the fields from the column list
+			for j, f := range t.schema.Fields() {
+				if err := t.appendCell(j, data[f.Name][i]); err != nil {
+					release()
+					return nil, fmt.Errorf("%w: row %d: %w", ErrInvalidRows, row, err)
+				}
+			}
+		}
+	}
+
+	// 6. one batch per table
 	out := make([]model.TableBatch, len(order))
 	for i, t := range order {
 		out[i] = t.batch()

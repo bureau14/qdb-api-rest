@@ -40,9 +40,19 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   decoder only routes. The first object's keys fix the column list,
   `$table` and `$timestamp` among them, and the batch carries those
   data columns in the table's order, because a JSON object's members
-  carry no order of their own. A later object's absent key is null, and
+  carry no order of their own, and the JSON decoder takes the same
+  order. A later object's absent key is null, and
   a key outside the list is `ErrInvalidRows`. A number in an `int64`
   column must be an integer literal.
+- The JSON decoder reads the one result the query answers, whole,
+  through the standard library, and then routes it row by row, because
+  `$table` is a column at any position. The first result fixes the
+  column list, `$table` and `$timestamp` among them. Within a result a
+  column name appears once and every column has the same number of
+  cells. A member a result does not declare and a value after the body
+  are `ErrInvalidRows`. The `type` member is not read, because the
+  reader's schema types the batch. A cell reads as an NDJSON cell,
+  through the `jsonTable` both decoders share.
 - The Arrow decoder reads an IPC stream of any batch count. The body's
   columns are picked by name, and a body column's type must equal the
   reader's type for that name. There is no cast, because the binding
