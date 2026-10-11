@@ -76,7 +76,7 @@ func TestErrorRows(t *testing.T) {
 		"read: unknown column":   {http.MethodGet, read(a.Name, "columns=nope"), "", bearer, http.StatusBadRequest, ""},
 		// the ingest
 		"ingest: no token":                 {http.MethodPost, ingest(""), csvHeader, map[string]string{"Content-Type": encoding.CSVContentType}, http.StatusUnauthorized, "Bearer"},
-		"ingest: json body":                {http.MethodPost, ingest(""), `[]`, jsonBody, http.StatusUnsupportedMediaType, ""},
+		"ingest: text body":                {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Type", "text/plain"), http.StatusUnsupportedMediaType, ""},
 		"ingest: unknown content-encoding": {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "br"), http.StatusUnsupportedMediaType, ""},
 		"ingest: corrupt gzip":             {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "gzip"), http.StatusBadRequest, ""},
 		"ingest: over the cap":             {http.MethodPost, ingest(""), csvHeader + strings.Repeat("qdbtest_errors_a,2020-01-01T00:00:00.000000000Z,1\n", maxIngestBytes/48+1), csvBody, http.StatusRequestEntityTooLarge, ""},

@@ -29,6 +29,7 @@ var decoders = map[string]encoding.Decoder{
 	encoding.CSVContentType:    encoding.CSV{},
 	encoding.NDJSONContentType: encoding.NDJSON{},
 	encoding.ArrowContentType:  encoding.Arrow{},
+	encoding.JSONContentType:   encoding.JSON{},
 }
 
 // decoderOf picks the decoder for a Content-Type by media type alone. A
