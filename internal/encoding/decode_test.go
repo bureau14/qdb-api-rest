@@ -25,11 +25,14 @@ import (
 )
 
 // codecs pairs every format that decodes with its encoder. A new decoder
-// joins the slice and thereby the round trip.
+// joins the slice and thereby the round trip. JSON's Encode writes one
+// result and its EncodeStream an array of results, so the round trip and
+// the fault property exercise the JSON decoder's object and the
+// interleaved property its array.
 var codecs = []struct {
 	Encoder
 	Decoder
-}{{CSV{}, CSV{}}, {NDJSON{}, NDJSON{}}, {Arrow{}, Arrow{}}}
+}{{CSV{}, CSV{}}, {NDJSON{}, NDJSON{}}, {Arrow{}, Arrow{}}, {JSON{}, JSON{}}}
 
 // specials are the two columns the reader answers in front of every
 // table. The fault table builds its one-column schemas on them.
