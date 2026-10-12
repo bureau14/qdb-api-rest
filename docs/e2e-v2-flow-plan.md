@@ -68,8 +68,6 @@ executes them needs no conversation:
 6. **Rows default to ten thousand.** `ROWS` is a Makefile variable with
    that default. `SEED` defaults to the epoch second, and the driver
    prints both.
-7. The branch `sc-19567/rr-ci-qdbd-logs` is a temporary debug branch of
-   the Windows qdbd investigation and plays no part in the flow.
 
 Recommendations the owner has not ruled on, settled by the basic test
 unit's plan:
