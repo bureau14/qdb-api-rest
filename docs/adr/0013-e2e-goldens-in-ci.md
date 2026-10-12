@@ -1,6 +1,6 @@
 # ADR-0013: e2e goldens run in Buildkite and measured numbers are the bench's
 
-Status: accepted
+Status: superseded by ADR-0015
 Date: 2026-09-17
 
 ## Context
