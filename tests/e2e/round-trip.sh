@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# The v2 e2e flow (docs/e2e.md, "The v2 flow"). It proves the built
+# The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It proves the built
 # binary over HTTP like a client: login, create a table, ingest the
 # generated rows, read them back. The expected value of every step is
 # the generated input, so nothing is captured and nothing is audited
 # (ADR-0014). Error rows are Go tests, never steps here.
 #
-#   flow.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]
+#   round-trip.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]
 #
 # The Makefile is the only source of URLs, ports and paths, and passes
 # them as options. common.sh supplies the helpers and TZ=UTC. Working
-# files go to actual/flow/<cluster>/. The script needs bash, curl, jq
+# files go to actual/round-trip/<cluster>/. The script needs bash, curl, jq
 # and cmp.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
@@ -18,12 +18,12 @@ require_command curl
 require_command jq
 require_command cmp
 
-ACTUAL_DIR="$E2E_DIR/actual/flow"
+ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
 INSECURE_URL="" SECURE_URL="" TOOL="" ROWS=10000 SEED="$(date +%s)"
 
 usage() {
-    die "usage: flow.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]"
+    die "usage: round-trip.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]"
 }
 
 # Every option is named, because two URLs on a command line need names.
@@ -80,8 +80,8 @@ login() {
     echo "$token"
 }
 
-# create_body <table>: the create body of a flow table, one column of
-# every type named v_<type>, the names e2etool's flowSchema spells, with
+# create_body <table>: the create body of a round trip table, one column of
+# every type named v_<type>, the names e2etool's roundTripSchema spells, with
 # the symtable named after the table, sharded by a day (shard_size is in
 # milliseconds and required).
 create_body() {
@@ -98,7 +98,7 @@ EOF
 }
 
 # create_table <out_dir> <url> <token> <table>: DELETE then POST
-# /api/v2/tables. The table is dropped first so the flow is idempotent,
+# /api/v2/tables. The table is dropped first so the round trip is idempotent,
 # and a 404 on the delete is the clean state. The create must answer 201.
 create_table() {
     local out="$1" url="$2" token="$3" table="$4" status
@@ -150,7 +150,7 @@ BODY_FORMATS=("csv:text/csv")
 READ_FORMATS=("text/csv")
 CODINGS=("identity")
 
-# run_cluster <name> <url> <login_body_file>: the flow against one
+# run_cluster <name> <url> <login_body_file>: the round trip against one
 # server: login once, then per body format create the table, ingest the
 # generated rows in that format and read them back in every format and
 # coding. The seed is in every line, so a failure reproduces with --seed.
@@ -181,8 +181,8 @@ main() {
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
     run_cluster insecure "$INSECURE_URL" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
     run_cluster secure "$SECURE_URL" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
-    (( failed == 0 )) || die "v2 flow: $failed of 2 clusters FAILED (seed=$SEED)"
-    log_info "v2 flow: both clusters passed (seed=$SEED)"
+    (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
+    log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }
 
 main "$@"

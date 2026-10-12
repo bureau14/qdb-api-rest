@@ -1,6 +1,6 @@
 # tests/e2e -- end-to-end harness
 
-The v2 flow, the v1 goldens and stress for the QuasarDB REST API, run
+The v2 round trip, the v1 goldens and stress for the QuasarDB REST API, run
 against a live qdbd. The specification is `docs/e2e.md`, and the
 conventions are in `AGENTS.md`. The bench in `bench/` has its own README
 and plan (`docs/bench.md`).
@@ -12,7 +12,7 @@ and plan (`docs/bench.md`).
 - qdbd running: `bash scripts/tests/setup/start-services.sh` (insecure
   `127.0.0.1:2836`, secure `:2838`). The script force-restarts and wipes
   the data dirs, so re-run `make load` afterwards.
-- `jq`, `curl`, GNU make, Go (for `make old-server` and the flow's
+- `jq`, `curl`, GNU make, Go (for `make old-server` and the round trip's
   `tools/e2etool`).
 
 ## Usage
@@ -26,9 +26,9 @@ make capture-v1              # operator: (re)capture goldens from the old server
 make test-v1-selfcheck       # replay goldens against the old server (harness determinism)
 make test-v1 QDB_REST_BIN=<new server binary> [REST_ARGS=...]
 make test-v1 REST_URL=http://127.0.0.1:40090     # against an already running server
-make e2etool                 # build the Go tool of the v2 flow
-make test-flow QDB_REST_BIN=<new server binary>  # the v2 flow, one server per cluster
-make test-flow REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091
+make e2etool                 # build the Go tool of the v2 round trip
+make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
+make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091
 ```
 
 All capture/replay targets accept `CASES='<case> ...'` to run a subset of
@@ -39,17 +39,17 @@ archive and also prints the `datasets.json` entry and the upload command.
 This is an operator step. `DATASETS_LOCAL_DIR=<dir>` makes `make load`
 take the archive from a local directory instead of S3.
 
-## The v2 flow
+## The v2 round trip
 
-`make test-flow` logs in, creates the table `e2e_csv` with one column of
+`make test-round-trip` logs in, creates the table `e2e_csv` with one column of
 every type, ingests the generated rows as CSV and reads them back as
 CSV, compared byte for byte, on the insecure and the secure cluster.
 Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>` select the
-generated data, and the flow prints both so a failure reproduces.
+generated data, and the round trip prints both so a failure reproduces.
 `tools/e2etool gen` draws the rows and writes `rows.csv` through the
 server's own CSV encoder. The empty read, the other body and read
 formats and the content codings arrive with the surface definition
-(`docs/log.md`, Next). The direction is `docs/e2e.md`, "The v2 flow".
+(`docs/log.md`, Next). The direction is `docs/e2e.md`, "The v2 round trip".
 
 ## v1 goldens
 

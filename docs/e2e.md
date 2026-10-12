@@ -186,14 +186,14 @@ repository, the cgo binding included (ADR-0013, Consequences).
 
 ### The driver
 
-`tests/e2e/flow.sh run --insecure-url <url> --secure-url <url>
+`tests/e2e/round-trip.sh run --insecure-url <url> --secure-url <url>
 [--rows N] [--seed S]` is a small option loop. The Makefile is the only
-source of URLs, ports and paths. `make test-flow` runs it. A cluster
+source of URLs, ports and paths. `make test-round-trip` runs it. A cluster
 whose URL is empty gets a server started from `QDB_REST_BIN` (`40090`
 on the insecure node, `40091` on the secure node with
 `--cluster-public-key-file` and `--cluster-user-security-file`), with
 the TLS listener off and `TZ=UTC`. Working files go to
-`actual/flow/<cluster>/`. The driver is one file, like `golden.sh`:
+`actual/round-trip/<cluster>/`. The driver is one file, like `golden.sh`:
 generic request and status helpers, one function per step kind (login,
 create, ingest, read back) that takes the table, the format and the
 coding as arguments, and a matrix of body formats, read formats and
@@ -204,7 +204,7 @@ binary works for a client over HTTP, and curl is that client; a Go
 client would repeat `TestRoundtrip` in `internal/httpapi`.
 
 Cross-format equivalence over generated schemas (JSON, NDJSON, CSV,
-Arrow IPC, Flight SQL) stays with the Go property tests. The flow
+Arrow IPC, Flight SQL) stays with the Go property tests. The round trip
 proves the binary over HTTP with one schema. Error rows (ADR-0010 and
 ADR-0011's tables) are Go tests in `internal/httpapi`, never round trip
 steps. An endpoint lands with its step in the round trip, so the round trip grows
@@ -330,7 +330,7 @@ server and compared by normalized DataFrame fingerprint
 
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
-the binary `20.build.sh` built. It runs `make test-flow` first, which
+the binary `20.build.sh` built. It runs `make test-round-trip` first, which
 loads nothing. `make load seed test-v1` joins when the wrappers land,
 and the stress joins with the resilience milestone. A suite enters the
 step when it is green. The script follows qdb-nats-connector's
@@ -359,12 +359,12 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-v1 |
                           test-v1 | test-v1-selfcheck | clean | distclean
-                          e2etool | test-flow (arrive with the v2 round trip)
+                          e2etool | test-round-trip (arrive with the v2 round trip)
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
   golden.sh               v1 golden capture/replay driver
-  flow.sh                 the v2 round trip driver (arrives with the v2 round trip)
+  round-trip.sh                 the v2 round trip driver (arrives with the v2 round trip)
   seed.sql                v1 golden fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
   tools/e2etool/          Go: gen (rows in every input format), tocsv (any response -> CSV);

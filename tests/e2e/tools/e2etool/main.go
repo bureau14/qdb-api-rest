@@ -1,5 +1,5 @@
-// Command e2etool is the Go tool of the v2 e2e flow (docs/e2e.md, "The
-// tool"). gen writes the rows the flow ingests. The tool may import any
+// Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md, "The
+// tool"). gen writes the rows the round trip ingests. The tool may import any
 // package of this repository, the cgo binding included (ADR-0014).
 //
 //	e2etool gen --rows N --seed S --out DIR    write DIR/rows.csv, print the row count
@@ -24,11 +24,11 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// flowSchema is the table the flow creates: one column of every type,
+// roundTripSchema is the table the round trip creates: one column of every type,
 // named v_<type>, with the symbol's symtable named after the table and
 // the column as the fixture names them. The driver's create body spells
 // the same names.
-func flowSchema(name string) table.Table {
+func roundTripSchema(name string) table.Table {
 	return table.Table{Name: name, Columns: []table.Column{
 		{Name: "v_int64", Type: qdbapi.TsColumnInt64},
 		{Name: "v_double", Type: qdbapi.TsColumnDouble},
@@ -48,7 +48,7 @@ var edgeStart = time.Date(2019, 12, 31, 0, 0, 0, 0, time.UTC)
 func nanos(t time.Time) arrow.Timestamp { return arrow.Timestamp(t.UnixNano()) }
 
 // edgeRows is the batch of the values a draw reaches rarely, for
-// flowSchema's columns: the extreme integers, a double the shortest
+// roundTripSchema's columns: the extreme integers, a double the shortest
 // round trip writes in exponent form, the awkward string with a quote,
 // a comma, <&> and an LF, a leading space, a one-byte and a two-byte
 // blob, a nanosecond timestamp at each end of the range the fixture
@@ -120,7 +120,7 @@ func (r *releaser) release() {
 	}
 }
 
-// generate draws rows rows of the flow's table named name under seed,
+// generate draws rows rows of the round trip's table named name under seed,
 // puts the edge rows ahead of them, and returns the batch as an ingest
 // body carries it, $table first. The caller releases it.
 func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
@@ -135,13 +135,13 @@ func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
 	//     it would copy the bounds); Example runs the T's cleanups when
 	//     the function returns, which would release the batch, so the
 	//     function retains it first;
-	//  2. put the edge rows ahead of the drawn ones, because the flow
+	//  2. put the edge rows ahead of the drawn ones, because the round trip
 	//     wants the extremes in every run and ten thousand drawn rows
 	//     reach them rarely. They are built here and not in the fixture,
 	//     which draws values and fixes none;
 	//  3. put the $table column in front through the fixture's WithTable,
 	//     so the CSV header is the one the table reader answers.
-	tbl := flowSchema(name)
+	tbl := roundTripSchema(name)
 
 	// 1. the seeded draw, retained past the T's cleanup
 	drawn := rapid.Custom(func(rt *rapid.T) arrow.RecordBatch {

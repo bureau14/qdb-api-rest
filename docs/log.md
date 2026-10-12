@@ -60,7 +60,7 @@ Handoff to M2 (tables, reader and ingest):
   which leaves symtables. A create over an existing symtable is
   accepted (`internal/httpapi/tables_test.go`).
 - The v1 suite keeps `seed.sql` and `make load`. The round trip reads
-  neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
+  neither, and `make test-round-trip` loads nothing (`docs/e2e.md`, Dataset
   and "In Buildkite").
 - The `make load` wall clock on the slowest agent is measured by the
   first CI run of the v1 suite, not of the round trip (`docs/e2e.md`,

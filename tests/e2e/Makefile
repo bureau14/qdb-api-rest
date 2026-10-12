@@ -9,8 +9,8 @@
 #   make capture-v1                 (operator) capture goldens from the old server
 #   make test-v1-selfcheck          replay goldens against the old server
 #   make test-v1                    replay goldens against the server under test
-#   make e2etool                    build the Go tool of the v2 flow
-#   make test-flow                  the v2 flow, one server per cluster
+#   make e2etool                    build the Go tool of the v2 round trip
+#   make test-round-trip                  the v2 round trip, one server per cluster
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -55,14 +55,14 @@ REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) --listen-https=
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
-# The Go tool of the v2 flow (docs/e2e.md, "The tool"). It gains .exe on
+# The Go tool of the v2 round trip (docs/e2e.md, "The tool"). It gains .exe on
 # Windows like every binary the harness runs (common.sh's EXE_EXT, which
 # is a shell variable, so make derives its own).
 EXE_EXT     := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
 E2ETOOL_DIR := $(E2E_DIR)/tools/e2etool
 E2ETOOL     := $(E2ETOOL_DIR)/e2etool$(EXE_EXT)
 
-# The v2 flow (docs/e2e.md, "The v2 flow") runs on both clusters, each
+# The v2 round trip (docs/e2e.md, "The v2 round trip") runs on both clusters, each
 # against its own server, because the secure one costs one block here
 # and is the only step that proves the key-file flags. ROWS and SEED
 # select the generated data, and the driver prints both, so a failure
@@ -82,7 +82,7 @@ REST_ARGS_SECURE  ?= --cluster $(QDB_URI_SECURE) \
                      --listen-http 127.0.0.1:$(REST_PORT_SECURE) --listen-https=
 REST_PID_SECURE   := $(E2E_DIR)/rest-secure.pid
 REST_LOG_SECURE   := $(E2E_DIR)/rest-secure.log
-FLOW              := $(E2E_DIR)/flow.sh
+ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
 
 COMMON := source $(E2E_DIR)/common.sh
 GOLDEN := $(E2E_DIR)/golden.sh
@@ -91,7 +91,7 @@ GOLDEN := $(E2E_DIR)/golden.sh
 CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
-        old-server capture-v1 test-v1 test-v1-selfcheck e2etool test-flow clean distclean
+        old-server capture-v1 test-v1 test-v1-selfcheck e2etool test-round-trip clean distclean
 
 help:
 	@sed -n '2,14p' $(firstword $(MAKEFILE_LIST))
@@ -204,7 +204,7 @@ test-v1: services-check load seed
 	trap 'stop_server $(REST_PID)' EXIT; \
 	$(GOLDEN) replay http://127.0.0.1:$(REST_PORT) $(CASES)
 
-# ------------------------------------------------------------------ v2 flow
+# ------------------------------------------------------------ v2 round trip
 
 # The tool is built with the server's toolchain and environment (the root
 # .envrc, -mod=vendor) so it links the same C API as the server under
@@ -215,13 +215,13 @@ e2etool:
 	    go build -mod=vendor -buildvcs=false -o $(E2ETOOL) ./tests/e2e/tools/e2etool && \
 	    log_info "built $(E2ETOOL)"
 
-# Both clusters must answer, because the flow logs in to each. The v1
+# Both clusters must answer, because the round trip logs in to each. The v1
 # targets need the insecure one alone, so services-check keeps its one
-# port and the secure probe lives here. The flow loads nothing. Each
+# port and the secure probe lives here. The round trip loads nothing. Each
 # server not given as a URL is started here and stopped on exit, one
 # after the other being fine because the driver runs the clusters in
 # sequence.
-test-flow: services-check e2etool
+test-round-trip: services-check e2etool
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
@@ -238,7 +238,7 @@ test-flow: services-check e2etool
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
 	    secure=http://127.0.0.1:$(REST_PORT_SECURE); \
 	fi; \
-	$(FLOW) run --insecure-url "$$insecure" --secure-url "$$secure" --tool $(E2ETOOL) --rows $(ROWS) --seed $(SEED)
+	$(ROUND_TRIP) run --insecure-url "$$insecure" --secure-url "$$secure" --tool $(E2ETOOL) --rows $(ROWS) --seed $(SEED)
 
 # ------------------------------------------------------------------ cleanup
 

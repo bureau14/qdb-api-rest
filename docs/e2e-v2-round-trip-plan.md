@@ -1,6 +1,6 @@
 # The v2 e2e round trip -- Plan
 
-Status: approved. This plan is scaffolding for the v2 e2e flow. The
+Status: approved. This plan is scaffolding for the v2 e2e round trip. The
 code the round trip needs (the endpoints, one Go tool, one driver) lands in
 units under this plan. The plan is deleted when the round trip lands.
 Anything permanent moves to `docs/e2e.md`, `tests/e2e/AGENTS.md`,
@@ -59,7 +59,7 @@ executes them needs no conversation:
    rejected: ADR-0013 already names no pyarrow wheels on FreeBSD, a
    venv on every agent, Python in the permanent path and pandas' int64
    coercion, and the round trip must run on all eight platforms. Speed plays
-   no part, because the flow measures nothing. Flight SQL, when it
+   no part, because the round trip measures nothing. Flight SQL, when it
    comes, is a subcommand of the same tool over arrow-go's stock client,
    which the module already carries. The QuasarDB Python API's gateway
    transport against this server is tested in that API's repository,
@@ -154,16 +154,16 @@ included.
 
 ### The driver
 
-`tests/e2e/flow.sh run --insecure-url <url> --secure-url <url>
+`tests/e2e/round-trip.sh run --insecure-url <url> --secure-url <url>
 [--rows N] [--seed S]` is a small option loop. The Makefile stays the
 only source of URLs, ports and paths. `golden.sh` keeps the v1 suite
-and loses nothing. `make test-flow` runs the driver. A cluster whose
+and loses nothing. `make test-round-trip` runs the driver. A cluster whose
 URL is empty gets a server started from `QDB_REST_BIN` (`40090`
 insecure, `40091` secure with `--cluster-public-key-file` and
 `--cluster-user-security-file`, with the TLS listener off and
 `TZ=UTC`). `test-v1` takes its server from `--insecure-url` or
 `REST_URL_INSECURE`, and the bare `REST_URL` leaves. Working files go
-to `actual/flow/<cluster>/`.
+to `actual/round-trip/<cluster>/`.
 
 `seed.sql` and `make load` stay for the v1 suite (goldens 06 and 16
 read `reproduce`) and for the bench. The round trip reads neither. The
@@ -194,7 +194,7 @@ request through the Arrow writer and answers 200 with `{"rows": N,
    its own plan.
 2. The basic test (Owner decisions 1): `e2etool gen` writing `rows.csv`
    through the CSV encoder, the Makefile target that builds the tool,
-   `flow.sh` with the four steps, `make test-flow` with one server per
+   `round-trip.sh` with the four steps, `make test-round-trip` with one server per
    cluster, the README and `tests/e2e/AGENTS.md` describing what
    exists, and the amendment of ADR-0014's sentence (Owner decisions 4).
 3. The surface definition (Owner decisions 2), then the remaining steps
