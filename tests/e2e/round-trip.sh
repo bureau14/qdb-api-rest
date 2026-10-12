@@ -125,20 +125,23 @@ ingest() {
     [[ "$got" == "$rows" ]] || { log_error "[FAIL] $table.ingest: rows $got, want $rows"; return 1; }
 }
 
-# read_back <out_dir> <url> <token> <table> <media_type> <coding> <csv>:
-# GET /api/v2/tables/<table>/rows under Accept of that type, compared
-# byte for byte with the generated CSV. The reader answers $table and
-# $timestamp first and the generated header is the same, so nothing is
-# reordered. identity sends no Accept-Encoding, which is what a plain
-# client sends. Only text/csv under identity is implemented; the other
-# formats decode through e2etool tocsv and gzip through gunzip when the
-# surface definition adds them (docs/log.md, Next).
-read_back() {
-    local out="$1" url="$2" token="$3" table="$4" type="$5" coding="$6" csv="$7"
-    local name="$table.read.${type##*/}.$coding" status
-    [[ "$type" == text/csv && "$coding" == identity ]] || die "$name: read format or coding not implemented"
-    status=$(request "$out" "$name" -H "Authorization: Bearer $token" -H "Accept: $type" "$url/api/v2/tables/$table/rows")
-    expect 200 "$status" "$out" "$name" || return 1
+# expect_header <out_dir> <name> <header> <want>: the response header
+# equals want, or is absent when want is empty, which is how identity
+# shows in content-encoding. The match is case-insensitive, because HTTP
+# header names are, and the value loses its CR.
+expect_header() {
+    local out="$1" name="$2" header="$3" want="$4" got
+    got=$(grep -i "^$header:" "$out/$name.headers" | head -n 1 | cut -d' ' -f2- | tr -d '\r')
+    [[ "$got" == "$want" ]] || { log_error "[FAIL] $name: $header is '$got', want '${want:-absent}'"; return 1; }
+}
+
+# compare_csv <out_dir> <name> <csv>: the body of <name> compared byte
+# for byte with the generated CSV. On a mismatch the first bytes of both
+# are diffed, because the seed reproduces the rest. Only a CSV body is
+# compared; the other formats decode through e2etool tocsv when the
+# matrix lists them.
+compare_csv() {
+    local out="$1" name="$2" csv="$3"
     if ! cmp -s "$csv" "$out/$name.body"; then
         log_error "[FAIL] $name: CSV differs from $(basename "$csv") (generated vs read)"
         diff <(head -c 4096 "$csv") <(head -c 4096 "$out/$name.body") >&2 || true
@@ -146,11 +149,51 @@ read_back() {
     fi
 }
 
+# check_response <out_dir> <name> <format> <media_type> <coding> <table> <csv>:
+# the assertions the read and the query share once their request
+# answered 200. content-type equals the format's media type exactly,
+# with no charset, as the in-process round trip asserts it, and
+# content-encoding equals the coding and is absent for identity. Nothing
+# else in the headers is read. Then the body is compared with the
+# generated CSV.
+check_response() {
+    local out="$1" name="$2" format="$3" type="$4" coding="$5" table="$6" csv="$7" want_coding=""
+    [[ "$coding" == identity ]] || want_coding="$coding"
+    expect_header "$out" "$name" content-type "$type" || return 1
+    expect_header "$out" "$name" content-encoding "$want_coding" || return 1
+    compare_csv "$out" "$name" "$csv"
+}
+
+# accept_encoding <coding>: the request header of the coding, as curl
+# arguments on stdout, one per line. identity sends no Accept-Encoding,
+# which is what a plain client sends. gzip sends Accept-Encoding: gzip
+# alone, because the first coding the client lists wins.
+accept_encoding() {
+    [[ "$1" == identity ]] || printf '%s\n%s\n' -H "Accept-Encoding: $1"
+}
+
+# read_back <out_dir> <url> <token> <table> <format> <media_type> <coding> <csv>:
+# GET /api/v2/tables/<table>/rows under Accept of that type and that
+# coding, checked through check_response. The reader answers $table and
+# $timestamp first and the generated header is the same, so nothing is
+# reordered.
+read_back() {
+    local out="$1" url="$2" token="$3" table="$4" format="$5" type="$6" coding="$7" csv="$8"
+    local name="$table.read.$format.$coding" status
+    local -a enc=()
+    while IFS= read -r arg; do enc+=("$arg"); done < <(accept_encoding "$coding")
+    status=$(request "$out" "$name" -H "Authorization: Bearer $token" -H "Accept: $type" \
+        "${enc[@]+"${enc[@]}"}" "$url/api/v2/tables/$table/rows")
+    expect 200 "$status" "$out" "$name" || return 1
+    check_response "$out" "$name" "$format" "$type" "$coding" "$table" "$csv"
+}
+
 # The matrix. One table per body format, named after it, and every
-# table is read in every read format under every coding. A format is
-# one entry here and a new step is one function called in run_cluster.
+# table is read in every response format under every coding. A format
+# is one entry here and a new step is one function called in
+# run_cluster.
 BODY_FORMATS=("csv:text/csv")
-READ_FORMATS=("text/csv")
+READ_FORMATS=("csv:text/csv")
 CODINGS=("identity")
 
 # run_cluster <name> <url> <login_body_file>: the round trip against one
@@ -158,7 +201,7 @@ CODINGS=("identity")
 # generated rows in that format and read them back in every format and
 # coding. The seed is in every line, so a failure reproduces with --seed.
 run_cluster() {
-    local name="$1" url="$2" body="$3" token rows entry table type rtype coding
+    local name="$1" url="$2" body="$3" token rows entry table type rentry coding
     local out="$ACTUAL_DIR/$name"
     mkdir -p "$out"
     log_info "$name: $url, rows=$ROWS seed=$SEED"
@@ -168,9 +211,9 @@ run_cluster() {
         rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$table") || die "$name: e2etool gen failed"
         create_table "$out" "$url" "$token" "$table" || return 1
         ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.csv" "$rows" || return 1
-        for rtype in "${READ_FORMATS[@]}"; do
+        for rentry in "${READ_FORMATS[@]}"; do
             for coding in "${CODINGS[@]}"; do
-                read_back "$out" "$url" "$token" "$table" "$rtype" "$coding" "$out/rows.csv" || return 1
+                read_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
             done
         done
         log_info "[OK] $name: $table, $rows rows in as $type and back as ${READ_FORMATS[*]} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
