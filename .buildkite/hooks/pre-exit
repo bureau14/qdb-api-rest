@@ -2,8 +2,12 @@
 # Stop the qdbd services the build step started, whatever the outcome, so
 # a failed step never leaves a cluster running on the agent. stop-services.sh
 # is idempotent: a no-op when nothing was started (scripts/tests/setup, the
-# qdb-test-setup submodule; never edited here). The e2e harness is not in CI,
-# so there is nothing else to stop (unlike qdb-nats-connector's hook).
+# qdb-test-setup submodule; never edited here). The REST servers the e2e
+# harness starts are stopped by the harness Makefile's own exit trap
+# (tests/e2e/Makefile, test-round-trip), so start and stop stay in one
+# place and this hook stops qdbd alone. A step killed by its timeout can
+# leave a REST server on the agent, which the owner accepts for a
+# lifecycle this small (docs/e2e.md, decision log of 2026-10-12).
 set -uo pipefail
 
 SCRIPT="scripts/tests/setup/stop-services.sh"

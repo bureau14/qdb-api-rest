@@ -9,8 +9,8 @@ tests), then an aggregate test-report step.
 Each per-platform step starts qdbd through the shared test-setup
 submodule before building and stops it in hooks/pre-exit; the
 qdb-artifacts plugin extracts the c-api, server and utils dists the step
-needs into qdb/. The e2e harness (tests/e2e/) is deliberately not in CI
-(.buildkite/AGENTS.md).
+needs into qdb/. The e2e harness (tests/e2e/) runs last in the same
+step, after the Go tests (.buildkite/AGENTS.md).
 
 Usage:
     python3 pipeline.py [generate|check]
