@@ -191,7 +191,15 @@ whose URL is empty gets a server started from `QDB_REST_BIN` (`40090`
 on the insecure node, `40091` on the secure node with
 `--cluster-public-key-file` and `--cluster-user-security-file`), with
 the TLS listener off and `TZ=UTC`. Working files go to
-`actual/flow/<cluster>/`.
+`actual/flow/<cluster>/`. The driver is one file, like `golden.sh`:
+generic request and status helpers, one function per step kind (login,
+create, ingest, read back) that takes the table, the format and the
+coding as arguments, and a matrix of body formats, read formats and
+codings that `run_cluster` iterates. A format is one list entry, and a
+new step is one function called inside the loop. The flow stays in
+shell and curl, because the question it answers is whether the built
+binary works for a client over HTTP, and curl is that client; a Go
+client would repeat `TestRoundtrip` in `internal/httpapi`.
 
 Cross-format equivalence over generated schemas (JSON, NDJSON, CSV,
 Arrow IPC, Flight SQL) stays with the Go property tests. The flow

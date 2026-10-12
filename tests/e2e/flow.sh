@@ -18,7 +18,6 @@ require_command curl
 require_command jq
 require_command cmp
 
-TABLE="e2e_csv"
 ACTUAL_DIR="$E2E_DIR/actual/flow"
 
 INSECURE_URL="" SECURE_URL="" TOOL="" ROWS=10000 SEED="$(date +%s)"
@@ -81,74 +80,98 @@ login() {
     echo "$token"
 }
 
-# create_body: the create body of the flow's table, one column of every
-# type named v_<type>, the names e2etool's flowSchema spells, sharded by
-# a day (shard_size is in milliseconds and required).
+# create_body <table>: the create body of a flow table, one column of
+# every type named v_<type>, the names e2etool's flowSchema spells, with
+# the symtable named after the table, sharded by a day (shard_size is in
+# milliseconds and required).
 create_body() {
+    local table="$1"
     cat <<EOF
-{"name":"$TABLE","shard_size":86400000,"columns":[
+{"name":"$table","shard_size":86400000,"columns":[
  {"name":"v_int64","type":"int64"},
  {"name":"v_double","type":"double"},
  {"name":"v_string","type":"string"},
- {"name":"v_symbol","type":"symbol","symtable":"${TABLE}_v_symbol"},
+ {"name":"v_symbol","type":"symbol","symtable":"${table}_v_symbol"},
  {"name":"v_blob","type":"blob"},
  {"name":"v_timestamp","type":"timestamp"}]}
 EOF
 }
 
-# create_table <out_dir> <url> <token>: DELETE then POST /api/v2/tables.
-# The table is dropped first so the flow is idempotent, and a 404 on the
-# delete is the clean state. The create must answer 201.
+# create_table <out_dir> <url> <token> <table>: DELETE then POST
+# /api/v2/tables. The table is dropped first so the flow is idempotent,
+# and a 404 on the delete is the clean state. The create must answer 201.
 create_table() {
-    local out="$1" url="$2" token="$3" status
-    status=$(request "$out" delete -X DELETE -H "Authorization: Bearer $token" "$url/api/v2/tables/$TABLE")
-    [[ "$status" == 204 || "$status" == 404 ]] || { expect 204 "$status" "$out" delete; return 1; }
-    status=$(request "$out" create -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-        --data-binary "$(create_body)" "$url/api/v2/tables")
-    expect 201 "$status" "$out" create
+    local out="$1" url="$2" token="$3" table="$4" status
+    status=$(request "$out" "$table.delete" -X DELETE -H "Authorization: Bearer $token" "$url/api/v2/tables/$table")
+    [[ "$status" == 204 || "$status" == 404 ]] || { expect 204 "$status" "$out" "$table.delete"; return 1; }
+    status=$(request "$out" "$table.create" -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+        --data-binary "$(create_body "$table")" "$url/api/v2/tables")
+    expect 201 "$status" "$out" "$table.create"
 }
 
-# ingest <out_dir> <url> <token> <rows>: POST /api/v2/rows as text/csv
-# with rows.csv. The answer's rows must equal the count the tool wrote,
-# edge rows included, and the tool is the one writer of that number.
+# ingest <out_dir> <url> <token> <table> <media_type> <file> <rows>:
+# POST /api/v2/rows with the file as a body of that type. The answer's
+# rows must equal the count the tool wrote, edge rows included, and the
+# tool is the one writer of that number.
 ingest() {
-    local out="$1" url="$2" token="$3" rows="$4" status got
-    status=$(request "$out" ingest -X POST -H "Authorization: Bearer $token" -H 'Content-Type: text/csv' \
-        --data-binary "@$out/rows.csv" "$url/api/v2/rows")
-    expect 200 "$status" "$out" ingest || return 1
-    got=$(jq -r '.rows' "$out/ingest.body")
-    [[ "$got" == "$rows" ]] || { log_error "[FAIL] ingest: rows $got, want $rows"; return 1; }
+    local out="$1" url="$2" token="$3" table="$4" type="$5" file="$6" rows="$7" status got
+    status=$(request "$out" "$table.ingest" -X POST -H "Authorization: Bearer $token" -H "Content-Type: $type" \
+        --data-binary "@$file" "$url/api/v2/rows")
+    expect 200 "$status" "$out" "$table.ingest" || return 1
+    got=$(jq -r '.rows' "$out/$table.ingest.body")
+    [[ "$got" == "$rows" ]] || { log_error "[FAIL] $table.ingest: rows $got, want $rows"; return 1; }
 }
 
-# read_back <out_dir> <url> <token>: GET /api/v2/tables/<table>/rows as
-# text/csv, with no Accept-Encoding, compared byte for byte with the
-# generated file. The reader answers $table and $timestamp first and the
-# generated header is the same, so nothing is reordered.
+# read_back <out_dir> <url> <token> <table> <media_type> <coding> <csv>:
+# GET /api/v2/tables/<table>/rows under Accept of that type, compared
+# byte for byte with the generated CSV. The reader answers $table and
+# $timestamp first and the generated header is the same, so nothing is
+# reordered. identity sends no Accept-Encoding, which is what a plain
+# client sends. Only text/csv under identity is implemented; the other
+# formats decode through e2etool tocsv and gzip through gunzip when the
+# surface definition adds them (docs/log.md, Next).
 read_back() {
-    local out="$1" url="$2" token="$3" status
-    status=$(request "$out" read -H "Authorization: Bearer $token" -H 'Accept: text/csv' "$url/api/v2/tables/$TABLE/rows")
-    expect 200 "$status" "$out" read || return 1
-    if ! cmp -s "$out/rows.csv" "$out/read.body"; then
-        log_error "[FAIL] read: CSV differs from rows.csv (generated vs read)"
-        diff <(head -c 4096 "$out/rows.csv") <(head -c 4096 "$out/read.body") >&2 || true
+    local out="$1" url="$2" token="$3" table="$4" type="$5" coding="$6" csv="$7"
+    local name="$table.read.${type##*/}.$coding" status
+    [[ "$type" == text/csv && "$coding" == identity ]] || die "$name: read format or coding not implemented"
+    status=$(request "$out" "$name" -H "Authorization: Bearer $token" -H "Accept: $type" "$url/api/v2/tables/$table/rows")
+    expect 200 "$status" "$out" "$name" || return 1
+    if ! cmp -s "$csv" "$out/$name.body"; then
+        log_error "[FAIL] $name: CSV differs from $(basename "$csv") (generated vs read)"
+        diff <(head -c 4096 "$csv") <(head -c 4096 "$out/$name.body") >&2 || true
         return 1
     fi
 }
 
-# run_cluster <name> <url> <login_body_file>: the four steps against one
-# server. The seed is in every line, so a failure reproduces with
-# --seed.
+# The matrix. One table per body format, named after it, and every
+# table is read in every read format under every coding. A format is
+# one entry here and a new step is one function called in run_cluster.
+BODY_FORMATS=("csv:text/csv")
+READ_FORMATS=("text/csv")
+CODINGS=("identity")
+
+# run_cluster <name> <url> <login_body_file>: the flow against one
+# server: login once, then per body format create the table, ingest the
+# generated rows in that format and read them back in every format and
+# coding. The seed is in every line, so a failure reproduces with --seed.
 run_cluster() {
-    local name="$1" url="$2" body="$3" token rows
+    local name="$1" url="$2" body="$3" token rows entry table type rtype coding
     local out="$ACTUAL_DIR/$name"
     mkdir -p "$out"
     log_info "$name: $url, rows=$ROWS seed=$SEED"
-    rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$TABLE") || die "$name: e2etool gen failed"
     token=$(login "$out" "$url" "$body") || return 1
-    create_table "$out" "$url" "$token" || return 1
-    ingest "$out" "$url" "$token" "$rows" || return 1
-    read_back "$out" "$url" "$token" || return 1
-    log_info "[OK] $name: $rows rows in as CSV and back as CSV, byte for byte (seed=$SEED)"
+    for entry in "${BODY_FORMATS[@]}"; do
+        table="e2e_${entry%%:*}"; type="${entry#*:}"
+        rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$table") || die "$name: e2etool gen failed"
+        create_table "$out" "$url" "$token" "$table" || return 1
+        ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.csv" "$rows" || return 1
+        for rtype in "${READ_FORMATS[@]}"; do
+            for coding in "${CODINGS[@]}"; do
+                read_back "$out" "$url" "$token" "$table" "$rtype" "$coding" "$out/rows.csv" || return 1
+            done
+        done
+        log_info "[OK] $name: $table, $rows rows in as $type and back as ${READ_FORMATS[*]} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
+    done
 }
 
 main() {
