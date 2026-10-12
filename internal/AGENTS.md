@@ -199,3 +199,16 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   (`go test -p 1 ./...`), and bound the sessions every test holds open
   at every step. A close in flight counts, because a handle holds its
   qdbd sessions until `qdb_close` returns.
+- Three qdbd defects are filed with the QuasarDB R&D team. This project
+  does not fix them, and the tests carry no workaround for them. They
+  explain test failures that a re-run of the job clears.
+  - sc-19942: qdbd crashes at random in its streamvbyte decoder. A test
+    that is talking to qdbd at that moment fails, and the qdbd log ends
+    mid-flush. The Windows build steps hit it under `TestRoundtrip`.
+  - sc-19944: once the `int64` values of one column in one bucket sum to
+    `MinInt64` under two's complement wrapping, qdbd cannot load that
+    bucket, and every later push into it fails with "Invalid reply from
+    the remote host". `TestRoundtripDeduplicated` pushes its rows twice
+    and draws such a bucket at random.
+  - sc-19939: a debug assertion in qdbd. It causes no failure in this
+    project.
