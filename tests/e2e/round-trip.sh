@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It proves the built
-# binary over HTTP like a client: login, create a table, ingest the
-# generated rows, read them back. The expected value of every step is
-# the generated input, so nothing is captured and nothing is audited
-# (ADR-0014). Error rows are Go tests, never steps here.
+# The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It proves
+# the built binary over HTTP like a client: login, create one table per
+# body format, ingest the generated rows into each as that format, and
+# read and query them back in every format and coding. The expected
+# value of every step is the generated input, so nothing is captured
+# and nothing is audited (ADR-0014). Error rows are Go tests, never
+# steps here.
 #
 #   round-trip.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]
 #
@@ -242,6 +244,9 @@ run_cluster() {
     token=$(login "$out" "$url" "$body") || return 1
     for entry in "${BODY_FORMATS[@]}"; do
         fmt="${entry%%:*}"; type="${entry#*:}"; table="e2e_$fmt"
+        # gen runs once per table, because $table is a column of every
+        # body and names the table the rows go to; rewriting it in the
+        # driver would format a cell outside the encoders.
         rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$table") || die "$name: e2etool gen failed"
         create_table "$out" "$url" "$token" "$table" || return 1
         ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.$fmt" "$rows" || return 1
