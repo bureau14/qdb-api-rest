@@ -169,7 +169,8 @@ is timed.
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
 (`TestRoundtrip`, step 3), zstd on the response wire
-(`internal/httpapi/compress_test.go`), request-body codings and push
+(`internal/httpapi/compress_test.go`, because the agents carry `gunzip`
+and no zstd binary, see "In Buildkite"), request-body codings and push
 modes (`TestRoundtrip`, step 4), deduplication
 (`TestRoundtripDeduplicated`), several tables in one body
 (`internal/encoding/decode_test.go`), and the error rows of ADR-0010
