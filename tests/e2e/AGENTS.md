@@ -17,19 +17,26 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   REST servers, via pidfiles.
 - Nothing in this directory asserts a timing or a measured number
   (ADR-0013). Every assertion is pass or fail, compared with `cmp`.
-- The v2 round trip (`round-trip.sh`, `make test-round-trip`, ADR-0014) captures nothing.
-  The rows it ingests come from `tools/e2etool gen`, which draws them
-  through the table fixture (`internal/qdbtest/table`) and writes
-  `rows.csv` through the server's CSV encoder, so the tool formats no
-  cell of its own. The round trip compares the read-back with that file
-  through `cmp`. A wire change that breaks the round trip is fixed in the tool
-  or the driver in the same commit, never by storing a response. Error
-  rows are Go tests in `internal/httpapi`, never round trip steps. The
-  generated rows carry no empty string (`docs/e2e.md`, "The v2 round trip").
-  The tool is built by `make e2etool` with the server's toolchain and
-  the root `.envrc`, and it may import any package of this repository.
-  The create body in `round-trip.sh` and `roundTripSchema` in the tool spell the
-  same column names, and a change to one changes the other.
+- The v2 round trip (`round-trip.sh`, `make test-round-trip`, ADR-0014)
+  captures nothing. The rows it ingests come from `tools/e2etool gen`,
+  which draws them through the table fixture (`internal/qdbtest/table`)
+  and writes `rows.csv`, `rows.ndjson`, `rows.arrow` and `rows.json`
+  through the server's encoders, so the tool formats no cell of its
+  own. The round trip compares every read-back with `rows.csv` through
+  `cmp`: the reader's CSV raw, and every other response, the query's
+  CSV included, through `tools/e2etool tocsv`, which decodes it through
+  the server's decoders and puts `$table` back in front. A wire change
+  that breaks the round trip is fixed in the tool or the driver in the
+  same commit, never by storing a response. Error rows are Go tests in
+  `internal/httpapi`, never round trip steps. The generated rows carry
+  no empty string (`docs/e2e.md`, "The v2 round trip"). The tool is
+  built by `make e2etool` with the server's toolchain and the root
+  `.envrc`, and it may import any package of this repository. The
+  create body in `round-trip.sh` and `roundTripSchema` in the tool
+  spell the same column names, and a change to one changes the other.
+  The read and the query share `check_response` for the header
+  assertions, the gunzip and the comparison; a new response format is
+  one entry in the driver's matrix and one decoder in the tool.
 - A v1 golden is an audited expected response, compared byte for byte,
   with no canonicalization and no tolerance. Capture is an operator
   step and never runs in CI. Under `golden/v1/`, `request.json` is

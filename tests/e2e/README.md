@@ -41,15 +41,20 @@ take the archive from a local directory instead of S3.
 
 ## The v2 round trip
 
-`make test-round-trip` logs in, creates the table `e2e_csv` with one column of
-every type, ingests the generated rows as CSV and reads them back as
-CSV, compared byte for byte, on the insecure and the secure cluster.
-Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>` select the
-generated data, and the round trip prints both so a failure reproduces.
-`tools/e2etool gen` draws the rows and writes `rows.csv` through the
-server's own CSV encoder. The empty read, the other body and read
-formats and the content codings arrive with the surface definition
-(`docs/log.md`, Next). The direction is `docs/e2e.md`, "The v2 round trip".
+`make test-round-trip` logs in, creates the tables `e2e_csv`,
+`e2e_ndjson`, `e2e_arrow` and `e2e_json` with one column of every type,
+ingests the generated rows into each as its body format, and reads and
+queries (`SELECT *`) every table back as CSV, NDJSON, Arrow IPC and
+JSON under identity and gzip, each response decoded to CSV and compared
+byte for byte with the generated file, on the insecure and the secure
+cluster. Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>`
+select the generated data, and the round trip prints both so a failure
+reproduces. `tools/e2etool gen` draws the rows and writes `rows.csv`,
+`rows.ndjson`, `rows.arrow` and `rows.json` through the server's own
+encoders, and `tools/e2etool tocsv` turns a response into CSV through
+the server's own decoders. The definition is `docs/e2e.md`, "The v2
+round trip". Working files are under `actual/round-trip/<cluster>/`,
+one `.body` and one `.headers` per request.
 
 ## v1 goldens
 
