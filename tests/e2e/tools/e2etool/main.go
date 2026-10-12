@@ -1,15 +1,17 @@
 // Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md,
 // "The tool"). gen writes the rows the round trip ingests, in every body
-// format. The tool may import any package of this repository, the cgo
-// binding included (ADR-0014).
+// format, and tocsv turns a response into CSV. The tool may import any
+// package of this repository, the cgo binding included (ADR-0014).
 //
-//	e2etool gen --rows N --seed S --out DIR [--table NAME]    write DIR/rows.{csv,ndjson,arrow,json}, print the row count
+//	e2etool gen --rows N --seed S --out DIR [--table NAME]      write DIR/rows.{csv,ndjson,arrow,json}, print the row count
+//	e2etool tocsv --format json|ndjson|arrow [--table NAME]     stdin to CSV on stdout
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -251,12 +253,99 @@ func gen(args []string) error {
 	return nil
 }
 
+// decoders is the decoder of each response format tocsv reads, keyed by
+// the format name the driver's matrix uses. CSV is absent, because the
+// driver compares a CSV response raw.
+var decoders = map[string]encoding.Decoder{
+	"json":   encoding.JSON{},
+	"ndjson": encoding.NDJSON{},
+	"arrow":  encoding.Arrow{},
+}
+
+// toCSV decodes one response body of the round trip's table named name
+// from r through dec and writes it as CSV to w, in the generated file's
+// column order, $table first.
+func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
+	// The response is the table reader's or the query's answer for one
+	// table, so the decoder answers one batch, and the tool restores what
+	// the decoder strips:
+	//
+	//  1. the schema the decoder types against is the round trip schema
+	//     with $table in front, the shape the decoders' tests answer. No
+	//     request asks the server for it, because the tool holds the
+	//     schema already, with the binding's types the reader answers;
+	//  2. decode. A response names one table and the generated rows are
+	//     never empty, so one batch is expected and any other count is
+	//     an error naming it;
+	//  3. put $table back in front through the fixture's WithTable,
+	//     because the decoder drops it and the generated CSV carries it
+	//     first. The decoder orders the data columns by the schema for
+	//     every format, and a bare SELECT * answers them in creation
+	//     order, so no reorder is needed;
+	//  4. encode through the CSV encoder, so the bytes are the dialect of
+	//     rows.csv.
+	tbl := roundTripSchema(name)
+	rel := &releaser{}
+	defer rel.release()
+
+	// 1. the schema with $table in front
+	schema := table.WithTable(rel, tbl).Schema()
+	schemaOf := func(string) (*arrow.Schema, error) { return schema, nil }
+
+	// 2. one batch
+	got, err := dec.Decode(context.Background(), r, schemaOf)
+	if err != nil {
+		return err
+	}
+	for _, b := range got {
+		defer b.Batch.Release()
+	}
+	if len(got) != 1 {
+		return fmt.Errorf("decoded %d tables, want 1", len(got))
+	}
+
+	// 3. $table in front
+	tbl.Batch = got[0].Batch
+	body := table.WithTable(rel, tbl)
+
+	// 4. the CSV
+	return (encoding.CSV{}).Encode(context.Background(), w, body)
+}
+
+// tocsv is the tocsv subcommand: stdin to CSV on stdout.
+func tocsv(args []string) error {
+	fs := flag.NewFlagSet("tocsv", flag.ContinueOnError)
+	format := fs.String("format", "", "json, ndjson or arrow")
+	tableName := fs.String("table", "e2e_csv", "the table the body answers")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	dec, ok := decoders[*format]
+	if !ok {
+		return fmt.Errorf("--format must be json, ndjson or arrow, got %q", *format)
+	}
+	return toCSV(os.Stdout, os.Stdin, dec, *tableName)
+}
+
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "gen" {
+	usage := func() {
 		fmt.Fprintln(os.Stderr, "usage: e2etool gen --rows N --seed S --out DIR [--table NAME]")
+		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format json|ndjson|arrow [--table NAME]")
 		os.Exit(2)
 	}
-	if err := gen(os.Args[2:]); err != nil {
+	if len(os.Args) < 2 {
+		usage()
+	}
+	var err error
+	switch os.Args[1] {
+	case "gen":
+		err = gen(os.Args[2:])
+	case "tocsv":
+		err = tocsv(os.Args[2:])
+	default:
+		usage()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2etool:", err)
 		os.Exit(1)
 	}
