@@ -44,13 +44,16 @@ parse_args() {
 }
 
 # request <out_dir> <name> <curl args...>: one request, its body in
-# <out_dir>/<name>.body, its status on stdout. -g keeps [] literal, and
-# --compressed is deliberately not used, because what a plain client
-# sends is no Accept-Encoding at all.
+# <out_dir>/<name>.body, its headers in <out_dir>/<name>.headers, its
+# status on stdout. -g keeps [] literal, and --compressed is deliberately
+# not used, because what a plain client sends is no Accept-Encoding at
+# all. The header dump is what check_response asserts content-type and
+# content-encoding from, the way golden.sh captures headers; a -w format
+# could not say that a header is absent.
 request() {
     local out="$1" name="$2"
     shift 2
-    curl -sS -g -o "$out/$name.body" -w '%{http_code}' "$@" || die "curl failed: $name"
+    curl -sS -g -o "$out/$name.body" -D "$out/$name.headers" -w '%{http_code}' "$@" || die "curl failed: $name"
 }
 
 # expect <status> <got> <out_dir> <name>: the status is the whole
