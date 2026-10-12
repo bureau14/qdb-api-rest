@@ -18,12 +18,18 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
 - Nothing in this directory asserts a timing or a measured number
   (ADR-0013). Every assertion is pass or fail, compared with `cmp`.
 - The v2 flow (`flow.sh`, `make test-flow`, ADR-0014) captures nothing.
-  The rows it ingests come from `tools/e2etool gen`, `tools/e2etool
-tocsv` decodes the responses to CSV, and the flow compares them with
-  the generated CSV. A wire change that breaks the flow is fixed in the
-  tool or the driver in the same commit, never by storing a response.
-  Error rows are Go tests in `internal/httpapi`, never flow steps. The
+  The rows it ingests come from `tools/e2etool gen`, which draws them
+  through the table fixture (`internal/qdbtest/table`) and writes
+  `rows.csv` through the server's CSV encoder, so the tool formats no
+  cell of its own. The flow compares the read-back with that file
+  through `cmp`. A wire change that breaks the flow is fixed in the tool
+  or the driver in the same commit, never by storing a response. Error
+  rows are Go tests in `internal/httpapi`, never flow steps. The
   generated rows carry no empty string (`docs/e2e.md`, "The v2 flow").
+  The tool is built by `make e2etool` with the server's toolchain and
+  the root `.envrc`, and it may import any package of this repository.
+  The create body in `flow.sh` and `flowSchema` in the tool spell the
+  same column names, and a change to one changes the other.
 - A v1 golden is an audited expected response, compared byte for byte,
   with no canonicalization and no tolerance. Capture is an operator
   step and never runs in CI. Under `golden/v1/`, `request.json` is

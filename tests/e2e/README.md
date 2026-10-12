@@ -26,7 +26,9 @@ make capture-v1              # operator: (re)capture goldens from the old server
 make test-v1-selfcheck       # replay goldens against the old server (harness determinism)
 make test-v1 QDB_REST_BIN=<new server binary> [REST_ARGS=...]
 make test-v1 REST_URL=http://127.0.0.1:40090     # against an already running server
-make test-flow QDB_REST_BIN=<new server binary>  # the v2 flow, one server per cluster (arrives with M2)
+make e2etool                 # build the Go tool of the v2 flow
+make test-flow QDB_REST_BIN=<new server binary>  # the v2 flow, one server per cluster
+make test-flow REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091
 ```
 
 All capture/replay targets accept `CASES='<case> ...'` to run a subset of
@@ -39,12 +41,15 @@ take the archive from a local directory instead of S3.
 
 ## The v2 flow
 
-`make test-flow` logs in, creates a table per input format, queries them
-empty, ingests generated rows and reads them back in every format under
-`identity` and `gzip`, on the insecure and the secure cluster. Nothing
-is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>` select the generated
-data, and the flow prints the seed so a failure reproduces. The
-specification is `docs/e2e.md`, "The v2 flow".
+`make test-flow` logs in, creates the table `e2e_csv` with one column of
+every type, ingests the generated rows as CSV and reads them back as
+CSV, compared byte for byte, on the insecure and the secure cluster.
+Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>` select the
+generated data, and the flow prints both so a failure reproduces.
+`tools/e2etool gen` draws the rows and writes `rows.csv` through the
+server's own CSV encoder. The empty read, the other body and read
+formats and the content codings arrive with the surface definition
+(`docs/log.md`, Next). The direction is `docs/e2e.md`, "The v2 flow".
 
 ## v1 goldens
 
