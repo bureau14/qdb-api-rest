@@ -40,19 +40,15 @@ In flight:
 
 Next:
 
-1. One basic e2e flow, `tests/e2e/tools/e2etool gen`, `flow.sh` and
-   `make test-flow`: login, create one table, ingest CSV, read back
-   CSV, compared byte for byte (`docs/e2e-v2-flow-plan.md`, "Owner
-   decisions (2026-10-11)").
-2. The e2e surface: the owner and the agent define together what the
+1. The e2e surface: the owner and the agent define together what the
    flow tests, and `docs/e2e.md`, "The v2 flow" is rewritten to that
    definition before any further step lands.
-3. `scripts/cicd/40.test-e2e.sh` in the build step. The first
+2. `scripts/cicd/40.test-e2e.sh` in the build step. The first
    Buildkite run of the flow is M2's exit.
-4. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-5. File upstream against `qdb-api-go`, with no local patch
+4. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -96,6 +92,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-12 -- the basic v2 e2e flow landed; e2e-basic-flow-plan.md deleted
+
+- `make -C tests/e2e test-flow` runs on both clusters. Facts moved to
+  `tests/e2e/AGENTS.md` and ADR-0014's Consequences; the rest is in the
+  tool's and the driver's comments.
 
 ## 2026-10-12 -- three qdbd defects filed with R&D
 
