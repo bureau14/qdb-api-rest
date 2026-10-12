@@ -361,15 +361,17 @@ server and compared by normalized DataFrame fingerprint
 
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
-the binary `20.build.sh` built. It runs `make test-round-trip` first, which
-loads nothing. `make load seed test-v1` joins when the wrappers land,
-and the stress joins with the resilience milestone. A suite enters the
-step when it is green. The script follows qdb-nats-connector's
-`50.test-e2e.sh`: GNU make discovery
-(`gmake` on FreeBSD, `mingw32-make` on Windows), the Windows DLL
-co-location next to the binary, and a dump of the REST server's and
-qdbd's logs on failure. `curl`, `jq` and `gunzip` are what that pipeline
-already requires on the same agents.
+the binary `20.build.sh` built. It runs `make test-round-trip` first,
+which loads nothing. `make load seed test-v1` joins when the wrappers
+land, and the stress joins with the resilience milestone. A suite enters
+the step when it is green. The script follows qdb-nats-connector's
+`50.test-e2e.sh`: GNU make discovery (`gmake` on FreeBSD,
+`mingw32-make` on Windows), the Windows DLL co-location into `bin/`,
+where `qdb_rest` and `e2etool` are both built, and a dump of the two
+REST servers' and both qdbd clusters' logs on failure. The REST servers
+are stopped by the harness Makefile's exit trap, not by the Buildkite
+hook. `curl`, `jq` and `gunzip` are what that pipeline already requires
+on the same agents.
 
 ## Stress definition
 
@@ -482,6 +484,35 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | The Go tool generates the rows                           | rapid-style generation shares the vocabulary of the property tests                     | an awk generator, a checked-in fixture CSV                |
 | The round trip runs on both clusters                     | the same round trip on two parallel environments, and only the login differs           | insecure only                                             |
 | A driver with named options                              | two URLs on a command line need names                                                  | positional URLs, environment variables                    |
-| The plain run sends no `Accept-Encoding`                 | what a plain client sends, and the explicit `identity` rule is a Go test               |
+| The plain run sends no `Accept-Encoding`                 | what a plain client sends, and the explicit `identity` rule is a Go test               | `Accept-Encoding: identity`                               |
 
-         | `Accept-Encoding: identity`                               |
+## Decision log (2026-10-11)
+
+| Decision                               | Why                                                                                      | Rejected                                                                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| The ingest takes columnar JSON         | every read format is an ingest format, and the decoder set covers every response         | columnar JSON as output only, a tool-local JSON reader                    |
+| The first e2e unit is one basic test   | one small step on the built binary before the surface is defined                         | the whole round trip in one unit                                          |
+| The surface is defined with the owner  | what is useful to test is the owner's call, not derivable from the documents             | the agent cutting the remaining steps alone                               |
+| The tool reuses the package's encoders | no duplicated cell formatting, and the encoders are pinned byte for byte without cluster | a tool-local CSV writer so the expected file is untouched by the encoders |
+| The tool stays Go                      | ADR-0013's platform reasons stand, and Flight SQL comes with arrow-go's client           | a Python client, the Python API as the e2e client                         |
+| Ten thousand rows by default           | owner's preference                                                                       | one thousand                                                              |
+
+## Decision log (2026-10-12)
+
+| Decision                                                                                  | Why                                                                                                                                     | Rejected                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The v2 e2e is called the round trip                                                       | the Go tests call this sequence a round trip (`TestRoundtrip`, `TestDecodeRoundTrip`), and the e2e is that round trip over HTTP (owner) | "flow", because it named nothing the project uses elsewhere                                                                                                                          |
+| ADR-0014 keeps its file name under a reworded title                                       | ADR file names are stable identifiers linked from `docs/adr/README.md`, and dated log entries are append-only (owner)                   | renaming the ADR file, because every link would move for a word                                                                                                                      |
+| The query endpoint is in the round trip, as `SELECT *`                                    | the owner wants the query path driven over HTTP too                                                                                     | the table reader alone, because `TestRoundtrip` queries in process                                                                                                                   |
+| The empty read is dropped                                                                 | `TestRoundtrip` step 3 reads the first table empty in every format (owner)                                                              | an empty read against the header line, because it costs a second expected value and a tocsv path for zero batches                                                                    |
+| Codings are identity and gzip on the response wire                                        | the agents carry `gunzip` and no zstd binary, and zstd is `compress_test.go`'s (owner)                                                  | zstd, because it needs a binary on eight agents                                                                                                                                      |
+| Request-body codings, push and deduplication modes, several tables per body stay Go tests | `TestRoundtrip` draws them and `TestRoundtripDeduplicated` covers deduplication (owner)                                                 | steps in the round trip, because each would repeat a drawn case with no new question                                                                                                 |
+| tocsv types the response through the round trip schema it holds, named by `--table`       | the decoders need a `SchemaOf`, and the tool has the schema already, with the binding's types the reader answers (owner)                | a `GET /api/v2/tables/{name}` request, because the endpoint is M7's and asking the server for the schema it must prove would be circular                                             |
+| tocsv restores `$table` through `table.WithTable`                                         | the decoders drop `$table`, and the generated CSV and every response carry it first                                                     | stripping `$table` from the expected file, because the expected value stays one file; a tool-local column prepend, because the fixture has it                                        |
+| Headers are asserted from a `curl -D` dump                                                | `golden.sh` captures headers the same way, and `-w` formats cannot say a header is absent                                               | `curl -w '%{content_type}'`, because it cannot assert an absent `content-encoding`                                                                                                   |
+| gen writes the four body files in one run                                                 | the bodies are one batch through four encoders, and one run keeps one draw per table                                                    | one file per run under `--format`, because four draws of the same seed are four times the work for the same batch                                                                    |
+| gen runs once per table                                                                   | `$table` is a column of every body and names the table the row goes to                                                                  | one run with a `$table` rewritten per table, because the tool would then format a cell                                                                                               |
+| e2etool is built into the repository's `bin/`                                             | one directory for both cgo binaries makes the CI step's Windows DLL co-location one copy (owner)                                        | overriding `E2ETOOL` on the CI command line, because it hides the layout in the step; DLLs copied into the tool's source directory, because they would sit untracked in the checkout |
+| `40.test-e2e.sh` calls the harness Makefile through GNU make                              | the Makefile is the harness's only entry point and owns the server lifecycle                                                            | driving `round-trip.sh` from the step, because it duplicates the Makefile's start, trap and stop                                                                                     |
+| The Makefile's exit trap is the one stop of the REST servers                              | the lifecycle is small and known, and start and stop stay together (owner)                                                              | stopping by pidfile from `hooks/pre-exit`, because it splits the lifecycle across two files for the case of a step killed by its timeout                                             |
+| The round trip runs inside the build step, after the Go tests                             | ADR-0013 6 places it there, and a separate step would rebuild and restart qdbd                                                          | a separate pipeline step                                                                                                                                                             |
