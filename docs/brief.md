@@ -144,8 +144,7 @@ code and prose:
    HTTP/1.1 and HTTP/2. Compression (zstd, gzip) is client-negotiated
    through `Accept-Encoding`. Identity is the default and the server does
    not force compression, so datacenter clients pay nothing and WAN
-   clients opt in. Correctness is gated in CI. Performance is measured by
-   the assessment bench (Testing doctrine).
+   clients opt in. Correctness is gated in CI.
 2. **Backwards compatibility** for the endpoints customers and the Grafana
    plugin actually use: `/api/v1/login` and `/api/v1/query`. The two are
    byte-shape compatible, warts included (see Compatibility contract).
@@ -209,8 +208,8 @@ Two real drivers:
    results as per-cell boxed `interface{}` values, then performs a single
    reflective `json.Encode` over the whole structure, and runs without
    HTTP timeouts, so a large result blows memory and hangs rather than
-   failing fast. The time to first byte of the reference query is the
-   full materialization time (the bench measures it, `docs/bench.md`).
+   failing fast. The time to first byte of a large query is the full
+   materialization time.
    Escaping go-swagger matters only because it stands in the way of
    high-performance protocols.
 2. **Token and credential hygiene.** The old JWT embeds the user's raw
@@ -245,7 +244,7 @@ probes are outside it (Observability and logging). The two endpoints
 behave byte-shape identically to the old server, except for the
 deliberate deviations listed at the end of this section. Golden
 responses captured from the old server are part of the e2e test suite,
-and no golden exercises a deviation (ADR-0013). This section is the
+and no golden exercises a deviation. This section is the
 specification.
 
 ### POST /api/v1/login
@@ -289,7 +288,7 @@ specification.
 ### Deliberate deviations
 
 This table lists every place where v1 answers differently from the old
-server. No v1 golden exercises an entry of this list (ADR-0013).
+server. No v1 golden exercises an entry of this list.
 
 | Deviation                                                                  | Specified in              |
 | -------------------------------------------------------------------------- | ------------------------- |
@@ -716,7 +715,7 @@ internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
-tests/e2e/             e2e harness (make + shell + curl, live qdbd; runs in Buildkite); bench/ inside is temporary and local
+tests/e2e/             e2e harness (make + shell + curl + one Go tool, live qdbd; runs in Buildkite)
 vendor/                vendored dependencies (committed)
 ```
 
@@ -760,11 +759,10 @@ The project prefers generative and end-to-end tests over unit tests.
 Unit tests exist only where a pure function has genuine logic worth
 pinning.
 
-There are four layers, one question each (ADR-0013). The first three
-run in Buildkite on every platform and gate. The fourth runs on a
-developer machine and gates nothing. A question whose answer is yes or
-no belongs to the first three. A question whose answer is a number
-belongs to the fourth.
+There are three layers, one question each (ADR-0015). All three run in
+Buildkite on every platform and gate. Every question has a yes or no
+answer. Nothing in the repository measures a number: no benchmark, no
+timing assertion, no performance budget.
 
 1. **Generative property tests** (`pgregory.net/rapid`, quickcheck-style),
    run against a live qdbd. Is the logic right, for any input?
@@ -780,53 +778,22 @@ belongs to the fourth.
    built binary, driven over HTTP like a client, do what a client
    expects? Make, shell and curl orchestrate requests against a live
    qdbd started by the shared `scripts/tests/setup/start-services.sh`
-   (qdbd is a persistent service, never started by a test). There are
-   two suites. The `v2` round trip (ADR-0014) logs in, creates a table,
-   queries it empty, ingests generated rows through every input format,
-   and reads them back in every format and content coding, with each
+   (qdbd is a persistent service, never started by a test). The suite
+   is the `v2` round trip (ADR-0014). It logs in, creates a table,
+   ingests generated rows through every input format, and reads and
+   queries them back in every format and content coding, with each
    response decoded to CSV and compared byte for byte with the generated
    rows. Nothing is captured and nothing is audited, because the
-   expected value is known by construction. The `v1` goldens (ADR-0013)
-   are small request/response pairs captured from the old server,
-   audited, committed, and replayed against the v1 endpoints, none of
-   them exercising a deliberate deviation (Compatibility contract).
-   Error rows are Go tests, never e2e cases. The v1 suite and the bench
-   read the canonical dataset, a customer-derived 5,613,032-row table
-   (story sc-19522) distributed as CSV plus a `qdb_import` config,
-   sha256-pinned, S3-hosted the way the nats-connector golden datasets
-   are, and loaded idempotently by `make load`. The specification is
+   expected value is known by construction. The round trip loads no
+   dataset, and it grows a step with every endpoint a milestone lands.
+   Error rows are Go tests, never e2e cases. The specification is
    `docs/e2e.md`.
-3. **Stress as behaviour**, in the same harness: a concurrency stress
-   (N parallel clients) asserting that the session budget bounds memory
-   and load (excess waits or times out, no goodput collapse), and that
-   in-flight streams complete across a graceful-shutdown drain. Every
-   assertion is pass or fail on behaviour. None is a timing or a
-   measured number.
-4. **Local assessment benchmark** (`tests/e2e/bench/`), on developer
-   machines and deliberately not in CI. It is **temporary**: it retires
-   once the rewrite demonstrably beats the old server, and no
-   abstractions are built for it. It is one Python harness with one
-   headline KPI, the wall-clock time until the client holds a fully
-   materialized DataFrame, measured for one (protocol, server) pair per
-   run. The pairs are the native `quasardb` Python client against qdbd,
-   the `/api/v1/query` JSON protocol (parsed client-side) against the
-   old _and_ the new server, and Arrow Flight SQL against the new
-   server. Running the unchanged v1 client code against both servers is
-   the semantic drop-in compatibility check, through normalized result
-   fingerprints. The byte-shape check lives in item 2. The Arrow IPC
-   stream of `POST /api/v2/query` against the new server is a fifth
-   pair, the first number the rewrite gets. The bench is the one home of
-   every measured number. The supporting metrics are time to first byte
-   (with a per-protocol definition), client peak RSS, REST-server peak
-   RSS, and the two data volumes (qdbd -> reducer, reducer -> client)
-   plus client CPU, which make the map/reduce offload visible for
-   aggregate and top-k queries. The judgment rule: increased gateway
-   compute is a win whenever the client wall clock improves versus the
-   old server. The bench consumes the e2e harness's qdbd and dataset and
-   owns only its venv, the old-server build, and the REST-server
-   lifecycle per run. Cross-run functional equivalence is validated by
-   comparing persisted, normalized result fingerprints. The
-   specification lives in `docs/bench.md`.
+3. **Stress as behaviour**, in the same harness and on rows it
+   generates: a concurrency stress (N parallel clients) asserting that
+   the session budget bounds memory and load (excess waits or times
+   out, no goodput collapse), and that in-flight streams complete
+   across a graceful-shutdown drain. Every assertion is pass or fail on
+   behaviour. None is a timing or a measured number.
 
 ## Milestones
 
@@ -838,8 +805,8 @@ starts.
   probes, Buildkite CI on all supported platforms (Linux, Windows,
   FreeBSD, macOS, where the CI matrix defines the exact arch and variant
   list, with qdb-nats-connector's pipeline as the reference) with the
-  C-API artifact dance (static `libqdb_api.a` on Linux), e2e harness and
-  benchmark scaffolding against a live qdbd.
+  C-API artifact dance (static `libqdb_api.a` on Linux), e2e harness
+  scaffolding against a live qdbd.
 - **M1 -- v2 query**: auth core (JWE, key derivation, rolling keys),
   connection pool core (budget, breaker, retry), `POST /api/v2/query`
   streamed through all four encoders, bearer authentication,
@@ -857,23 +824,24 @@ starts.
 - **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
-- **M4 -- Drop-in compat**: the v1 endpoints as thin wrappers over
-  their v2 counterparts: `/api/v1/login` (12h tokens) and
-  `/api/v1/query` (and their unversioned compat aliases) with the
-  `v1` golden suite green in Buildkite, and the tag-find core in
-  `internal/qdb` that the `find` wart wraps (the v2 core M7's tags
-  endpoint reuses). The outcome replaces the old binary at a customer
-  site with no client changes. It is the first shippable binary.
-- **M5 -- Resilience**: `/metrics`, the graceful-drain and
-  concurrency stress as behaviour assertions in Buildkite.
-- **M6 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
-  `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke tests.
-  The bench retires once the new server wins on both of its rows.
-- **M7 -- Exploration**: tables list and schema, tags, and cluster and
-  node status.
-- **M8 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
+- **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
   quasardb extension, resource governance, streamed responses through the
   shared encoders.
+- **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
+  `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke
+  tests. One Flight SQL endpoint serves both the regular QuasarDB query
+  and the DuckDB query layer of M4.
+- **M6 -- Resilience**: `/metrics`, the graceful-drain and
+  concurrency stress as behaviour assertions in Buildkite.
+- **M7 -- Exploration**: tables list and schema, tags (whose tag-find
+  core in `internal/qdb` the v1 `find` wart of M8 wraps), and cluster
+  and node status.
+- **M8 -- Drop-in compat**: the v1 endpoints as thin wrappers over
+  their v2 counterparts: `/api/v1/login` (12h tokens) and
+  `/api/v1/query` (and their unversioned compat aliases) with a `v1`
+  golden suite, captured from the old server when this milestone
+  starts, green in Buildkite. The outcome replaces the old binary at a
+  customer site with no client changes.
 - **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections, and fixing the stale `tls_port` sample
@@ -881,22 +849,23 @@ starts.
   migration notes covering the dropped cluster endpoints and Prometheus
   remote read/write.
 
-The ordering rationale. A v1 route wraps its v2 counterpart, so the v2
-core must exist before any v1 route is written (ADR-0007). M1 carries a
-minimal login so the query endpoint is exercisable end to end. M2
-follows at once because the e2e round trip needs a table to create, rows to
-ingest and a whole-table read that does not materialize, and the
-endpoints are cheaper than a fixture the round trip would later throw away.
-The ingest is multi-table from the start, because one batch push over
+The ordering rationale. The first deployment is an early preview at a
+customer site that needs Flight SQL and DuckDB and has no v1 clients
+(ADR-0015). A v1 route wraps its v2 counterpart, so the v2 core must
+exist before any v1 route is written (ADR-0007). M1 carries a minimal
+login so the query endpoint is exercisable end to end. M2 follows at
+once because the e2e round trip needs a table to create, rows to ingest
+and a whole-table read that does not materialize, and the endpoints are
+cheaper than a fixture the round trip would later throw away. The
+ingest is multi-table from the start, because one batch push over
 several tables is the common case and the writer already takes several
 tables. From M2 on, every milestone closes on CI evidence of the built
-binary (ADR-0013, ADR-0014). M3
-completes v2 auth before anything ships, so the first shippable binary
-exposes no v2 endpoint whose shape or lifetime is still moving, and the
-v1 login wraps a finished counterpart. Flight SQL precedes exploration and
-multi-table ingestion because the gateway thesis is why the project
-exists, the Arrow encoder is fresh from M1, and the bench retires as
-soon as Flight SQL is measured.
+binary (ADR-0014, ADR-0015). M3 completes v2 auth before the preview
+ships, so the preview exposes no v2 endpoint whose shape or lifetime is
+still moving. M4 and M5 are the preview's two features, DuckDB first
+because the Flight SQL endpoint serves both query layers and is
+designed once. Resilience and exploration follow, and compatibility
+comes last because the preview customer does not use the v1 endpoints.
 
 ## Versioning and release
 
@@ -925,8 +894,8 @@ soon as Flight SQL is measured.
 3. **Gateway latency shape**: aggregation-heavy queries get dramatically
    faster from thin clients. Small point queries pay one extra
    (in-datacenter, sub-millisecond over persistent channels) hop versus a
-   direct native connection. Benchmarks must cover both, so the trade is
-   measured rather than assumed.
+   direct native connection. Both shapes are measured before the trade
+   is assumed.
 4. **Array-typed query results**: the C API defines `array_*` query-result
    value types that `qdb-api-go` currently drops silently. v2 cannot
    return array-valued results correctly until that is fixed upstream.
