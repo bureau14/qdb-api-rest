@@ -1,7 +1,7 @@
 # The v2 e2e round trip -- Plan
 
 Status: draft. This plan is the unit that defines what the v2 e2e tests
-and makes the harness test it. It is unit 3 of `docs/e2e-v2-flow-plan.md`,
+and makes the harness test it. It is unit 3 of `docs/e2e-v2-round-trip-plan.md`,
 "Units under this plan", and it is deleted when the unit lands
 (`docs/AGENTS.md`, Plans).
 
@@ -88,7 +88,7 @@ It leaves for later units:
   and the bench's "CLI and flow" heading): `docs/brief.md:784`, `:855`,
   `:887`, `:889`; `docs/log.md:14`, `:26-27`, `:44-47`, `:59-66`;
   `docs/e2e.md:4`, `:18`, `:108`, `:118-208`, `:331`, `:360-369`,
-  `:439-450`; `docs/e2e-v2-flow-plan.md` whole; `docs/AGENTS.md:79`;
+  `:439-450`; `docs/e2e-v2-round-trip-plan.md` whole; `docs/AGENTS.md:79`;
   `docs/adr/0014-v2-e2e-generated-flow.md:1`, `:28-31`, `:53-54`, `:63`,
   `:80`, `:94`; `docs/adr/README.md:19`; `tests/e2e/Makefile:12-13`,
   `:58`, `:65`, `:85`, `:94`, `:207-241`; `tests/e2e/README.md:3`,

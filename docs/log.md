@@ -11,7 +11,7 @@ Last updated: 2026-10-12
 | ------------------------------- | ----------- | -------------------------------------------------------------------------------- |
 | M0 -- Foundation                | done        | exit signed off 2026-08-25                                                       |
 | M1 -- v2 query                  | done        | closed 2026-09-21                                                                |
-| M2 -- Tables, reader and ingest | in progress | the v2 e2e flow is its exit (ADR-0014)                                           |
+| M2 -- Tables, reader and ingest | in progress | the v2 e2e round trip is its exit (ADR-0014)                                     |
 | M3 -- v2 auth                   | not started |                                                                                  |
 | M4 -- Drop-in compat            | not started | a local red bar exists (`make -C tests/e2e test-v1`), and it joins CI when green |
 | M5 -- Resilience                | not started |                                                                                  |
@@ -23,8 +23,8 @@ Last updated: 2026-10-12
 M2 criteria. Exit: `POST /api/v2/tables`, `DELETE /api/v2/tables/{name}`,
 `GET /api/v2/tables/{name}/rows` (every format) and `POST /api/v2/rows`
 (CSV, NDJSON, Arrow IPC bodies) landed with their ingest/read roundtrip
-property tests per input format, and the v2 e2e flow (`docs/e2e.md`,
-"The v2 flow") green in Buildkite on all eight platforms through
+property tests per input format, and the v2 e2e round trip (`docs/e2e.md`,
+"The v2 round trip") green in Buildkite on all eight platforms through
 `scripts/cicd/40.test-e2e.sh`.
 
 M4 criteria. Entry: v2 auth and query are landed (M1 and M3 exits), and
@@ -41,10 +41,10 @@ In flight:
 Next:
 
 1. The e2e surface: the owner and the agent define together what the
-   flow tests, and `docs/e2e.md`, "The v2 flow" is rewritten to that
+   round trip tests, and `docs/e2e.md`, "The v2 round trip" is rewritten to that
    definition before any further step lands.
 2. `scripts/cicd/40.test-e2e.sh` in the build step. The first
-   Buildkite run of the flow is M2's exit.
+   Buildkite run of the round trip is M2's exit.
 3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
@@ -56,14 +56,14 @@ Next:
 
 Handoff to M2 (tables, reader and ingest):
 
-- The flow drops its tables through `DELETE /api/v2/tables/{name}`,
+- The round trip drops its tables through `DELETE /api/v2/tables/{name}`,
   which leaves symtables. A create over an existing symtable is
   accepted (`internal/httpapi/tables_test.go`).
-- The v1 suite keeps `seed.sql` and `make load`. The flow reads
+- The v1 suite keeps `seed.sql` and `make load`. The round trip reads
   neither, and `make test-flow` loads nothing (`docs/e2e.md`, Dataset
   and "In Buildkite").
 - The `make load` wall clock on the slowest agent is measured by the
-  first CI run of the v1 suite, not of the flow (`docs/e2e.md`,
+  first CI run of the v1 suite, not of the round trip (`docs/e2e.md`,
   Dataset).
 
 Handoff to M4 (the v1 wrappers):

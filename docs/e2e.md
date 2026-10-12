@@ -1,7 +1,7 @@
 # End-to-End Test Harness -- Specification
 
 Status: approved. This document specifies the permanent e2e harness
-described in the brief's Testing doctrine (items 2 and 3): the v2 flow,
+described in the brief's Testing doctrine (items 2 and 3): the v2 round trip,
 the v1 goldens and stress against a live qdbd. It is a permanent
 specification (`docs/AGENTS.md`, Specifications). Verified facts and
 dates are recorded here, not in the brief. Progress is recorded in
@@ -15,7 +15,7 @@ driven over HTTP like a client:
 
 1. works as a client expects on the v2 surface: login, create a table,
    query it empty, ingest rows, read them back in every format and
-   content coding (the v2 flow, ADR-0014);
+   content coding (the v2 round trip, ADR-0014);
 2. returns exactly what the old server returned on the v1 surface (the
    v1 goldens, ADR-0013);
 3. behaves honestly under stress: fast, explicit failure under overload,
@@ -105,7 +105,7 @@ belt-and-braces check. A mismatch is a `qdb_export` or `qdb_import` bug
 worth surfacing, not a harness problem.
 
 The dataset has two readers: the v1 suite (goldens 06 and 16 select
-`reproduce LIMIT 10`) and the bench. The v2 flow reads neither the
+`reproduce LIMIT 10`) and the bench. The v2 round trip reads neither the
 dataset nor `seed.sql`. It makes its own rows. CI loads the same
 archive developers do, once the v1 suite enters the build step. Cases
 bound their own result size with `IN RANGE` or `LIMIT`, and no case
@@ -115,11 +115,13 @@ on the slowest agent. The fallback, if it is unacceptable, is a second,
 smaller archive of whole shards loaded under its own table name, with
 the two `reproduce` v1 goldens recaptured against it.
 
-## The v2 flow
+## The v2 round trip
 
-There is one flow and there are no captured files (ADR-0014). The
+There is one round trip and there are no captured files (ADR-0014). It
+is the sequence of `TestRoundtrip` (`internal/httpapi/roundtrip_test.go`)
+driven over HTTP by curl against the built binary. The
 expected value of every step is known by construction, so nothing is
-audited and nothing lives under `tests/e2e/golden/v2/`. The flow runs
+audited and nothing lives under `tests/e2e/golden/v2/`. The round trip runs
 once per cluster, `insecure` (`qdb://127.0.0.1:2836`) and `secure`
 (`:2838`), each against its own server under test. The secure login
 body is the user security file `start-services.sh` writes at the repo
@@ -133,7 +135,7 @@ Nothing is timed.
    every later step.
 2. `POST /api/v2/tables`: one table per input format, `e2e_csv`,
    `e2e_ndjson`, `e2e_arrow`, every column type (`blob`, `double`,
-   `int64`, `string`, `symbol`, `timestamp`), dropped first so the flow
+   `int64`, `string`, `symbol`, `timestamp`), dropped first so the round trip
    is idempotent.
 3. Each empty table is queried in every format. JSON keeps the columns
    with empty `data`, NDJSON is an empty body, CSV is the header alone,
@@ -144,7 +146,7 @@ Nothing is timed.
    Arrow IPC for `e2e_arrow`, each answered 200 with the row count.
    The generator writes every body with `$table` set, so the three
    bodies differ in format only. A body carrying several tables is the
-   Go property test's case, not the flow's.
+   Go property test's case, not the round trip's.
 5. Each table is read through `GET /api/v2/tables/{name}/rows` in every
    format (`json`, `ndjson`, `csv`, `arrow`) under `identity` and
    `gzip`. The CSV response is compared byte for byte with the generated
@@ -196,7 +198,7 @@ generic request and status helpers, one function per step kind (login,
 create, ingest, read back) that takes the table, the format and the
 coding as arguments, and a matrix of body formats, read formats and
 codings that `run_cluster` iterates. A format is one list entry, and a
-new step is one function called inside the loop. The flow stays in
+new step is one function called inside the loop. The round trip stays in
 shell and curl, because the question it answers is whether the built
 binary works for a client over HTTP, and curl is that client; a Go
 client would repeat `TestRoundtrip` in `internal/httpapi`.
@@ -204,8 +206,8 @@ client would repeat `TestRoundtrip` in `internal/httpapi`.
 Cross-format equivalence over generated schemas (JSON, NDJSON, CSV,
 Arrow IPC, Flight SQL) stays with the Go property tests. The flow
 proves the binary over HTTP with one schema. Error rows (ADR-0010 and
-ADR-0011's tables) are Go tests in `internal/httpapi`, never flow
-steps. An endpoint lands with its step in the flow, so the flow grows
+ADR-0011's tables) are Go tests in `internal/httpapi`, never round trip
+steps. An endpoint lands with its step in the round trip, so the round trip grows
 with the milestones (`docs/brief.md`, Milestones). Refresh and session
 join the login step, and the exploration endpoints and `/api/v2/sql`
 add steps. Flight SQL has no shell client. Whether it gets a subcommand
@@ -357,16 +359,16 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-v1 |
                           test-v1 | test-v1-selfcheck | clean | distclean
-                          e2etool | test-flow (arrive with the v2 flow)
+                          e2etool | test-flow (arrive with the v2 round trip)
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
   golden.sh               v1 golden capture/replay driver
-  flow.sh                 the v2 flow driver (arrives with the v2 flow)
+  flow.sh                 the v2 round trip driver (arrives with the v2 round trip)
   seed.sql                v1 golden fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
   tools/e2etool/          Go: gen (rows in every input format), tocsv (any response -> CSV);
-                          arrives with the v2 flow
+                          arrives with the v2 round trip
   golden/v1/              v1 request/response pairs, captured from the old server
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench.md)
@@ -436,19 +438,19 @@ from the Go `rapid` property tests, generated in-process.
 
 The v2 golden suite this table also shaped (one driver for both suites,
 expected bodies in the archive, one case per request) was replaced by
-the flow on 2026-09-18 (ADR-0014). Those rows are gone with it.
+the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 
 ## Decision log (2026-09-18)
 
-| Decision                                           | Why                                                                              | Rejected                                                  |
-| -------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| The v2 e2e is one flow, generated data, no goldens | proves the basic flow with little code and no audit liability (ADR-0014)         | ten captured cases and an operator capture cycle          |
-| Error rows are Go tests only                       | the e2e proves the flow, not the surface, and the tables are pinned in `httpapi` | 401/413/415/400 goldens                                   |
-| Ingest bodies: CSV, NDJSON and Arrow IPC           | the flow ingests the same rows three ways, and the property tests come with them | CSV only, the rest in the ingestion milestone             |
-| One Go tool decodes every format to CSV            | ADR-0013 5's Arrow rule for every text format, one expected file                 | an encoder per format in shell, row-count checks for JSON |
-| The Go tool generates the rows                     | rapid-style generation shares the vocabulary of the property tests               | an awk generator, a checked-in fixture CSV                |
-| The flow runs on both clusters                     | the same flow on two parallel environments, and only the login differs           | insecure only                                             |
-| A driver with named options                        | two URLs on a command line need names                                            | positional URLs, environment variables                    |
-| The plain run sends no `Accept-Encoding`           | what a plain client sends, and the explicit `identity` rule is a Go test         |
+| Decision                                                 | Why                                                                                    | Rejected                                                  |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| The v2 e2e is one round trip, generated data, no goldens | proves the basic round trip with little code and no audit liability (ADR-0014)         | ten captured cases and an operator capture cycle          |
+| Error rows are Go tests only                             | the e2e proves the round trip, not the surface, and the tables are pinned in `httpapi` | 401/413/415/400 goldens                                   |
+| Ingest bodies: CSV, NDJSON and Arrow IPC                 | the round trip ingests the same rows three ways, and the property tests come with them | CSV only, the rest in the ingestion milestone             |
+| One Go tool decodes every format to CSV                  | ADR-0013 5's Arrow rule for every text format, one expected file                       | an encoder per format in shell, row-count checks for JSON |
+| The Go tool generates the rows                           | rapid-style generation shares the vocabulary of the property tests                     | an awk generator, a checked-in fixture CSV                |
+| The round trip runs on both clusters                     | the same round trip on two parallel environments, and only the login differs           | insecure only                                             |
+| A driver with named options                              | two URLs on a command line need names                                                  | positional URLs, environment variables                    |
+| The plain run sends no `Accept-Encoding`                 | what a plain client sends, and the explicit `identity` rule is a Go test               |
 
          | `Accept-Encoding: identity`                               |

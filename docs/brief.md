@@ -781,7 +781,7 @@ belongs to the fourth.
    expects? Make, shell and curl orchestrate requests against a live
    qdbd started by the shared `scripts/tests/setup/start-services.sh`
    (qdbd is a persistent service, never started by a test). There are
-   two suites. The `v2` flow (ADR-0014) logs in, creates a table,
+   two suites. The `v2` round trip (ADR-0014) logs in, creates a table,
    queries it empty, ingests generated rows through every input format,
    and reads them back in every format and content coding, with each
    response decoded to CSV and compared byte for byte with the generated
@@ -852,7 +852,7 @@ starts.
   `$table` column, with CSV, NDJSON, Arrow IPC and columnar JSON
   bodies, `Content-Encoding`, and push and deduplication modes) with their
   ingest/read roundtrip property tests per input format, and the v2 e2e
-  flow (login, create, query empty, ingest, read in every format and
+  round trip (login, create, query empty, ingest, read in every format and
   coding, Testing doctrine 2) green in Buildkite.
 - **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
@@ -884,9 +884,9 @@ starts.
 The ordering rationale. A v1 route wraps its v2 counterpart, so the v2
 core must exist before any v1 route is written (ADR-0007). M1 carries a
 minimal login so the query endpoint is exercisable end to end. M2
-follows at once because the e2e flow needs a table to create, rows to
+follows at once because the e2e round trip needs a table to create, rows to
 ingest and a whole-table read that does not materialize, and the
-endpoints are cheaper than a fixture the flow would later throw away.
+endpoints are cheaper than a fixture the round trip would later throw away.
 The ingest is multi-table from the start, because one batch push over
 several tables is the common case and the writer already takes several
 tables. From M2 on, every milestone closes on CI evidence of the built

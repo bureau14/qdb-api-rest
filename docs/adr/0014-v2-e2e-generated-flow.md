@@ -1,4 +1,4 @@
-# ADR-0014: the v2 e2e is a generated roundtrip flow, not a golden suite
+# ADR-0014: the v2 e2e is a generated round trip, not a golden suite
 
 Status: accepted
 Date: 2026-09-18
@@ -25,7 +25,7 @@ no audit.
 
 ## Decision
 
-1. **The v2 e2e is one flow**, run on each cluster against the built
+1. **The v2 e2e is one round trip**, run on each cluster against the built
    binary: login, create a table, query it empty, ingest generated rows
    through every input format, query them back in every format and
    content coding. It proves the basic flow. It does not pin the
@@ -51,7 +51,7 @@ no audit.
    golden is what the old server said. ADR-0013 1, 2, 4, 6 and 7 stand
    for both suites, with "its goldens" read as "its e2e coverage" for
    v2, so an endpoint lands with its step in the flow.
-6. **The flow needs `POST /api/v2/tables` and the ingest
+6. **The round trip needs `POST /api/v2/tables` and the ingest
    (`POST /api/v2/rows`)**, so they move from the
    exploration and ingestion milestones into a milestone directly after
    M1 (`docs/brief.md`, Milestones). Their wire shapes are the brief's
@@ -60,7 +60,7 @@ no audit.
 ## Consequences
 
 - There is no operator step in the v2 layer. A wire change that breaks
-  the flow is a failing build, not a recapture. A deliberate wire
+  the round trip is a failing build, not a recapture. A deliberate wire
   change changes the tool or the driver in the same commit.
 - The expected CSV is the CSV encoder's own bytes over the generated
   batch, and the other three formats are proven equal to it. The
@@ -77,19 +77,19 @@ no audit.
   layer reads neither `reproduce` nor `seed.sql`. The v1 suite and the
   bench are their remaining readers.
 - The e2e layer does not exercise a large result or a multi-batch
-  Arrow stream from outside. The row count of the flow is a Makefile
+  Arrow stream from outside. The row count of the round trip is a Makefile
   variable, and the bench's `http-arrow@new-rest` run is the full-size
   check.
 
 ## Alternatives rejected
 
-| Alternative                                          | Why not                                                                                                          |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| The v2 golden suite as planned                       | ten cases, an operator capture cycle and an archive layout to prove a flow a roundtrip proves with no audit      |
-| Error goldens (401, 413, 415, 400)                   | the rows are already Go tests, and an e2e error case repeats a table without proving a flow                      |
-| An encoder per format in the harness                 | a second encoding of JSON, NDJSON and Arrow in shell, kept in sync with the encoders by hand                     |
-| Row-count checks for JSON and NDJSON                 | a count proves nothing about the cells, and the decoded comparison costs one Go tool the harness builds anyway   |
-| A checked-in fixture CSV                             | fixed data hides what a generator finds, and the generator shares its vocabulary with the property tests         |
-| An awk generator                                     | blobs, nanosecond timestamps and Arrow IPC bodies in awk, while the Go tool exists for decoding already          |
-| Waiting for the exploration and ingestion milestones | the flow would enter CI five milestones late, and two small endpoints now are cheaper than a fixture thrown away |
+| Alternative                                          | Why not                                                                                                                |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| The v2 golden suite as planned                       | ten cases, an operator capture cycle and an archive layout to prove a round trip a roundtrip proves with no audit      |
+| Error goldens (401, 413, 415, 400)                   | the rows are already Go tests, and an e2e error case repeats a table without proving a round trip                      |
+| An encoder per format in the harness                 | a second encoding of JSON, NDJSON and Arrow in shell, kept in sync with the encoders by hand                           |
+| Row-count checks for JSON and NDJSON                 | a count proves nothing about the cells, and the decoded comparison costs one Go tool the harness builds anyway         |
+| A checked-in fixture CSV                             | fixed data hides what a generator finds, and the generator shares its vocabulary with the property tests               |
+| An awk generator                                     | blobs, nanosecond timestamps and Arrow IPC bodies in awk, while the Go tool exists for decoding already                |
+| Waiting for the exploration and ingestion milestones | the round trip would enter CI five milestones late, and two small endpoints now are cheaper than a fixture thrown away |
 |                                                      |

@@ -76,7 +76,7 @@ A plan (`docs/<name>-plan.md`) is scaffolding: a document the owner and
 the agents iterate on while a piece of work is being shaped and built.
 There is one plan per unit of work, cut however the work is cut,
 whether a milestone (`m1-plan.md`), a slice of a subsystem
-(`e2e-v2-flow-plan.md`) or a spike, and there is no required
+(`e2e-v2-round-trip-plan.md`) or a spike, and there is no required
 granularity. A plan may sit in git for as
 long as its work is in flight and not one day longer.
 
