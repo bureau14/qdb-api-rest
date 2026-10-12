@@ -368,10 +368,8 @@ the step when it is green. The script follows qdb-nats-connector's
 `50.test-e2e.sh`: GNU make discovery (`gmake` on FreeBSD,
 `mingw32-make` on Windows), the Windows DLL co-location into `bin/`,
 where `qdb_rest` and `e2etool` are both built, and a dump of the two
-REST servers' and both qdbd clusters' logs on failure. The REST servers
-are stopped by the harness Makefile's exit trap, not by the Buildkite
-hook. `curl`, `jq` and `gunzip` are what that pipeline already requires
-on the same agents.
+REST servers' and both qdbd clusters' logs on failure. `curl`, `jq` and
+`gunzip` are what that pipeline already requires on the same agents.
 
 ## Stress definition
 
