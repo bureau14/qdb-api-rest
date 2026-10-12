@@ -9,14 +9,15 @@
 #
 # The Makefile is the only source of URLs, ports and paths, and passes
 # them as options. common.sh supplies the helpers and TZ=UTC. Working
-# files go to actual/round-trip/<cluster>/. The script needs bash, curl, jq
-# and cmp.
+# files go to actual/round-trip/<cluster>/. The script needs bash, curl,
+# jq, cmp and gunzip.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 require_command curl
 require_command jq
 require_command cmp
+require_command gunzip
 
 ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
@@ -135,16 +136,21 @@ expect_header() {
     [[ "$got" == "$want" ]] || { log_error "[FAIL] $name: $header is '$got', want '${want:-absent}'"; return 1; }
 }
 
-# compare_csv <out_dir> <name> <csv>: the body of <name> compared byte
-# for byte with the generated CSV. On a mismatch the first bytes of both
-# are diffed, because the seed reproduces the rest. Only a CSV body is
-# compared; the other formats decode through e2etool tocsv when the
-# matrix lists them.
+# compare_csv <out_dir> <name> <format> <table> <body_file> <csv>: the
+# body, decoded to CSV through e2etool tocsv unless it is CSV already,
+# compared byte for byte with the generated CSV (ADR-0014 2). On a
+# mismatch the first bytes of both are diffed, because the seed
+# reproduces the rest.
 compare_csv() {
-    local out="$1" name="$2" csv="$3"
-    if ! cmp -s "$csv" "$out/$name.body"; then
+    local out="$1" name="$2" format="$3" table="$4" body="$5" csv="$6"
+    if [[ "$format" != csv ]]; then
+        "$TOOL" tocsv --format "$format" --table "$table" < "$body" > "$out/$name.csv" \
+            || { log_error "[FAIL] $name: e2etool tocsv failed"; return 1; }
+        body="$out/$name.csv"
+    fi
+    if ! cmp -s "$csv" "$body"; then
         log_error "[FAIL] $name: CSV differs from $(basename "$csv") (generated vs read)"
-        diff <(head -c 4096 "$csv") <(head -c 4096 "$out/$name.body") >&2 || true
+        diff <(head -c 4096 "$csv") <(head -c 4096 "$body") >&2 || true
         return 1
     fi
 }
@@ -154,14 +160,20 @@ compare_csv() {
 # answered 200. content-type equals the format's media type exactly,
 # with no charset, as the in-process round trip asserts it, and
 # content-encoding equals the coding and is absent for identity. Nothing
-# else in the headers is read. Then the body is compared with the
-# generated CSV.
+# else in the headers is read. A gzip body is decompressed through
+# gunzip into <name>.plain first, as golden.sh does, and then the body
+# is compared with the generated CSV.
 check_response() {
     local out="$1" name="$2" format="$3" type="$4" coding="$5" table="$6" csv="$7" want_coding=""
+    local body="$out/$name.body"
     [[ "$coding" == identity ]] || want_coding="$coding"
     expect_header "$out" "$name" content-type "$type" || return 1
     expect_header "$out" "$name" content-encoding "$want_coding" || return 1
-    compare_csv "$out" "$name" "$csv"
+    if [[ "$coding" == gzip ]]; then
+        gunzip -c "$body" > "$out/$name.plain" || { log_error "[FAIL] $name: body is not gzip"; return 1; }
+        body="$out/$name.plain"
+    fi
+    compare_csv "$out" "$name" "$format" "$table" "$body" "$csv"
 }
 
 # accept_encoding <coding>: the request header of the coding, as curl
