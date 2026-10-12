@@ -96,8 +96,45 @@ case "$(uname -s)" in
         ;;
 esac
 
+# dump_e2e_failure_logs: the tails of the two REST servers' logs and of
+# qdbd's console and structured logs for both clusters. The driver
+# prints the one assertion that failed, and the server side is never
+# surfaced in the build output otherwise, so a refusal or a crash on
+# either server would be undiagnosable from the step alone. The REST
+# logs are the harness's (tests/e2e/Makefile, REST_LOG and
+# REST_LOG_SECURE). The qdbd files sit at the repo root, because
+# start-services.sh resolves its paths against the directory it ran
+# from (scripts/tests/setup/config.sh). These files are not Buildkite
+# artifacts.
+dump_e2e_failure_logs() {
+    local cluster log_dir
+
+    for cluster in rest rest-secure; do
+        echo "+++ e2e failed -- ${cluster}.log"
+        local rest_log="${BASE_DIR}/tests/e2e/${cluster}.log"
+        [[ -f "${rest_log}" ]] && tail -100 "${rest_log}" || echo "(no log at ${rest_log})"
+    done
+
+    for cluster in insecure secure; do
+        echo "+++ e2e failed -- qdbd ${cluster} stderr"
+        local qdbd_err="${BASE_DIR}/qdbd_log_${cluster}.err.txt"
+        [[ -f "${qdbd_err}" ]] && tail -120 "${qdbd_err}" || echo "(no qdbd stderr at ${qdbd_err})"
+
+        echo "+++ e2e failed -- qdbd ${cluster} structured log"
+        log_dir="${BASE_DIR}/${cluster}/log"
+        if [[ -d "${log_dir}" ]]; then
+            find "${log_dir}" -type f -name '*.log' -exec tail -120 {} +
+        else
+            echo "(no qdbd log dir at ${log_dir})"
+        fi
+    done
+}
+
 # 5. The round trip. The Makefile builds e2etool, starts one server per
 #    cluster from QDB_REST_BIN, runs the driver and stops the servers on
 #    exit (tests/e2e/Makefile, test-round-trip).
 echo "+++ Run the v2 round trip"
-"${MAKE_BIN}" -C "${BASE_DIR}/tests/e2e" test-round-trip QDB_REST_BIN="${BASE_DIR}/bin/qdb_rest${SUFFIX}"
+if ! "${MAKE_BIN}" -C "${BASE_DIR}/tests/e2e" test-round-trip QDB_REST_BIN="${BASE_DIR}/bin/qdb_rest${SUFFIX}"; then
+    dump_e2e_failure_logs
+    exit 1
+fi
