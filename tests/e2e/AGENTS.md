@@ -8,15 +8,18 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   paths, ports and flags. Scripts receive them as arguments or exported
   variables. Add targets there rather than new top-level scripts.
 - `common.sh` holds every shared helper (logging, pidfiles, the qdbsh
-  wrapper, chunked `qdb_export`). Source it and do not duplicate it.
-  Always call `qdbsh` through the wrapper, which redirects qdbsh's log
-  files out of the tree.
+  wrapper). Source it and do not duplicate it. Always call `qdbsh`
+  through the wrapper, which redirects qdbsh's log files out of the
+  tree.
 - qdbd is a service (`scripts/tests/setup/start-services.sh`, a git
   submodule that is never edited here). Tests fail fast if it is down,
   and they never start or stop it. The harness starts and stops only
   REST servers, via pidfiles.
 - Nothing in this directory asserts a timing or a measured number
-  (ADR-0013). Every assertion is pass or fail, compared with `cmp`.
+  (ADR-0015). Every assertion is pass or fail, compared with `cmp`.
+- Nothing in this directory loads a dataset (ADR-0015). Every row a
+  suite needs is drawn by `tools/e2etool gen`, and the suite creates
+  its own `e2e_*` tables on both clusters and drops them first.
 - The v2 round trip (`round-trip.sh`, `make test-round-trip`, ADR-0014)
   captures nothing. The rows it ingests come from `tools/e2etool gen`,
   which draws them through the table fixture (`internal/qdbtest/table`)
@@ -31,36 +34,16 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   built by `make e2etool` with the server's toolchain and the root
   `.envrc` into the repository's `bin/`, next to `qdb_rest`, so the CI
   step co-locates the Windows DLLs once, and it may import any package
-  of this repository. The
-  create body in `round-trip.sh` and `roundTripSchema` in the tool
-  spell the same column names, and a change to one changes the other.
-  A new response format is one entry in the driver's matrix and one
-  decoder in the tool.
-- A v1 golden is an audited expected response, compared byte for byte,
-  with no canonicalization and no tolerance. Capture is an operator
-  step and never runs in CI. Under `golden/v1/`, `request.json` is
-  written by hand, and only `make capture-v1` writes the captured
-  `status`, `headers` and `body`, which are committed as they are. A
-  captured file is never edited, and the comparator never grows a
-  special case. No case exercises a deliberate deviation of v1 from the
-  old server (`docs/brief.md`, "Deliberate deviations"), so no golden
-  query selects a `COUNT`. To add a case, add a directory with a
-  `request.json`, run `make capture-v1 CASES=<case>`, eyeball the body,
-  and commit. Recapturing everything is an operator decision, and the
-  result is diffed before it is committed.
-- `common.sh` exports `TZ=UTC` for every server the harness starts and
-  every capture. Keep it that way, because v1 timestamps are local
-  time.
-- The dataset table `reproduce` is read-only for tests, and the fixture
-  tables (`seed.sql`) are dropped and recreated freely. Both serve the
-  v1 suite and the bench only. The round trip creates its own `e2e_*` tables
-  on both clusters and drops them first.
+  of this repository. The create body in `round-trip.sh` and
+  `roundTripSchema` in the tool spell the same column names, and a
+  change to one changes the other. A new response format is one entry
+  in the driver's matrix and one decoder in the tool.
+- `common.sh` exports `TZ=UTC` for every server the harness starts.
+  Keep it that way, so a response that carries a local-time timestamp
+  compares equal on every machine.
 - For ad-hoc probing, `qdbsh --output-format csv` is a plain C client.
   Its `-c` flag cannot be repeated, so a multi-statement session (for
   example `direct_set_node` followed by `direct_int_get`) goes in via
-  stdin. A single-shot `SELECT *` of `reproduce` overflows qdbsh's
-  client input buffer (125 MiB), as it does for `qdb_export`.
+  stdin.
 - Shell style: `set -euo pipefail`, small named functions, definitions
-  before use, ASCII only. There is no Python in this directory, except
-  the bench in `bench/` (`docs/bench.md`), whose conventions live in
-  `bench/AGENTS.md`.
+  before use, ASCII only. There is no Python in this directory.
