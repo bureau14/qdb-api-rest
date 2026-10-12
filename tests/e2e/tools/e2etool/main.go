@@ -129,12 +129,16 @@ func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
 	// property tests' and are written once:
 	//
 	//  1. draw the rows under the seed. rapid.Custom(...).Example(seed)
-	//     is rapid's one seeded entry outside a test; it runs the T's
-	//     cleanups when the function returns, which would release the
-	//     batch, so the function retains it first;
+	//     is rapid's one seeded entry outside a test (rapid.Check under a
+	//     stand-in testing.T was rejected, because it is a test harness
+	//     that shrinks on failure, and a draw of the tool's own because
+	//     it would copy the bounds); Example runs the T's cleanups when
+	//     the function returns, which would release the batch, so the
+	//     function retains it first;
 	//  2. put the edge rows ahead of the drawn ones, because the flow
 	//     wants the extremes in every run and ten thousand drawn rows
-	//     reach them rarely;
+	//     reach them rarely. They are built here and not in the fixture,
+	//     which draws values and fixes none;
 	//  3. put the $table column in front through the fixture's WithTable,
 	//     so the CSV header is the one the table reader answers.
 	tbl := flowSchema(name)

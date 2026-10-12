@@ -63,11 +63,13 @@ E2ETOOL_DIR := $(E2E_DIR)/tools/e2etool
 E2ETOOL     := $(E2ETOOL_DIR)/e2etool$(EXE_EXT)
 
 # The v2 flow (docs/e2e.md, "The v2 flow") runs on both clusters, each
-# against its own server. ROWS and SEED select the generated data and
-# the driver prints both, so a failure reproduces. A cluster whose URL
-# is given is used as it is; otherwise its server is started from
-# QDB_REST_BIN. The secure server takes the key files start-services.sh
-# writes at the repo root, and both run with the TLS listener off.
+# against its own server, because the secure one costs one block here
+# and is the only step that proves the key-file flags. ROWS and SEED
+# select the generated data, and the driver prints both, so a failure
+# reproduces. A cluster whose URL is given is used as it is. Otherwise
+# its server is started from QDB_REST_BIN. The secure server takes the
+# key files start-services.sh writes at the repo root, and both run
+# with the TLS listener off.
 ROWS              ?= 10000
 SEED              ?= $(shell date +%s)
 REST_URL_INSECURE ?= $(REST_URL)
