@@ -7,25 +7,18 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 Last updated: 2026-10-12
 
-| Milestone                       | State       | Note                                                                             |
-| ------------------------------- | ----------- | -------------------------------------------------------------------------------- |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                                                       |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                                                |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                                                |
-| M3 -- v2 auth                   | not started |                                                                                  |
-| M4 -- Drop-in compat            | not started | a local red bar exists (`make -C tests/e2e test-v1`), and it joins CI when green |
-| M5 -- Resilience                | not started |                                                                                  |
-| M6 -- Flight SQL                | not started |                                                                                  |
-| M7 -- Exploration               | not started |                                                                                  |
-| M8 -- Embedded DuckDB           | not started |                                                                                  |
-| M9 -- Release                   | not started |                                                                                  |
-
-M4 criteria. Entry: v2 auth and query are landed (M1 and M3 exits), and
-the 14 v1 goldens replay against a server under test. Exit: every v1
-golden green against `bin/qdb_rest` at both spellings, in Buildkite on
-all eight platforms, and `v1@new-rest` fingerprints equal to
-`v1@old-rest` on every query under `CAPI_COMPRESSION=none` (enable
-`("v1", "new-rest")` in `tests/e2e/bench/bench.py`).
+| Milestone                       | State       | Note                                                  |
+| ------------------------------- | ----------- | ----------------------------------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                     |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
+| M3 -- v2 auth                   | not started | its criteria are written when it starts               |
+| M4 -- Embedded DuckDB           | not started | the early preview's first feature (ADR-0015)          |
+| M5 -- Flight SQL                | not started | one endpoint over both query layers, so it follows M4 |
+| M6 -- Resilience                | not started |                                                       |
+| M7 -- Exploration               | not started |                                                       |
+| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
+| M9 -- Release                   | not started |                                                       |
 
 In flight:
 
@@ -33,41 +26,36 @@ In flight:
 
 Next:
 
-1. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
-   time to first byte and RSS for the 5.6M-row query
-   (`docs/bench.md`, "Protocols, servers, runs").
+1. Start M3 (v2 auth): write its entry and exit criteria into this
+   block, then `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
+   `GET /api/v2/session`, the TTL configuration and key rotation through
+   refresh (`docs/brief.md`, Milestones and Authentication; ADR-0011
+   for the token response the refresh reuses).
 2. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
    as API-managed and not to be freed.
 
-Handoff to M4 (the v1 wrappers):
+Handoff to M4 (embedded DuckDB) and M5 (Flight SQL):
 
-- The v1 byte-shape facts (key order, 401 bodies, error-message
-  concatenation, find and gzip warts) are recorded in
-  `docs/e2e.md`, "The v1 goldens".
-- Every v1 route is a wrapper over its v2 counterpart and lives in
-  `internal/httpapi/v1`, created with the first wrapper together
-  with its own `AGENTS.md` (ADR-0007, with the rules in `internal/AGENTS.md`).
-- The `find` wart (goldens 12 and 13) has no v2 endpoint until M7. Its
-  v2 core is a tag-find function in `internal/qdb`, written in M4 and
-  reused by M7's tags endpoint (`docs/brief.md`, Milestones).
-- The goldens and the bench client exercise only the unversioned
-  aliases (the old server knows no other spelling). The exit criterion
-  additionally proves `/api/v1/<path>` answers identically, by replaying
-  every golden at both spellings (ADR-0008).
-- `v1@new-rest` runs under the bench's pinned C API compression
-  through `cluster.compression` (`docs/bench.md`, "Two volumes").
-- A `COUNT(...)` column is answered as `int64`, a deliberate deviation
-  no golden exercises (`docs/brief.md`, "Deliberate deviations",
-  and ADR-0013).
+- The round trip grows a step per endpoint, so `/api/v2/sql` adds a
+  step, and whether Flight SQL gets a subcommand of `e2etool` or stays
+  with the property tests is decided at M5's entry (`docs/e2e.md`,
+  "The driver").
+- The Flight SQL endpoint serves both the regular query and the DuckDB
+  layer, so M4's query layer exposes a seam M5 can call (ADR-0015).
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-12 -- early-preview scope: milestones reordered, bench, dataset and v1 goldens removed
+
+- Owner decision; ADR-0015. The brief's Milestones and Testing doctrine
+  and `docs/e2e.md` carry the result, and ADR-0013 is superseded.
 
 ## 2026-10-12 -- M2 closed: the round trip runs in every build step; three e2e plans deleted
 
