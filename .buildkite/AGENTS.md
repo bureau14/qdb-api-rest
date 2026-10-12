@@ -34,7 +34,7 @@ all of this should feel.
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` runs last
   in the build step, after the Go tests, through
-  `scripts/cicd/40.test-e2e.sh` (ADR-0013, and `docs/e2e.md`, "In
+  `scripts/cicd/40.test-e2e.sh` (ADR-0015, and `docs/e2e.md`, "In
   Buildkite", specifies the step). The hook does not stop the REST
   servers the harness starts, because the harness Makefile's exit trap
   does.

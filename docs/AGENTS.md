@@ -206,11 +206,11 @@ grep -nE '\b(previously|no longer|used to|contrary to what|old plan|now that|as 
 # pointers into log entries, from anywhere
 grep -rnE 'log\.md[ ,]*20[0-9]{2}-|see the 20[0-9]{2}-[0-9]{2}-[0-9]{2} entry' . \
   --exclude-dir=vendor --exclude-dir=qdb --exclude-dir=.env --exclude-dir=.git \
-  --exclude-dir=tools --exclude-dir=setup --exclude-dir=.old-master
+  --exclude-dir=tools --exclude-dir=setup
 # measured numbers in documents
 grep -nE '[0-9]+(\.[0-9]+)? ?(s|ms|MB|MiB|GB|GiB|B|%)\b' docs/log.md docs/*-plan.md
 # non-ASCII (tabs allowed)
-LC_ALL=C grep -rn $'[^ -~\t]' --include='*.md' --exclude-dir=.old-master --exclude-dir=tools \
+LC_ALL=C grep -rn $'[^ -~\t]' --include='*.md' --exclude-dir=tools \
   docs AGENTS.md internal tests scripts .buildkite
 ```
 
