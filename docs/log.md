@@ -11,7 +11,7 @@ Last updated: 2026-10-12
 | ------------------------------- | ----------- | -------------------------------------------------------------------------------- |
 | M0 -- Foundation                | done        | exit signed off 2026-08-25                                                       |
 | M1 -- v2 query                  | done        | closed 2026-09-21                                                                |
-| M2 -- Tables, reader and ingest | in progress | the v2 e2e round trip is its exit (ADR-0014)                                     |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                                                |
 | M3 -- v2 auth                   | not started |                                                                                  |
 | M4 -- Drop-in compat            | not started | a local red bar exists (`make -C tests/e2e test-v1`), and it joins CI when green |
 | M5 -- Resilience                | not started |                                                                                  |
@@ -19,13 +19,6 @@ Last updated: 2026-10-12
 | M7 -- Exploration               | not started |                                                                                  |
 | M8 -- Embedded DuckDB           | not started |                                                                                  |
 | M9 -- Release                   | not started |                                                                                  |
-
-M2 criteria. Exit: `POST /api/v2/tables`, `DELETE /api/v2/tables/{name}`,
-`GET /api/v2/tables/{name}/rows` (every format) and `POST /api/v2/rows`
-(CSV, NDJSON, Arrow IPC and columnar JSON bodies) landed with their
-ingest/read roundtrip property tests per input format, and the v2 e2e
-round trip (`docs/e2e.md`, "The v2 round trip") green in Buildkite on
-all eight platforms through `scripts/cicd/40.test-e2e.sh`.
 
 M4 criteria. Entry: v2 auth and query are landed (M1 and M3 exits), and
 the 14 v1 goldens replay against a server under test. Exit: every v1
@@ -40,29 +33,14 @@ In flight:
 
 Next:
 
-1. `scripts/cicd/40.test-e2e.sh` in the build step, running
-   `make test-round-trip`. The first Buildkite run of the round trip is
-   M2's exit.
-2. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+1. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-3. File upstream against `qdb-api-go`, with no local patch
+2. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
    as API-managed and not to be freed.
-
-Handoff to M2 (tables, reader and ingest):
-
-- The round trip drops its tables through `DELETE /api/v2/tables/{name}`,
-  which leaves symtables. A create over an existing symtable is
-  accepted (`internal/httpapi/tables_test.go`).
-- The v1 suite keeps `seed.sql` and `make load`. The round trip reads
-  neither, and `make test-round-trip` loads nothing (`docs/e2e.md`, Dataset
-  and "In Buildkite").
-- The `make load` wall clock on the slowest agent is measured by the
-  first CI run of the v1 suite, not of the round trip (`docs/e2e.md`,
-  Dataset).
 
 Handoff to M4 (the v1 wrappers):
 
@@ -90,6 +68,15 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-12 -- M2 closed: the round trip runs in every build step; three e2e plans deleted
+
+- `scripts/cicd/40.test-e2e.sh` runs `make test-round-trip` after the Go
+  tests on every platform. Owner decisions: the tool builds into `bin/`,
+  the harness Makefile's trap is the one stop of the REST servers, and M3
+  starts with the next unit. `ci-e2e-plan.md`, `e2e-round-trip-plan.md`
+  and `e2e-v2-round-trip-plan.md` deleted; facts moved to `docs/e2e.md`,
+  decision logs of 2026-10-11 and 2026-10-12.
 
 ## 2026-10-12 -- the v2 e2e is the round trip, and its surface is defined
 
