@@ -4,7 +4,7 @@
 // package of this repository, the cgo binding included (ADR-0014).
 //
 //	e2etool gen --rows N --seed S --out DIR [--table NAME]      write DIR/rows.{csv,ndjson,arrow,json}, print the row count
-//	e2etool tocsv --format json|ndjson|arrow [--table NAME]     stdin to CSV on stdout
+//	e2etool tocsv --format csv|json|ndjson|arrow [--table NAME] stdin to CSV on stdout
 package main
 
 import (
@@ -254,9 +254,11 @@ func gen(args []string) error {
 }
 
 // decoders is the decoder of each response format tocsv reads, keyed by
-// the format name the driver's matrix uses. CSV is absent, because the
-// driver compares a CSV response raw.
+// the format name the driver's matrix uses. CSV is among them, because
+// the query answers its columns in another order than the reader, and
+// the driver sends the query's CSV through the tool to restore it.
 var decoders = map[string]encoding.Decoder{
+	"csv":    encoding.CSV{},
 	"json":   encoding.JSON{},
 	"ndjson": encoding.NDJSON{},
 	"arrow":  encoding.Arrow{},
@@ -279,9 +281,10 @@ func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
 	//     an error naming it;
 	//  3. put $table back in front through the fixture's WithTable,
 	//     because the decoder drops it and the generated CSV carries it
-	//     first. The decoder orders the data columns by the schema for
-	//     every format, and a bare SELECT * answers them in creation
-	//     order, so no reorder is needed;
+	//     first. The decoder puts $timestamp first and orders the data
+	//     columns by the schema for every format, and a bare SELECT *
+	//     answers $timestamp, $table and then the columns in creation
+	//     order, so this one step is the whole reorder a query needs;
 	//  4. encode through the CSV encoder, so the bytes are the dialect of
 	//     rows.csv.
 	tbl := roundTripSchema(name)
@@ -315,14 +318,14 @@ func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
 // tocsv is the tocsv subcommand: stdin to CSV on stdout.
 func tocsv(args []string) error {
 	fs := flag.NewFlagSet("tocsv", flag.ContinueOnError)
-	format := fs.String("format", "", "json, ndjson or arrow")
+	format := fs.String("format", "", "csv, json, ndjson or arrow")
 	tableName := fs.String("table", "e2e_csv", "the table the body answers")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	dec, ok := decoders[*format]
 	if !ok {
-		return fmt.Errorf("--format must be json, ndjson or arrow, got %q", *format)
+		return fmt.Errorf("--format must be csv, json, ndjson or arrow, got %q", *format)
 	}
 	return toCSV(os.Stdout, os.Stdin, dec, *tableName)
 }
@@ -330,7 +333,7 @@ func tocsv(args []string) error {
 func main() {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "usage: e2etool gen --rows N --seed S --out DIR [--table NAME]")
-		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format json|ndjson|arrow [--table NAME]")
+		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format csv|json|ndjson|arrow [--table NAME]")
 		os.Exit(2)
 	}
 	if len(os.Args) < 2 {
