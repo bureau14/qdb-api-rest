@@ -407,8 +407,8 @@ questions; do not resolve it silently.
 
 Look actively for: locked decisions the task must honor, handoff
 constraints recorded for the active milestone, known gaps in the
-dependencies the task will call, what the existing fixtures, goldens and
-benchmarks already pin, and anything in the task description that
+dependencies the task will call, what the existing fixtures and tests already
+pin, and anything in the task description that
 contradicts a locked decision.
 
 ## Shape the task

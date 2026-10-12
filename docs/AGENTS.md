@@ -42,8 +42,8 @@ Recorded nowhere, because something else already records it:
 - How a plan evolved: the plan is deleted with the work it planned,
   and nothing cites a plan as a permanent reference.
 - Test, lint and CI results: CI and the test suite.
-- Measured numbers: result files (`tests/e2e/bench/results/`), never a
-  document.
+- Measured numbers: nothing in the repository measures one (ADR-0015),
+  so none is written anywhere.
 - Investigation narratives, hypotheses ruled out, fixes reverted: only
   the resulting fact (plan) or rule (`AGENTS.md`) survives.
 
@@ -103,7 +103,7 @@ Rules:
 
 ## Specifications
 
-A specification (`docs/<subsystem>.md`: `e2e.md`, `bench.md`) is the
+A specification (`docs/<subsystem>.md`: `e2e.md`) is the
 permanent description of one subsystem whose mechanics and verified
 facts outgrow an `AGENTS.md`: what it is for, how it is put together,
 what has been verified and when, and the dated decision-log tables of
@@ -215,7 +215,7 @@ LC_ALL=C grep -rn $'[^ -~\t]' --include='*.md' --exclude-dir=.old-master --exclu
 ```
 
 One writer per fact is checked by hand: the facts most likely to be
-stated twice (ports, dataset name and row count, golden count,
+stated twice (ports, the round trip's table names and row default,
 compression default, `TZ=UTC`, submodule rules, the CI exclusion) are
 grepped across every document, and the routing table's owner keeps the
 statement while the others keep at most a link.

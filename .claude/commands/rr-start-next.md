@@ -443,8 +443,8 @@ silently.
 
 Look actively for: locked decisions the unit must honor, handoff
 constraints recorded for the active milestone, known gaps in the
-dependencies the unit will call, and what the existing fixtures, goldens
-and benchmarks already pin.
+dependencies the unit will call, and what the existing fixtures and tests
+already pin.
 
 If the deep pass changes the commit list, size the unit again (step 5)
 before reporting.
