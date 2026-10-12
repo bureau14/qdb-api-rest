@@ -202,7 +202,9 @@ func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) er
 
 // writeBodies writes rec as rows.<format> in dir for every body format.
 // The four files carry the same batch, $table included, so the bodies
-// the round trip ingests differ in format only.
+// the round trip ingests differ in format only. One run writes all four
+// rather than one file per run under a --format flag, because the
+// driver would then draw the same batch four times for one table.
 func writeBodies(dir string, rec arrow.RecordBatch) error {
 	for _, b := range bodyFiles {
 		if err := writeBody(dir, "rows."+b.name, b.enc, rec); err != nil {
@@ -281,7 +283,9 @@ func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
 	//     an error naming it;
 	//  3. put $table back in front through the fixture's WithTable,
 	//     because the decoder drops it and the generated CSV carries it
-	//     first. The decoder puts $timestamp first and orders the data
+	//     first. Dropping $table from the expected file instead was
+	//     rejected, so that the expected value stays the one file every
+	//     comparison reads. The decoder puts $timestamp first and orders the data
 	//     columns by the schema for every format, and a bare SELECT *
 	//     answers $timestamp, $table and then the columns in creation
 	//     order, so this one step is the whole reorder a query needs;
