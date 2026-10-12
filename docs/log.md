@@ -22,10 +22,10 @@ Last updated: 2026-10-12
 
 M2 criteria. Exit: `POST /api/v2/tables`, `DELETE /api/v2/tables/{name}`,
 `GET /api/v2/tables/{name}/rows` (every format) and `POST /api/v2/rows`
-(CSV, NDJSON, Arrow IPC bodies) landed with their ingest/read roundtrip
-property tests per input format, and the v2 e2e round trip (`docs/e2e.md`,
-"The v2 round trip") green in Buildkite on all eight platforms through
-`scripts/cicd/40.test-e2e.sh`.
+(CSV, NDJSON, Arrow IPC and columnar JSON bodies) landed with their
+ingest/read roundtrip property tests per input format, and the v2 e2e
+round trip (`docs/e2e.md`, "The v2 round trip") green in Buildkite on
+all eight platforms through `scripts/cicd/40.test-e2e.sh`.
 
 M4 criteria. Entry: v2 auth and query are landed (M1 and M3 exits), and
 the 14 v1 goldens replay against a server under test. Exit: every v1
@@ -40,15 +40,13 @@ In flight:
 
 Next:
 
-1. The e2e surface: the owner and the agent define together what the
-   round trip tests, and `docs/e2e.md`, "The v2 round trip" is rewritten to that
-   definition before any further step lands.
-2. `scripts/cicd/40.test-e2e.sh` in the build step. The first
-   Buildkite run of the round trip is M2's exit.
-3. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
+1. `scripts/cicd/40.test-e2e.sh` in the build step, running
+   `make test-round-trip`. The first Buildkite run of the round trip is
+   M2's exit.
+2. The bench unit: the `http-arrow@new-rest` run, the first wall clock,
    time to first byte and RSS for the 5.6M-row query
    (`docs/bench.md`, "Protocols, servers, runs").
-4. File upstream against `qdb-api-go`, with no local patch
+3. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -92,6 +90,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-12 -- the v2 e2e is the round trip, and its surface is defined
+
+- Owner decisions: the name is "round trip", the sequence of
+  `TestRoundtrip` over HTTP; the round trip reads and queries
+  (`SELECT *`) four tables in every format under identity and gzip,
+  and the empty read, zstd, request codings and push modes stay Go
+  tests (`docs/e2e.md`, "The v2 round trip").
 
 ## 2026-10-12 -- the basic v2 e2e flow landed; e2e-basic-flow-plan.md deleted
 
