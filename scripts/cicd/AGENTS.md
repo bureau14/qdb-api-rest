@@ -15,8 +15,17 @@ in `.buildkite/` (see its `AGENTS.md`).
   prepended.
 - `10.lint.sh` delegates to `make lint`, a Linux-only step with GNU make
   available, so the golangci-lint version pin has one writer, the root
-  Makefile. The per-platform scripts call `${GO}` directly instead of
-  make because FreeBSD ships BSD make and the Windows agents none.
+  Makefile. The per-platform scripts that compile call `${GO}` directly
+  instead of make because FreeBSD ships BSD make and the Windows agents
+  none.
+- `40.test-e2e.sh` is the one per-platform script that uses make. It
+  finds GNU make by its platform name (`gmake` on FreeBSD,
+  `mingw32-make` on Windows) and runs `tests/e2e/Makefile`, because the
+  round trip's server lifecycle lives there and driving the driver from
+  the step would duplicate its start, trap and stop. On Windows it
+  co-locates the qdb DLLs into `bin/`, where `qdb_rest` and `e2etool`
+  are both built, because the agent's service context skips the
+  PATH-based DLL search.
 - `20.build.sh` composes the same `-ldflags` as the root Makefile's
   build target (VERSION file, git SHA, build time, build mode, GOAMD64).
   When one changes, change the other.
