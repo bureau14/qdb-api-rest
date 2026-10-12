@@ -156,11 +156,10 @@ func Schema(tbl Table) *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// generateRows draws tbl's rows into its batch. It draws a row count and
-// one null density for the whole table, so runs range from no nulls to
-// all-null columns. The batch is released on rt's cleanup.
-func generateRows(rt *rapid.T, tbl Table) Table {
-	rows := rapid.IntRange(0, 40).Draw(rt, "rows")
+// GenerateRows draws rows rows into tbl's batch at one drawn null density
+// for the whole table, so runs range from no nulls to all-null columns.
+// The batch is released on rt's cleanup.
+func GenerateRows(rt *rapid.T, tbl Table, rows int) Table {
 	nullPct := rapid.IntRange(0, 100).Draw(rt, "null pct")
 	cols := make([]arrow.Array, 0, len(tbl.Columns)+1)
 	cols = append(cols, generateIndex(rt, rows))
@@ -173,6 +172,12 @@ func generateRows(rt *rapid.T, tbl Table) Table {
 	}
 	rt.Cleanup(tbl.Batch.Release)
 	return tbl
+}
+
+// generateRows draws tbl's rows: a row count of 0 to 40, then
+// GenerateRows.
+func generateRows(rt *rapid.T, tbl Table) Table {
+	return GenerateRows(rt, tbl, rapid.IntRange(0, 40).Draw(rt, "rows"))
 }
 
 // generateColumn draws column i of table without cells: its name, its
