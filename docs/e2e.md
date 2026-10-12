@@ -13,9 +13,9 @@ the end.
 The harness proves, for the life of the product, that the built binary,
 driven over HTTP like a client:
 
-1. works as a client expects on the v2 surface: login, create a table,
-   query it empty, ingest rows, read them back in every format and
-   content coding (the v2 round trip, ADR-0014);
+1. works as a client expects on the v2 surface: login, create tables,
+   ingest rows in every body format, read and query them back in every
+   format and content coding (the v2 round trip, ADR-0014);
 2. returns exactly what the old server returned on the v1 surface (the
    v1 goldens, ADR-0013);
 3. behaves honestly under stress: fast, explicit failure under overload,
@@ -119,100 +119,126 @@ the two `reproduce` v1 goldens recaptured against it.
 
 There is one round trip and there are no captured files (ADR-0014). It
 is the sequence of `TestRoundtrip` (`internal/httpapi/roundtrip_test.go`)
-driven over HTTP by curl against the built binary. The
-expected value of every step is known by construction, so nothing is
-audited and nothing lives under `tests/e2e/golden/v2/`. The round trip runs
-once per cluster, `insecure` (`qdb://127.0.0.1:2836`) and `secure`
-(`:2838`), each against its own server under test. The secure login
-body is the user security file `start-services.sh` writes at the repo
-root (`user_private.key`, the file `internal/qdbtest` reads too), and
-the insecure login is anonymous. Every assertion is pass or fail.
-Nothing is timed.
+driven over HTTP by curl against the built binary. The expected value
+of every step is known by construction, so nothing is audited and
+nothing lives under `tests/e2e/golden/v2/`. The round trip runs once
+per cluster, `insecure` (`qdb://127.0.0.1:2836`) and `secure` (`:2838`),
+each against its own server under test. The secure login body is the
+user security file `start-services.sh` writes at the repo root
+(`user_private.key`, the file `internal/qdbtest` reads too), and the
+insecure login is anonymous. Every assertion is pass or fail. Nothing
+is timed.
 
 1. `POST /api/v2/auth/login`: 200 and the RFC 6749 shape, with
    `access_token` a non-empty string, `token_type` `Bearer` and
    `expires_in` a positive integer (ADR-0011). The token authenticates
    every later step.
-2. `POST /api/v2/tables`: one table per input format, `e2e_csv`,
-   `e2e_ndjson`, `e2e_arrow`, every column type (`blob`, `double`,
-   `int64`, `string`, `symbol`, `timestamp`), dropped first so the round trip
-   is idempotent.
-3. Each empty table is queried in every format. JSON keeps the columns
-   with empty `data`, NDJSON is an empty body, CSV is the header alone,
-   and Arrow is a schema with no batches (`internal/encoding/AGENTS.md`,
-   The text formats). This proves the schema path before any row exists.
-4. `POST /api/v2/rows`: the generated rows, whose `$table` column names
-   the table, as CSV for `e2e_csv`, as NDJSON for `e2e_ndjson`, as
-   Arrow IPC for `e2e_arrow`, each answered 200 with the row count.
-   The generator writes every body with `$table` set, so the three
-   bodies differ in format only. A body carrying several tables is the
-   Go property test's case, not the round trip's.
-5. Each table is read through `GET /api/v2/tables/{name}/rows` in every
-   format (`json`, `ndjson`, `csv`, `arrow`) under `identity` and
-   `gzip`. The CSV response is compared byte for byte with the generated
-   CSV. A JSON, NDJSON or Arrow response is decoded to CSV by the tool
-   and compared with the same file. A gzip response is decompressed
-   first. `content-type` is asserted from the format and
+2. `POST /api/v2/tables`: one table per body format, `e2e_csv`,
+   `e2e_ndjson`, `e2e_arrow` and `e2e_json`, with one column of every
+   type (`blob`, `double`, `int64`, `string`, `symbol`, `timestamp`),
+   dropped first so the round trip is idempotent.
+3. `POST /api/v2/rows`: the generated rows, whose `$table` column names
+   the table, as CSV into `e2e_csv`, as NDJSON into `e2e_ndjson`, as
+   Arrow IPC into `e2e_arrow` and as columnar JSON into `e2e_json`,
+   each answered 200 with the row count. The tool writes every body
+   from the same batch, `$table` included, so the four bodies differ in
+   format only. A body carrying several tables is the Go property
+   test's case, not the round trip's.
+4. Each table is read through `GET /api/v2/tables/{name}/rows` in every
+   format (`csv`, `ndjson`, `arrow`, `json`) under `identity` and
+   `gzip`. The CSV response is compared byte for byte with the
+   generated CSV. A JSON, NDJSON or Arrow response is decoded to CSV by
+   the tool and compared with the same file. A gzip response is
+   decompressed first. `content-type` is asserted from the format and
    `content-encoding` from the coding (absent for `identity`). Nothing
    else in the headers is read. The plain run sends no
    `Accept-Encoding`, and the gzip run sends `Accept-Encoding: gzip`.
-   The table reader answers `$table` and `$timestamp`
-   first, then the data columns, and the generated CSV has the same
-   header, so the comparison is byte for byte with no reordering.
+   The table reader answers `$table` and `$timestamp` first, then the
+   data columns, and the generated CSV has the same header, so the
+   comparison is byte for byte with no reordering.
+5. Each table is queried through `POST /api/v2/query` with
+   `SELECT * FROM <name>` in every format under both codings, with the
+   assertions of step 4. A bare `SELECT *` answers `$table` next to
+   `$timestamp` and the rows ascending by `$timestamp`, and the
+   decoders put `$timestamp` first and drop `$table`, which the tool
+   puts back in front, so the query's CSV is the generated file too.
+
+The round trip tests nothing else. Each of the following has a Go test
+and no step here: the empty read of a table in every format
+(`TestRoundtrip`, step 3), zstd on the response wire
+(`internal/httpapi/compress_test.go`), request-body codings and push
+modes (`TestRoundtrip`, step 4), deduplication
+(`TestRoundtripDeduplicated`), several tables in one body
+(`internal/encoding/decode_test.go`), and the error rows of ADR-0010
+and ADR-0011 (`internal/httpapi`). Cross-format equivalence over
+generated schemas stays with the Go property tests. The round trip
+proves the binary over HTTP with one schema.
 
 The generated rows are the CSV encoder's own bytes (`encoding/csv` RFC
 4180, header row, LF), pinned without a cluster in
 `internal/encoding/encode_test.go`, and the other three formats are
-proven equal to them. One fact of the tree bounds the data (verified 2026-09-18). CSV
-writes null and the empty string alike, so the generator emits no
-empty string and the ingest decoder reads an empty CSV field as null.
+proven equal to them. One fact of the tree bounds the data (verified
+2026-09-18). CSV writes null and the empty string alike, so the
+generator emits no empty string and the ingest decoder reads an empty
+CSV field as null.
 
 ### The tool
 
 `tests/e2e/tools/e2etool`, built by the Makefile with the server's
 toolchain and environment. It may import any package of this
-repository, the cgo binding included (ADR-0013, Consequences).
+repository, the cgo binding included (ADR-0013, Consequences). It
+formats and parses no cell of its own: every file it writes comes out
+of an encoder of `internal/encoding`, and every response it reads goes
+through a decoder of the same package.
 
-- `e2etool gen --rows N --seed S`: writes `rows.csv`, `rows.ndjson` and
-  `rows.arrow` (the IPC streaming format, one batch per `chunkRows`)
-  for the same rows: every column type, nulls, the awkward string
-  (`"`, `,`, `<&>`), nanosecond timestamps, negative and extreme
-  integers. NaN is excluded, since it encodes as null and would not
-  round-trip. The driver prints the seed so a failure reproduces.
-- `e2etool tocsv --format json|ndjson|arrow`: stdin to CSV on stdout,
-  through the package's own CSV encoder. The JSON it reads is the
-  table reader's, a top-level array of `{"columns":[..]}` objects, one per
-  record batch, concatenated per column.
+- `e2etool gen --rows N --seed S --out DIR --table NAME`: draws one
+  batch, `$table` naming the table first, then `$timestamp` strictly
+  ascending, then one column of every type, with the edge rows (the
+  extreme integers, the awkward string with `"`, `,`, `<&>` and an LF,
+  nulls, nanosecond timestamps) ahead of the drawn ones, and writes it
+  as `rows.csv`, `rows.ndjson`, `rows.arrow` and `rows.json` through
+  the package's encoders. NaN is excluded, since it encodes as null and
+  would not round-trip. It prints the row count, edge rows included,
+  which the driver asserts the ingest's answer against. The driver
+  prints the seed so a failure reproduces.
+- `e2etool tocsv --format json|ndjson|arrow --table NAME`: stdin to CSV
+  on stdout. The body is decoded through the package's decoder of that
+  format, typed through the tool's own schema of the table with
+  `$table` in front, the same shape the decoders' tests answer. The
+  decoder drops `$table`, so the tool puts a `$table` column of the
+  name back in front, and encodes through the package's CSV encoder.
+  The JSON it reads is the one result the query answers or the array
+  of results the table reader answers.
 
 ### The driver
 
 `tests/e2e/round-trip.sh run --insecure-url <url> --secure-url <url>
-[--rows N] [--seed S]` is a small option loop. The Makefile is the only
-source of URLs, ports and paths. `make test-round-trip` runs it. A cluster
-whose URL is empty gets a server started from `QDB_REST_BIN` (`40090`
-on the insecure node, `40091` on the secure node with
-`--cluster-public-key-file` and `--cluster-user-security-file`), with
-the TLS listener off and `TZ=UTC`. Working files go to
-`actual/round-trip/<cluster>/`. The driver is one file, like `golden.sh`:
-generic request and status helpers, one function per step kind (login,
-create, ingest, read back) that takes the table, the format and the
-coding as arguments, and a matrix of body formats, read formats and
-codings that `run_cluster` iterates. A format is one list entry, and a
-new step is one function called inside the loop. The round trip stays in
-shell and curl, because the question it answers is whether the built
-binary works for a client over HTTP, and curl is that client; a Go
-client would repeat `TestRoundtrip` in `internal/httpapi`.
+--tool <e2etool> [--rows N] [--seed S]` is a small option loop. The
+Makefile is the only source of URLs, ports and paths.
+`make test-round-trip` runs it. A cluster whose URL is empty gets a
+server started from `QDB_REST_BIN` (`40090` on the insecure node,
+`40091` on the secure node with `--cluster-public-key-file` and
+`--cluster-user-security-file`), with the TLS listener off and
+`TZ=UTC`. Working files go to `actual/round-trip/<cluster>/`, one
+`.body` and one `.headers` file per request. The driver is one file,
+like `golden.sh`: generic request and status helpers, one function per
+step kind (login, create, ingest, read back, query back) that takes the
+table, the format and the coding as arguments, one `check_response`
+that the read and the query share for the header assertions, the
+decoding and the comparison, and a matrix of body formats, response
+formats and codings that `run_cluster` iterates. A format is one list
+entry, and a new step is one function called inside the loop. The
+round trip stays in shell and curl, because the question it answers is
+whether the built binary works for a client over HTTP, and curl is
+that client; a Go client would repeat `TestRoundtrip` in
+`internal/httpapi`.
 
-Cross-format equivalence over generated schemas (JSON, NDJSON, CSV,
-Arrow IPC, Flight SQL) stays with the Go property tests. The round trip
-proves the binary over HTTP with one schema. Error rows (ADR-0010 and
-ADR-0011's tables) are Go tests in `internal/httpapi`, never round trip
-steps. An endpoint lands with its step in the round trip, so the round trip grows
-with the milestones (`docs/brief.md`, Milestones). Refresh and session
-join the login step, and the exploration endpoints and `/api/v2/sql`
-add steps. Flight SQL has no shell client. Whether it gets a subcommand
-of the tool or stays with the property tests is decided at that
-milestone's entry.
+An endpoint lands with its step in the round trip, so the round trip
+grows with the milestones (`docs/brief.md`, Milestones). Refresh and
+session join the login step, and the exploration endpoints and
+`/api/v2/sql` add steps. Flight SQL has no shell client. Whether it
+gets a subcommand of the tool or stays with the property tests is
+decided at that milestone's entry.
 
 ## The v1 goldens
 
@@ -359,16 +385,16 @@ tests/e2e/
   Makefile                services-check | download-golden | extract | load | verify-dataset |
                           seed | package-dataset | old-server | capture-v1 |
                           test-v1 | test-v1-selfcheck | clean | distclean
-                          e2etool | test-round-trip (arrive with the v2 round trip)
+                          e2etool | test-round-trip
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper,
                           count_qdb_rows, export_table_csv (chunked), sha256_file
   golden.sh               v1 golden capture/replay driver
-  round-trip.sh                 the v2 round trip driver (arrives with the v2 round trip)
+  round-trip.sh                 the v2 round trip driver
   seed.sql                v1 golden fixture (qdbsh statements)
   tools/package-dataset.sh  db.tar.zst -> dataset archive (operator)
-  tools/e2etool/          Go: gen (rows in every input format), tocsv (any response -> CSV);
-                          arrives with the v2 round trip
+  tools/e2etool/          Go: gen and tocsv;
+                          gen writes the four body files, tocsv decodes a response to CSV
   golden/v1/              v1 request/response pairs, captured from the old server
   .old-master/            git worktree of master for the old server (gitignored)
   bench/                  temporary multi-target comparison (docs/bench.md)
