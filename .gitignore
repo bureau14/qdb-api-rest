@@ -15,8 +15,6 @@ license.key
 bin/
 test-reports/
 # e2e harness working files
-tests/e2e/datasets/
-tests/e2e/.old-master/
 tests/e2e/actual/
 tests/e2e/*.log
 tests/e2e/*.pid

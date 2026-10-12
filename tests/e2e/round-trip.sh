@@ -51,8 +51,8 @@ parse_args() {
 # status on stdout. -g keeps [] literal, and --compressed is deliberately
 # not used, because what a plain client sends is no Accept-Encoding at
 # all. The header dump is what check_response asserts content-type and
-# content-encoding from, the way golden.sh captures headers; a -w format
-# could not say that a header is absent.
+# content-encoding from, because a -w format could not say that a
+# header is absent.
 request() {
     local out="$1" name="$2"
     shift 2
@@ -167,8 +167,8 @@ compare_csv() {
 # with no charset, as the in-process round trip asserts it, and
 # content-encoding equals the coding and is absent for identity. Nothing
 # else in the headers is read. A gzip body is decompressed through
-# gunzip into <name>.plain first, as golden.sh does, and then the body
-# is compared with the generated CSV.
+# gunzip into <name>.plain first, and then the body is compared with
+# the generated CSV.
 check_response() {
     local out="$1" name="$2" format="$3" type="$4" coding="$5" table="$6" csv="$7" csv_is="$8" want_coding=""
     local body="$out/$name.body"

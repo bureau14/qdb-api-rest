@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers for the qdb-api-rest e2e harness (docs/e2e.md). They are
 # adapted from qdb-nats-connector's examples/common.sh (ADR-007) and are
-# sourced by golden.sh, tools/*.sh and the Makefile's inline shell.
+# sourced by the Makefile's inline shell.
 #
-# The file reads top to bottom: logging, environment, process control,
-# qdb helpers. Nothing here starts qdbd. It is a persistent service owned
+# The file reads top to bottom: logging, environment, process control. Nothing here starts qdbd. It is a persistent service owned
 # by scripts/tests/setup/start-services.sh.
 
 set -euo pipefail
@@ -62,8 +61,8 @@ qdbsh() {
 export LD_LIBRARY_PATH="$QDB_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$QDB_DIR/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 
-# The v1 JSON encodes timestamps in the server's local time zone. Goldens are
-# captured and replayed under UTC so they are portable across machines.
+# Every server the harness starts runs under UTC, so a response that
+# carries a local-time timestamp is portable across machines.
 export TZ=UTC
 
 # ---------------------------------------------------------- process control
@@ -158,101 +157,4 @@ stop_server() {
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
     fi
     cleanup_pid_file "$pid_file"
-}
-
-# ------------------------------------------------------------ qdb helpers
-
-# COUNT(*) of one table through qdbsh. Prints 0 when the table is missing.
-# The qdbsh output is a header, a --- divider and the value row, with
-# thousands commas.
-# Usage: count_qdb_rows <table> [cluster_uri]
-count_qdb_rows() {
-    local table="$1" uri="${2:-$QDB_URI}" count
-    count=$(qdbsh --cluster "$uri" -c "SELECT COUNT(*) FROM \"$table\"" 2>/dev/null \
-        | awk '/^-{3,}$/{getline; print $1; exit}' | tr -d ',')
-    echo "${count:-0}"
-}
-
-# Run a file of qdbsh statements, one per line, and stop at the first error
-# (qdbsh exits non-zero on query errors). Blank lines and lines starting with
-# -- are skipped. A DROP TABLE of a missing table and an attach_tag of an
-# already attached tag are tolerated, so re-seeding is idempotent.
-run_qdbsh_file() {
-    local file="$1" line out
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        [[ -z "$line" || "$line" == --* ]] && continue
-        if ! out=$(qdbsh --cluster "$QDB_URI" -c "$line" 2>&1); then
-            [[ "$line" == DROP\ TABLE* ]] && continue
-            [[ "$line" == attach_tag* && "$out" == *"already marked"* ]] && continue
-            die "qdbsh failed on: $line"$'\n'"$out"
-        fi
-    done < "$file"
-}
-
-# Shard size of a table in milliseconds (SHOW TABLE, 5th column).
-# Usage: table_shard_ms <table> [cluster_uri]
-table_shard_ms() {
-    local table="$1" uri="${2:-$QDB_URI}" ms
-    ms=$(qdbsh --cluster "$uri" -c "SHOW TABLE \"$table\"" | awk '/^-{3,}$/{getline; print $5; exit}' | tr -d ',')
-    [[ "$ms" =~ ^[0-9]+$ ]] || die "could not read shard size of $table"
-    echo "$ms"
-}
-
-# First and last $timestamp of a table, second precision, as "<first> <last>".
-# qdb refuses to select only special columns, so the first regular column
-# rides along. Usage: table_time_range <table> [cluster_uri]
-table_time_range() {
-    local table="$1" uri="${2:-$QDB_URI}" col first last
-    col=$(qdbsh --cluster "$uri" -c "SHOW TABLE \"$table\"" | awk '/^-{3,}$/{getline; print $2; exit}')
-    first=$(qdbsh --cluster "$uri" -c "SELECT \$timestamp, $col FROM \"$table\" LIMIT 1" \
-        | awk '/^-{3,}$/{getline; print $1; exit}' | cut -c1-19)
-    last=$(qdbsh --cluster "$uri" -c "SELECT \$timestamp, $col FROM \"$table\" ORDER BY \$timestamp DESC LIMIT 1" \
-        | awk '/^-{3,}$/{getline; print $1; exit}' | cut -c1-19)
-    [[ -n "$first" && -n "$last" ]] || die "could not determine the time range of $table"
-    echo "$first $last"
-}
-
-# Epoch-seconds conversions that work with GNU and BSD date.
-to_epoch()   { date -u -d "$1" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%S" "$1" +%s; }
-from_epoch() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S; }
-
-# Export a whole table to CSV with qdb_export (no header row, the qdb_export
-# convention). qdb_export reads through the bulk reader, whose result must
-# fit the client network input buffer (125 MiB by default, with no flag to
-# raise it), so large tables are exported one shard-sized half-open range at
-# a time and concatenated. The ranges are ordered, so the result equals a
-# single export. The optional config path receives the qdb_import config,
-# which the first chunk writes.
-# Usage: export_table_csv <table> <csv> [cluster_uri] [import_config]
-export_table_csv() {
-    local table="$1" csv="$2" uri="${3:-$QDB_URI}" config="${4:-}"
-    local shard_s range first last start end chunk_end
-    local -a config_args=()
-    [[ -n "$config" ]] && config_args=(--config "$config")
-    shard_s=$(( $(table_shard_ms "$table" "$uri") / 1000 ))
-    range=$(table_time_range "$table" "$uri"); first=${range% *}; last=${range#* }
-    start=$(( $(to_epoch "$first") / shard_s * shard_s ))
-    end=$(( $(to_epoch "$last") + 1 ))
-    log_info "exporting $table [$first .. $last] in ${shard_s}s chunks"
-    : > "$csv"
-    while (( start < end )); do
-        chunk_end=$(( start + shard_s ))
-        "$QDB_EXPORT" --ts "$table" -f "$csv.chunk" -c "$uri" "${config_args[@]}" \
-            --start-date "$(from_epoch "$start")" --end-date "$(from_epoch "$chunk_end")" >/dev/null \
-            || die "qdb_export of $table failed for chunk starting $(from_epoch "$start")"
-        cat "$csv.chunk" >> "$csv"
-        config_args=()
-        start=$chunk_end
-    done
-    rm -f "$csv.chunk"
-}
-
-
-# sha256 of a file, portable (coreutils sha256sum or BSD shasum).
-sha256_file() {
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | awk '{print $1}'
-    else
-        shasum -a 256 "$1" | awk '{print $1}'
-    fi
 }
