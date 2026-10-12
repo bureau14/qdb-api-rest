@@ -208,9 +208,7 @@ read_back() {
 # POST /api/v2/query with SELECT * FROM <table> as the text/plain body,
 # under Accept of that type and that coding, checked through
 # check_response like a read, with every format, CSV included, decoded
-# through the tool. A bare SELECT * answers $timestamp, then $table, then
-# the columns, and the rows ascending by $timestamp, and the tool folds
-# that into the generated order.
+# through the tool (compare_csv says why).
 query_back() {
     local out="$1" url="$2" token="$3" table="$4" format="$5" type="$6" coding="$7" csv="$8"
     local name="$table.query.$format.$coding" status
