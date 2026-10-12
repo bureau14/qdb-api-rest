@@ -9,6 +9,7 @@
 #   make capture-v1                 (operator) capture goldens from the old server
 #   make test-v1-selfcheck          replay goldens against the old server
 #   make test-v1                    replay goldens against the server under test
+#   make e2etool                    build the Go tool of the v2 flow
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -53,6 +54,13 @@ REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) --listen-https=
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
+# The Go tool of the v2 flow (docs/e2e.md, "The tool"). It gains .exe on
+# Windows like every binary the harness runs (common.sh's EXE_EXT, which
+# is a shell variable, so make derives its own).
+EXE_EXT     := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
+E2ETOOL_DIR := $(E2E_DIR)/tools/e2etool
+E2ETOOL     := $(E2ETOOL_DIR)/e2etool$(EXE_EXT)
+
 COMMON := source $(E2E_DIR)/common.sh
 GOLDEN := $(E2E_DIR)/golden.sh
 # Golden case selection for capture/replay targets. Empty means all cases.
@@ -60,10 +68,10 @@ GOLDEN := $(E2E_DIR)/golden.sh
 CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
-        old-server capture-v1 test-v1 test-v1-selfcheck clean distclean
+        old-server capture-v1 test-v1 test-v1-selfcheck e2etool clean distclean
 
 help:
-	@sed -n '2,12p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,13p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -173,11 +181,22 @@ test-v1: services-check load seed
 	trap 'stop_server $(REST_PID)' EXIT; \
 	$(GOLDEN) replay http://127.0.0.1:$(REST_PORT) $(CASES)
 
+# ------------------------------------------------------------------ v2 flow
+
+# The tool is built with the server's toolchain and environment (the root
+# .envrc, -mod=vendor) so it links the same C API as the server under
+# test. -buildvcs=false, as in the CI build, because the build cannot
+# stamp VCS inside the rhel7 builder.
+e2etool:
+	@$(COMMON); cd $(REPO_ROOT) && source ./.envrc && \
+	    go build -mod=vendor -buildvcs=false -o $(E2ETOOL) ./tests/e2e/tools/e2etool && \
+	    log_info "built $(E2ETOOL)"
+
 # ------------------------------------------------------------------ cleanup
 
 clean:
 	@$(COMMON); stop_server $(OLD_REST_PID); stop_server $(REST_PID); \
-	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(DATASET_DIR)
+	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(DATASET_DIR) $(E2ETOOL)
 
 distclean: clean
 	@rm -rf $(DATASETS_DIR); \
