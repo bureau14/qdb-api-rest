@@ -158,10 +158,10 @@ Nothing is timed.
    first, then the data columns, and the generated CSV has the same
    header, so the comparison is byte for byte with no reordering.
 
-The generated rows are the CSV encoder's dialect (`encoding/csv` RFC
-4180, header row, LF), so the CSV path is proven against a source the
-encoders did not touch, and the other three formats are proven equal
-to it. One fact of the tree bounds the data (verified 2026-09-18). CSV
+The generated rows are the CSV encoder's own bytes (`encoding/csv` RFC
+4180, header row, LF), pinned without a cluster in
+`internal/encoding/encode_test.go`, and the other three formats are
+proven equal to them. One fact of the tree bounds the data (verified 2026-09-18). CSV
 writes null and the empty string alike, so the generator emits no
 empty string and the ingest decoder reads an empty CSV field as null.
 

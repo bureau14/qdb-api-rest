@@ -62,11 +62,16 @@ no audit.
 - There is no operator step in the v2 layer. A wire change that breaks
   the flow is a failing build, not a recapture. A deliberate wire
   change changes the tool or the driver in the same commit.
-- The CSV path is proven against a source the encoders did not touch,
-  and the other three formats are proven equal to it. A CSV encoder bug
-  that hides from the CSV comparison would have to be mirrored by the
-  parser that reads the generated CSV. The property tests cover that
-  pair independently.
+- The expected CSV is the CSV encoder's own bytes over the generated
+  batch, and the other three formats are proven equal to it. The
+  encoder is pinned byte for byte on a hand-built batch without a
+  cluster (`internal/encoding/encode_test.go`), and the ingest decoder
+  that reads the file is a separate path proven against the encoder
+  (`decode_test.go`). A CSV encoder bug that hides from the comparison
+  would have to be mirrored by that decoder, and the two are tested
+  independently. The tool formats no cell of its own (owner decision,
+  2026-10-11; this bullet said before that the CSV path was proven
+  against a source the encoders did not touch).
 - One limit of the tree bounds the generated data. CSV writes null
   and the empty string alike, so the generator emits no empty string.
 - The dataset archive carries no `expected/` directory, and the v2
