@@ -1,8 +1,9 @@
-// Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md, "The
-// tool"). gen writes the rows the round trip ingests. The tool may import any
-// package of this repository, the cgo binding included (ADR-0014).
+// Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md,
+// "The tool"). gen writes the rows the round trip ingests, in every body
+// format. The tool may import any package of this repository, the cgo
+// binding included (ADR-0014).
 //
-//	e2etool gen --rows N --seed S --out DIR    write DIR/rows.csv, print the row count
+//	e2etool gen --rows N --seed S --out DIR [--table NAME]    write DIR/rows.{csv,ndjson,arrow,json}, print the row count
 package main
 
 import (
@@ -170,19 +171,43 @@ func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
 	return body, nil
 }
 
-// writeCSV writes rec as rows.csv in dir through the package's CSV
-// encoder, so the file is the encoder's dialect and the tool formats no
-// cell of its own.
-func writeCSV(dir string, rec arrow.RecordBatch) error {
-	f, err := os.Create(filepath.Join(dir, "rows.csv"))
+// bodyFiles is the encoder that writes each body format's file, keyed by
+// the format name the driver's matrix uses, which is also the file's
+// extension: rows.csv, rows.ndjson, rows.arrow, rows.json.
+var bodyFiles = []struct {
+	name string
+	enc  encoding.Encoder
+}{
+	{"csv", encoding.CSV{}},
+	{"ndjson", encoding.NDJSON{}},
+	{"arrow", encoding.Arrow{}},
+	{"json", encoding.JSON{}},
+}
+
+// writeBody writes rec to dir/<file> through enc, so the file is the
+// encoder's dialect and the tool formats no cell of its own.
+func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) error {
+	f, err := os.Create(filepath.Join(dir, file))
 	if err != nil {
 		return err
 	}
-	if err := (encoding.CSV{}).Encode(context.Background(), f, rec); err != nil {
+	if err := enc.Encode(context.Background(), f, rec); err != nil {
 		_ = f.Close()
 		return err
 	}
 	return f.Close()
+}
+
+// writeBodies writes rec as rows.<format> in dir for every body format.
+// The four files carry the same batch, $table included, so the bodies
+// the round trip ingests differ in format only.
+func writeBodies(dir string, rec arrow.RecordBatch) error {
+	for _, b := range bodyFiles {
+		if err := writeBody(dir, "rows."+b.name, b.enc, rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // gen is the gen subcommand. It prints the row count it wrote, edge rows
@@ -190,34 +215,34 @@ func writeCSV(dir string, rec arrow.RecordBatch) error {
 // writer of that number.
 func gen(args []string) error {
 	// Every failure ends the command before anything is printed, so a
-	// count on stdout means the file is complete:
+	// count on stdout means every file is complete:
 	//
 	//  1. parse the flags. The defaults are the Makefile's, so the tool
 	//     runs by hand with no options;
 	//  2. draw the batch, released when the function returns, after the
-	//     write that reads it;
-	//  3. write rows.csv;
+	//     writes that read it;
+	//  3. write every body file;
 	//  4. print the row count, the one line the driver reads.
 
 	// 1. the flags
 	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
 	rows := fs.Int("rows", 10000, "drawn rows, before the edge rows")
 	seed := fs.Int("seed", 0, "draw seed")
-	out := fs.String("out", ".", "directory of rows.csv")
+	out := fs.String("out", ".", "directory of the rows.* files")
 	tableName := fs.String("table", "e2e_csv", "the table the $table column names")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// 2. the batch, alive until after the write
+	// 2. the batch, alive until after the writes
 	rec, err := generate(*tableName, *rows, *seed)
 	if err != nil {
 		return err
 	}
 	defer rec.Release()
 
-	// 3. the file
-	if err := writeCSV(*out, rec); err != nil {
+	// 3. the files
+	if err := writeBodies(*out, rec); err != nil {
 		return err
 	}
 
