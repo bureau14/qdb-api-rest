@@ -189,6 +189,17 @@ func writeCSV(dir string, rec arrow.RecordBatch) error {
 // included, so the driver asserts the ingest's answer against the one
 // writer of that number.
 func gen(args []string) error {
+	// Every failure ends the command before anything is printed, so a
+	// count on stdout means the file is complete:
+	//
+	//  1. parse the flags. The defaults are the Makefile's, so the tool
+	//     runs by hand with no options;
+	//  2. draw the batch, released when the function returns, after the
+	//     write that reads it;
+	//  3. write rows.csv;
+	//  4. print the row count, the one line the driver reads.
+
+	// 1. the flags
 	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
 	rows := fs.Int("rows", 10000, "drawn rows, before the edge rows")
 	seed := fs.Int("seed", 0, "draw seed")
@@ -197,14 +208,20 @@ func gen(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	// 2. the batch, alive until after the write
 	rec, err := generate(*tableName, *rows, *seed)
 	if err != nil {
 		return err
 	}
 	defer rec.Release()
+
+	// 3. the file
 	if err := writeCSV(*out, rec); err != nil {
 		return err
 	}
+
+	// 4. the count the driver reads
 	fmt.Println(rec.NumRows())
 	return nil
 }
