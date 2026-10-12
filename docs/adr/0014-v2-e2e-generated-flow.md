@@ -70,8 +70,7 @@ no audit.
   (`decode_test.go`). A CSV encoder bug that hides from the comparison
   would have to be mirrored by that decoder, and the two are tested
   independently. The tool formats no cell of its own (owner decision,
-  2026-10-11; this bullet said before that the CSV path was proven
-  against a source the encoders did not touch).
+  2026-10-11).
 - One limit of the tree bounds the generated data. CSV writes null
   and the empty string alike, so the generator emits no empty string.
 - The dataset archive carries no `expected/` directory, and the v2
