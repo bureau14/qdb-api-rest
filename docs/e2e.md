@@ -189,7 +189,8 @@ CSV field as null.
 ### The tool
 
 `tests/e2e/tools/e2etool`, built by the Makefile with the server's
-toolchain and environment. It may import any package of this
+toolchain and environment into the repository's `bin/`, next to
+`qdb_rest`. It may import any package of this
 repository, the cgo binding included (ADR-0013, Consequences). It
 formats and parses no cell of its own: every file it writes comes out
 of an encoder of `internal/encoding`, and every response it reads goes

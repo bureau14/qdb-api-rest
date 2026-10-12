@@ -29,7 +29,9 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   response. Error rows are Go tests in `internal/httpapi`, never round
   trip steps. The generated rows carry no empty string. The tool is
   built by `make e2etool` with the server's toolchain and the root
-  `.envrc`, and it may import any package of this repository. The
+  `.envrc` into the repository's `bin/`, next to `qdb_rest`, so the CI
+  step co-locates the Windows DLLs once, and it may import any package
+  of this repository. The
   create body in `round-trip.sh` and `roundTripSchema` in the tool
   spell the same column names, and a change to one changes the other.
   A new response format is one entry in the driver's matrix and one

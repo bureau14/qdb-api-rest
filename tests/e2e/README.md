@@ -26,7 +26,7 @@ make capture-v1              # operator: (re)capture goldens from the old server
 make test-v1-selfcheck       # replay goldens against the old server (harness determinism)
 make test-v1 QDB_REST_BIN=<new server binary> [REST_ARGS=...]
 make test-v1 REST_URL=http://127.0.0.1:40090     # against an already running server
-make e2etool                 # build the Go tool of the v2 round trip
+make e2etool                 # build the Go tool of the v2 round trip into <repo>/bin/
 make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091
 ```

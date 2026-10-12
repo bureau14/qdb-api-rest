@@ -9,7 +9,7 @@
 #   make capture-v1                 (operator) capture goldens from the old server
 #   make test-v1-selfcheck          replay goldens against the old server
 #   make test-v1                    replay goldens against the server under test
-#   make e2etool                    build the Go tool of the v2 round trip
+#   make e2etool                    build the Go tool of the v2 round trip into bin/
 #   make test-round-trip                  the v2 round trip, one server per cluster
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
@@ -55,12 +55,15 @@ REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) --listen-https=
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
-# The Go tool of the v2 round trip (docs/e2e.md, "The tool"). It gains .exe on
-# Windows like every binary the harness runs (common.sh's EXE_EXT, which
-# is a shell variable, so make derives its own).
-EXE_EXT     := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
-E2ETOOL_DIR := $(E2E_DIR)/tools/e2etool
-E2ETOOL     := $(E2ETOOL_DIR)/e2etool$(EXE_EXT)
+# The Go tool of the v2 round trip (docs/e2e.md, "The tool"). It is built
+# into the repository's bin/, next to qdb_rest, so every cgo binary the
+# round trip runs sits in one directory and the CI step's Windows DLL
+# co-location is one copy (scripts/cicd/40.test-e2e.sh). It gains .exe
+# on Windows like every binary the harness runs (common.sh's EXE_EXT,
+# which is a shell variable, so make derives its own).
+EXE_EXT := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
+BIN_DIR := $(REPO_ROOT)/bin
+E2ETOOL := $(BIN_DIR)/e2etool$(EXE_EXT)
 
 # The v2 round trip (docs/e2e.md, "The v2 round trip") runs on both clusters, each
 # against its own server, because the secure one costs one block here
@@ -211,7 +214,7 @@ test-v1: services-check load seed
 # test. -buildvcs=false, as in the CI build, because the build cannot
 # stamp VCS inside the rhel7 builder.
 e2etool:
-	@$(COMMON); cd $(REPO_ROOT) && source ./.envrc && \
+	@$(COMMON); mkdir -p $(BIN_DIR); cd $(REPO_ROOT) && source ./.envrc && \
 	    go build -mod=vendor -buildvcs=false -o $(E2ETOOL) ./tests/e2e/tools/e2etool && \
 	    log_info "built $(E2ETOOL)"
 
