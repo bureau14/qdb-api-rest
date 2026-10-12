@@ -227,9 +227,9 @@ query_back() {
 # table is read and queried in every response format under every
 # coding. A format is one entry here and a new step is one function
 # called in run_cluster.
-BODY_FORMATS=("csv:text/csv")
-READ_FORMATS=("csv:text/csv")
-CODINGS=("identity")
+BODY_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
+READ_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
+CODINGS=("identity" "gzip")
 
 # run_cluster <name> <url> <login_body_file>: the round trip against one
 # server: login once, then per body format create the table, ingest the
@@ -237,23 +237,23 @@ CODINGS=("identity")
 # format and coding. The seed is in every line, so a failure reproduces
 # with --seed.
 run_cluster() {
-    local name="$1" url="$2" body="$3" token rows entry table type rentry coding
+    local name="$1" url="$2" body="$3" token rows entry fmt table type rentry coding
     local out="$ACTUAL_DIR/$name"
     mkdir -p "$out"
     log_info "$name: $url, rows=$ROWS seed=$SEED"
     token=$(login "$out" "$url" "$body") || return 1
     for entry in "${BODY_FORMATS[@]}"; do
-        table="e2e_${entry%%:*}"; type="${entry#*:}"
+        fmt="${entry%%:*}"; type="${entry#*:}"; table="e2e_$fmt"
         rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$table") || die "$name: e2etool gen failed"
         create_table "$out" "$url" "$token" "$table" || return 1
-        ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.csv" "$rows" || return 1
+        ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.$fmt" "$rows" || return 1
         for rentry in "${READ_FORMATS[@]}"; do
             for coding in "${CODINGS[@]}"; do
                 read_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
                 query_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
             done
         done
-        log_info "[OK] $name: $table, $rows rows in as $type and back as ${READ_FORMATS[*]} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
+        log_info "[OK] $name: $table, $rows rows in as $fmt, read and queried back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
     done
 }
 
