@@ -10,6 +10,7 @@
 #   make test-v1-selfcheck          replay goldens against the old server
 #   make test-v1                    replay goldens against the server under test
 #   make e2etool                    build the Go tool of the v2 flow
+#   make test-flow                  the v2 flow, one server per cluster
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -61,6 +62,26 @@ EXE_EXT     := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
 E2ETOOL_DIR := $(E2E_DIR)/tools/e2etool
 E2ETOOL     := $(E2ETOOL_DIR)/e2etool$(EXE_EXT)
 
+# The v2 flow (docs/e2e.md, "The v2 flow") runs on both clusters, each
+# against its own server. ROWS and SEED select the generated data and
+# the driver prints both, so a failure reproduces. A cluster whose URL
+# is given is used as it is; otherwise its server is started from
+# QDB_REST_BIN. The secure server takes the key files start-services.sh
+# writes at the repo root, and both run with the TLS listener off.
+ROWS              ?= 10000
+SEED              ?= $(shell date +%s)
+REST_URL_INSECURE ?= $(REST_URL)
+REST_URL_SECURE   ?=
+QDB_URI_SECURE    := qdb://127.0.0.1:2838
+REST_PORT_SECURE  ?= 40091
+REST_ARGS_SECURE  ?= --cluster $(QDB_URI_SECURE) \
+                     --cluster-public-key-file $(REPO_ROOT)/cluster_public.key \
+                     --cluster-user-security-file $(REPO_ROOT)/user_private.key \
+                     --listen-http 127.0.0.1:$(REST_PORT_SECURE) --listen-https=
+REST_PID_SECURE   := $(E2E_DIR)/rest-secure.pid
+REST_LOG_SECURE   := $(E2E_DIR)/rest-secure.log
+FLOW              := $(E2E_DIR)/flow.sh
+
 COMMON := source $(E2E_DIR)/common.sh
 GOLDEN := $(E2E_DIR)/golden.sh
 # Golden case selection for capture/replay targets. Empty means all cases.
@@ -68,10 +89,10 @@ GOLDEN := $(E2E_DIR)/golden.sh
 CASES  ?=
 
 .PHONY: help services-check download-golden extract load verify-dataset seed package-dataset \
-        old-server capture-v1 test-v1 test-v1-selfcheck e2etool clean distclean
+        old-server capture-v1 test-v1 test-v1-selfcheck e2etool test-flow clean distclean
 
 help:
-	@sed -n '2,13p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,14p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -192,10 +213,35 @@ e2etool:
 	    go build -mod=vendor -buildvcs=false -o $(E2ETOOL) ./tests/e2e/tools/e2etool && \
 	    log_info "built $(E2ETOOL)"
 
+# Both clusters must answer, because the flow logs in to each. The v1
+# targets need the insecure one alone, so services-check keeps its one
+# port and the secure probe lives here. The flow loads nothing. Each
+# server not given as a URL is started here and stopped on exit, one
+# after the other being fine because the driver runs the clusters in
+# sequence.
+test-flow: services-check e2etool
+	@$(COMMON); \
+	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
+	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
+	insecure="$(REST_URL_INSECURE)"; secure="$(REST_URL_SECURE)"; \
+	if [[ -z "$$insecure" || -z "$$secure" ]]; then \
+	    [[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL_INSECURE and REST_URL_SECURE"; \
+	fi; \
+	trap 'stop_server $(REST_PID); stop_server $(REST_PID_SECURE)' EXIT; \
+	if [[ -z "$$insecure" ]]; then \
+	    start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
+	    insecure=http://127.0.0.1:$(REST_PORT); \
+	fi; \
+	if [[ -z "$$secure" ]]; then \
+	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
+	    secure=http://127.0.0.1:$(REST_PORT_SECURE); \
+	fi; \
+	$(FLOW) run --insecure-url "$$insecure" --secure-url "$$secure" --tool $(E2ETOOL) --rows $(ROWS) --seed $(SEED)
+
 # ------------------------------------------------------------------ cleanup
 
 clean:
-	@$(COMMON); stop_server $(OLD_REST_PID); stop_server $(REST_PID); \
+	@$(COMMON); stop_server $(OLD_REST_PID); stop_server $(REST_PID); stop_server $(REST_PID_SECURE); \
 	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(DATASET_DIR) $(E2ETOOL)
 
 distclean: clean
