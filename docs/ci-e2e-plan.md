@@ -251,10 +251,10 @@ commands:
 - M2 criteria paragraph leaves; M4 criteria stay
 - Next: item 1 struck; the bench run becomes item 1, the upstream filing
   item 2
-- Handoff to M2: the three bullets are consumed or re-homed: the
-  symtable fact is tables_test.go's already (delete); the "make load"
-  and wall-clock bullets concern the v1 suite's first CI run and move
-  under Handoff to M4
+- Handoff to M2: the block is deleted whole, because M2 is done; the
+  symtable fact is tables_test.go's already, and the owner dropped the
+  "make load" and wall-clock bullets rather than re-homing them under
+  M4 (owner, 2026-10-12, plan review)
 - one entry: the round trip runs in Buildkite (build N), M2 closed, the
   two plans deleted with facts moved to docs/e2e.md
 ```
@@ -330,6 +330,6 @@ passing one.
 
 ## Open questions and recommendations
 
-1. Whether the Handoff to M2 bullets about `make load` and its wall clock
-   move under Handoff to M4 or are deleted. Recommendation: move, because
-   the v1 suite's first CI run is M4's and the facts are still unconsumed.
+none. The one question of the first revision (the Handoff to M2 bullets
+about `make load`) was answered "delete" in the plan review of
+2026-10-12 and is settled in the Design of `docs/log.md`.
