@@ -318,15 +318,17 @@ One binary, two listeners:
 
 - **HTTP listener** (existing ports): REST control plane, v1 compat
   endpoints, `/api/v2` data plane. HTTP/1.1 and HTTP/2.
-- **gRPC listener** (dedicated port, default 40493): Arrow Flight SQL. It
-  is not multiplexed onto the HTTP port. gRPC and plain HTTP/2 are
-  indistinguishable at accept time (same `h2` ALPN), so sharing a port
-  means either grpc-go's shared-port path (`Server.ServeHTTP` through
-  `net/http`, officially experimental and slower than its native
-  transport, which defeats the purpose) or fragile byte-sniffing.
-  REST-appropriate write timeouts and LB idle rules would also kill
-  long-lived gRPC streams. Customers who do not use Flight SQL do not
-  open the port.
+- **gRPC listener** (`listen.flight`, default `:40493`): Arrow Flight
+  SQL. It always starts, and the port is the configurable part (owner,
+  2026-10-13). It serves the certificates of `tls.certificate` and
+  `tls.private_key`, with the HTTPS listener's ephemeral self-signed
+  fallback, and has no plaintext form (ADR-0018). It is not multiplexed
+  onto the HTTP port. gRPC and plain HTTP/2 are indistinguishable at
+  accept time (same `h2` ALPN), so sharing a port means either grpc-go's
+  shared-port path (`Server.ServeHTTP` through `net/http`, officially
+  experimental and slower than its native transport, which defeats the
+  purpose) or fragile byte-sniffing. REST-appropriate write timeouts and
+  LB idle rules would also kill long-lived gRPC streams.
 
 `POST /api/v2/query` is a streamed response in a content-negotiated format
 (ClickHouse-HTTP-style):
@@ -384,14 +386,39 @@ QuasarDB already maintains an ODBC driver and generally ships
 compatibility layers. Having this ecosystem available is a selling point
 worth the constraint.
 
-The minimal implementation scope: `Handshake` (username+secret -> token)
-and bearer-token metadata auth, `CommandStatementQuery` ->
-`GetFlightInfo` -> `DoGet` streaming Arrow record batches, and
-`GetSqlInfo` honestly advertising what is not supported. Catalog and
-metadata commands are implemented only as far as cheap and honest
-(`GetTables` from the table list, for example). Prepared statements,
-transactions and everything else return UNIMPLEMENTED. Ingestion through
-`DoPut` is a possible later addition and not part of the minimal scope.
+The minimal implementation scope (ADR-0018): `Handshake` (username and
+secret, checked against the cluster as the v2 login checks them, answering
+the access token) and bearer-token metadata auth, `CommandStatementQuery`
+-> `GetFlightInfo` -> `DoGet` streaming Arrow record batches, `GetSqlInfo`
+describing the server fully and honestly, and the catalog commands
+(`GetTables` from the cluster's table list, `GetCatalogs`, `GetDbSchemas`
+and `GetTableTypes` answering the fixed shape of one cluster). Prepared
+statements, transactions and everything else return UNIMPLEMENTED.
+Ingestion through `DoPut` is a possible later addition and not part of
+the minimal scope.
+
+**One query string, two engines** (owner, 2026-10-13). Flight SQL
+carries a query as one string with no path and no dialect field, so the
+string chooses the engine. A query whose first non-whitespace bytes are
+`#sql`, matched case-insensitively and followed by one whitespace
+character, runs on DuckDB with the prefix removed, in the style of
+BigQuery's `#standardSQL`. Every other query runs on the native engine.
+`POST /api/v2/query` honors the same prefix, and `POST /api/v2/sql`
+stays the direct DuckDB route. One dispatcher above `internal/qdb` and
+`internal/olap` recognizes the prefix and answers the batch iterator the
+encoders take, so the HTTP handlers and the Flight server share it and
+`internal/flightsql` holds no query code.
+
+**The server stores nothing between calls** (owner, 2026-10-13). The
+ticket `GetFlightInfo` answers is the query text, and `DoGet` runs it,
+so the two calls of one client may reach different instances behind a
+load balancer. `FlightInfo` carries no schema, because the native engine
+does not know a result's columns before running the query, and
+`GetSchemaStatement` is UNIMPLEMENTED rather than running every query
+twice. On a cluster without security a call with no token runs as the
+anonymous user. A Flight client whose access token has expired
+reconnects, as stock drivers do, and Flight has no refresh path until
+that proves to be a problem.
 
 The layering, so nobody re-litigates "Flight SQL vs gRPC". gRPC is the
 RPC framework. Arrow Flight is a specific standardized gRPC service
@@ -511,7 +538,7 @@ POST   /api/v2/auth/login          {username?, secret_key?} -> {access_token, re
 POST   /api/v2/auth/refresh        refresh token -> new token pair
 POST   /api/v2/auth/logout         invalidates client state; server-side revocation is a future layer
 GET    /api/v2/session             "who am i": session/user/instance introspection (see below)
-POST   /api/v2/query               native qdb query; streamed, content-negotiated (see above)
+POST   /api/v2/query               native qdb query, or DuckDB behind a `#sql` prefix (ADR-0018); streamed, content-negotiated (see above)
 POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, content-negotiated
 POST   /api/v2/rows                multi-table ingest, a $table column routes each row; body content-negotiated
                                    (CSV, NDJSON, Arrow IPC, and the columnar JSON the query answers;
@@ -904,10 +931,14 @@ starts.
   shared encoders, the native-versus-DuckDB equivalence property test
   and the round-trip step, with FreeBSD building without it
   (ADR-0017).
-- **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
-  `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke
-  tests. One Flight SQL endpoint serves both the regular QuasarDB query
-  and the DuckDB query layer of M4.
+- **M5 -- Flight SQL (minimal)**: the `listen.flight` listener,
+  Handshake and bearer auth, `CommandStatementQuery`/`DoGet` over the
+  shared `#sql` dispatcher that `POST /api/v2/query` also gains,
+  `GetSqlInfo`, the catalog commands on a table list core, and the
+  format-equivalence property test extended with a Flight SQL client
+  (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
+  query and the DuckDB query layer of M4. The stale `tls_port` sample
+  configs in `qdb-documentation` are fixed here.
 - **M6 -- Resilience**: `/metrics`, the graceful-drain and
   concurrency stress as behaviour assertions in Buildkite.
 - **M7 -- Exploration**: tables list and schema, tags (whose tag-find
@@ -921,8 +952,8 @@ starts.
   customer site with no client changes.
 - **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
-  remote-storage sections, and fixing the stale `tls_port` sample
-  configs), `qdb-release` version registration, Windows service mode,
+  remote-storage sections), `qdb-release` version registration,
+  Windows service mode,
   migration notes covering the dropped cluster endpoints and Prometheus
   remote read/write.
 
