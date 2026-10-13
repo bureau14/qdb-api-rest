@@ -91,18 +91,18 @@ scalable design.
 
 ## Ecosystem
 
-| Project                         | Relationship                                                                                                                                                                                                          |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quasardb`                      | The database server. REST API package version is pinned 1:1 to server releases.                                                                                                                                       |
-| `qdb-api-go`                    | The cgo client binding; the primary path to the cluster. Vendored, never forked. Improvements are merged upstream first, and then the vendored copy is updated.                                                       |
-| `qdb-duck`                      | Native DuckDB extension that attaches QuasarDB clusters (catalog integration, handle pool). Embedded into this binary via go-duckdb to provide the full-SQL endpoint.                                                 |
-| `qdb-grafana-plugin`            | External consumer of `/api/v1/login` and `/api/v1/query` through their unversioned aliases. Defines the backwards-compatibility surface together with customer code.                                                  |
-| `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects. This project designs the protocol with them in the loop. |
-| `qdb-dashboard`                 | The old ClojureScript SPA, unused by customers. Retired, with no feature-parity obligation.                                                                                                                           |
-| `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                 |
-| `qdb-docker`                    | Today bundles the REST binary into the `qdb-dashboard` component image. This project adds a first-class standalone image.                                                                                             |
-| `qdb-release`                   | Central version manager. The rewrite must register its version-string location(s) there.                                                                                                                              |
-| `qdb-documentation`             | Public docs; `user-guide/tools/qdb_rest.rst` and `user-guide/api/rest.rst` must be rewritten at the end of the project.                                                                                               |
+| Project                         | Relationship                                                                                                                                                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quasardb`                      | The database server. REST API package version is pinned 1:1 to server releases.                                                                                                                                                           |
+| `qdb-api-go`                    | The cgo client binding; the primary path to the cluster. Vendored, never forked. Improvements are merged upstream first, and then the vendored copy is updated.                                                                           |
+| `qdb-duck`                      | Native DuckDB extension that attaches QuasarDB clusters (catalog integration, handle pool). Its CI packages DuckDB with the extension linked in, and this binary links that package through go-duckdb. Same DuckDB release on both sides. |
+| `qdb-grafana-plugin`            | External consumer of `/api/v1/login` and `/api/v1/query` through their unversioned aliases. Defines the backwards-compatibility surface together with customer code.                                                                      |
+| `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects. This project designs the protocol with them in the loop.                     |
+| `qdb-dashboard`                 | The old ClojureScript SPA, unused by customers. Retired, with no feature-parity obligation.                                                                                                                                               |
+| `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                                     |
+| `qdb-docker`                    | Today bundles the REST binary into the `qdb-dashboard` component image. This project adds a first-class standalone image.                                                                                                                 |
+| `qdb-release`                   | Central version manager. The rewrite must register its version-string location(s) there.                                                                                                                                                  |
+| `qdb-documentation`             | Public docs; `user-guide/tools/qdb_rest.rst` and `user-guide/api/rest.rst` must be rewritten at the end of the project.                                                                                                                   |
 
 Deployment reality: customers run `qdb_rest` as a systemd service from
 deb/rpm packages, with HTTP on 40080 and HTTPS on 40443, often behind
@@ -423,24 +423,76 @@ compatibility is upside, not a hard dependency.
 QuasarDB's own query language is deliberately limited. `qdb-duck` is the
 native C++ DuckDB extension that attaches QuasarDB clusters into DuckDB
 (catalog integration, so schemas and tables are visible and queryable).
-This project embeds DuckDB into the REST binary (through go-duckdb, cgo)
-with the quasardb extension loaded, behind a **dedicated endpoint**
-(working name `POST /api/v2/sql`). The endpoint exposes full SQL (joins,
-window functions, the entire DuckDB surface) over QuasarDB data through
-the same streaming, content-negotiated response path. DuckDB's native
-Arrow integration makes the Arrow IPC encoder near-free for this path.
+This project embeds DuckDB into the REST binary through go-duckdb (cgo)
+with the quasar extension linked in, behind a **dedicated endpoint**,
+`POST /api/v2/sql` (owner, 2026-10-13). The endpoint exposes full SQL
+(joins, window functions, the entire DuckDB surface) over QuasarDB data
+through the same streaming, content-negotiated response path as
+`POST /api/v2/query`. Tables appear as `qdb.<name>`, and the
+`qdb_query('qdb', '<native query>')` table function runs a QuasarDB
+query inside DuckDB. go-duckdb's Arrow reader yields the result one
+DuckDB vector at a time, so this path streams on both sides, which the
+native query path does not (Data plane). ADR-0017 fixes the decisions
+below.
 
-This is a major, accepted scope item. It is deliberately isolated. It
-has its own endpoint and its own resource governance (DuckDB memory
-limits configured explicitly), and a failure of the DuckDB subsystem
-must not degrade the native query path.
+**The dependency.** qdb-duck's CI packages the DuckDB libraries with the
+quasar extension statically linked inside, in the layout of the C API
+package: on Linux one `lib/libduckdb_bundle.a` without the qdb_api
+objects, so this binary links `libqdb_api.a` itself behind it, and a
+dynamic `libduckdb` on macOS and Windows that ships next to the binary
+as `libqdb_api` does there. go-duckdb links it through its
+`duckdb_use_static_lib` and `duckdb_arrow` build tags. The qdb-duck
+DuckDB submodule and the go-duckdb tag name the same DuckDB release,
+and one is bumped only together with the other (owner, 2026-10-13).
 
-Authorization matches the native path. qdb-duck binds credentials at
-`ATTACH` time, so the server maintains one attached catalog and session
-pool per user, LRU-evicted like the native pools. User queries never
-run under a shared service credential. qdb-duck is read-only by design
-(`INSERT`, `UPDATE` and `DELETE` are rejected), which is the contract
-this endpoint wants.
+**FreeBSD builds without DuckDB** (owner, 2026-10-13). qdb-duck does
+not build there and the platform is not a useful DuckDB target. The
+`internal/olap` package is excluded there by build constraint and a
+stub keeps its surface, so the route is mounted on every platform and
+answers `501` on FreeBSD, and the round trip skips its sql step there.
+
+**One DuckDB instance per user** (owner, 2026-10-13). qdb-duck binds
+credentials at `ATTACH` time, and DuckDB gives every connection of an
+instance the same view of every attached catalog, so users cannot
+share one instance. The instance is a field of the user's pool state
+in `internal/qdb`, opened lazily on the user's first sql call, attached
+with the user's credentials from the token and the cluster public key
+from the config, and closed when the user pool is evicted. Anonymous is
+one user. Each request opens one DuckDB connection on the instance and
+closes it. User queries never run under a shared service credential.
+
+**Governance is a `duckdb` config block** (owner, 2026-10-13): the
+instance's memory limit, worker thread count and spill directory with
+its size cap, applied to every instance, plus a cap on live instances.
+The defaults are conservative, because DuckDB's own defaults (most of
+the RAM, every core) suit a workstation and not a gateway next to
+qdbd, and because the thread count bounds how many qdbd sessions one
+user's query opens at once. The values are the handler's.
+
+**qdb-duck pools its own qdbd sessions** (owner, 2026-10-13). Each
+attached catalog holds up to 100 lazily opened `qdb_handle_t`, one per
+operation in flight, because a scan fans out to one DuckDB worker per
+four shards and the handle serializes some operations internally.
+Those sessions do not count against `pool.max_sessions` and the pool
+has no idle reaper. This is accepted as is, and revisited after the
+milestones (Risks and open explorations).
+
+**Isolation is logical.** DuckDB is C++ in this process, so a crash
+there is a crash of the binary. What the design offers is its own
+instances, its own memory limit and no state shared with the native
+pool. DuckDB errors arrive as messages through the C API, so the
+breaker is not fed from this path.
+
+**Writes.** qdb-duck refuses `INSERT`, `UPDATE`, `DELETE` and
+`CREATE TABLE AS`. `CREATE VIEW` and `CREATE SEQUENCE` persist their
+metadata as blobs in QuasarDB under the user's credentials, and qdbd
+rejects them when the user lacks write permission, which is the
+authorization this endpoint relies on (owner, 2026-10-13).
+
+**Errors.** A DuckDB parse, bind or execution error answers `400` with
+DuckDB's message as the problem detail, the instance cap answers `503`
+with `Retry-After`, and content type, body cap and auth reuse the rows
+of ADR-0010.
 
 ### /api/v2 endpoint sketch
 
@@ -847,8 +899,11 @@ starts.
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
 - **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
-  quasardb extension, resource governance, streamed responses through the
-  shared encoders.
+  quasar extension linked in from qdb-duck's package, one instance per
+  user, the `duckdb` config block, streamed responses through the
+  shared encoders, the native-versus-DuckDB equivalence property test
+  and the round-trip step, with FreeBSD building without it
+  (ADR-0017).
 - **M5 -- Flight SQL (minimal)**: gRPC listener, Handshake auth,
   `CommandStatementQuery`/`DoGet`, honest `GetSqlInfo`, ADBC smoke
   tests. One Flight SQL endpoint serves both the regular QuasarDB query
@@ -921,11 +976,14 @@ comes last because the preview customer does not use the v1 endpoints.
 4. **Array-typed query results**: the C API defines `array_*` query-result
    value types that `qdb-api-go` currently drops silently. v2 cannot
    return array-valued results correctly until that is fixed upstream.
+5. **qdb-duck's handle pool** opens qdbd sessions outside the session
+   budget and never closes an idle one before detach (Embedded DuckDB).
+   Accepted for the milestones, and looked at once they are done
+   (owner, 2026-10-13): a pool size and an idle timeout as `ATTACH`
+   parameters upstream, or the budget lending qdb-duck its sessions.
 
 ## Open questions
 
 1. Whether v2 ingestion should also accept the v1 tables/columns JSON
    shape. v2's own columnar JSON is accepted, so that every format the
    read answers is a format the ingest takes (owner, 2026-10-11).
-2. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
-   name).
