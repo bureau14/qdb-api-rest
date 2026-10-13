@@ -14,7 +14,7 @@ Last updated: 2026-10-13
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
 | M3 -- v2 auth                   | in progress | ADR-0016 fixes the shapes, criteria below             |
 | M4 -- Embedded DuckDB           | not started | ADR-0017 fixes the design, criteria below             |
-| M5 -- Flight SQL                | not started | one endpoint over both query layers, so it follows M4 |
+| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4 |
 | M6 -- Resilience                | not started |                                                       |
 | M7 -- Exploration               | not started |                                                       |
 | M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
@@ -51,20 +51,36 @@ the paired go-duckdb tag, the native-versus-DuckDB equivalence property
 test and the round trip's sql step, green in Buildkite on all eight
 platforms with FreeBSD answering `501`.
 
-Handoff to M5 (Flight SQL):
+M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed.
+Exit: the `listen.flight` listener on the HTTPS certificates, the
+`#sql` dispatcher behind `POST /api/v2/query` and the Flight server,
+Handshake and bearer auth, `CommandStatementQuery` to `DoGet` with the
+query as the ticket, `GetSqlInfo`, the catalog commands on a table list
+core in `internal/qdb`, the rest of the surface answering
+`UNIMPLEMENTED`, the format-equivalence property extended with a Flight
+SQL client for both engines and a dispatch property over generated
+prefixes, green in Buildkite on all eight platforms, and the `tls_port`
+sample configs corrected in `qdb-documentation`.
 
-- Whether Flight SQL gets a subcommand of `e2etool` or stays with the
-  property tests is decided at M5's entry (`docs/e2e.md`, "The
-  driver").
-- The Flight SQL endpoint serves both the regular query and the DuckDB
-  layer, and `internal/olap` exposes the DuckDB query as the batch
-  iterator the encoders take (ADR-0017).
+Handoff to M6 and M7:
+
+- The stress definition has no Flight case (owner, 2026-10-13). The
+  graceful drain covers Flight streams as `docs/brief.md`, Resilience,
+  says.
+- The table list core M5 writes for `GetTables` is the one
+  `GET /api/v2/tables` wraps.
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-13 -- M5 designed: ADR-0018 accepted, one Flight listener, the `#sql` prefix on both planes, stateless tickets
+
+- Owner decisions; ADR-0018, and `docs/brief.md`, Arrow Flight SQL,
+  carries the result. The Flight e2e question of `docs/e2e.md` is
+  closed with no e2e step.
 
 ## 2026-10-13 -- M4 designed: ADR-0017 accepted, one DuckDB instance per user, FreeBSD without DuckDB
 
