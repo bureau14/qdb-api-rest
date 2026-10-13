@@ -254,7 +254,8 @@ specification.
   anonymous login (insecure clusters). The Grafana plugin relies on this.
 - Response 200: `{"token": "<opaque string>"}`. Clients treat the token
   as opaque. Its format is this server's alone (ADR-0005). The token is
-  valid for 12 hours.
+  a v2 access token whose lifetime is fixed at 12 hours in the code, as
+  the old server fixed it, and it cannot be refreshed.
 - Response 401: `{"message": "..."}`.
 - Tokens minted by the old server are rejected. Clients log in again on
   401 (the Grafana plugin clears its token and retries on 401).
@@ -567,14 +568,35 @@ makes that safe:
   RSA-OAEP + A128CBC). A token contains the username and secret, a
   `jti`, a session id claim (stable across refreshes, a security handle
   for features such as logging out a user's other sessions, and never a
-  pool key), a session generation claim, a `typ` (`access` or `refresh`)
-  claim, and an `auth_time` claim (the original login time, preserved
-  across refreshes and surfaced as "logged in since" by
+  pool key), a session generation claim (minted as zero and read by
+  nothing, reserved for the revocation layer below), a `typ` (`access`
+  or `refresh`) claim, and an `auth_time` claim (the original login
+  time, preserved across refreshes and surfaced as "logged in since" by
   `GET /api/v2/session`).
-- **Access tokens** are short-lived (minutes). **Refresh tokens** are
-  long-lived and sliding. `/api/v2/auth/refresh` returns a fresh pair. One
-  verifier handles both, plus the 12h tokens minted by v1
-  `/api/v1/login`.
+- **Access tokens** open the data plane and live `auth.access_ttl`,
+  15 minutes by default. The default is conservative because the token
+  embeds the user's secret, and an operator whose jobs run many queries
+  over hours raises it. **Refresh tokens** live `auth.refresh_ttl`,
+  14 days by default, and open the refresh endpoint and nothing else.
+  An access token is minted by login and by refresh and by nothing
+  else, so its lifetime bounds a leaked token.
+- **Refresh is cheap and multi-use.** `/api/v2/auth/refresh` takes a
+  refresh token, verifies it (the decryption, `typ` and expiry), and
+  returns a fresh pair with the same `sid` and `auth_time` under the
+  current key. It does not dial the cluster, because the credentials in
+  the token were proven at login and re-proving them is a usability
+  question rather than a security one, so clients may refresh as often
+  as they like. The refresh token is multi-use and slides: the new one
+  expires `auth.refresh_ttl` from now, and the old one stays valid until
+  its own expiry. A refresh token that is exercised at least once per
+  lifetime therefore lives until the keys rotate, which is the remedy
+  for a leak (below) and is accepted for a stateless server.
+- **Logout is client-side.** `/api/v2/auth/logout` answers success and
+  the server forgets nothing, because it holds nothing. The
+  administrator's response to a compromised token is a key rotation.
+- The v1 token (`/api/v1/login`) is an access token with a fixed 12
+  hour lifetime and no refresh token, as the old server had it. One
+  verifier serves every token.
 - **Keys from passphrases**: the config holds human-friendly passphrases.
   The actual keys are derived once at startup through argon2id
   (memory-hard, so an attacker brute-forcing a captured token pays
@@ -902,10 +924,8 @@ comes last because the preview customer does not use the v1 endpoints.
 
 ## Open questions
 
-1. Access/refresh token TTL defaults (proposal: 15 min access and 7 day
-   sliding refresh, with the v1 endpoint staying at 12 h).
-2. Whether v2 ingestion should also accept the v1 tables/columns JSON
+1. Whether v2 ingestion should also accept the v1 tables/columns JSON
    shape. v2's own columnar JSON is accepted, so that every format the
    read answers is a format the ingest takes (owner, 2026-10-11).
-3. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
+2. Final name for the DuckDB-backed endpoint (`/api/v2/sql` is the working
    name).
