@@ -18,3 +18,4 @@ what stays in plan decision-log tables: `docs/AGENTS.md`, "ADRs".
 | [0013](0013-e2e-goldens-in-ci.md)                   | e2e goldens run in Buildkite and measured numbers are the bench's                  | superseded by 0015 |
 | [0014](0014-v2-e2e-generated-flow.md)               | The v2 e2e is a generated round trip, not a golden suite                           | accepted           |
 | [0015](0015-early-preview-scope.md)                 | Early-preview scope: Flight SQL and DuckDB first, no bench, no dataset, no goldens | accepted           |
+| [0016](0016-v2-refresh-logout-session.md)           | v2 refresh, logout and session: lifetimes, shapes and what the server forgets      | accepted           |
