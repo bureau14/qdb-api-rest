@@ -13,7 +13,7 @@ Last updated: 2026-10-13
 | M1 -- v2 query                  | done        | closed 2026-09-21                                     |
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
 | M3 -- v2 auth                   | in progress | ADR-0016 fixes the shapes, criteria below             |
-| M4 -- Embedded DuckDB           | not started | the early preview's first feature (ADR-0015)          |
+| M4 -- Embedded DuckDB           | not started | ADR-0017 fixes the design, criteria below             |
 | M5 -- Flight SQL                | not started | one endpoint over both query layers, so it follows M4 |
 | M6 -- Resilience                | not started |                                                       |
 | M7 -- Exploration               | not started |                                                       |
@@ -44,20 +44,32 @@ Next:
    through `qdb_release` with a nil handle, which `client.h` documents
    as API-managed and not to be freed.
 
-Handoff to M4 (embedded DuckDB) and M5 (Flight SQL):
+M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
+`duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
+user held in the user pool state, linked from qdb-duck's package with
+the paired go-duckdb tag, the native-versus-DuckDB equivalence property
+test and the round trip's sql step, green in Buildkite on all eight
+platforms with FreeBSD answering `501`.
 
-- The round trip grows a step per endpoint, so `/api/v2/sql` adds a
-  step, and whether Flight SQL gets a subcommand of `e2etool` or stays
-  with the property tests is decided at M5's entry (`docs/e2e.md`,
-  "The driver").
+Handoff to M5 (Flight SQL):
+
+- Whether Flight SQL gets a subcommand of `e2etool` or stays with the
+  property tests is decided at M5's entry (`docs/e2e.md`, "The
+  driver").
 - The Flight SQL endpoint serves both the regular query and the DuckDB
-  layer, so M4's query layer exposes a seam M5 can call (ADR-0015).
+  layer, and `internal/olap` exposes the DuckDB query as the batch
+  iterator the encoders take (ADR-0017).
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-13 -- M4 designed: ADR-0017 accepted, one DuckDB instance per user, FreeBSD without DuckDB
+
+- Owner decisions; ADR-0017, and `docs/brief.md`, Embedded DuckDB,
+  carries the result. Open question 2 is closed.
 
 ## 2026-10-13 -- M3 started: ADR-0016 accepted, token lifetimes and the refresh, logout and session shapes
 

@@ -173,7 +173,9 @@ that client; a Go client would repeat `TestRoundtrip` in
 An endpoint lands with its step in the round trip, so the round trip
 grows with the milestones (`docs/brief.md`, Milestones). Refresh and
 session join the login step, and the exploration endpoints and
-`/api/v2/sql` add steps. Flight SQL has no shell client. Whether it
+`/api/v2/sql` add steps. The sql step is skipped on FreeBSD, where the
+binary carries no DuckDB and the route answers `501` (ADR-0017).
+Flight SQL has no shell client. Whether it
 gets a subcommand of the tool or stays with the property tests is
 decided at that milestone's entry.
 
