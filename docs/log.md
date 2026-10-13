@@ -5,14 +5,14 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
 | M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
 | M1 -- v2 query                  | done        | closed 2026-09-21                                     |
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
-| M3 -- v2 auth                   | not started | its criteria are written when it starts               |
+| M3 -- v2 auth                   | in progress | ADR-0016 fixes the shapes, criteria below             |
 | M4 -- Embedded DuckDB           | not started | the early preview's first feature (ADR-0015)          |
 | M5 -- Flight SQL                | not started | one endpoint over both query layers, so it follows M4 |
 | M6 -- Resilience                | not started |                                                       |
@@ -20,18 +20,25 @@ Last updated: 2026-10-12
 | M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M9 -- Release                   | not started |                                                       |
 
+M3 criteria. Entry: ADR-0016 accepted (met 2026-10-13). Exit:
+`auth.refresh_ttl` in the config, login answering the pair,
+`POST /api/v2/auth/refresh`, `POST /api/v2/auth/logout` and
+`GET /api/v2/session` landed with their property tests (pair roundtrip,
+sliding refresh expiry, rotation continuity through a refresh, each
+`typ` refused by the other's route), and the round trip's login step
+calling refresh and session, green in Buildkite on all eight platforms.
+
 In flight:
 
 - Nothing.
 
 Next:
 
-1. Start M3 (v2 auth): write its entry and exit criteria into this
-   block, then `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
-   `GET /api/v2/session`, the TTL configuration and key rotation through
-   refresh (`docs/brief.md`, Milestones and Authentication; ADR-0011
-   for the token response the refresh reuses).
-2. File upstream against `qdb-api-go`, with no local patch
+1. M3 unit one: `auth.refresh_ttl` and `Tokens.MintPair`, with login
+   answering `refresh_token` (ADR-0016, Lifetimes and Refresh).
+2. M3 unit two: the refresh, logout and session handlers and their
+   round-trip step (ADR-0016; `docs/e2e.md`, "The v2 round trip").
+3. File upstream against `qdb-api-go`, with no local patch
    (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
    release the static string from `qdb_version()` and `qdb_build()`
    through `qdb_release` with a nil handle, which `client.h` documents
@@ -51,6 +58,11 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-13 -- M3 started: ADR-0016 accepted, token lifetimes and the refresh, logout and session shapes
+
+- Owner decisions; ADR-0016, and `docs/brief.md`, Authentication,
+  carries the result. Open question 1 is closed.
 
 ## 2026-10-12 -- early-preview scope: milestones reordered, bench, dataset and v1 goldens removed
 
