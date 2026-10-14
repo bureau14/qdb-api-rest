@@ -5,14 +5,14 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
 | M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
 | M1 -- v2 query                  | done        | closed 2026-09-21                                     |
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
-| M3 -- v2 auth                   | in progress | ADR-0016 fixes the shapes, criteria below             |
+| M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
 | M4 -- Embedded DuckDB           | not started | ADR-0017 fixes the design, criteria below             |
 | M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4 |
 | M6 -- Resilience                | not started |                                                       |
@@ -20,25 +20,13 @@ Last updated: 2026-10-13
 | M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M9 -- Release                   | not started |                                                       |
 
-M3 criteria. Entry: ADR-0016 accepted (met 2026-10-13). Exit:
-`auth.refresh_ttl` in the config, login answering the pair,
-`POST /api/v2/auth/refresh`, `POST /api/v2/auth/logout` and
-`GET /api/v2/session` landed with their property tests (pair roundtrip,
-sliding refresh expiry, rotation continuity through a refresh, each
-`typ` refused by the other's route), and the round trip's login step
-calling refresh and session, green in Buildkite on all eight platforms.
-
 In flight:
 
 - Nothing.
 
 Next:
 
-1. M3 unit one: `auth.refresh_ttl` and `Tokens.MintPair`, with login
-   answering `refresh_token` (ADR-0016, Lifetimes and Refresh).
-2. M3 unit two: the refresh, logout and session handlers and their
-   round-trip step (ADR-0016; `docs/e2e.md`, "The v2 round trip").
-3. Re-vendor `qdb-api-go` at master once bureau14/qdb-api-go PR #127
+1. Re-vendor `qdb-api-go` at master once bureau14/qdb-api-go PR #127
    merges. The vendored copy is that PR's head, pulled by version bump
    (`docs/brief.md`, Vendoring).
 
@@ -73,6 +61,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-14 -- M3 closed: the token grant, refresh, logout and session landed; v2-auth-plan.md deleted
+
+- Owner decisions in ADR-0016 and the plan's Rationale, moved to
+  `internal/httpapi/AGENTS.md`, Handlers, `internal/build/build.go` and
+  the comments of `internal/auth/token.go`.
 
 ## 2026-10-13 -- M5 designed: ADR-0018 accepted, one Flight listener, the `#sql` prefix on both planes, stateless tickets
 
