@@ -45,7 +45,7 @@ type tokenResponse struct {
 }
 
 // writeTokenResponse answers 200 with the grant. expires_in is the
-// access lifetime, because that is the token the client counts down; a
+// access lifetime, because that is the token the client counts down. A
 // client learns that its refresh token has expired from the refresh's
 // 401, and does not count it (ADR-0016).
 func writeTokenResponse(w http.ResponseWriter, tk *auth.Tokens, g auth.Grant) {
@@ -124,7 +124,7 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	// 2. Verify the token: expired and invalid are both 401 with the
 	//    challenge, because a token was presented.
 	// 3. Require a refresh token: an access token must not renew itself.
-	// 4. Renew and write the grant; a mint failure is 500.
+	// 4. Renew and write the grant. A mint failure is 500.
 
 	// 1. The body is the login's shape with one field.
 	if !isJSON(r.Header.Get("Content-Type")) {
@@ -181,7 +181,10 @@ func handleLogout(w http.ResponseWriter, _ *http.Request) {
 
 // sessionResponse is the caller's view of their session, assembled from
 // the claims, the cluster this process fronts and the build, without a
-// cluster round trip. The secret is never echoed (ADR-0016).
+// cluster round trip. The object is grouped by where each value comes
+// from, so a reader of the support questions it serves ("who am I
+// logged in as", "why am I unauthorized") sees the source of each
+// answer. The secret is never echoed (ADR-0016).
 type sessionResponse struct {
 	Username string         `json:"username"`
 	Cluster  sessionCluster `json:"cluster"`
