@@ -53,6 +53,7 @@ func TestErrorRows(t *testing.T) {
 	// The refresh rows need tokens the keychain mints: a refresh token
 	// already expired, and the fixture's access token presented as one.
 	expiredRefresh := mint(t, s.tk, "refresh", "", time.Now().Add(-time.Hour))
+	refreshBearer := map[string]string{"Authorization": "Bearer " + mint(t, s.tk, "refresh", "", time.Now().Add(time.Hour))}
 	refreshBody := func(token string) string { return `{"refresh_token":` + strconv.Quote(token) + `}` }
 	rows := map[string]errorRow{
 		// the refresh
@@ -61,6 +62,9 @@ func TestErrorRows(t *testing.T) {
 		"refresh: garbage token": {http.MethodPost, "/api/v2/auth/refresh", refreshBody("nope"), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
 		"refresh: expired":       {http.MethodPost, "/api/v2/auth/refresh", refreshBody(expiredRefresh), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
 		"refresh: access token":  {http.MethodPost, "/api/v2/auth/refresh", refreshBody(s.token), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+		// the logout
+		"logout: no token":      {http.MethodPost, "/api/v2/auth/logout", "", nil, http.StatusUnauthorized, "Bearer"},
+		"logout: refresh token": {http.MethodPost, "/api/v2/auth/logout", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
 		// the query
 		"query: invalid query": {http.MethodPost, "/api/v2/query", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
 		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},

@@ -170,11 +170,21 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	writeTokenResponse(w, tk, g)
 }
 
+// handleLogout answers 204. The server holds no session state, so there
+// is nothing to forget. The verb exists so clients and the Flight layer
+// have one, and the remedy for a leaked token is a key rotation
+// (ADR-0016).
+func handleLogout(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // registerAuthRoutes serves the login and the refresh unauthenticated,
 // because the login is where a caller, anonymous included, gets the
 // token every other v2 route wants, and the refresh's credential is the
-// refresh token in its body, which the bearer edge would refuse.
+// refresh token in its body, which the bearer edge would refuse. The
+// logout sits behind the bearer edge, so only an access token logs out.
 func registerAuthRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
 	mux.Handle("POST /api/v2/auth/refresh", withCompression(http.HandlerFunc(handleRefresh)))
+	mux.Handle("POST /api/v2/auth/logout", requireBearer(http.HandlerFunc(handleLogout)))
 }

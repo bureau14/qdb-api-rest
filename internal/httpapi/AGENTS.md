@@ -53,6 +53,8 @@ This file, Handlers, holds the table reader's.
   object. It never dials, so it has no 503. Its 401s carry the bearer
   challenge through `unauthorized`, and the detail says which check
   failed.
+- The logout is `POST /api/v2/auth/logout` behind the bearer edge, 204,
+  no body, no state.
 - The batch is released on return. A nil batch, which is a statement
   without a result set, has nothing to release and encodes as empty.
 - The table reader is `GET /api/v2/tables/{name}/rows`. `?columns=a,b`
