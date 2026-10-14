@@ -207,34 +207,48 @@ func TestBadConfigRefused(t *testing.T) {
 	}
 }
 
-// MintAccess fills in what a login fixes: the given user, the access
-// typ, both times set to now, and exp one TTL later. The two handles
-// are fresh on every call.
-func TestMintAccess(t *testing.T) {
-	tk := tokensFor(t, nil)
-	mintAccess := func() Claims {
-		token, err := tk.MintAccess("alice", "s3cret")
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := tk.Verify(token)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return c
+// verified is the claims of a token that must verify.
+func verified(t failer, tk *Tokens, token string) Claims {
+	t.Helper()
+	c, err := tk.Verify(token)
+	if err != nil {
+		t.Fatal(err)
 	}
-	first, second := mintAccess(), mintAccess()
-	if first.SessionID == "" || first.JTI == "" || first.SessionID == second.SessionID || first.JTI == second.JTI {
-		t.Fatalf("handles not fresh: %+v vs %+v", first, second)
+	return c
+}
+
+// Issue fills in what a login fixes: the given user, both times set to
+// now, exp one lifetime later per typ, and one sid shared by the two
+// tokens. The jti is fresh per token, and the sid per call.
+func TestIssue(t *testing.T) {
+	tk := tokensFor(t, nil)
+	issue := func() (Claims, Claims) {
+		g, err := tk.Issue("alice", "s3cret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verified(t, tk, g.Access), verified(t, tk, g.Refresh)
+	}
+	access, refresh := issue()
+	again, _ := issue()
+	if access.SessionID == "" || access.JTI == "" || refresh.JTI == "" || access.JTI == refresh.JTI || access.SessionID == again.SessionID || access.JTI == again.JTI {
+		t.Fatalf("handles not fresh: %+v vs %+v vs %+v", access, refresh, again)
+	}
+	if access.SessionID != refresh.SessionID || access.AuthTime != refresh.AuthTime {
+		t.Fatalf("the pair does not share its session: %+v vs %+v", access, refresh)
 	}
 	// Everything but the handles is determined by the login and the clock.
-	first.SessionID, first.JTI = "", ""
+	access.SessionID, access.JTI, refresh.SessionID, refresh.JTI = "", "", "", ""
 	want := Claims{
 		Username: "alice", SecretKey: "s3cret", Typ: "access",
 		AuthTime: epoch.Unix(), IssuedAt: epoch.Unix(), ExpiresAt: epoch.Add(tk.AccessTTL()).Unix(),
 	}
-	if !reflect.DeepEqual(first, want) {
-		t.Fatalf("got %+v, want %+v", first, want)
+	if !reflect.DeepEqual(access, want) {
+		t.Fatalf("access: got %+v, want %+v", access, want)
+	}
+	want.Typ, want.ExpiresAt = "refresh", epoch.Add(tk.RefreshTTL()).Unix()
+	if !reflect.DeepEqual(refresh, want) {
+		t.Fatalf("refresh: got %+v, want %+v", refresh, want)
 	}
 }
 

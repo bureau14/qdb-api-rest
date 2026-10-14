@@ -83,9 +83,10 @@ func parseHeader(raw []byte) (header, error) {
 // keychain. One verifier serves every typ profile (brief,
 // Authentication).
 type Tokens struct {
-	keys      keychain
-	accessTTL time.Duration
-	now       func() time.Time
+	keys       keychain
+	accessTTL  time.Duration
+	refreshTTL time.Duration
+	now        func() time.Time // injected (ADR-0006), so the tests move the clock
 }
 
 // New derives the keychain from the configured passphrases, once. With
@@ -100,11 +101,73 @@ func New(ctx context.Context, a config.Auth, now func() time.Time) (*Tokens, err
 	if err != nil {
 		return nil, err
 	}
-	return &Tokens{keys: kc, accessTTL: a.AccessTTL, now: now}, nil
+	return &Tokens{keys: kc, accessTTL: a.AccessTTL, refreshTTL: a.RefreshTTL, now: now}, nil
 }
 
 // AccessTTL is how long an access token minted now stays valid.
 func (t *Tokens) AccessTTL() time.Duration { return t.accessTTL }
+
+// RefreshTTL is how long a refresh token minted now stays valid.
+func (t *Tokens) RefreshTTL() time.Duration { return t.refreshTTL }
+
+// Grant is what a login or a refresh hands the client: the access token
+// that opens the data plane and the refresh token that renews it.
+type Grant struct {
+	Access  string
+	Refresh string
+}
+
+// Issue seals the grant of a login: a fresh session id, auth_time and
+// iat both now, the access token expiring one access lifetime from now
+// and the refresh token one refresh lifetime from now.
+func (t *Tokens) Issue(username, secretKey string) (Grant, error) {
+	// The session id is fresh per login, because it is the security handle
+	// of one login across every refresh that follows it.
+	return t.grant(Claims{
+		Username:  username,
+		SecretKey: secretKey,
+		SessionID: uuid.NewV7().String(),
+		AuthTime:  t.now().Unix(),
+	})
+}
+
+// grant seals two tokens from one base: each gets its typ, a fresh jti,
+// iat now and exp at now plus its lifetime. Everything else is the
+// base's.
+func (t *Tokens) grant(base Claims) (Grant, error) {
+	// The base carries what a login and a refresh share, and this function
+	// owns what differs between the two tokens, so a change to the grant's
+	// shape is made once instead of once per caller.
+	//
+	// 1. Read the clock once, so both tokens carry the same iat and their
+	//    exp differ by the lifetimes alone.
+	// 2. Seal the access token: typ access, exp one access lifetime out.
+	// 3. Seal the refresh token: typ refresh, exp one refresh lifetime out.
+	//    A previous refresh token stays valid until its own exp, because
+	//    the server holds no state in which to retire it (ADR-0016).
+
+	// 1. One clock read for both tokens.
+	now := t.now().Unix()
+	seal := func(typ string, ttl time.Duration) (string, error) {
+		c := base
+		c.Typ = typ
+		c.JTI = uuid.NewV7().String()
+		c.IssuedAt = now
+		c.ExpiresAt = now + int64(ttl/time.Second)
+		return t.Mint(c)
+	}
+	// 2. The access token.
+	access, err := seal("access", t.accessTTL)
+	if err != nil {
+		return Grant{}, err
+	}
+	// 3. The refresh token. Nothing retires the one it replaces.
+	refresh, err := seal("refresh", t.refreshTTL)
+	if err != nil {
+		return Grant{}, err
+	}
+	return Grant{Access: access, Refresh: refresh}, nil
+}
 
 // MintAccess seals the access token of a login. The session id and jti
 // are fresh per login, auth_time and iat are both now, and exp is now
