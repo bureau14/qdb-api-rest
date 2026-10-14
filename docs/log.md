@@ -13,7 +13,7 @@ Last updated: 2026-10-14
 | M1 -- v2 query                  | done        | closed 2026-09-21                                     |
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
 | M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
-| M4 -- Embedded DuckDB           | not started | ADR-0017 fixes the design, criteria below             |
+| M4 -- Embedded DuckDB           | active      | started 2026-10-14, criteria below                    |
 | M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4 |
 | M6 -- Resilience                | not started |                                                       |
 | M7 -- Exploration               | not started |                                                       |
@@ -26,7 +26,20 @@ In flight:
 
 Next:
 
-- Nothing.
+- M4, second slice: the `duckdb` config block, `internal/olap`'s
+  instance per user and its Arrow query as the lent `Batches`, the
+  instance as a field of the user pool state in `internal/qdb`,
+  `POST /api/v2/sql`, its error rows and the round trip's sql step,
+  which is also the native-versus-DuckDB equivalence property. Owner
+  decisions of 2026-10-14 for this slice: the two size keys of the
+  `duckdb` block (the memory limit and the spill cap) are int64 bytes,
+  as `cluster.max_in_buffer_size` is, rendered in DuckDB's syntax when
+  the instance opens; qdb-duck's ATTACH takes one host and one port, so
+  a multi-node `cluster.uri` is handed to it as its first node, and a
+  qdb-duck story asking ATTACH to take a whole `qdb://` URI is filed
+  when the owner says so (not yet).
+- M4, third slice: the e2e round trip's sql step, skipped on FreeBSD,
+  and the M4 closing entry.
 
 M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
 `duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
@@ -59,6 +72,15 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-14 -- M4 started: DuckDB linked on every platform but FreeBSD, nothing routed
+
+- Owner decisions: the binding's prebuilt libraries are replaced by
+  stubs (`third_party/AGENTS.md`), the link tag follows the library per
+  OS (ADR-0017, Decision 2, edited in place), `--version` prints the
+  DuckDB release (`cmd/qdb_rest/AGENTS.md`), and ADRs are edited in
+  place when a detail proves wrong (`docs/AGENTS.md`, ADRs). The
+  decisions the second slice consumes are in Current state, Next.
 
 ## 2026-10-14 -- M3 closed: the token grant, refresh, logout and session landed; v2-auth-plan.md deleted
 

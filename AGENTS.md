@@ -24,6 +24,7 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 | `tests/e2e/`           | e2e harness: Makefile, helpers, goldens, dataset tooling             | touching tests, goldens, the dataset, or starting a REST server for tests     |
 | `internal/`            | Go packages: config, observe, tlsconf, httpapi, ...                  | writing or reviewing any Go code, and logging and test conventions live there |
 | `scripts/tests/setup/` | qdb-test-setup git submodule (starts qdbd), which has no `AGENTS.md` | never edit here, and update by bumping the submodule SHA                      |
+| `third_party/`         | stub modules that `go.mod` puts in place of a dependency's modules   | touching `go.mod` replace lines, or bumping duckdb-go                         |
 | `scripts/cicd/`        | Buildkite step scripts (lint, build, unit tests)                     | touching CI step scripts or the shared `00.common.sh` helpers                 |
 | `.buildkite/`          | pipeline generator, step templates, qdb-cicd-tools submodule         | touching the CI pipeline or platform matrix                                   |
 

@@ -105,10 +105,16 @@ decisions are in `docs/adr/`.
 ## Building
 
 - `internal/qdb` imports the vendored `qdb-api-go`, so anything that
-  imports it (the binary does) compiles through cgo against `qdb/`. Run
-  `source .envrc` (or direnv) before a bare `go build` or `go test`. The
-  root Makefile does it for you. Without it the compile fails on missing
-  qdb headers. `qdb-api-go` is never patched in `vendor/`. Fix it
+  imports it (the binary does) compiles through cgo against `qdb/`, and
+  `internal/olap` imports the vendored `duckdb-go`, which compiles
+  against `duck/` (qdb-duck's package, absent on FreeBSD, where the
+  package is a stub). Run `source .envrc` (or direnv) before a bare
+  `go build` or `go test`. The root Makefile does it for you. Without it
+  the compile fails on missing qdb headers, and the DuckDB build tags
+  (`.envrc` exports them through `GOFLAGS`) are missing, so the binary
+  fails to link against the stubs of `third_party/`. A developer machine
+  extracts a qdb-duck package into `duck/` by hand, as it extracts the
+  C API into `qdb/`. `qdb-api-go` is never patched in `vendor/`. Fix it
   upstream, then bump the version in `go.mod` (`go get ...@<commit>`, a
   commit on upstream `master`; a branch commit lives only as long as
   the work that needs it), and re-run `go mod tidy` and `go mod

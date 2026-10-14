@@ -468,7 +468,8 @@ package: on Linux one `lib/libduckdb_bundle.a` without the qdb_api
 objects, so this binary links `libqdb_api.a` itself behind it, and a
 dynamic `libduckdb` on macOS and Windows that ships next to the binary
 as `libqdb_api` does there. go-duckdb links it through its
-`duckdb_use_static_lib` and `duckdb_arrow` build tags. The qdb-duck
+`duckdb_use_static_lib` tag on Linux and `duckdb_use_lib` elsewhere,
+with `duckdb_arrow` everywhere (ADR-0017). The qdb-duck
 DuckDB submodule and the go-duckdb tag name the same DuckDB release,
 and one is bumped only together with the other (owner, 2026-10-13).
 

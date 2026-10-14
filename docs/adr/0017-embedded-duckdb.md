@@ -30,9 +30,13 @@ The owner made the decisions below on 2026-10-13.
    vector at a time.
 2. **The binary links qdb-duck's package.** `libduckdb_bundle.a` on
    Linux, linked before `libqdb_api.a`, and the dynamic `libduckdb` on
-   macOS and Windows, fetched by the qdb-artifacts plugin into its own
-   directory next to `qdb/` and located by `.envrc`. The two build tags
-   are set in the Makefile and `20.build.sh`.
+   macOS and Windows, fetched by the qdb-artifacts plugin into `duck/`
+   next to `qdb/` and located by `.envrc`. The binding's link tag
+   follows the library: `duckdb_use_static_lib` on Linux and
+   `duckdb_use_lib` on macOS and Windows, with `duckdb_arrow`
+   everywhere, exported once by `.envrc` through `GOFLAGS`. The
+   binding's five prebuilt DuckDB library modules are replaced by stubs
+   so that a re-vendor does not commit them (`third_party/AGENTS.md`).
 3. **The DuckDB release is pinned in pairs.** The qdb-duck DuckDB
    submodule and the go-duckdb tag name the same release. Today that
    is 1.5.4, so go-duckdb is taken from the tag line that bundles it,
