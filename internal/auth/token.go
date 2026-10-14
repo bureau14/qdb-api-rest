@@ -150,8 +150,6 @@ func (t *Tokens) grant(base Claims) (Grant, error) {
 	//    exp differ by the lifetimes alone.
 	// 2. Seal the access token: typ access, exp one access lifetime out.
 	// 3. Seal the refresh token: typ refresh, exp one refresh lifetime out.
-	//    A previous refresh token stays valid until its own exp, because
-	//    the server holds no state in which to retire it (ADR-0016).
 
 	// 1. One clock read for both tokens.
 	now := t.now().Unix()
@@ -168,7 +166,9 @@ func (t *Tokens) grant(base Claims) (Grant, error) {
 	if err != nil {
 		return Grant{}, err
 	}
-	// 3. The refresh token. Nothing retires the one it replaces.
+	// 3. The refresh token. The one it replaces stays valid until its own
+	//    exp, because the server holds no state in which to retire it
+	//    (ADR-0016).
 	refresh, err := seal("refresh", t.refreshTTL)
 	if err != nil {
 		return Grant{}, err
