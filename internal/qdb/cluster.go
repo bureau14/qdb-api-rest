@@ -71,6 +71,14 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 	return c
 }
 
+// URI is the cluster URI this process fronts.
+func (c *Cluster) URI() string { return c.cfg.URI }
+
+// Secured reports whether the cluster has a public key configured, which
+// is what makes a login's credentials matter: an insecure cluster accepts
+// any user.
+func (c *Cluster) Secured() bool { return c.cfg.PublicKeyFile != "" }
+
 // ownCredentials are the REST API's own user. Config carries it as a user
 // security file only. Inline credentials exist only for callers, whose
 // secrets arrive through the API.
