@@ -38,11 +38,9 @@ Next:
    answering `refresh_token` (ADR-0016, Lifetimes and Refresh).
 2. M3 unit two: the refresh, logout and session handlers and their
    round-trip step (ADR-0016; `docs/e2e.md`, "The v2 round trip").
-3. File upstream against `qdb-api-go`, with no local patch
-   (`docs/brief.md`, Vendoring). `HandleType.APIVersion` and `APIBuild`
-   release the static string from `qdb_version()` and `qdb_build()`
-   through `qdb_release` with a nil handle, which `client.h` documents
-   as API-managed and not to be freed.
+3. Re-vendor `qdb-api-go` at master once bureau14/qdb-api-go PR #127
+   merges. The vendored copy is that PR's head, pulled by version bump
+   (`docs/brief.md`, Vendoring).
 
 M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
 `duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
