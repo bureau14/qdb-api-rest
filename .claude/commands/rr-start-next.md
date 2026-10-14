@@ -1,16 +1,19 @@
 ---
-description: Seed a session with the next unit of work -- survey docs, history and tree, pick one reviewable 5-15 commit unit, load its context without starting it
+description: Seed a session with the next unit of work -- survey docs, history and tree, offer three scopes of the next unit, load its context and put its design choices to the owner without starting it
 ---
 
 # /rr-start-next -- session seed, unit chosen for you
 
 This command takes no task description. You work out which unit of work
-comes next, cut it to a reviewable size, and then seed the session for
-it exactly as `/rr-start` would have, had the owner described that unit.
+comes next, cut it into three scopes for the owner to choose from, and
+then seed the session for the chosen scope exactly as `/rr-start` would
+have, had the owner described that unit.
 
-This command does three things: it commits you to the branch-off
-workflow below, it chooses the next unit, and it loads the context that
-unit will need. It ends with a report and a wait for the owner.
+This command does four things: it commits you to the branch-off
+workflow below, it chooses the next candidate, it loads the context
+that candidate needs and lets the owner pick its scope, and it puts the
+design choices the unit rests on to the owner. It ends with a report
+and a wait for the owner.
 
 ## This turn
 
@@ -381,40 +384,51 @@ Work through these steps in order; each one feeds the next.
 4. Pick. Work in flight comes before anything else; after that, the
    first candidate in the log's own order that survived step 3. The
    log's order is the owner's priority. Size never reorders it.
-5. Size. Write the unit's commit list at the granularity the workflow
-   above prescribes. The size is the length of that list, not an
-   estimate made before writing it. The band is 5 to 15 build-stage
-   commits; the plan commit is not counted.
-   - More than 15: cut the unit into slices and take the first. A slice
-     is mergeable on its own: one subject, the base builds and passes
-     lint and tests after it merges, and what it adds can be exercised
-     by a test or a command that exists when it merges. The first slice
-     is the one the others build on. Size the slice the same way. List
-     every remaining slice, one line each, so the owner sees the whole
-     cut.
-   - Fewer than 5: propose it as it is and say so. Add the following
-     candidate only when both share a subject and the owner would
-     review them as one change anyway.
-   - Never reach the band by changing commit granularity: no folding
-     commits together to get under 15, no splitting them to reach 5.
 
-Correct: the first next item is a whole subsystem; its commit list runs
-to 31. You cut four slices, propose the first at 9 commits (the
-skeleton and one case end to end, under test), and list the other
-three with their sizes.
+## What the sources are
 
-Incorrect: the same item, proposed whole with 15 commits of several
-hundred lines each; or passed over for the second item because that
-one happens to fit the band.
+Every document under `docs/`, every `AGENTS.md` and every plan was
+written by an agent, in a session the owner reviewed at the level of a
+decision, not at the level of every sentence. So a document settles a
+choice only at the level of detail the owner could have reviewed as a
+decision. Classify every claim the unit rests on by its provenance, and
+carry the class into the report:
+
+- `owner`: the owner stated it. A log line or handoff item marked
+  "owner, <date>", an "Owner decision" entry, a brief section the
+  brief names as a pre-project decision, or the Decision section of an
+  accepted ADR.
+- `tree`: the code, a test, a fixture, a vendored dependency or the
+  daemon shows it, at a `path:line`.
+- `agent`: everything else. A mechanism, type, shape, config key,
+  endpoint, number or sequence written into a brief section, an ADR's
+  consequences, a log "Next" item or a milestone criterion for work
+  that has not started is `agent` until the owner confirms it for this
+  unit, however confident the sentence sounds and however many
+  documents repeat it.
+
+An `agent` claim the unit's code would build on is not settled; it is
+a question for the challenge round below. An `agent` claim the tree
+contradicts, or that two documents state differently, is drift: the
+same question, with the disagreement spelled out.
+
+Correct: an accepted ADR's Decision says login answers a token pair,
+and the log marks the refresh lifetime as an owner decision; both are
+`owner`. The ADR's consequences name the config key and a sliding
+expiry; the owner has not said so in those words, so both are `agent`,
+and the unit that adds them asks before the plan is written.
+
+Incorrect: the key and the expiry go into the plan as settled because
+the log says the ADR "fixes the shapes".
 
 ## Load context
 
-The survey was broad; this pass is deep, and only for the chosen unit.
-Follow the `AGENTS.md` map rather than a list kept here, so this command
-stays correct as the repository changes.
+The survey was broad; this pass is deep, and only for the chosen
+candidate. Follow the `AGENTS.md` map rather than a list kept here, so
+this command stays correct as the repository changes.
 
-First, scope. From the unit and the project structure as the
-documentation describes it, write down the set the unit touches:
+First, scope. From the candidate and the project structure as the
+documentation describes it, write down the set the candidate touches:
 folders, packages, endpoints, config blocks, tests, documents. This set
 decides what you read below; extend it when reading reveals a
 dependency.
@@ -436,18 +450,64 @@ Then read, in this order:
 5. Memory: any recalled note about this repository that bears on the
    unit, verified against the tree before relying on it.
 
-Precedence when sources disagree: the tree and accepted decision
-records, then the source-of-truth document, then the project log, then
-memory. Report the disagreement under Open questions; do not resolve it
-silently.
+When sources disagree: the tree wins over any document for what exists
+today, and an `owner` claim wins over an `agent` claim for what should
+exist. Between two `agent` claims, or between an `agent` claim and the
+unit description, there is no precedence. Every disagreement is drift,
+and drift is a question in the challenge round, with both readings and
+their paths; it is not resolved by assumption, nor by picking the newer
+document.
 
 Look actively for: locked decisions the unit must honor, handoff
 constraints recorded for the active milestone, known gaps in the
 dependencies the unit will call, and what the existing fixtures and tests
 already pin.
 
-If the deep pass changes the commit list, size the unit again (step 5)
-before reporting.
+## Cut three scopes and ask
+
+The size of a unit is the length of its commit list, never an estimate
+made before writing it, and never reached by folding or splitting
+commits. So first write the candidate's whole commit list at the
+granularity the workflow above prescribes, from the deep pass. Then cut
+three scopes from it. A scope is mergeable on its own: one subject, the
+base builds and passes lint and tests after it merges, and what it adds
+can be exercised by a test or a command that exists when it merges.
+
+- small: the least that is mergeable, usually under 5 commits: the
+  skeleton, one case, or one layer.
+- medium: the first slice inside the band of 5 to 15 build commits,
+  the one the other slices build on.
+- large: the whole candidate when it fits in 15, or the first two
+  slices together when it does not; say when it is over the band.
+
+When the whole candidate is under 5 commits, small and medium coincide;
+say so, and offer the following candidate as large only when both share
+a subject and the owner would review them as one change anyway.
+
+Put the three to the owner through the question tool (AskUserQuestion),
+in one question, medium first and marked "(Recommended)". Each option's
+label is the scope in a few words and its commit count. Each option's
+description says, in two or three sentences, what the owner will have
+to review: the packages and files touched, whether the code is new or
+edited, how much of it is handlers, library code, tests, fixtures or
+documents, and what reading the diff amounts to. The owner's pick is
+the unit. The slices the pick leaves are listed in the report, one line
+each with its size, so the owner sees the whole cut.
+
+Correct: the first next item is a whole subsystem; its commit list runs
+to 31. You cut four slices and offer: small, 3 commits, "the package
+skeleton and its config block: one new package of two files, no
+handler, review is reading two types"; medium, 9 commits,
+"the skeleton and one case end to end under a property test: one new
+package, one handler edit, one fixture, review is one function and
+its test"; large, 17 commits, "the first two slices, over the band:
+adds the second case and the e2e step, review is two handlers, the
+goldens and the round trip". The owner picks medium; the report lists
+the other three slices.
+
+Incorrect: the same item, offered whole as the only option; or three
+options that differ in commit granularity rather than in scope; or
+descriptions that give a commit count and nothing about the code.
 
 ## Shape the unit
 
@@ -459,15 +519,95 @@ so settle its shape before writing. From what you read, decide:
 2. The approach: the shape of the change, where it lives, what it
    reuses, what it introduces.
 3. Each design choice the unit requires: the option you take, the
-   alternative it beats, the reason, and what settles it. A choice a
-   source settles carries that path. A choice the sources leave open is
-   a proposal: you still pick, you say the pick is yours, and the plan's
-   approval is what settles it. A choice that contradicts a locked
-   decision, or that would make the unit materially different work, is
-   not yours to make; it goes under Open questions.
+   alternative it beats, the reason, and what settles it. A choice an
+   `owner` source settles carries that path. A choice only `agent`
+   sources settle, or that the sources leave open, goes to the owner in
+   the challenge round below: what the owner answers is settled by the
+   owner, and what the owner leaves to you is a proposal: you still
+   pick, you say the pick is yours, and the plan's approval is what
+   settles it. A choice that contradicts a locked decision, or that
+   would make the unit materially different work, is not yours to make;
+   it goes under Open questions.
 
 A reason you do not have is not invented; the choice becomes an open
 question instead.
+
+## Challenge round
+
+The plan is written after this report, and it carries the approach the
+owner wants, not the approach the documents happen to record. So before
+the report, put the choices to the owner through the question tool
+(AskUserQuestion), while the context is loaded and nothing is written.
+
+What gets a question. A choice the unit's code rests on that is:
+
+1. `agent` by provenance, including every detail of a future spec the
+   unit would be the first to implement;
+2. drift between sources, or between a source and the tree;
+3. expensive to reverse once code exists: a wire shape, a public
+   signature, a config key, a storage layout, a dependency;
+4. one where a simpler alternative exists and no source records why it
+   lost.
+
+What gets no question: a choice marked `owner` with a date; a choice
+the tree settles; a choice that belongs to a later unit or milestone; a
+choice between wordings. A question whose answer would not change a
+commit of this unit is not asked.
+
+How to ask. One question per choice, at most four per call, at most
+two calls; what remains goes under Open questions in the report, and
+the owner answers it in the conversation before the go-ahead.
+
+The owner reads the question cold: the context you loaded is not in
+front of them, and a name from the code means nothing until the
+question says what it is. So the question text carries the context,
+in this order, before it asks anything: what the thing is and what it
+does today, in plain words ("the server signs a token at login; the
+token carries who you are and when it expires"); what the unit changes
+about it and why that raises a choice ("login will now answer two
+tokens, and the code that signs one has to produce the pair"); then
+the question. An identifier appears only after the sentence that
+explains it, in parentheses, so the owner can find it in the code. The
+question runs three to six sentences; a one-line question is a sign
+the context was left out.
+
+The options follow the same rule. The label says the choice in plain
+words, not in identifiers ("one signing path for login and refresh",
+not "MintPair(user, secret) over pair(base)"). The description says
+what the option does, then what it costs and what it keeps open, and
+names an identifier only after saying what it is. The options are: the
+approach the sources record, named by its path; the simplest
+alternative; a third where a real one exists. Put the option you would
+take first, marked "(Recommended)", and say in one clause why. The
+owner can always answer "Other" with text. An answer is the decision;
+it is not argued with.
+
+Where the answers go. Each answer is the owner's decision as of today's
+date: in the report's Decisions entry as `settled by owner, <date>`,
+and in the plan's Rationale row under "settled by" in the same words.
+A choice the owner left to you is `proposal` and keeps your
+recommendation. An answer that gives the unit a new direction reshapes
+it before the report is written: run Shape the unit again for what the
+answer touches.
+
+Correct: the brief's endpoint sketch gives the response a `rows` array
+of arrays, no document says why, and the unit adds the first handler
+that answers it. The question says: the query endpoint answers a
+table; today nothing produces it; this unit adds the first handler, so
+the shape every later client parses is fixed now; the brief sketches
+each row as an array of values in column order; should rows be arrays
+or objects keyed by column name? The options are "arrays in column
+order (the brief's sketch)" and "objects keyed by column", each with
+what it costs. The owner picks arrays; the Decisions entry says
+`settled by owner, <date>`, and the plan's Rationale repeats it.
+
+Incorrect: the sketch is followed because it is in the brief, and the
+owner learns the shape from the diff. Or: the question is "How should
+Tokens mint the login's pair?" and the options are signatures, so the
+owner has to open the package to learn what minting is and what the
+pair is before answering. Or: eight questions go out in one call, three
+of them about the milestone after this one. Or: the owner picks objects
+and the plan says arrays "as the brief prescribes".
 
 ## Report, then stop
 
@@ -500,27 +640,30 @@ at 1.
   rest of the report is its evidence.
 - `# Decisions` -- a numbered list, one entry per design choice from
   Shape the unit, one to three lines each: the choice, the
-  alternative it beats, the reason, and `settled by <path>` or
+  alternative it beats, the reason, and `settled by <path>` (an
+  `owner` source), `settled by owner, <date>` (the challenge round) or
   `proposal`. Write "none" if the unit leaves no choice to make.
-- `# Size and slices` -- at most three lines: the commit count and
-  whether it is inside the band, where the cut is and why there; then
-  one line per remaining slice with its size, in the order they would
-  follow, or "none" if the unit was not cut.
+- `# Size and slices` -- at most three lines: the scope the owner
+  chose, its commit count and whether it is inside the band, where the
+  cut is and why there; then one line per remaining slice with its
+  size, in the order they would follow, or "none" if the unit was not
+  cut.
 - `# Constraints` -- a table, one row per decision, constraint or
   gotcha that applies:
-  `| constraint | source (path or path:line) | effect on the unit |`
+  `| constraint | source (path or path:line) | provenance (owner / tree / agent) | effect on the unit |`
 - `# Code involved` -- one line per file or package in the scoped set:
   path, then what it does and how the unit touches it.
 - `# Open questions` -- a numbered list of everything the unit's
   source leaves open, every stale entry found in step 3, every gap no
-  document calls for, and every choice Shape the unit found was not
-  yours to make. Ask; do not resolve by assumption. Write "none" if
-  there are none.
+  document calls for, every choice Shape the unit found was not yours
+  to make, and every challenge the round did not reach or the owner
+  deferred. Ask; do not resolve by assumption. Write "none" if there
+  are none.
 - `# Proposed commits` -- numbered one-line commit subjects in the
   order you would land them. Commit 1 is always the plan:
   `docs(plan): <slug>-plan.md, <subject>`; it is the only commit the
   next go-ahead authorizes, and it is outside the size band. Then the
-  build commits from step 5: the outline the plan document will
+  build commits of the chosen scope: the outline the plan document will
   refine, so the owner can redirect before the plan is written. The
   list closes with the Buildkite verification step (see Lifecycle);
   it is not counted as a commit.
