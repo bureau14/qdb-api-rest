@@ -37,7 +37,7 @@ type failer interface {
 // tokensFor builds a verifier over the given passphrases at test cost.
 func tokensFor(t failer, secrets []string) *Tokens {
 	t.Helper()
-	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, AccessTTL: 15 * time.Minute, Argon2id: testCost}, func() time.Time { return epoch })
+	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, AccessTTL: 15 * time.Minute, RefreshTTL: 14 * 24 * time.Hour, Argon2id: testCost}, func() time.Time { return epoch })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,12 +192,14 @@ func TestEphemeralIsolated(t *testing.T) {
 // New refuses what derivation cannot use, naming the config key.
 func TestBadConfigRefused(t *testing.T) {
 	for name, a := range map[string]config.Auth{
-		"empty passphrase":     {TokenSecrets: []string{""}, AccessTTL: time.Minute, Argon2id: testCost},
-		"duplicate passphrase": {TokenSecrets: []string{"a", "a"}, AccessTTL: time.Minute, Argon2id: testCost},
-		"zero time":            {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 0, MemoryMiB: 1, Parallelism: 1}},
-		"zero memory":          {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 0, Parallelism: 1}},
-		"lanes overflow":       {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 256}},
-		"zero access ttl":      {TokenSecrets: []string{"a"}, Argon2id: testCost},
+		"empty passphrase":             {TokenSecrets: []string{""}, AccessTTL: time.Minute, RefreshTTL: time.Hour, Argon2id: testCost},
+		"duplicate passphrase":         {TokenSecrets: []string{"a", "a"}, AccessTTL: time.Minute, RefreshTTL: time.Hour, Argon2id: testCost},
+		"zero time":                    {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, RefreshTTL: time.Hour, Argon2id: config.Argon2id{Time: 0, MemoryMiB: 1, Parallelism: 1}},
+		"zero memory":                  {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, RefreshTTL: time.Hour, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 0, Parallelism: 1}},
+		"lanes overflow":               {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, RefreshTTL: time.Hour, Argon2id: config.Argon2id{Time: 1, MemoryMiB: 1, Parallelism: 256}},
+		"zero access ttl":              {TokenSecrets: []string{"a"}, RefreshTTL: time.Hour, Argon2id: testCost},
+		"zero refresh ttl":             {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, Argon2id: testCost},
+		"refresh ttl not above access": {TokenSecrets: []string{"a"}, AccessTTL: time.Minute, RefreshTTL: time.Minute, Argon2id: testCost},
 	} {
 		if _, err := New(ctx(), a, func() time.Time { return epoch }); err == nil || !strings.Contains(err.Error(), "auth.") {
 			t.Errorf("%s: want a refusal naming the key, got %v", name, err)

@@ -91,9 +91,9 @@ type keychain struct {
 // config key in the error. Every passphrase must be non-empty and
 // unique (a repeated entry would derive the same key twice), time and
 // memory must each be at least 1 (one pass, one MiB), parallelism must
-// fit the argon2 API's uint8, and the access TTL must be positive. This
-// package consumes these values, so it owns the checks, and config only
-// parses shape.
+// fit the argon2 API's uint8, the access TTL must be positive, and the
+// refresh TTL must be above it. This package consumes these values, so
+// it owns the checks, and config only parses shape.
 func validateAuth(a config.Auth) error {
 	seen := map[string]bool{}
 	for i, s := range a.TokenSecrets {
@@ -116,6 +116,12 @@ func validateAuth(a config.Auth) error {
 	}
 	if a.AccessTTL <= 0 {
 		return fmt.Errorf("auth.access_ttl must be positive, got %s", a.AccessTTL)
+	}
+	// A refresh token that dies before the access token it came with can
+	// renew nothing, so that configuration is refused here rather than
+	// discovered at the first refresh.
+	if a.RefreshTTL <= a.AccessTTL {
+		return fmt.Errorf("auth.refresh_ttl must be above auth.access_ttl, got %s with access_ttl %s", a.RefreshTTL, a.AccessTTL)
 	}
 	return nil
 }
