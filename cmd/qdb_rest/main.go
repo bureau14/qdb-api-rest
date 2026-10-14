@@ -24,13 +24,16 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
+	"github.com/bureau14/qdb-api-rest/internal/olap"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
 // versionText renders the version block shared by all QuasarDB binaries
-// plus the linked C API version, which is the only line that is not
-// compile-time information.
+// plus the linked C API and DuckDB versions, the two lines that are not
+// compile-time information. The DuckDB line is absent where no DuckDB is
+// linked (FreeBSD), so the CI smoke run of --version proves the link on
+// every other platform.
 func versionText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "quasardb rest api version: %s\n", build.Version)
@@ -39,6 +42,9 @@ func versionText() string {
 	fmt.Fprintf(&b, "target: %s-%s\n", runtime.GOARCH, runtime.GOOS)
 	fmt.Fprintf(&b, "compiler: %s\n", runtime.Version())
 	fmt.Fprintf(&b, "c api: %s (%s)\n", qdb.APIVersion(), qdb.APIBuild())
+	if v := olap.Version(); v != "" {
+		fmt.Fprintf(&b, "duckdb: %s\n", v)
+	}
 	if runtime.GOARCH == "amd64" && build.GOAMD64 != "" {
 		fmt.Fprintf(&b, "arch level: %s\n", build.GOAMD64)
 	}
