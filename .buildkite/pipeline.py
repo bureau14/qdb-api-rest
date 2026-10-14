@@ -9,8 +9,9 @@ tests), then an aggregate test-report step.
 Each per-platform step starts qdbd through the shared test-setup
 submodule before building and stops it in hooks/pre-exit; the
 qdb-artifacts plugin extracts the c-api, server and utils dists the step
-needs into qdb/. The e2e harness (tests/e2e/) runs last in the same
-step, after the Go tests (.buildkite/AGENTS.md).
+needs into qdb/ and, on every platform but FreeBSD, qdb-duck's package
+into duck/. The e2e harness (tests/e2e/) runs last in the same step,
+after the Go tests (.buildkite/AGENTS.md).
 
 Usage:
     python3 pipeline.py [generate|check]
@@ -172,6 +173,29 @@ def _lint_step() -> dict:
     return step
 
 
+# The qdb-duck package is downloaded under this pipeline's own variant,
+# because qdb-duck uploads under the same platform slugs, and from
+# qdb-duck's master rather than this pipeline's ref, because the package
+# does not change with this repository's branches. The download project
+# is declared in the step templates, and FreeBSD drops it here, because
+# qdb-duck has no FreeBSD build and the binary carries no DuckDB there
+# (ADR-0017).
+DUCK_PROJECT = "qdb-duck"
+DUCK_GIT_REF = "refs/heads/master"
+
+
+def _without_duck_download(step: dict) -> None:
+    """Remove the qdb-duck project from the step's qdb-artifacts download."""
+    for plugin in step.get("plugins", []):
+        for name, config in plugin.items():
+            if not name.startswith("bureau14/qdb-artifacts#"):
+                continue
+            projects = config.get("download", {}).get("projects", [])
+            config["download"]["projects"] = [
+                pr for pr in projects if pr.get("project_id") != DUCK_PROJECT
+            ]
+
+
 def _per_platform_step(p: Platform) -> dict:
     """Generate the combined per-platform step (build + unit tests) for
     one platform.
@@ -204,6 +228,8 @@ def _per_platform_step(p: Platform) -> dict:
     env.update(_go_env_for_agent())
     step["env"] = env
     apply_docker(step, p.docker_image, p.docker_volumes)
+    if p.os == "freebsd":
+        _without_duck_download(step)
     return step
 
 
@@ -233,7 +259,13 @@ def generate_pipeline() -> Pipeline:
     # a matching one.  Pinned to haswell (the lint agent is haswell-class).
     set_artifact_plugin_options(
         lint,
-        {"download": {"variant": "linux-haswell-release", "git_ref": git_ref}},
+        {
+            "download": {
+                "variant": "linux-haswell-release",
+                "git_ref": git_ref,
+                "by_project": {DUCK_PROJECT: {"git_ref": DUCK_GIT_REF}},
+            }
+        },
     )
     pipeline.add_step(CommandStep.from_dict(lint))
 
@@ -244,7 +276,13 @@ def generate_pipeline() -> Pipeline:
         variants.append(p.slug())
         set_artifact_plugin_options(
             step,
-            {"download": {"variant": variant, "git_ref": git_ref}},
+            {
+                "download": {
+                    "variant": variant,
+                    "git_ref": git_ref,
+                    "by_project": {DUCK_PROJECT: {"git_ref": DUCK_GIT_REF}},
+                }
+            },
         )
         pipeline.add_step(CommandStep.from_dict(step))
 

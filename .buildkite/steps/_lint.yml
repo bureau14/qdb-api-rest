@@ -2,8 +2,9 @@ label: ":golangci-lint: lint"
 key: lint
 
 # qdb-artifacts runs first (pre-command hook order) to populate qdb/ with
-# the C API before 10.lint.sh starts: golangci-lint's typecheck compiles
-# the cgo package and needs the headers.  The docker overlay
+# the C API and duck/ with qdb-duck's package before 10.lint.sh starts:
+# golangci-lint's typecheck compiles the cgo packages and needs both
+# headers.  The docker overlay
 # (bureau14/builder:rhel7) is injected by pipeline.py::_lint_step via
 # apply_docker so that the propagated env and the qdb/ volume are both
 # visible inside the container -- the same container the build steps use.
@@ -17,6 +18,11 @@ plugins:
           extract: true
           files:
             - "*-c-api.tar.zst!*"
+        - project_id: "qdb-duck"
+          output-dir: "duck"
+          extract: true
+          files:
+            - "qdb-duck-*-libduckdb.tar.zst!*"
 
 commands:
   - bash scripts/cicd/10.lint.sh
