@@ -27,10 +27,12 @@ import (
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
 // server is the root handler plus the request context main would give
-// it: logger, cluster and keychain.
+// it: logger, cluster and keychain. The keychain is kept so a test mints
+// what a row needs, such as an expired refresh token.
 type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
+	tk      *auth.Tokens
 	handler http.Handler
 	token   string // an anonymous access token
 }
@@ -47,7 +49,7 @@ func newServerOn(t *testing.T, c *qdb.Cluster) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
 	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
-	return server{ctx: ctx, c: c, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
+	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
 }
 
 // post sends body to path with the given headers, nil meaning none.

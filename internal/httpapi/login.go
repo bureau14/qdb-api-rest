@@ -33,11 +33,27 @@ func (l loginRequest) user() qdb.User {
 }
 
 // tokenResponse is RFC 6749's token response. It carries the access
-// token, its scheme and its validity in whole seconds.
+// token, its scheme, its validity in whole seconds, and the refresh
+// token that renews it.
 type tokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int64  `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int64  `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// writeTokenResponse answers 200 with the grant. expires_in is the
+// access lifetime, because that is the token the client counts down; a
+// client learns that its refresh token has expired from the refresh's
+// 401, and does not count it (ADR-0016).
+func writeTokenResponse(w http.ResponseWriter, tk *auth.Tokens, g auth.Grant) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(tokenResponse{
+		AccessToken:  g.Access,
+		TokenType:    "Bearer",
+		ExpiresIn:    int64(tk.AccessTTL().Seconds()),
+		RefreshToken: g.Refresh,
+	})
 }
 
 // isJSON reports whether a Content-Type names application/json. A
@@ -48,7 +64,7 @@ func isJSON(contentType string) bool {
 }
 
 // handleLogin proves the presented credentials by one direct dial and
-// answers with an access token. A refused dial is the caller's 401 and
+// answers with a token grant. A refused dial is the caller's 401 and
 // an unreachable cluster is 503. The handler mints nothing for
 // credentials the cluster did not accept.
 func handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -74,19 +90,16 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeClusterError(ctx, w, err, http.StatusUnauthorized)
 		return
 	}
+	// The grant is written by the same function the refresh uses, so the
+	// two routes answer one shape.
 	tk := auth.TokensFrom(ctx)
-	token, err := tk.MintAccess(u.Username, u.SecretKey)
+	g, err := tk.Issue(u.Username, u.SecretKey)
 	if err != nil {
-		observe.Logger(ctx).ErrorContext(ctx, "minting an access token failed", observe.Err(err))
-		writeProblem(w, http.StatusInternalServerError, "minting the token failed")
+		observe.Logger(ctx).ErrorContext(ctx, "minting the token grant failed", observe.Err(err))
+		writeProblem(w, http.StatusInternalServerError, "minting the tokens failed")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(tokenResponse{
-		AccessToken: token,
-		TokenType:   "Bearer",
-		ExpiresIn:   int64(tk.AccessTTL().Seconds()),
-	})
+	writeTokenResponse(w, tk, g)
 }
 
 // registerAuthRoutes serves the login unauthenticated, because the login

@@ -43,8 +43,9 @@ This file, Handlers, holds the table reader's.
   direct dial outside the pools, and it mints only for credentials the
   cluster accepted. A refusal is 401 with no `WWW-Authenticate`, because
   no bearer scheme was used. The response is RFC 6749's token response
-  (`access_token`, `token_type`, `expires_in`). The TTL is
-  `auth.access_ttl` through `Tokens.AccessTTL`, and the handler reads no
+  (`access_token`, `token_type`, `expires_in`, `refresh_token`), written
+  by `writeTokenResponse`, which the refresh shares. `expires_in` is the
+  access lifetime through `Tokens.AccessTTL`, and the handler reads no
   clock.
 - The batch is released on return. A nil batch, which is a statement
   without a result set, has nothing to release and encodes as empty.
@@ -122,7 +123,8 @@ This file, Handlers, holds the table reader's.
   the secure one or an unreachable URI. The keychain comes from
   `config.Default().Auth`, which is ephemeral and pays no argon2id cost.
   The query tests mint their token directly, and only the login tests go
-  through the login.
+  through the login. The fixture keeps its `*auth.Tokens` so a test mints
+  what a row needs (an expired refresh token).
 - The good path of the v2 surface is one round trip, `TestRoundtrip`
   (`roundtrip_test.go`), which is the in-process twin of the e2e flow.
   One to three generated tables of one column list are created over

@@ -169,23 +169,6 @@ func (t *Tokens) grant(base Claims) (Grant, error) {
 	return Grant{Access: access, Refresh: refresh}, nil
 }
 
-// MintAccess seals the access token of a login. The session id and jti
-// are fresh per login, auth_time and iat are both now, and exp is now
-// plus the access TTL.
-func (t *Tokens) MintAccess(username, secretKey string) (string, error) {
-	now := t.now().Unix()
-	return t.Mint(Claims{
-		Username:  username,
-		SecretKey: secretKey,
-		SessionID: uuid.NewV7().String(),
-		Typ:       "access",
-		JTI:       uuid.NewV7().String(),
-		AuthTime:  now,
-		IssuedAt:  now,
-		ExpiresAt: now + int64(t.accessTTL/time.Second),
-	})
-}
-
 // Mint seals claims into a compact JWE under the current key: protected
 // header, empty encrypted-key segment (alg dir), random IV, ciphertext,
 // tag, each base64url. The encoded header is the AAD (RFC 7516).
