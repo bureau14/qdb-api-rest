@@ -26,7 +26,7 @@ describe what is true and what comes next, not how we got here.
 | Kind of information                                                                                 | Lives in                       | Update rule                                                                      |
 | --------------------------------------------------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------- |
 | Scope, goals, non-goals, architecture                                                               | `docs/brief.md`                | Rarely, and only when scope or intent changes                                    |
-| Hard design decisions, and anything that constrains code, build or CI until reversed                | `docs/adr/NNNN-<slug>.md`      | Edited in place when a detail proves wrong; superseded when the decision changes |
+| Hard design decisions, and anything that constrains code, build or CI until reversed                | `docs/adr/NNNN-<slug>.md`      | Edited in place when a detail proves wrong, superseded when the decision changes |
 | Specification of a subsystem too large for an `AGENTS.md`: mechanics, verified facts, decision logs | `docs/<subsystem>.md`          | Permanent, edited in place, one per subsystem                                    |
 | Working plan for work in flight: approach, open questions, verified facts                           | `docs/<name>-plan.md`          | Ephemeral, edited freely, deleted when work lands                                |
 | Micro-decisions taken while a plan is alive                                                         | decision-log table in the plan | Append rows, and hard ones become ADRs                                           |
@@ -181,7 +181,7 @@ might otherwise re-litigate. Micro-decisions stay in the plan's
 decision-log table. Template: `docs/adr/0000-template.md`. An accepted
 ADR is edited in place when the tree proves one of its details wrong
 (a tag name, a file name, a mechanism the dependency turned out not to
-offer), with the decision itself unchanged; the owner chose this over
+offer), with the decision itself unchanged. The owner chose this over
 append-only ADRs on 2026-10-14. A new ADR supersedes an old one only
 when the decision changes. The brief's
 "Compatibility contract", "Cluster binding", and "Flight SQL vs gRPC"

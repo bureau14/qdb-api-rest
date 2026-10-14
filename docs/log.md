@@ -34,7 +34,7 @@ Next:
   decisions of 2026-10-14 for this slice: the two size keys of the
   `duckdb` block (the memory limit and the spill cap) are int64 bytes,
   as `cluster.max_in_buffer_size` is, rendered in DuckDB's syntax when
-  the instance opens; qdb-duck's ATTACH takes one host and one port, so
+  the instance opens. qdb-duck's ATTACH takes one host and one port, so
   a multi-node `cluster.uri` is handed to it as its first node, and a
   qdb-duck story asking ATTACH to take a whole `qdb://` URI is filed
   when the owner says so (not yet).

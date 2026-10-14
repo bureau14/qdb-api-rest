@@ -5,7 +5,7 @@ key: build-{slug}
 # c-api, server and utils dists that the qdb-artifacts plugin extracts into
 # qdb/, the QuasarDB project layout. The same plugin extracts qdb-duck's
 # package (DuckDB with the quasar extension linked in) into duck/, from
-# qdb-duck's master, under this step's own variant; pipeline.py removes
+# qdb-duck's master, under this step's own variant. pipeline.py removes
 # that project on FreeBSD, where qdb-duck has no build. The e2e harness
 # (tests/e2e/) runs last, through scripts/cicd/40.test-e2e.sh, against
 # that qdbd and the binary the build command produced (docs/e2e.md, "In
