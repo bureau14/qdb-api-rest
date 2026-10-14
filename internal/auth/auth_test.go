@@ -268,12 +268,16 @@ func TestIssue(t *testing.T) {
 // in which to retire it (ADR-0016).
 func TestRenewSlides(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
+		// The clock is a closure over now, so the test issues at epoch and
+		// then moves time forward before it renews.
 		now := epoch
 		tk := tokensAt(rt, nil, func() time.Time { return now })
 		g, err := tk.Issue("alice", "s3cret")
 		if err != nil {
 			rt.Fatal(err)
 		}
+		// Issue mints gen as zero, so a drawn value stands in for a
+		// revocation layer's generation, which Renew must carry through.
 		old := verified(rt, tk, g.Refresh)
 		old.Generation = rapid.Int64().Draw(rt, "gen")
 		// Any instant under the refresh lifetime finds the old token alive.
@@ -283,9 +287,11 @@ func TestRenewSlides(t *testing.T) {
 			rt.Fatal(err)
 		}
 		access, refresh := verified(rt, tk, renewed.Access), verified(rt, tk, renewed.Refresh)
+		// Both lifetimes count from the refresh, not from the login.
 		if refresh.ExpiresAt != now.Add(tk.RefreshTTL()).Unix() || access.ExpiresAt != now.Add(tk.AccessTTL()).Unix() {
 			rt.Fatalf("lifetimes did not slide: access %+v, refresh %+v", access, refresh)
 		}
+		// The handles are fresh per token, and iat is the refresh's now.
 		if access.JTI == old.JTI || refresh.JTI == old.JTI || access.JTI == refresh.JTI || access.IssuedAt != now.Unix() {
 			rt.Fatalf("handles not fresh: access %+v, refresh %+v", access, refresh)
 		}
@@ -295,6 +301,7 @@ func TestRenewSlides(t *testing.T) {
 				rt.Fatalf("renewed %+v does not continue %+v", c, old)
 			}
 		}
+		// The old refresh token is multi-use: nothing retired it.
 		if _, err := tk.Verify(g.Refresh); err != nil {
 			rt.Fatalf("the old refresh token no longer verifies: %v", err)
 		}
