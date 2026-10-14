@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -102,9 +103,78 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeTokenResponse(w, tk, g)
 }
 
-// registerAuthRoutes serves the login unauthenticated, because the login
-// is where a caller, anonymous included, gets the token every other v2
-// route wants.
+// refreshRequest is the refresh body: the refresh token to exchange.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// handleRefresh exchanges a refresh token for a fresh grant without
+// dialing the cluster. A token that fails to verify, is expired, or is
+// not a refresh token is 401 with the bearer challenge, and the detail
+// names which.
+func handleRefresh(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	// The refresh is a pure function of the token, the keychain and the
+	// clock. It touches neither the cluster, the budget nor the breaker,
+	// so it has no 503, and clients may call it as often as they like
+	// (ADR-0016). The checks run in the login's order:
+	//
+	// 1. Content type and body, as the login's: 415, 413, 400.
+	// 2. Verify the token: expired and invalid are both 401 with the
+	//    challenge, because a token was presented.
+	// 3. Require a refresh token: an access token must not renew itself.
+	// 4. Renew and write the grant; a mint failure is 500.
+
+	// 1. The body is the login's shape with one field.
+	if !isJSON(r.Header.Get("Content-Type")) {
+		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return
+	}
+	body, ok := readBody(w, r)
+	if !ok {
+		return
+	}
+	var req refreshRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeProblem(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	// 2. Verify. The challenge is error="invalid_token" in both cases,
+	//    because a token was presented and failed, which is what the
+	//    bearer edge says of the same failures.
+	tk := auth.TokensFrom(ctx)
+	c, err := tk.Verify(req.RefreshToken)
+	switch {
+	case errors.Is(err, auth.ErrTokenExpired):
+		unauthorized(w, true, "token expired")
+		return
+	case err != nil:
+		unauthorized(w, true, "invalid token")
+		return
+	}
+	// 3. Only a refresh token renews. An access token that could renew
+	//    itself would live as long as a refresh token, and its lifetime
+	//    is the bound on a leaked token (ADR-0016).
+	if c.Typ != "refresh" {
+		unauthorized(w, true, "not a refresh token")
+		return
+	}
+	// 4. The grant is minted from the verified claims under the current
+	//    key, which is how a key rotation reaches a client.
+	g, err := tk.Renew(c)
+	if err != nil {
+		observe.Logger(ctx).ErrorContext(ctx, "minting the token grant failed", observe.Err(err))
+		writeProblem(w, http.StatusInternalServerError, "minting the tokens failed")
+		return
+	}
+	writeTokenResponse(w, tk, g)
+}
+
+// registerAuthRoutes serves the login and the refresh unauthenticated,
+// because the login is where a caller, anonymous included, gets the
+// token every other v2 route wants, and the refresh's credential is the
+// refresh token in its body, which the bearer edge would refuse.
 func registerAuthRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
+	mux.Handle("POST /api/v2/auth/refresh", withCompression(http.HandlerFunc(handleRefresh)))
 }

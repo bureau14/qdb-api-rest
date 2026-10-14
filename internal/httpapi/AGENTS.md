@@ -47,6 +47,12 @@ This file, Handlers, holds the table reader's.
   by `writeTokenResponse`, which the refresh shares. `expires_in` is the
   access lifetime through `Tokens.AccessTTL`, and the handler reads no
   clock.
+- The refresh is `POST /api/v2/auth/refresh`, `{"refresh_token"}` under
+  the login's content type and cap. It verifies, requires `typ`
+  `refresh`, renews through `Tokens.Renew` and answers the login's
+  object. It never dials, so it has no 503. Its 401s carry the bearer
+  challenge through `unauthorized`, and the detail says which check
+  failed.
 - The batch is released on return. A nil batch, which is a statement
   without a result set, has nothing to release and encodes as empty.
 - The table reader is `GET /api/v2/tables/{name}/rows`. `?columns=a,b`

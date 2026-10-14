@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
@@ -48,7 +50,17 @@ func TestErrorRows(t *testing.T) {
 	read := func(name, params string) string { return tablesPath + "/" + name + "/rows?" + params }
 	ingest := func(params string) string { return rowsPath + "?" + params }
 	csvHeader := "$table,$timestamp,c0\n"
+	// The refresh rows need tokens the keychain mints: a refresh token
+	// already expired, and the fixture's access token presented as one.
+	expiredRefresh := mint(t, s.tk, "refresh", "", time.Now().Add(-time.Hour))
+	refreshBody := func(token string) string { return `{"refresh_token":` + strconv.Quote(token) + `}` }
 	rows := map[string]errorRow{
+		// the refresh
+		"refresh: text body":     {http.MethodPost, "/api/v2/auth/refresh", "x", map[string]string{"Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
+		"refresh: undecodable":   {http.MethodPost, "/api/v2/auth/refresh", `{"refresh_token":`, map[string]string{"Content-Type": "application/json"}, http.StatusBadRequest, ""},
+		"refresh: garbage token": {http.MethodPost, "/api/v2/auth/refresh", refreshBody("nope"), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+		"refresh: expired":       {http.MethodPost, "/api/v2/auth/refresh", refreshBody(expiredRefresh), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+		"refresh: access token":  {http.MethodPost, "/api/v2/auth/refresh", refreshBody(s.token), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
 		// the query
 		"query: invalid query": {http.MethodPost, "/api/v2/query", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
 		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
