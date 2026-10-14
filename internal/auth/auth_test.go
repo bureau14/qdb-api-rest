@@ -34,10 +34,19 @@ type failer interface {
 	Fatal(...any)
 }
 
-// tokensFor builds a verifier over the given passphrases at test cost.
+// tokensFor builds a verifier over the given passphrases at test cost,
+// with the clock fixed at epoch.
 func tokensFor(t failer, secrets []string) *Tokens {
 	t.Helper()
-	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, AccessTTL: 15 * time.Minute, RefreshTTL: 14 * 24 * time.Hour, Argon2id: testCost}, func() time.Time { return epoch })
+	return tokensAt(t, secrets, func() time.Time { return epoch })
+}
+
+// tokensAt is tokensFor with a clock of the test's own. The clock moves
+// through the injected field (ADR-0006), so a test that needs time to
+// pass passes a closure over a variable it advances.
+func tokensAt(t failer, secrets []string, now func() time.Time) *Tokens {
+	t.Helper()
+	tk, err := New(ctx(), config.Auth{TokenSecrets: secrets, AccessTTL: 15 * time.Minute, RefreshTTL: 14 * 24 * time.Hour, Argon2id: testCost}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +258,68 @@ func TestIssue(t *testing.T) {
 	want.Typ, want.ExpiresAt = "refresh", epoch.Add(tk.RefreshTTL()).Unix()
 	if !reflect.DeepEqual(refresh, want) {
 		t.Fatalf("refresh: got %+v, want %+v", refresh, want)
+	}
+}
+
+// Renew slides the refresh lifetime: the new refresh token expires one
+// refresh lifetime from the refresh, the grant keeps the login's user,
+// secret, sid, gen and auth_time with fresh handles, and the old refresh
+// token stays valid until its own exp, because the server holds no state
+// in which to retire it (ADR-0016).
+func TestRenewSlides(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		now := epoch
+		tk := tokensAt(rt, nil, func() time.Time { return now })
+		g, err := tk.Issue("alice", "s3cret")
+		if err != nil {
+			rt.Fatal(err)
+		}
+		old := verified(rt, tk, g.Refresh)
+		old.Generation = rapid.Int64().Draw(rt, "gen")
+		// Any instant under the refresh lifetime finds the old token alive.
+		now = epoch.Add(time.Duration(rapid.Int64Range(0, int64(tk.RefreshTTL())-1).Draw(rt, "elapsed")))
+		renewed, err := tk.Renew(old)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		access, refresh := verified(rt, tk, renewed.Access), verified(rt, tk, renewed.Refresh)
+		if refresh.ExpiresAt != now.Add(tk.RefreshTTL()).Unix() || access.ExpiresAt != now.Add(tk.AccessTTL()).Unix() {
+			rt.Fatalf("lifetimes did not slide: access %+v, refresh %+v", access, refresh)
+		}
+		if access.JTI == old.JTI || refresh.JTI == old.JTI || access.JTI == refresh.JTI || access.IssuedAt != now.Unix() {
+			rt.Fatalf("handles not fresh: access %+v, refresh %+v", access, refresh)
+		}
+		// Everything but the handles and the times is the old token's.
+		for _, c := range []Claims{access, refresh} {
+			if c.Username != old.Username || c.SecretKey != old.SecretKey || c.SessionID != old.SessionID || c.Generation != old.Generation || c.AuthTime != old.AuthTime {
+				rt.Fatalf("renewed %+v does not continue %+v", c, old)
+			}
+		}
+		if _, err := tk.Verify(g.Refresh); err != nil {
+			rt.Fatalf("the old refresh token no longer verifies: %v", err)
+		}
+	})
+}
+
+// A key rotation propagates through Renew: a grant issued under the old
+// passphrase renews under the new one, and once the old passphrase is
+// gone the renewed grant verifies and the old refresh token does not.
+func TestRotationThroughRenew(t *testing.T) {
+	before := tokensFor(t, []string{"old"})
+	g, err := before.Issue("alice", "s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	during := tokensFor(t, []string{"new", "old"})
+	renewed, err := during.Renew(verified(t, during, g.Refresh))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := tokensFor(t, []string{"new"})
+	verified(t, after, renewed.Access)
+	verified(t, after, renewed.Refresh)
+	if _, err := after.Verify(g.Refresh); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("old refresh token after the rotation: %v", err)
 	}
 }
 

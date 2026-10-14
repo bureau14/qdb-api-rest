@@ -131,6 +131,13 @@ func (t *Tokens) Issue(username, secretKey string) (Grant, error) {
 	})
 }
 
+// Renew seals the grant a refresh token renews: the same username,
+// secret, sid, gen and auth_time, under the current key. The caller has
+// verified c and checked that its typ is refresh.
+func (t *Tokens) Renew(c Claims) (Grant, error) {
+	return t.grant(c)
+}
+
 // grant seals two tokens from one base: each gets its typ, a fresh jti,
 // iat now and exp at now plus its lifetime. Everything else is the
 // base's.
