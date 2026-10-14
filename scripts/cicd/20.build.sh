@@ -11,8 +11,10 @@
 #
 # cicd_setup_go_toolchain (00.common.sh) wires the Go toolchain from the
 # GOROOT that pipeline.py::_go_env_for_agent() injects. The qdb-artifacts
-# plugin populates the qdb/ tree, cicd_assert_qdb_tree checks it is
-# there, and cicd_setup_qdb_env (the root .envrc) tells cgo where it is.
+# plugin populates the qdb/ tree and, on every platform but FreeBSD, the
+# duck/ tree; cicd_assert_qdb_tree checks qdb/ is there, and
+# cicd_setup_qdb_env (the root .envrc) tells cgo where both are and
+# selects the DuckDB build tags.
 
 set -euxo pipefail
 
@@ -46,8 +48,9 @@ BUILD_MODE="release"
 
 # -mod=vendor builds strictly from the committed vendor/ tree and fails
 # loudly instead of silently fetching from the proxy if vendor/ is missing
-# or stale.
-GOFLAGS="-trimpath -mod=vendor"
+# or stale. The flags are appended, because .envrc has already put the
+# DuckDB build tags into GOFLAGS and overwriting it would drop them.
+GOFLAGS="${GOFLAGS:+${GOFLAGS} }-trimpath -mod=vendor"
 BUILD_PKG="github.com/bureau14/qdb-api-rest/internal/build"
 LDFLAGS="-X ${BUILD_PKG}.Version=${VERSION} \
          -X ${BUILD_PKG}.Commit=${GIT_SHA} \

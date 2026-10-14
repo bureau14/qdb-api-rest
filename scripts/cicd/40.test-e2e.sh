@@ -87,12 +87,13 @@ case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         SUFFIX=".exe"
         mkdir -p "${BASE_DIR}/bin"
-        for _dlldir in "${BASE_DIR}/qdb/bin" "${BASE_DIR}/qdb/lib"; do
+        # duck/bin holds duckdb.dll, which the binary loads next to qdb_api.dll.
+        for _dlldir in "${BASE_DIR}/qdb/bin" "${BASE_DIR}/qdb/lib" "${BASE_DIR}/duck/bin"; do
             [[ -d "${_dlldir}" ]] || continue
             find "${_dlldir}" -maxdepth 1 -name '*.dll' -exec cp -f {} "${BASE_DIR}/bin/" \;
         done
-        echo "test-e2e: co-located qdb DLLs into ${BASE_DIR}/bin"
-        ls "${BASE_DIR}/bin/"*.dll 2>/dev/null || echo "test-e2e: WARNING no qdb DLLs found to co-locate"
+        echo "test-e2e: co-located qdb and duckdb DLLs into ${BASE_DIR}/bin"
+        ls "${BASE_DIR}/bin/"*.dll 2>/dev/null || echo "test-e2e: WARNING no DLLs found to co-locate"
         ;;
 esac
 

@@ -2,7 +2,7 @@
 # Shared helpers for the Buildkite CI steps:
 #   cicd_setup_go_toolchain -- GOROOT/GOPATH/GO resolution + go-junit-report
 #   cicd_setup_cpu_baseline -- QDB_CPU_ARCHITECTURE_CORE2 -> GOAMD64
-#   cicd_assert_qdb_tree    -- fail fast when the C API artifact is absent
+#   cicd_assert_qdb_tree    -- fail fast when the C API or qdb-duck artifact is absent
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #
@@ -119,7 +119,8 @@ cicd_setup_cpu_baseline() {
 
 export -f cicd_setup_cpu_baseline
 
-# cicd_assert_qdb_tree fails fast when the extracted C API is absent.
+# cicd_assert_qdb_tree fails fast when the extracted C API, or the
+# qdb-duck package on a platform that links DuckDB, is absent.
 #
 # The vendored qdb-api-go compiles through cgo against qdb/ (locations
 # from .envrc). Without the tree the failure would surface as a cgo
@@ -138,6 +139,14 @@ cicd_assert_qdb_tree() {
         return 1
     fi
     echo "cicd_assert_qdb_tree: qdb/ layout ok"
+    # duck/ is qdb-duck's package, absent on FreeBSD only, where the
+    # binary carries no DuckDB (ADR-0017).
+    if [[ "$(uname)" != "FreeBSD" && ! -f "${BASE_DIR}/duck/include/duckdb.h" ]]; then
+        echo "ERROR: expected duck/include/duckdb.h, the qdb-duck package." >&2
+        echo "The qdb-artifacts plugin download (declared in .buildkite/steps/) populates duck/." >&2
+        return 1
+    fi
+    echo "cicd_assert_qdb_tree: duck/ layout ok"
 }
 
 export -f cicd_assert_qdb_tree
@@ -152,11 +161,13 @@ export -f cicd_assert_qdb_tree
 # also prepends the MinGW gcc to PATH, which cgo (and `go test -race`)
 # needs to find.
 #
-# Outputs: CGO_CFLAGS, CGO_LDFLAGS and the per-OS loader path, exported.
+# Outputs: CGO_CFLAGS, CGO_LDFLAGS, GOFLAGS (the DuckDB build tags) and
+# the per-OS loader path, exported.
 cicd_setup_qdb_env() {
     source "${BASE_DIR}/.envrc"
     echo "cicd_setup_qdb_env: CGO_CFLAGS=${CGO_CFLAGS}"
     echo "cicd_setup_qdb_env: CGO_LDFLAGS=${CGO_LDFLAGS}"
+    echo "cicd_setup_qdb_env: GOFLAGS=${GOFLAGS:-}"
     case "$(uname)" in
         FreeBSD) echo "cicd_setup_qdb_env: LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" ;;
         Darwin) echo "cicd_setup_qdb_env: DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}" ;;
