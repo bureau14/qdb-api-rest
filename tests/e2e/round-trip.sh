@@ -76,13 +76,16 @@ expect() {
 # body file as it is, which is the anonymous pair on the insecure cluster
 # and the user security file verbatim on the secure one, since the file
 # has the login body's shape. A login is checked by shape (ADR-0014 3),
-# a non-empty access_token, which is printed.
+# a non-empty access_token and refresh_token, and the access token is
+# printed.
 login() {
-    local out="$1" url="$2" body="$3" status token
+    local out="$1" url="$2" body="$3" status token refresh
     status=$(request "$out" login -X POST -H 'Content-Type: application/json' --data-binary "@$body" "$url/api/v2/auth/login")
     expect 200 "$status" "$out" login || return 1
     token=$(jq -r '.access_token // empty' "$out/login.body")
     [[ -n "$token" ]] || { log_error "[FAIL] login: no access_token in body"; return 1; }
+    refresh=$(jq -r '.refresh_token // empty' "$out/login.body")
+    [[ -n "$refresh" ]] || { log_error "[FAIL] login: no refresh_token in body"; return 1; }
     echo "$token"
 }
 
