@@ -37,7 +37,7 @@ plugins:
           output-dir: "duck"
           extract: true
           files:
-            - "qdb-duck-*-libduckdb.tar.zst!*"
+            - "artifacts/qdb-duck-*-libduckdb.tar.zst!*"
   - bureau14/qdb-test-report#master:
       title: "Test report {slug}"
       job:

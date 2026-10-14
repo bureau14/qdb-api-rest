@@ -22,7 +22,7 @@ plugins:
           output-dir: "duck"
           extract: true
           files:
-            - "qdb-duck-*-libduckdb.tar.zst!*"
+            - "artifacts/qdb-duck-*-libduckdb.tar.zst!*"
 
 commands:
   - bash scripts/cicd/10.lint.sh
