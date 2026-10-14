@@ -173,13 +173,9 @@ def _lint_step() -> dict:
     return step
 
 
-# The qdb-duck package is downloaded under this pipeline's own variant,
-# because qdb-duck uploads under the same platform slugs, and from
-# qdb-duck's master rather than this pipeline's ref, because the package
-# does not change with this repository's branches. The download project
-# is declared in the step templates, and FreeBSD drops it here, because
-# qdb-duck has no FreeBSD build and the binary carries no DuckDB there
-# (ADR-0017).
+# The qdb-duck download project is declared in the step templates. Its
+# git ref is pinned here, and FreeBSD drops the project here, for the
+# reasons in .buildkite/AGENTS.md.
 DUCK_PROJECT = "qdb-duck"
 DUCK_GIT_REF = "refs/heads/master"
 
