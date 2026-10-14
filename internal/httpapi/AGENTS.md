@@ -3,7 +3,8 @@
 Scope: the v2 HTTP handlers, the middleware and the probes. The
 package-wide Go rules, the logging rules and the test fixtures are in
 `internal/AGENTS.md`. ADR-0010 holds the wire contract of the query
-endpoint and the v2 error shape. ADR-0011 holds the login's. The brief
+endpoint and the v2 error shape. ADR-0011 holds the login's, and
+ADR-0016 the refresh's, the logout's and the session's. The brief
 holds the table routes' (`docs/brief.md`, "Tables: create and delete").
 This file, Handlers, holds the table reader's.
 
@@ -110,7 +111,7 @@ This file, Handlers, holds the table reader's.
 
 - `withRequestLogging` wraps the mux once. `requireBearer` and
   `withCompression` wrap a route. The probes stay outside both. The
-  login is compressed but unauthenticated.
+  login and the refresh are compressed but unauthenticated.
 - Compression follows ADR-0012. `Accept-Encoding` is read in the
   client's order, the first of `gzip`, `zstd` and `identity` wins, and
   `q` is not read. The writer holds the status back until the first body
