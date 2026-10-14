@@ -75,7 +75,7 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 func (c *Cluster) URI() string { return c.cfg.URI }
 
 // Secured reports whether the cluster has a public key configured, which
-// is what makes a login's credentials matter: an insecure cluster accepts
+// is what makes a login's credentials matter. An insecure cluster accepts
 // any user.
 func (c *Cluster) Secured() bool { return c.cfg.PublicKeyFile != "" }
 
