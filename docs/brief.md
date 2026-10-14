@@ -564,16 +564,12 @@ of their session, assembled without any cluster round-trip, so it is
 cheap enough to poll. It carries the username (or anonymous), the
 cluster URI this server fronts and whether cluster security is enabled,
 token introspection (type, issued-at, expires-at, `jti`, logged-in-since
-via the `auth_time` claim, which survives refreshes), this instance's
-local view of the caller's user pool (sessions in use, idle and the cap,
-shared by every session of that user), and a server instance identifier
-and version. The instance identifier matters. Behind a load balancer,
-pool numbers are per-instance truth, and the id makes that legible.
-Whatever user metadata QuasarDB exposes (permissions, for example) can
-be added later behind the same endpoint. Secret material is never echoed
-back. The primary audience is debugging "who am I logged in as", "why am
-I unauthorized" and "where are my connections", the most common support
-questions an API like this gets.
+via the `auth_time` claim, which survives refreshes), and the server
+version. Whatever user metadata QuasarDB exposes (permissions, for
+example) can be added later behind the same endpoint. Secret material is
+never echoed back. The primary audience is debugging "who am I logged in
+as" and "why am I unauthorized", the most common support questions an
+API like this gets.
 
 ### Tables: create and delete
 

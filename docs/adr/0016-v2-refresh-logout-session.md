@@ -75,11 +75,10 @@ Arrow Flight SQL) reuse the same tokens and the same verifier.
 8. **`GET /api/v2/session` takes a bearer access token and answers a JSON
    object** assembled without a cluster round trip: the username (empty
    for anonymous), the cluster URI this server fronts and whether it is
-   secured, the token's `typ`, `iat`, `exp`, `jti` and `auth_time`, the
-   caller's user pool as this instance sees it (sessions in use, idle
-   and the cap), and this instance's version. The secret is never
-   echoed. The exact field names are the handler's, and the brief's
-   endpoint sketch names the intent.
+   secured, the token's `typ`, `iat`, `exp`, `jti` and `auth_time`, and
+   this instance's version. The secret is never echoed. The exact field
+   names are the handler's, and the brief's endpoint sketch names the
+   intent.
 
 ### Errors
 
