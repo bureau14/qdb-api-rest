@@ -1,5 +1,7 @@
 # Extracted QuasarDB distribution (C API, server, utils); fetched, never committed
 /qdb/
+# Extracted qdb-duck package (DuckDB with the quasar extension); fetched, never committed
+/duck/
 # Local qdbd data dirs and test-setup residue
 db/
 insecure/

@@ -27,6 +27,28 @@ github.com/apache/arrow-go/v18/internal/utils/maphash
 # github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261014065943-5b88cb766ef3
 ## explicit; go 1.26.0
 github.com/bureau14/qdb-api-go/v3
+# github.com/duckdb/duckdb-go-bindings v0.10504.0
+## explicit; go 1.24
+github.com/duckdb/duckdb-go-bindings
+github.com/duckdb/duckdb-go-bindings/include
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.10504.0 => ./third_party/duckdb-nolib/darwin-amd64
+## explicit; go 1.27
+github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.10504.0 => ./third_party/duckdb-nolib/darwin-arm64
+## explicit; go 1.27
+github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64
+# github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.10504.0 => ./third_party/duckdb-nolib/linux-amd64
+## explicit; go 1.27
+github.com/duckdb/duckdb-go-bindings/lib/linux-amd64
+# github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10504.0 => ./third_party/duckdb-nolib/linux-arm64
+## explicit; go 1.27
+github.com/duckdb/duckdb-go-bindings/lib/linux-arm64
+# github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10504.0 => ./third_party/duckdb-nolib/windows-amd64
+## explicit; go 1.27
+github.com/duckdb/duckdb-go-bindings/lib/windows-amd64
+# github.com/duckdb/duckdb-go/v2 v2.10504.0
+## explicit; go 1.24.0
+github.com/duckdb/duckdb-go/v2/mapping
 # github.com/go-jose/go-jose/v4 v4.1.4
 ## explicit; go 1.24.0
 github.com/go-jose/go-jose/v4
@@ -121,3 +143,8 @@ gopkg.in/yaml.v3
 # pgregory.net/rapid v1.3.0
 ## explicit; go 1.23
 pgregory.net/rapid
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 => ./third_party/duckdb-nolib/darwin-amd64
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 => ./third_party/duckdb-nolib/darwin-arm64
+# github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 => ./third_party/duckdb-nolib/linux-amd64
+# github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 => ./third_party/duckdb-nolib/linux-arm64
+# github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 => ./third_party/duckdb-nolib/windows-amd64

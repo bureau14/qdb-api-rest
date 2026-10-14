@@ -7,6 +7,7 @@ toolchain go1.27.0
 require (
 	github.com/apache/arrow-go/v18 v18.8.0
 	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261014065943-5b88cb766ef3
+	github.com/duckdb/duckdb-go/v2 v2.10504.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/klauspost/compress v1.19.2
@@ -20,6 +21,12 @@ require (
 )
 
 require (
+	github.com/duckdb/duckdb-go-bindings v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10504.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
@@ -33,3 +40,15 @@ require (
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
+
+// The prebuilt DuckDB libraries are never compiled, so a stub replaces
+// each (third_party/AGENTS.md).
+replace github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 => ./third_party/duckdb-nolib/darwin-amd64
+
+replace github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 => ./third_party/duckdb-nolib/darwin-arm64
+
+replace github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 => ./third_party/duckdb-nolib/linux-amd64
+
+replace github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 => ./third_party/duckdb-nolib/linux-arm64
+
+replace github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 => ./third_party/duckdb-nolib/windows-amd64
