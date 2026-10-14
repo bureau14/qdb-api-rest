@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
+	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
@@ -178,13 +179,63 @@ func handleLogout(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// sessionResponse is the caller's view of their session, assembled from
+// the claims, the cluster this process fronts and the build, without a
+// cluster round trip. The secret is never echoed (ADR-0016).
+type sessionResponse struct {
+	Username string         `json:"username"`
+	Cluster  sessionCluster `json:"cluster"`
+	Token    sessionToken   `json:"token"`
+	Server   sessionServer  `json:"server"`
+}
+
+// sessionCluster is the cluster the server fronts.
+type sessionCluster struct {
+	URI     string `json:"uri"`
+	Secured bool   `json:"secured"`
+}
+
+// sessionToken is the access token's own claims. The times are unix
+// seconds, as the claims carry them, so the handler converts nothing and
+// the auth surface spells a time one way.
+type sessionToken struct {
+	Typ       string `json:"typ"`
+	IssuedAt  int64  `json:"iat"`
+	ExpiresAt int64  `json:"exp"`
+	JTI       string `json:"jti"`
+	AuthTime  int64  `json:"auth_time"`
+}
+
+// sessionServer is this instance's build.
+type sessionServer struct {
+	Version string `json:"version"`
+}
+
+// handleSession answers the caller's session from the claims, the
+// cluster it fronts, and the build version. It makes no cluster call,
+// so it is cheap enough to poll.
+func handleSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	c := auth.ClaimsFrom(ctx)
+	cl := qdb.ClusterFrom(ctx)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(sessionResponse{
+		Username: c.Username,
+		Cluster:  sessionCluster{URI: cl.URI(), Secured: cl.Secured()},
+		Token:    sessionToken{Typ: c.Typ, IssuedAt: c.IssuedAt, ExpiresAt: c.ExpiresAt, JTI: c.JTI, AuthTime: c.AuthTime},
+		Server:   sessionServer{Version: build.Version},
+	})
+}
+
 // registerAuthRoutes serves the login and the refresh unauthenticated,
 // because the login is where a caller, anonymous included, gets the
 // token every other v2 route wants, and the refresh's credential is the
 // refresh token in its body, which the bearer edge would refuse. The
-// logout sits behind the bearer edge, so only an access token logs out.
+// logout and the session sit behind the bearer edge, so only an access
+// token reaches them.
 func registerAuthRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
 	mux.Handle("POST /api/v2/auth/refresh", withCompression(http.HandlerFunc(handleRefresh)))
 	mux.Handle("POST /api/v2/auth/logout", requireBearer(http.HandlerFunc(handleLogout)))
+	mux.Handle("GET /api/v2/session", requireBearer(withCompression(http.HandlerFunc(handleSession))))
 }

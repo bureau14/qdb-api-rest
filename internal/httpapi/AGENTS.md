@@ -55,6 +55,9 @@ This file, Handlers, holds the table reader's.
   failed.
 - The logout is `POST /api/v2/auth/logout` behind the bearer edge, 204,
   no body, no state.
+- The session is `GET /api/v2/session` behind the bearer edge. It
+  answers the claims, `Cluster.URI` and `Secured`, and `build.Version`.
+  Times are the claims' unix seconds. It makes no cluster call.
 - The batch is released on return. A nil batch, which is a statement
   without a result set, has nothing to release and encodes as empty.
 - The table reader is `GET /api/v2/tables/{name}/rows`. `?columns=a,b`

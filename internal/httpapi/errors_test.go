@@ -65,6 +65,9 @@ func TestErrorRows(t *testing.T) {
 		// the logout
 		"logout: no token":      {http.MethodPost, "/api/v2/auth/logout", "", nil, http.StatusUnauthorized, "Bearer"},
 		"logout: refresh token": {http.MethodPost, "/api/v2/auth/logout", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+		// the session
+		"session: no token":      {http.MethodGet, "/api/v2/session", "", nil, http.StatusUnauthorized, "Bearer"},
+		"session: refresh token": {http.MethodGet, "/api/v2/session", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
 		// the query
 		"query: invalid query": {http.MethodPost, "/api/v2/query", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
 		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
