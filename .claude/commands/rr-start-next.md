@@ -53,7 +53,7 @@ owner message; nothing crosses a gate on its own.
 | Stage    | You produce                                                                                                    | You never                                                                                                                  | Ends with                                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | 1. Seed  | the report below                                                                                               | write, branch, commit                                                                                                      | "Then wait."                                                                                                                    |
-| 2. Plan  | `/doc-discipline read`, then the branch and exactly one commit: the plan document, in the shape below          | touch code, tests, config, ADRs or any other document                                                                      | the plannotator gate on the committed plan; on approval, the plan-stage message, then the build begins                          |
+| 2. Plan  | `/doc-discipline read`, then the branch and exactly one commit: the plan document, in the shape below          | touch code, tests, config, ADRs or any other document                                                                      | the plannotator gate on the committed plan; on approval, the plan-stage message, then a wait for the owner's go on the build    |
 | 3. Build | the small commits the approved plan lists, then the doc-discipline runs and the Buildkite build the plan lists | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | branch name, summary, the check's report, the build number and state, the `git diff` command, and the question whether to merge |
 | 4. Merge | the fast-forward merge, the branch deletion                                                                    | merge without the owner's explicit yes on the code                                                                         | one line: what merged                                                                                                           |
 
@@ -61,7 +61,9 @@ A go-ahead advances exactly one stage, never more, whatever its wording:
 "go", "ok", "yes", "proceed", "looks good", a thumbs up. The go-ahead on
 the seed report means one thing: write and commit the plan, commit 1 of
 the unit. The gate on the plan is not a chat message at all; it is the
-owner's decision in the plannotator review (below). Open questions the
+owner's decision in the plannotator review (below), and it settles the
+plan, not the build: the go-ahead on the build is the owner's next
+message after the plan-stage message. Open questions the
 owner left unanswered are not answered by a go-ahead either; the plan
 records your recommendation for each, and the plan's approval is what
 settles them.
@@ -95,8 +97,9 @@ code:
    Run it in the background; it blocks until the owner decides in the
    browser, and the harness wakes you when it exits. Do nothing while it
    runs. Its stdout is one JSON decision:
-   - `approved` (with optional `feedback`): the owner's yes on the plan.
-     Post the plan-stage message and begin the build stage.
+   - `approved` (with optional `feedback`): the owner's yes on the plan,
+     and on the plan alone. Post the plan-stage message and wait; the
+     build stage opens on the owner's next go-ahead in the conversation.
    - annotations: the owner's redirect. Fold every annotation into the
      plan, commit the revision as a further `docs(plan)` commit, and
      gate again from step 5. Never start code on an annotated plan.
@@ -107,14 +110,16 @@ The plan-stage message, posted on approval, is exactly: the branch name
 and the plan's path; `git show <sha>` for the plan commit; the owner's
 `feedback` quoted, if any, with how the build will honor it; the open
 questions the plan recorded, each with the recommendation the approval
-has now settled; one line saying the build stage begins.
+has now settled; one line saying the build waits for the owner's go.
 
 Correct: the owner says "go" on the seed report. You branch, read the
 skill, write the plan, commit it, run the gate, wait; the decision is
-`approved`; you post the message and start commit 2.
+`approved`; you post the message and wait; the owner says "go"; you
+start commit 2.
 
 Incorrect: the owner says "go" and you start the first code commit
-because the plan was "already in the report". Or: you commit the plan
+because the plan was "already in the report". Or: the gate returns
+`approved` and you start commit 2 without the owner's go on the build. Or: you commit the plan
 and ask "Approve the plan, redirect it, or stop?" in the conversation
 instead of running the gate. Or: the gate returns annotations and you
 start code while addressing them.
