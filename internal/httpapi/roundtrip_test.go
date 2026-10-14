@@ -1,6 +1,7 @@
 // The good path of the v2 surface is one round trip against the live qdbd
-// fixture, the in-process twin of the e2e flow. The test creates
-// generated tables that share one column list over HTTP, reads them
+// fixture, the in-process twin of the e2e flow. The test logs in,
+// refreshes, reads its session and logs out, then under the refreshed
+// token creates generated tables that share one column list over HTTP, reads them
 // empty, ingests them in one body of a drawn format under a drawn
 // request coding, reads and queries them in every format, deletes them, re-creates them over what the delete leaves
 // behind, and deletes them again. What went in comes back out. Each
@@ -23,6 +24,7 @@ import (
 
 	"pgregory.net/rapid"
 
+	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
@@ -166,6 +168,56 @@ func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 	}
 }
 
+// grantOf decodes a 200 token response.
+func grantOf(t table.T, step string, resp *httptest.ResponseRecorder) tokenResponse {
+	t.Helper()
+	var tr tokenResponse
+	if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &tr) != nil || tr.AccessToken == "" || tr.RefreshToken == "" || tr.TokenType != "Bearer" {
+		t.Fatalf("%s: status %d: %s", step, resp.Code, resp.Body.String())
+	}
+	return tr
+}
+
+// authRoundTrip logs in anonymously, refreshes, reads the session under
+// the refreshed access token and logs out, and returns the refreshed
+// access token. The refreshed token carries the login's session, and the
+// session answers that token's claims, this cluster and this build.
+func (s server) authRoundTrip(t *rapid.T) string {
+	t.Helper()
+	jsonBody := map[string]string{"Content-Type": "application/json"}
+	login := grantOf(t, "login", s.post("/api/v2/auth/login", `{"username":"","secret_key":""}`, jsonBody))
+	refreshed := grantOf(t, "refresh", s.post("/api/v2/auth/refresh", `{"refresh_token":"`+login.RefreshToken+`"}`, jsonBody))
+	first, err := s.tk.Verify(login.AccessToken)
+	if err != nil {
+		t.Fatalf("login token: %v", err)
+	}
+	next, err := s.tk.Verify(refreshed.AccessToken)
+	if err != nil {
+		t.Fatalf("refreshed token: %v", err)
+	}
+	if next.Typ != "access" || next.SessionID != first.SessionID || next.AuthTime != first.AuthTime || next.JTI == first.JTI {
+		t.Fatalf("refreshed claims %+v do not continue %+v", next, first)
+	}
+	bearer := map[string]string{"Authorization": "Bearer " + refreshed.AccessToken}
+	resp := s.send(http.MethodGet, "/api/v2/session", "", bearer)
+	var got sessionResponse
+	if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &got) != nil {
+		t.Fatalf("session: status %d: %s", resp.Code, resp.Body.String())
+	}
+	want := sessionResponse{
+		Cluster: sessionCluster{URI: s.c.URI(), Secured: false},
+		Token:   sessionToken{Typ: "access", IssuedAt: next.IssuedAt, ExpiresAt: next.ExpiresAt, JTI: next.JTI, AuthTime: next.AuthTime},
+		Server:  sessionServer{Version: build.Version},
+	}
+	if got != want {
+		t.Fatalf("session: got %+v, want %+v", got, want)
+	}
+	if resp := s.send(http.MethodPost, "/api/v2/auth/logout", "", bearer); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
+		t.Fatalf("logout: status %d: %s", resp.Code, resp.Body.String())
+	}
+	return refreshed.AccessToken
+}
+
 // ingestResponseOf decodes the ingest's answer.
 func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse {
 	t.Helper()
@@ -181,7 +233,14 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 func TestRoundtrip(t *testing.T) {
 	s := newServer(t)
 	rapid.Check(t, func(rt *rapid.T) {
-		// 1. the tables: the first is drawn whole, the rest are generated over its columns
+		// 1. the auth steps: login, refresh, session, logout, and every
+		// later step runs under the refreshed access token, so the round
+		// trip proves a refreshed token is a working token on every route.
+		// The logout is a step here and not in the shell round trip,
+		// because its 204 is all there is to observe
+		s.token = s.authRoundTrip(rt)
+
+		// 2. the tables: the first is drawn whole, the rest are generated over its columns
 		first := table.Generate(rt)
 		tables := []table.Table{first}
 		for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
@@ -200,7 +259,7 @@ func TestRoundtrip(t *testing.T) {
 		}
 		picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 
-		// 2. create each table, which answers 201 with its Location
+		// 3. create each table, which answers 201 with its Location
 		for _, tbl := range tables {
 			table.RemoveOnCleanup(rt, s.c, tbl)
 			resp := s.createTable(rt, createBodyOf(tbl))
@@ -212,7 +271,7 @@ func TestRoundtrip(t *testing.T) {
 			}
 		}
 
-		// 3. read the first table empty, which answers the schema alone in
+		// 4. read the first table empty, which answers the schema alone in
 		// every format, and the schema is the one generated. The others share it, and an
 		// empty read through the bulk reader is slow (about a tenth of a
 		// second where a filled read is milliseconds), so one table stands
@@ -222,7 +281,7 @@ func TestRoundtrip(t *testing.T) {
 		s.checkRead(rt, empty)
 		s.checkReadFormats(rt, first, nil)
 
-		// 4. ingest every table's rows in one body of a drawn format under a
+		// 5. ingest every table's rows in one body of a drawn format under a
 		// drawn request coding and a drawn push mode, the default included.
 		// The counts answered are the rows generated and the tables that
 		// had any
@@ -232,7 +291,7 @@ func TestRoundtrip(t *testing.T) {
 			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 		}
 
-		// 5. read and query each in every format. The rows written are the
+		// 6. read and query each in every format. The rows written are the
 		// rows generated, and every format's body carries the encoder's own
 		// bytes. After an async push a query sees the rows at once, but the
 		// bulk reader sees them only once the server has flushed. Before that
@@ -249,7 +308,7 @@ func TestRoundtrip(t *testing.T) {
 			s.checkReadFormats(rt, tbl, picked)
 		}
 
-		// 6. delete each (204), which leaves the symtables. The same create
+		// 7. delete each (204), which leaves the symtables. The same create
 		// is accepted again over them (201), and a second delete is 404
 		for _, tbl := range tables {
 			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
