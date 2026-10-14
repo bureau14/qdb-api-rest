@@ -16,11 +16,13 @@ BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 BUILD_MODE ?= release
 GOAMD64    ?=
 
-LDFLAGS := -X main.version=$(VERSION) \
-           -X main.commit=$(GIT_SHA) \
-           -X main.buildTime=$(BUILD_TIME) \
-           -X main.buildMode=$(BUILD_MODE) \
-           -X main.goamd64=$(GOAMD64)
+BUILD_PKG  := github.com/bureau14/qdb-api-rest/internal/build
+
+LDFLAGS := -X $(BUILD_PKG).Version=$(VERSION) \
+           -X $(BUILD_PKG).Commit=$(GIT_SHA) \
+           -X $(BUILD_PKG).BuildTime=$(BUILD_TIME) \
+           -X $(BUILD_PKG).BuildMode=$(BUILD_MODE) \
+           -X $(BUILD_PKG).GOAMD64=$(GOAMD64)
 
 .PHONY: build lint
 

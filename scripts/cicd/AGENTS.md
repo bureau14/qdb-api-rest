@@ -28,7 +28,8 @@ in `.buildkite/` (see its `AGENTS.md`).
   PATH-based DLL search.
 - `20.build.sh` composes the same `-ldflags` as the root Makefile's
   build target (VERSION file, git SHA, build time, build mode, GOAMD64).
-  When one changes, change the other.
+  The `-X` targets are `internal/build`'s variables. When one changes,
+  change the other.
 - Builds and tests run `-mod=vendor` and `-buildvcs=false`, and the
   reasons are commented where they are used.
 - The CGO environment has one writer, the root `.envrc` (direnv on

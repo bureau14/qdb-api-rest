@@ -48,18 +48,19 @@ BUILD_MODE="release"
 # loudly instead of silently fetching from the proxy if vendor/ is missing
 # or stale.
 GOFLAGS="-trimpath -mod=vendor"
-LDFLAGS="-X main.version=${VERSION} \
-         -X main.commit=${GIT_SHA} \
-         -X main.buildTime=${BUILD_TIME} \
-         -X main.buildMode=${BUILD_MODE} \
-         -X main.goamd64=${GOAMD64:-}"
+BUILD_PKG="github.com/bureau14/qdb-api-rest/internal/build"
+LDFLAGS="-X ${BUILD_PKG}.Version=${VERSION} \
+         -X ${BUILD_PKG}.Commit=${GIT_SHA} \
+         -X ${BUILD_PKG}.BuildTime=${BUILD_TIME} \
+         -X ${BUILD_PKG}.BuildMode=${BUILD_MODE} \
+         -X ${BUILD_PKG}.GOAMD64=${GOAMD64:-}"
 
 mkdir -p "${BASE_DIR}/bin"
 
 # -buildvcs=false, because Go's auto VCS stamping fails inside
 # bureau14/builder:rhel7. The propagated uid has no /etc/passwd entry, so
 # git rejects the repo as unsafe in the subprocess go-build spawns. The
-# commit SHA is already injected via -X main.commit.
+# commit SHA is already injected via -X into internal/build.Commit.
 GOFLAGS="${GOFLAGS}" GOAMD64="${GOAMD64:-}" \
     "${GO}" build -buildvcs=false -ldflags "${LDFLAGS}" \
     -o "${BASE_DIR}/bin/qdb_rest${SUFFIX}" ./cmd/qdb_rest

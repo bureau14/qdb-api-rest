@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
+	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
@@ -27,33 +28,21 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
-// The build metadata is injected via -ldflags -X, under the composition
-// rule of scripts/cicd/AGENTS.md, and no version constants live in
-// source. goamd64 stays empty on non-amd64 targets and on builds that do
-// not pin a microarchitecture level.
-var (
-	version   = "dev"
-	commit    = "unknown"
-	buildTime = "unknown"
-	buildMode = "unknown"
-	goamd64   = ""
-)
-
 // versionText renders the version block shared by all QuasarDB binaries
 // plus the linked C API version, which is the only line that is not
 // compile-time information.
 func versionText() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "quasardb rest api version: %s\n", version)
-	fmt.Fprintf(&b, "build: %s\n", commit)
-	fmt.Fprintf(&b, "date: %s\n\n", buildTime)
+	fmt.Fprintf(&b, "quasardb rest api version: %s\n", build.Version)
+	fmt.Fprintf(&b, "build: %s\n", build.Commit)
+	fmt.Fprintf(&b, "date: %s\n\n", build.BuildTime)
 	fmt.Fprintf(&b, "target: %s-%s\n", runtime.GOARCH, runtime.GOOS)
 	fmt.Fprintf(&b, "compiler: %s\n", runtime.Version())
 	fmt.Fprintf(&b, "c api: %s (%s)\n", qdb.APIVersion(), qdb.APIBuild())
-	if runtime.GOARCH == "amd64" && goamd64 != "" {
-		fmt.Fprintf(&b, "arch level: %s\n", goamd64)
+	if runtime.GOARCH == "amd64" && build.GOAMD64 != "" {
+		fmt.Fprintf(&b, "arch level: %s\n", build.GOAMD64)
 	}
-	fmt.Fprintf(&b, "\nbuild type: %s\n\n", buildMode)
+	fmt.Fprintf(&b, "\nbuild type: %s\n\n", build.BuildMode)
 	b.WriteString("Copyright (c) 2009-2026, quasardb SAS. All rights reserved.\n")
 	return b.String()
 }
@@ -176,7 +165,7 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(observe.WithLogger(context.Background(), logger), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	logger.InfoContext(ctx, "starting", "version", version, "commit", commit, "build_mode", buildMode,
+	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,
 		"qdb_api_version", qdb.APIVersion())
 
 	// 3. The cluster binding. The binding's own logger is routed into ours

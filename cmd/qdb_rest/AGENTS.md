@@ -14,7 +14,8 @@ Scope: the binary's entry point. Packages it wires together live under
   `qdbsh` aliases. `--config FILE`, `--version` and `--help` are the
   meta flags, and `examples/qdb_rest.yaml` is the reference.
 - Build metadata (version, commit, build time, build mode, arch level)
-  is injected via `-ldflags`, and no version constants live in source.
+  is injected via `-ldflags` into `internal/build`, which `main` reads
+  for `--version`, and no version constants live in source.
   `scripts/cicd/AGENTS.md` owns the composition rule.
 - `--version` prints the linked C API version, which makes it CI's link
   smoke test on every platform (`scripts/cicd/20.build.sh`).
