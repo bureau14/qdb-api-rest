@@ -116,14 +116,15 @@ type Argon2id struct {
 }
 
 // Auth configures the tokens: the passphrases their keys derive from, the
-// derivation cost, and how long an access token stays valid. The
-// passphrases are a rolling list, where the first entry mints and the
-// rest verify. An empty list means an ephemeral key per start, so tokens
-// survive neither a restart nor a second instance behind a load balancer.
+// derivation cost, and the two token lifetimes. The passphrases are a
+// rolling list, where the first entry mints and the rest verify. An
+// empty list means an ephemeral key per start, so tokens survive neither
+// a restart nor a second instance behind a load balancer.
 type Auth struct {
 	TokenSecrets []string      `yaml:"token_secrets" help:"rolling token passphrases, first mints and the rest verify; comma-separated as a flag or variable"`
 	Argon2id     Argon2id      `yaml:"argon2id"`
 	AccessTTL    time.Duration `yaml:"access_ttl" help:"validity of an access token from its login"`
+	RefreshTTL   time.Duration `yaml:"refresh_ttl" help:"validity of a refresh token from the login or refresh that minted it"`
 }
 
 // LogValue renders the auth block without its secrets.
@@ -133,7 +134,8 @@ func (a Auth) LogValue() slog.Value {
 		slog.Int("argon2id_time", a.Argon2id.Time),
 		slog.Int("argon2id_memory_mib", a.Argon2id.MemoryMiB),
 		slog.Int("argon2id_parallelism", a.Argon2id.Parallelism),
-		slog.Duration("access_ttl", a.AccessTTL))
+		slog.Duration("access_ttl", a.AccessTTL),
+		slog.Duration("refresh_ttl", a.RefreshTTL))
 }
 
 // Config is the full server configuration.
@@ -178,6 +180,7 @@ func Default() Config {
 			TokenSecrets: []string{},
 			Argon2id:     Argon2id{Time: 3, MemoryMiB: 64, Parallelism: 4},
 			AccessTTL:    15 * time.Minute,
+			RefreshTTL:   14 * 24 * time.Hour,
 		},
 	}
 }

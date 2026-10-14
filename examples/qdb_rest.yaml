@@ -93,3 +93,6 @@ auth:
     parallelism: 4
   # Validity of an access token from its login.
   access_ttl: 15m
+  # Validity of a refresh token from the login or refresh that minted it.
+  # Fourteen days; durations have no day unit.
+  refresh_ttl: 336h
