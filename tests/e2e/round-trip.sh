@@ -76,16 +76,35 @@ expect() {
 # body file as it is, which is the anonymous pair on the insecure cluster
 # and the user security file verbatim on the secure one, since the file
 # has the login body's shape. A login is checked by shape (ADR-0014 3),
-# a non-empty access_token and refresh_token, and the access token is
-# printed.
+# a non-empty access_token and refresh_token. Then refresh exchanges the
+# refresh token for a new grant, and session reads the caller back under
+# the new access token. The new access token is printed and authenticates
+# every later step, so the round trip proves a refreshed token works.
+# Logout has no step, because it changes nothing a later step could
+# observe (docs/e2e.md).
 login() {
-    local out="$1" url="$2" body="$3" status token refresh
+    local out="$1" url="$2" body="$3" status token refresh username
+    # 1. login: 200, access_token and refresh_token non-empty
     status=$(request "$out" login -X POST -H 'Content-Type: application/json' --data-binary "@$body" "$url/api/v2/auth/login")
     expect 200 "$status" "$out" login || return 1
     token=$(jq -r '.access_token // empty' "$out/login.body")
     [[ -n "$token" ]] || { log_error "[FAIL] login: no access_token in body"; return 1; }
     refresh=$(jq -r '.refresh_token // empty' "$out/login.body")
     [[ -n "$refresh" ]] || { log_error "[FAIL] login: no refresh_token in body"; return 1; }
+    # 2. refresh: 200 and the same shape, the new grant
+    status=$(request "$out" refresh -X POST -H 'Content-Type: application/json' --data-binary "{\"refresh_token\":\"$refresh\"}" "$url/api/v2/auth/refresh")
+    expect 200 "$status" "$out" refresh || return 1
+    token=$(jq -r '.access_token // empty' "$out/refresh.body")
+    [[ -n "$token" ]] || { log_error "[FAIL] refresh: no access_token in body"; return 1; }
+    refresh=$(jq -r '.refresh_token // empty' "$out/refresh.body")
+    [[ -n "$refresh" ]] || { log_error "[FAIL] refresh: no refresh_token in body"; return 1; }
+    # 3. session under the new access token: 200, username equals the
+    #    body file's ("" on the insecure cluster)
+    status=$(request "$out" session -H "Authorization: Bearer $token" "$url/api/v2/session")
+    expect 200 "$status" "$out" session || return 1
+    username=$(jq -r '.username' "$out/session.body")
+    [[ "$username" == "$(jq -r '.username' "$body")" ]] || { log_error "[FAIL] session: username $username, want $(jq -r '.username' "$body")"; return 1; }
+    # 4. the refreshed access token is the round trip's token
     echo "$token"
 }
 

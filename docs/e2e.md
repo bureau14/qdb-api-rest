@@ -64,7 +64,11 @@ is timed.
 1. `POST /api/v2/auth/login`: 200 and the RFC 6749 shape, with
    `access_token` and `refresh_token` non-empty strings, `token_type`
    `Bearer` and `expires_in` a positive integer (ADR-0011, ADR-0016).
-   The access token authenticates every later step.
+   `POST /api/v2/auth/refresh` with the refresh token: 200 and the same
+   shape. `GET /api/v2/session` under the refreshed access token: 200
+   and `username` equal to the login's. The refreshed access token
+   authenticates every later step. Logout has no step, because it
+   changes nothing a later step could observe.
 2. `POST /api/v2/tables`: one table per body format, `e2e_csv`,
    `e2e_ndjson`, `e2e_arrow` and `e2e_json`, with one column of every
    type (`blob`, `double`, `int64`, `string`, `symbol`, `timestamp`),
