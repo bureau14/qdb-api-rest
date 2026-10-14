@@ -26,9 +26,7 @@ In flight:
 
 Next:
 
-1. Re-vendor `qdb-api-go` at master once bureau14/qdb-api-go PR #127
-   merges. The vendored copy is that PR's head, pulled by version bump
-   (`docs/brief.md`, Vendoring).
+- Nothing.
 
 M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
 `duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
