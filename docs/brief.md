@@ -464,21 +464,20 @@ below.
 
 **The dependency.** qdb-duck's CI packages the DuckDB libraries with the
 quasar extension statically linked inside, in the layout of the C API
-package: on Linux one `lib/libduckdb_bundle.a` without the qdb_api
-objects, so this binary links `libqdb_api.a` itself behind it, and a
-dynamic `libduckdb` on macOS and Windows that ships next to the binary
-as `libqdb_api` does there. go-duckdb links it through its
-`duckdb_use_static_lib` tag on Linux and `duckdb_use_lib` elsewhere,
-with `duckdb_arrow` everywhere (ADR-0017). The qdb-duck
-DuckDB submodule and the go-duckdb tag name the same DuckDB release,
-and one is bumped only together with the other (owner, 2026-10-13).
+package: on Linux and FreeBSD one `lib/libduckdb_bundle.a` without the
+qdb_api objects, so this binary links `libqdb_api` itself behind it,
+and a dynamic `libduckdb` on macOS and Windows that ships next to the
+binary as `libqdb_api` does there. go-duckdb links it through its
+`duckdb_use_static_lib` tag on Linux and FreeBSD and `duckdb_use_lib`
+on macOS and Windows, with `duckdb_arrow` everywhere (ADR-0017). The
+qdb-duck DuckDB submodule and the go-duckdb tag name the same DuckDB
+release, and one is bumped only together with the other (owner,
+2026-10-13).
 
-**FreeBSD builds with DuckDB** (owner, 2026-10-15, revising the
-decision of 2026-10-13 that built it without). qdb-duck builds there
-since bureau14/qdb-duck#17, so FreeBSD links the static bundle as Linux
-does and the route and the round trip's sql step are the same on every
-platform. The platform is in the matrix for the edge cases it surfaces,
-and no FreeBSD release is expected.
+**FreeBSD is coverage, not a release target** (owner, 2026-10-15). The
+binary is the same on every platform, FreeBSD included, and the
+platform is in the matrix for the obscure edge cases it surfaces. No
+FreeBSD release is expected.
 
 **One DuckDB instance per user** (owner, 2026-10-13). qdb-duck binds
 credentials at `ATTACH` time, and DuckDB gives every connection of an

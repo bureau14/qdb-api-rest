@@ -15,10 +15,9 @@ names the Linux archive `libduckdb_bundle`. Three facts of the two
 dependencies shape the rest: DuckDB gives every connection of an
 instance the same view of every attached catalog, qdb-duck binds
 credentials at `ATTACH` time and pools up to 100 qdbd handles per
-attached catalog, and qdb-duck builds on every platform of the matrix,
-FreeBSD since bureau14/qdb-duck#17. The owner made the decisions below
-on 2026-10-13, and revised Decision 4 on 2026-10-15 when the FreeBSD
-build appeared.
+attached catalog, and qdb-duck builds on every platform of the matrix.
+The owner made the decisions below on 2026-10-13, and Decision 4 on
+2026-10-15.
 
 ## Decision
 
@@ -44,14 +43,11 @@ build appeared.
    submodule and the go-duckdb tag name the same release. Today that
    is 1.5.4, so go-duckdb is taken from the tag line that bundles it,
    and the next bump moves both.
-4. **FreeBSD builds with DuckDB like Linux.** The decision of
-   2026-10-13 built FreeBSD without DuckDB, because qdb-duck did not
-   build there. qdb-duck gained that build on 2026-10-15, so FreeBSD
-   links `libduckdb_bundle.a` next to the shared `libqdb_api.so`, the
+4. **FreeBSD is coverage, not a release target.** FreeBSD links
+   `libduckdb_bundle.a` next to the shared `libqdb_api.so`, and the
    route and the round trip's sql step behave the same on all eight
-   platforms. FreeBSD stays in the
-   matrix for coverage only: the owner expects no FreeBSD release and
-   keeps the platform to surface obscure edge cases.
+   platforms. The platform is in the matrix to surface obscure edge
+   cases, and no FreeBSD release is expected.
 
 ### Instances and credentials
 
@@ -110,7 +106,7 @@ build appeared.
 | One shared DuckDB instance with every user's catalog     | every connection sees every attached catalog, so one user queries under another's credentials                                 |
 | One instance per request                                 | every request attaches and dials the cluster, and the handle pool is thrown away each time                                    |
 | A shared service credential for DuckDB                   | the user's permissions would no longer apply, which the brief rules out                                                       |
-| Dropping FreeBSD from the platform matrix                | the platform is kept for the edge cases it surfaces, and qdb-duck builds there                                                |
+| Dropping FreeBSD from the platform matrix                | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                        |
 | Bumping qdb-duck to the newest go-duckdb release         | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster               |
 | Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct |
 | An upstream pool size parameter before M4                | the pool is correct as is, and the budget question is better answered once the milestones are done                            |
