@@ -82,7 +82,10 @@ const secretName = "qdb_rest"
 func secretOf(c Credentials) string {
 	// The values travel as quoted literals of a secret, because qdb-duck's
 	// ATTACH string splits on every = and a QuasarDB key ends in base64
-	// padding. Only the host, the port and the credentials travel, so
+	// padding, and qdb-duck refuses its quasar_* options in the DuckDB
+	// config at open. Inside the literals the user's text cannot reach
+	// the SQL, and duckdb_secrets() shows the private key redacted. Only
+	// the host, the port and the credentials travel, so
 	// qdb-duck's own defaults apply to the timeout, the compression and
 	// the encryption. The secret is TEMPORARY, so it lives in memory with
 	// the instance and is never written to disk.

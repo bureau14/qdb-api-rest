@@ -11,17 +11,9 @@ ADR-0017.
   `internal/qdb` owns the instances. It holds each one on the user's
   pool state, opens it on the user's first sql call and closes it with
   the pool. The package knows nothing of `internal/qdb`.
-- The credentials reach qdb-duck as a temporary DuckDB secret of quoted
-  SQL literals, and the attach names the secret. qdb-duck's ATTACH
-  string splits every pair on each `=`, so a base64 key loses its
-  padding and a secure attach through the string fails. qdb-duck's
-  `quasar_*` options are refused in the DuckDB config at open. The
-  secret keeps the user's text inside quoted literals, and
-  `duckdb_secrets()` shows the private key redacted. A failed attach is
-  `ErrAttach`, because qdb-duck's message does not tell a refused attach
-  from an unreachable cluster.
-- The `duckdb` config block becomes the instance's DuckDB settings when
-  it opens (`dsn`), and DuckDB judges them there.
+- The credentials reach qdb-duck only through a temporary DuckDB
+  secret, and the attach names the secret. `secretOf` says why the
+  ATTACH string and qdb-duck's `quasar_*` options were rejected.
 - qdb-duck pools its own qdbd sessions per attached catalog, up to 100,
   and they live until the instance closes. They do not count against
   `pool.max_sessions` (ADR-0017, Decision 7).
