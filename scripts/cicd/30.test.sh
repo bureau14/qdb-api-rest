@@ -27,6 +27,25 @@ cicd_setup_qdb_env
 GO_EXTRA_FLAGS=()
 if [[ "$(uname)" == MINGW* ]]; then
     GO_EXTRA_FLAGS+=(-exec "bash ${SCRIPT_DIR}/windows-go-test-exec.sh")
+
+    # DIAGNOSTIC (throwaway): stage the DuckDB open on Windows, with and
+    # without -race, and print each process's full exit code.
+    echo "+++ winprobe diagnostic"
+    mkdir -p bin
+    "${GO}" build -mod=vendor -buildvcs=false -o bin/winprobe.exe ./internal/olap/winprobe
+    "${GO}" build -race -mod=vendor -buildvcs=false -o bin/winprobe-race.exe ./internal/olap/winprobe
+    "${GO}" test -c -mod=vendor -buildvcs=false -o bin/olap.test.exe ./internal/olap
+    "${GO}" test -c -race -mod=vendor -buildvcs=false -o bin/olap-race.test.exe ./internal/olap
+    probe=(bash "${SCRIPT_DIR}/windows-go-test-exec.sh" bin/winprobe.exe)
+    echo "--- winprobe (no race)"
+    "${probe[@]}" || echo "winprobe rc=$?"
+    echo "--- winprobe (race)"
+    bash "${SCRIPT_DIR}/windows-go-test-exec.sh" bin/winprobe-race.exe || echo "winprobe-race rc=$?"
+    echo "--- olap test binary (no race)"
+    "${probe[@]}" run "$(cygpath -w bin/olap.test.exe)" -test.v -test.run TestQueryReadsGeneratedTable || true
+    echo "--- olap test binary (race)"
+    "${probe[@]}" run "$(cygpath -w bin/olap-race.test.exe)" -test.v -test.run TestQueryReadsGeneratedTable || true
+    exit 1
 fi
 
 # -mod=vendor resolves strictly from vendor/ and fails loudly instead of fetching.
