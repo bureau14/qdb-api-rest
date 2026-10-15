@@ -98,6 +98,9 @@ decisions are in `docs/adr/`.
   adding a type there.
 - Encoders live in `internal/encoding`. Open `internal/encoding/AGENTS.md`
   before touching an encoder, a wire shape or the text of a cell.
+- The embedded DuckDB engine lives in `internal/olap`. Open
+  `internal/olap/AGENTS.md` before touching an instance, its attach or
+  its query.
 - The v2 handlers, the problem body and the bearer middleware live in
   `internal/httpapi`. Open `internal/httpapi/AGENTS.md` before touching
   a handler, an error mapping or a route.
