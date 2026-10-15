@@ -198,7 +198,8 @@ func Default() Config {
 		},
 		// DuckDB's own defaults take most of the RAM and every core, which
 		// suits a workstation and not a gateway next to qdbd, so these are
-		// conservative. Four threads bound one user's scan at four qdbd
+		// conservative. Half a gibibyte, two threads and eight instances
+		// were rejected as too tight for joins. Four threads bound one user's scan at four qdbd
 		// sessions, because a qdb-duck scan takes one worker per four
 		// shards and one qdbd handle per worker. The empty spill directory
 		// disables spilling, so a query over the memory limit fails
