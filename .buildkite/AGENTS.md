@@ -30,16 +30,18 @@ all of this should feel.
   dists are extracted into `qdb/`, the QuasarDB project layout that the
   CGO environment (`scripts/cicd/AGENTS.md`) and `scripts/tests/setup/`
   expect.
+- Every download project is asked for this repository's own git ref.
+  The plugin walks that ref, then the project's master, then main, and
+  takes the first one that holds artifacts, so a branch of this
+  repository gets the dependency's master without `pipeline.py` naming
+  it. A `by_project` ref is only for pinning a dependency to one of its
+  branches for a while, and `pipeline.py` says when such a pin goes.
 - The second download project is `qdb-duck`, whose package (DuckDB with
   the quasar extension linked in) is extracted into `duck/`. qdb-duck
   uploads under the same platform slugs this pipeline uses, so the
-  variant is the step's own, and its git ref is pinned to qdb-duck's
-  master in `pipeline.py`, because the package does not change with this
-  repository's branches. The lint step downloads it too, because
-  golangci-lint's typecheck compiles `internal/olap`. The FreeBSD steps
-  drop the project in `pipeline.py`, because qdb-duck has no FreeBSD
-  build and `internal/olap` is a stub there (ADR-0017). The link flags
-  and build tags that consume `duck/` are the root `.envrc`'s.
+  variant is the step's own. The lint step downloads it too, because
+  golangci-lint's typecheck compiles `internal/olap`. The link flags and
+  build tags that consume `duck/` are the root `.envrc`'s.
 - qdbd runs in CI. The build step starts it via
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` runs last

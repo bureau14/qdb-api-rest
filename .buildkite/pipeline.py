@@ -9,8 +9,7 @@ tests), then an aggregate test-report step.
 Each per-platform step starts qdbd through the shared test-setup
 submodule before building and stops it in hooks/pre-exit; the
 qdb-artifacts plugin extracts the c-api, server and utils dists the step
-needs into qdb/ and, on every platform but FreeBSD, qdb-duck's package
-into duck/. The e2e harness (tests/e2e/) runs last in the same step,
+needs into qdb/ and qdb-duck's package into duck/. The e2e harness (tests/e2e/) runs last in the same step,
 after the Go tests (.buildkite/AGENTS.md).
 
 Usage:
@@ -173,23 +172,28 @@ def _lint_step() -> dict:
     return step
 
 
-# The qdb-duck download project is declared in the step templates. Its
-# git ref is pinned here, and FreeBSD drops the project here, for the
-# reasons in .buildkite/AGENTS.md.
-DUCK_PROJECT = "qdb-duck"
-DUCK_GIT_REF = "refs/heads/master"
+# qdb-duck's FreeBSD build (bureau14/qdb-duck#17) is not on its master
+# yet, so its download is pinned to the pull request's branch. Delete this
+# pin, and the by_project entry below, once the pull request merges.
+_DUCK_GIT_REF = "refs/heads/sc-19966/add-freebsd-support"
 
 
-def _without_duck_download(step: dict) -> None:
-    """Remove the qdb-duck project from the step's qdb-artifacts download."""
-    for plugin in step.get("plugins", []):
-        for name, config in plugin.items():
-            if not name.startswith("bureau14/qdb-artifacts#"):
-                continue
-            projects = config.get("download", {}).get("projects", [])
-            config["download"]["projects"] = [
-                pr for pr in projects if pr.get("project_id") != DUCK_PROJECT
-            ]
+def _download_options(variant: str, git_ref: str) -> dict:
+    """Return the qdb-artifacts download options of one step.
+
+    Every download project receives this repository's own ref and the
+    step's variant. The plugin resolves a ref that holds no artifacts of
+    a project to that project's master, so no ref is spelled out here
+    for quasardb-build or qdb-duck (.buildkite/AGENTS.md). The
+    by_project entry is the temporary pin explained at _DUCK_GIT_REF.
+    """
+    return {
+        "download": {
+            "variant": variant,
+            "git_ref": git_ref,
+            "by_project": {"qdb-duck": {"git_ref": _DUCK_GIT_REF}},
+        }
+    }
 
 
 def _per_platform_step(p: Platform) -> dict:
@@ -224,8 +228,6 @@ def _per_platform_step(p: Platform) -> dict:
     env.update(_go_env_for_agent())
     step["env"] = env
     apply_docker(step, p.docker_image, p.docker_volumes)
-    if p.os == "freebsd":
-        _without_duck_download(step)
     return step
 
 
@@ -240,12 +242,10 @@ def generate_pipeline() -> Pipeline:
     The first nine run in parallel; only the test-report step has
     depends_on.
 
-    Each step's qdb-artifacts plugin entry receives the platform variant
-    and the current git_ref for its ``download`` block; the plugin falls
-    back to quasardb-build's master artifacts when this repo's branch has
-    none.  There are no ``upload`` or ``promote`` blocks: this pipeline
-    publishes no artifacts yet (packaging is out of the plan; see the
-    brief's Non-goals).
+    Each step's qdb-artifacts plugin entry receives the download options
+    of _download_options(). There are no ``upload`` or ``promote``
+    blocks: this pipeline publishes no artifacts yet (packaging is out
+    of the plan; see the brief's Non-goals).
     """
     git_ref = get_git_ref()
     pipeline = Pipeline()
@@ -253,33 +253,14 @@ def generate_pipeline() -> Pipeline:
     lint = _lint_step()
     # Lint is not per-platform: it needs *a* C API to typecheck against, not
     # a matching one.  Pinned to haswell (the lint agent is haswell-class).
-    set_artifact_plugin_options(
-        lint,
-        {
-            "download": {
-                "variant": "linux-haswell-release",
-                "git_ref": git_ref,
-                "by_project": {DUCK_PROJECT: {"git_ref": DUCK_GIT_REF}},
-            }
-        },
-    )
+    set_artifact_plugin_options(lint, _download_options("linux-haswell-release", git_ref))
     pipeline.add_step(CommandStep.from_dict(lint))
 
     variants = []
     for p in PLATFORMS:
         step = _per_platform_step(p)
-        variant = p.slug("release")
         variants.append(p.slug())
-        set_artifact_plugin_options(
-            step,
-            {
-                "download": {
-                    "variant": variant,
-                    "git_ref": git_ref,
-                    "by_project": {DUCK_PROJECT: {"git_ref": DUCK_GIT_REF}},
-                }
-            },
-        )
+        set_artifact_plugin_options(step, _download_options(p.slug("release"), git_ref))
         pipeline.add_step(CommandStep.from_dict(step))
 
     step = load_template(STEPS_DIR / "_test_report.yml")
