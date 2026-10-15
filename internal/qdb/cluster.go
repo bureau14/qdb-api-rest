@@ -521,6 +521,44 @@ func (up *userPool) closeInstance(c *Cluster) {
 	c.releaseInstance()
 }
 
+// SQL runs q on DuckDB as u and hands its batches to sink, on a connection
+// of u's instance that closes when sink returns. An error before sink runs
+// is the instance cap (*InstanceLimitError), the attach (olap.ErrAttach,
+// which IsClusterUnavailable reports) or DuckDB's. The error of sink is
+// returned unchanged. A sql call is never retried and does not feed the
+// breaker. The budget does not count it, because qdb-duck pools its own
+// qdbd sessions.
+func (c *Cluster) SQL(ctx context.Context, u User, q string, sink func(Batches) error) error {
+	// The call counts as use of u's pool from before the instance opens
+	// until after sink returns, on every path, so eviction never closes
+	// an instance that a call is opening or querying:
+	//
+	//  1. find or create u's pool and count the call, under one hold of
+	//     mu, so no eviction pass sees the pool in between;
+	//  2. answer u's instance, opening it on the first call;
+	//  3. run the query and the sink on the instance;
+	//  4. uncount the call, whatever happened.
+
+	// 1. find the pool and count the call
+	c.mu.Lock()
+	up := c.userPoolFor(u)
+	up.duckIn++
+	c.mu.Unlock()
+	// 4. uncount the call, whatever happened
+	defer func() {
+		c.mu.Lock()
+		up.duckIn--
+		c.mu.Unlock()
+	}()
+	// 2. answer the instance
+	in, err := c.instanceOf(ctx, up, u)
+	if err != nil {
+		return err
+	}
+	// 3. run the query and the sink
+	return in.Query(ctx, q, sink)
+}
+
 // evict removes user pools that have held no session for idle_timeout, on
 // a fixed tick until Close.
 func (c *Cluster) evict() {
