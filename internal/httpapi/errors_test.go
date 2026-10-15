@@ -16,7 +16,9 @@ import (
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
+	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -73,6 +75,11 @@ func TestErrorRows(t *testing.T) {
 		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
 		"query: no token":      {http.MethodPost, "/api/v2/query", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
 		"query: bad token":     {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+		// the sql. SELECT 1 answers an int32, which no encoder writes.
+		"sql: invalid sql":      {http.MethodPost, "/api/v2/sql", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
+		"sql: json body":        {http.MethodPost, "/api/v2/sql", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
+		"sql: no token":         {http.MethodPost, "/api/v2/sql", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
+		"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT 1", bearer, http.StatusInternalServerError, ""},
 		// the tables
 		"create: text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
 		"create: undecodable":             {http.MethodPost, tablesPath, `{"name":`, jsonBody, http.StatusBadRequest, ""},
@@ -124,5 +131,25 @@ func TestErrorRows(t *testing.T) {
 		if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
 			t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
 		}
+	}
+}
+
+// TestSQLInstanceLimit: with duckdb.max_instances at one, the anonymous
+// user's sql call opens the one instance, and a second user's call
+// answers 503 with the eviction tick as its Retry-After. It needs a
+// cluster of its own limit, so it is not a row of TestErrorRows.
+func TestSQLInstanceLimit(t *testing.T) {
+	s := newServerOn(t, cluster.NewInsecureWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }))
+	// 1. The anonymous user opens the one instance. A string column is
+	//    one the encoders write.
+	if resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
+		t.Fatalf("anonymous: status %d: %s", resp.Code, resp.Body.String())
+	}
+	// 2. The insecure cluster accepts any user name, so a second user is
+	//    a second instance, past the cap.
+	other := mint(t, s.tk, "access", "qdbtest_other", time.Now().Add(time.Hour))
+	resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
+	if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {
+		t.Fatalf("second user: status %d, Retry-After %q: %s", resp.Code, resp.Header().Get("Retry-After"), resp.Body.String())
 	}
 }

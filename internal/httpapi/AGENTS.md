@@ -169,6 +169,5 @@ This file, Handlers, holds the table reader's.
 - Every error row of every route is one table, `TestErrorRows`
   (`errors_test.go`), where a row is a request, its status, its
   challenge and a problem body. A new route's rows join the table. The
-  login verdicts, the bearer edge and the codings keep their own tests,
-  because they need the secure cluster, a fixed clock or a decompressor.
+  login verdicts, the bearer edge, the codings and the DuckDB instance cap keep their own tests, because they need the secure cluster, a fixed clock, a decompressor or a cluster of their own limit.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.

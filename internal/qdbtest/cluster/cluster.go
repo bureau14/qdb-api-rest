@@ -19,9 +19,17 @@ import (
 // it is down, and closes the cluster on t's cleanup.
 func NewInsecure(t testing.TB) *qdb.Cluster {
 	t.Helper()
+	return NewInsecureWith(t, func(*config.Config) {})
+}
+
+// NewInsecureWith is NewInsecure over the default configuration as edit
+// leaves it, for a test that needs a smaller limit.
+func NewInsecureWith(t testing.TB, edit func(*config.Config)) *qdb.Cluster {
+	t.Helper()
 	qdbtest.Require(t, qdbtest.InsecureURI)
 	cfg := config.Default()
 	cfg.Cluster.URI = qdbtest.InsecureURI
+	edit(&cfg)
 	return bind(t, cfg)
 }
 
