@@ -119,8 +119,8 @@ cicd_setup_cpu_baseline() {
 
 export -f cicd_setup_cpu_baseline
 
-# cicd_assert_qdb_tree fails fast when the extracted C API, or the
-# qdb-duck package on a platform that links DuckDB, is absent.
+# cicd_assert_qdb_tree fails fast when the extracted C API or the
+# qdb-duck package is absent.
 #
 # The vendored qdb-api-go compiles through cgo against qdb/ (locations
 # from .envrc). Without the tree the failure would surface as a cgo
@@ -139,9 +139,8 @@ cicd_assert_qdb_tree() {
         return 1
     fi
     echo "cicd_assert_qdb_tree: qdb/ layout ok"
-    # duck/ is qdb-duck's package, absent on FreeBSD only, where the
-    # binary carries no DuckDB (ADR-0017).
-    if [[ "$(uname)" != "FreeBSD" && ! -f "${BASE_DIR}/duck/include/duckdb.h" ]]; then
+    # duck/ is qdb-duck's package, which every platform links (ADR-0017).
+    if [[ ! -f "${BASE_DIR}/duck/include/duckdb.h" ]]; then
         echo "ERROR: expected duck/include/duckdb.h, the qdb-duck package." >&2
         echo "The qdb-artifacts plugin download (declared in .buildkite/steps/) populates duck/." >&2
         return 1

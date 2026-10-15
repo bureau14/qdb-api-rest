@@ -11,8 +11,8 @@
 #
 # cicd_setup_go_toolchain (00.common.sh) wires the Go toolchain from the
 # GOROOT that pipeline.py::_go_env_for_agent() injects. The qdb-artifacts
-# plugin populates the qdb/ tree and, on every platform but FreeBSD, the
-# duck/ tree. cicd_assert_qdb_tree checks both are there, and
+# plugin populates the qdb/ and duck/ trees. cicd_assert_qdb_tree checks
+# both are there, and
 # cicd_setup_qdb_env (the root .envrc) tells cgo where both are and
 # selects the DuckDB build tags.
 
