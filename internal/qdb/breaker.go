@@ -1,11 +1,14 @@
 package qdb
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
+
+	"github.com/bureau14/qdb-api-rest/internal/olap"
 )
 
 // breakerState is the circuit breaker's position.
@@ -105,8 +108,11 @@ func (e *BreakerOpenError) Error() string {
 
 // IsClusterUnavailable reports whether err means the cluster was
 // unreachable, timed out or was too busy to answer. This is the binding's
-// own classification, the same one that feeds the breaker. The HTTP
-// layer maps it to 503.
+// own classification, the same one that feeds the breaker, and a DuckDB
+// attach that failed (olap.ErrAttach), which does not feed it. The server
+// cannot tell a refused attach from an unreachable cluster, and the
+// user's credentials were proven at login, so a failed attach counts as
+// an unavailable cluster. The HTTP layer maps it to 503.
 func IsClusterUnavailable(err error) bool {
-	return qdbapi.IsClusterUnavailable(err)
+	return qdbapi.IsClusterUnavailable(err) || errors.Is(err, olap.ErrAttach)
 }

@@ -3,7 +3,11 @@ package qdb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
+	"net"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,16 +15,25 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/olap"
 )
 
 // evictInterval is how often user pools that hold no session are evicted.
 const evictInterval = 10 * time.Second
 
-// userPool is one user's bounded set of sessions, plus the time at which
-// it was last found holding none, for LRU eviction.
+// userPool is one user's bounded set of sessions, the user's DuckDB
+// instance once a sql call has opened it, the connections open on that
+// instance, and the time at which the pool was last found holding none of
+// these, for LRU eviction.
 type userPool struct {
 	pool       *qdbapi.SessionPool
-	emptySince time.Time // zero while the pool holds a session
+	emptySince time.Time // zero while the pool holds a session or a connection
+	// duckMu serialises the open of the instance, which dials the cluster,
+	// so that two first calls of one user open one instance and other
+	// users are not held.
+	duckMu sync.Mutex
+	duck   *olap.Instance // nil until the user's first sql call; guarded by duckMu
+	duckIn int            // sql calls on duck; guarded by Cluster.mu
 }
 
 // Cluster binds this process to one configured cluster: the dial options,
@@ -30,6 +43,7 @@ type userPool struct {
 type Cluster struct {
 	cfg            config.Cluster
 	poolCfg        config.Pool
+	duckCfg        config.DuckDB
 	readinessQuery string // status.readiness_query, run by Probe
 	now            func() time.Time
 
@@ -41,8 +55,12 @@ type Cluster struct {
 	// probe does not feed it.
 	breaker *breaker
 
-	mu    sync.Mutex           // protects users
+	mu    sync.Mutex           // protects users, instances and every duckIn
 	users map[string]*userPool // one session pool per user, keyed by username
+	// instances counts the live DuckDB instances against
+	// duckdb.max_instances. A unit is held from before an open until the
+	// instance's close returns.
+	instances int
 	// evictStop ends the eviction goroutine, and evictDone closes once it
 	// has ended. Close uses both, so no eviction pass races the drain.
 	evictStop chan struct{}
@@ -59,6 +77,7 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 	c := &Cluster{
 		cfg:            cfg.Cluster,
 		poolCfg:        cfg.Pool,
+		duckCfg:        cfg.DuckDB,
 		readinessQuery: cfg.Status.ReadinessQuery,
 		now:            now,
 		budget:         newBudget(cfg.Pool.MaxSessions),
@@ -188,18 +207,24 @@ func (c *Cluster) newUserPool(u credentials) *qdbapi.SessionPool {
 	return p
 }
 
-// poolFor finds or creates the user's pool. It does not replace a pool
-// that exists, so an in-flight request keeps the pool it leased from.
-func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// userPoolFor finds or creates the user's pool state. It does not replace
+// one that exists, so an in-flight request keeps the pool it leased from.
+// The caller holds c.mu.
+func (c *Cluster) userPoolFor(u User) *userPool {
 	up, ok := c.users[u.Username]
 	if !ok {
 		up = &userPool{pool: c.newUserPool(u.credentials())}
 		c.users[u.Username] = up
 	}
 	up.emptySince = time.Time{}
-	return up.pool
+	return up
+}
+
+// poolFor finds or creates the user's session pool.
+func (c *Cluster) poolFor(u User) *qdbapi.SessionPool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.userPoolFor(u).pool
 }
 
 // Session is one authenticated client session as this package sees it: the
@@ -391,6 +416,111 @@ func (c *Cluster) Probe(ctx context.Context) error {
 	return qerr
 }
 
+// InstanceLimitError is the error of a sql call that would open a DuckDB
+// instance past duckdb.max_instances. RetryAfter is the eviction tick,
+// the soonest an idle instance can close. The HTTP layer maps it to 503
+// with a Retry-After of RetryAfter.
+type InstanceLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *InstanceLimitError) Error() string {
+	return fmt.Sprintf("qdb: duckdb instance limit reached, retry after %s", e.RetryAfter)
+}
+
+// credentialsOf is what u's instance attaches with: the first node of the
+// cluster URI, and on a secure cluster u's credentials and the cluster
+// public key read from its file. On an insecure cluster every instance
+// attaches anonymously.
+func (c *Cluster) credentialsOf(u User) (olap.Credentials, error) {
+	// qdb-duck's ATTACH takes one host and one port, so a multi-node URI
+	// is handed over as its first node.
+	first, _, _ := strings.Cut(strings.TrimPrefix(c.cfg.URI, "qdb://"), ",")
+	host, port, err := net.SplitHostPort(first)
+	if err != nil {
+		return olap.Credentials{}, fmt.Errorf("cluster.uri %q: %w", c.cfg.URI, err)
+	}
+	creds := olap.Credentials{Host: host, Port: port}
+	// An insecure cluster accepts any user name at login, and qdb-duck
+	// refuses a user name without a cluster public key, so the user
+	// travels only to a secure cluster.
+	if !c.Secured() {
+		return creds, nil
+	}
+	// The key file is read at each open and not cached, because no
+	// instance outlives pool.idle_timeout.
+	key, err := os.ReadFile(c.cfg.PublicKeyFile)
+	if err != nil {
+		return olap.Credentials{}, err
+	}
+	creds.Username, creds.SecretKey = u.Username, u.SecretKey
+	creds.ClusterPublicKey = strings.TrimSpace(string(key))
+	return creds, nil
+}
+
+// instanceOf answers u's instance from up, opening it on u's first sql
+// call. The open counts against duckdb.max_instances, and past the cap the
+// answer is an *InstanceLimitError. A failed open is not kept, so the next
+// call tries again.
+func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.Instance, error) {
+	// The instance is opened once per user and counted against the cap
+	// before the open:
+	//
+	//  1. under duckMu, answer the instance when it exists;
+	//  2. take a unit of the cap under mu, or answer InstanceLimitError;
+	//  3. open outside mu;
+	//  4. on failure, give the unit back.
+
+	// 1. answer the instance when it exists. duckMu is held through the
+	//    open, so a second first call waits for this one's instance.
+	up.duckMu.Lock()
+	defer up.duckMu.Unlock()
+	if up.duck != nil {
+		return up.duck, nil
+	}
+	// 2. take a unit of the cap
+	c.mu.Lock()
+	if c.instances >= c.duckCfg.MaxInstances {
+		c.mu.Unlock()
+		return nil, &InstanceLimitError{RetryAfter: evictInterval}
+	}
+	c.instances++
+	c.mu.Unlock()
+	// 3. open outside mu, because the attach dials the cluster and mu
+	//    guards every user
+	creds, err := c.credentialsOf(u)
+	if err == nil {
+		up.duck, err = olap.Open(ctx, c.duckCfg, creds)
+	}
+	// 4. give the unit back on failure
+	if err != nil {
+		c.releaseInstance()
+		return nil, err
+	}
+	return up.duck, nil
+}
+
+// releaseInstance gives one unit of duckdb.max_instances back.
+func (c *Cluster) releaseInstance() {
+	c.mu.Lock()
+	c.instances--
+	c.mu.Unlock()
+}
+
+// closeInstance closes up's instance, if it has one, and only then gives
+// its unit back, so an instance counts against the cap until its close
+// returns.
+func (up *userPool) closeInstance(c *Cluster) {
+	up.duckMu.Lock()
+	defer up.duckMu.Unlock()
+	if up.duck == nil {
+		return
+	}
+	_ = up.duck.Close()
+	up.duck = nil
+	c.releaseInstance()
+}
+
 // evict removes user pools that have held no session for idle_timeout, on
 // a fixed tick until Close.
 func (c *Cluster) evict() {
@@ -412,15 +542,17 @@ func (c *Cluster) evict() {
 // A later pass past idle_timeout takes the pool. A pool that holds
 // anything again loses the stamp. A pool's own reaper closes its idle
 // sessions, so a pool reads as empty within one reap tick of its last
-// session expiring.
-func (c *Cluster) takeIdle() []*qdbapi.SessionPool {
+// session expiring. A sql call on the pool's instance is use of the pool.
+// An idle instance does not keep a pool, so the instance closes with its
+// pool after idle_timeout.
+func (c *Cluster) takeIdle() []*userPool {
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var taken []*qdbapi.SessionPool
+	var taken []*userPool
 	for name, up := range c.users {
 		s := up.pool.Stats()
-		if s.InUse+s.Idle+s.Closing+s.Dialing > 0 {
+		if s.InUse+s.Idle+s.Closing+s.Dialing+up.duckIn > 0 {
 			up.emptySince = time.Time{}
 			continue
 		}
@@ -430,18 +562,20 @@ func (c *Cluster) takeIdle() []*qdbapi.SessionPool {
 		}
 		if now.Sub(up.emptySince) >= c.poolCfg.IdleTimeout {
 			delete(c.users, name)
-			taken = append(taken, up.pool)
+			taken = append(taken, up)
 		}
 	}
 	return taken
 }
 
-// evictOnce closes the idle user pools, which stops their reapers. A taken
-// pool holds nothing, so its close returns at once unless a caller took
-// it from poolFor in between and its dial is in flight.
+// evictOnce closes the idle user pools, which stops their reapers, and
+// then their instances. A taken pool holds no session, so its close
+// returns at once unless a caller took it from poolFor in between and its
+// dial is in flight.
 func (c *Cluster) evictOnce() {
-	for _, p := range c.takeIdle() {
-		_ = p.Close(context.Background())
+	for _, up := range c.takeIdle() {
+		_ = up.pool.Close(context.Background())
+		up.closeInstance(c)
 	}
 }
 
@@ -449,29 +583,33 @@ func (c *Cluster) evictOnce() {
 // instead of waiting for the ticker.
 func (c *Cluster) Reap() { c.evictOnce() }
 
-// ClusterStats is a snapshot of the whole cluster's session usage.
+// ClusterStats is a snapshot of the whole cluster's session and DuckDB
+// instance usage.
 type ClusterStats struct {
 	BudgetInUse int
 	BudgetMax   int
 	Users       int
+	Instances   int
 }
 
 // Stats returns a snapshot.
 func (c *Cluster) Stats() ClusterStats {
 	c.mu.Lock()
-	users := len(c.users)
+	users, instances := len(c.users), c.instances
 	c.mu.Unlock()
 	return ClusterStats{
 		BudgetInUse: c.budget.inUse(),
 		BudgetMax:   c.budget.max(),
 		Users:       users,
+		Instances:   instances,
 	}
 }
 
 // Close first stops eviction and waits for its goroutine to end, so no
 // pass runs during the drain. Then it takes every user pool out of the
-// map and drains each within ctx, and it returns ctx.Err() for whatever
-// has not closed in time. The process exits regardless.
+// map, drains each within ctx and closes its instance, and it returns
+// ctx.Err() for whatever has not closed in time. The process exits
+// regardless.
 func (c *Cluster) Close(ctx context.Context) error {
 	close(c.evictStop)
 	<-c.evictDone
@@ -484,6 +622,7 @@ func (c *Cluster) Close(ctx context.Context) error {
 		if e := up.pool.Close(ctx); e != nil && err == nil {
 			err = e
 		}
+		up.closeInstance(c)
 	}
 	return err
 }
