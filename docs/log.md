@@ -5,20 +5,20 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
-| Milestone                       | State       | Note                                                  |
-| ------------------------------- | ----------- | ----------------------------------------------------- |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                     |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
-| M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
-| M4 -- Embedded DuckDB           | active      | started 2026-10-14, criteria below                    |
-| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4 |
-| M6 -- Resilience                | not started |                                                       |
-| M7 -- Exploration               | not started |                                                       |
-| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
-| M9 -- Release                   | not started |                                                       |
+| Milestone                       | State       | Note                                                       |
+| ------------------------------- | ----------- | ---------------------------------------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                                 |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                          |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                          |
+| M3 -- v2 auth                   | done        | closed 2026-10-14                                          |
+| M4 -- Embedded DuckDB           | done        | closed 2026-10-15                                          |
+| M5 -- Flight SQL                | not started | entry met, ADR-0018 fixes the design, criteria below; next |
+| M6 -- Resilience                | not started |                                                            |
+| M7 -- Exploration               | not started |                                                            |
+| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015)      |
+| M9 -- Release                   | not started |                                                            |
 
 In flight:
 
@@ -26,40 +26,32 @@ In flight:
 
 Next:
 
-- M4, second slice: the `duckdb` config block, `internal/olap`'s
-  instance per user and its Arrow query as the lent `Batches`, the
-  instance as a field of the user pool state in `internal/qdb`,
-  `POST /api/v2/sql`, its error rows and the round trip's sql step,
-  which is also the native-versus-DuckDB equivalence property. Owner
-  decisions of 2026-10-14 for this slice: the two size keys of the
-  `duckdb` block (the memory limit and the spill cap) are int64 bytes,
-  as `cluster.max_in_buffer_size` is, rendered in DuckDB's syntax when
-  the instance opens. qdb-duck's ATTACH takes one host and one port, so
-  a multi-node `cluster.uri` is handed to it as its first node, and a
-  qdb-duck story asking ATTACH to take a whole `qdb://` URI is filed
-  when the owner says so (not yet).
-- M4, third slice: the e2e round trip's sql step and the M4 closing
-  entry.
-- When bureau14/qdb-duck#17 merges: remove the qdb-duck branch pin from
-  `.buildkite/pipeline.py`.
+- Remove the qdb-duck branch pin from `.buildkite/pipeline.py`
+  (`_DUCK_GIT_REF` and the `by_project` entry), one commit.
+  bureau14/qdb-duck#17 is merged, and the qdb-artifacts plugin falls
+  back to `master`, so no ref is spelled out.
+- Widen the encoders to the DuckDB types outside their five, so that
+  `SELECT 1` (`int32`) and `sum()` (`decimal`) answer instead of 500
+  (owner, 2026-10-15; `internal/olap/AGENTS.md`).
+- Run the Go data-path tests on the secure cluster too: the round trip,
+  its deduplicated variant, the error rows and the `internal/qdb` read
+  tests (owner, 2026-10-15).
+- M5, from ADR-0018.
+- When the owner says so: file a qdb-duck story asking ATTACH to take a
+  whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
+  DuckDB as its first node (`Cluster.credentialsOf`).
 
-M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
-`duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
-user held in the user pool state, linked from qdb-duck's package with
-the paired go-duckdb tag, the native-versus-DuckDB equivalence property
-test and the round trip's sql step, green in Buildkite on all eight
-platforms.
-
-M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed.
-Exit: the `listen.flight` listener on the HTTPS certificates, the
-`#sql` dispatcher behind `POST /api/v2/query` and the Flight server,
-Handshake and bearer auth, `CommandStatementQuery` to `DoGet` with the
-query as the ticket, `GetSqlInfo`, the catalog commands on a table list
-core in `internal/qdb`, the rest of the surface answering
-`UNIMPLEMENTED`, the format-equivalence property extended with a Flight
-SQL client for both engines and a dispatch property over generated
-prefixes, green in Buildkite on all eight platforms, and the `tls_port`
-sample configs corrected in `qdb-documentation`.
+M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed
+(met 2026-10-15). Exit: the `listen.flight` listener on the HTTPS
+certificates, the `#sql` dispatcher behind `POST /api/v2/query` and the
+Flight server, Handshake and bearer auth, `CommandStatementQuery` to
+`DoGet` with the query as the ticket, `GetSqlInfo`, the catalog
+commands on a table list core in `internal/qdb`, the rest of the
+surface answering `UNIMPLEMENTED`, the format-equivalence property
+extended with a Flight SQL client for both engines and a dispatch
+property over generated prefixes, green in Buildkite on all eight
+platforms, and the `tls_port` sample configs corrected in
+`qdb-documentation`.
 
 Handoff to M6 and M7:
 
@@ -75,22 +67,20 @@ Blocked on:
 
 ## Entries
 
-## 2026-10-15 -- M4 first slice: FreeBSD links DuckDB too
+## 2026-10-15 -- M4 closed: POST /api/v2/sql over one DuckDB instance per user; m4-sql-plan.md deleted
 
-- Owner decision: qdb-duck builds on FreeBSD since bureau14/qdb-duck#17,
-  so FreeBSD links the bundle like Linux and the `501` exception of
-  ADR-0017 is gone (Decision 4, edited in place, and `docs/brief.md`,
-  Embedded DuckDB). Until the pull request merges, the pipeline pins the
-  qdb-duck download to its branch (`.buildkite/pipeline.py`).
+- Owner decisions in ADR-0017 (Decision 11 edited in place) and the
+  plan's Rationale, moved to `internal/olap/AGENTS.md`,
+  `internal/AGENTS.md`, `internal/httpapi/AGENTS.md`, `docs/e2e.md` and
+  the comments of `internal/config`, `internal/olap` and `internal/qdb`.
 
-## 2026-10-14 -- M4 started: DuckDB linked on every platform but FreeBSD, nothing routed
+## 2026-10-14 -- M4 started: DuckDB linked on every platform, nothing routed
 
 - Owner decisions: the binding's prebuilt libraries are replaced by
   stubs (`third_party/AGENTS.md`), the link tag follows the library per
   OS (ADR-0017, Decision 2, edited in place), `--version` prints the
   DuckDB release (`cmd/qdb_rest/AGENTS.md`), and ADRs are edited in
-  place when a detail proves wrong (`docs/AGENTS.md`, ADRs). The
-  decisions the second slice consumes are in Current state, Next.
+  place when a detail proves wrong (`docs/AGENTS.md`, ADRs).
 
 ## 2026-10-14 -- M3 closed: the token grant, refresh, logout and session landed; v2-auth-plan.md deleted
 
@@ -104,7 +94,7 @@ Blocked on:
   carries the result. The Flight e2e question of `docs/e2e.md` is
   closed with no e2e step.
 
-## 2026-10-13 -- M4 designed: ADR-0017 accepted, one DuckDB instance per user, FreeBSD without DuckDB
+## 2026-10-13 -- M4 designed: ADR-0017 accepted, one DuckDB instance per user
 
 - Owner decisions; ADR-0017, and `docs/brief.md`, Embedded DuckDB,
   carries the result. Open question 2 is closed.
