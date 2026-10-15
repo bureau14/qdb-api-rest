@@ -182,7 +182,10 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   (`Generate`, then `Create` on a `*qdb.Cluster`). The table holds its
   rows as one record batch in the binding's Arrow types and pushes it
   through the Arrow writer. The test compares what came back with the
-  `Table` it holds and writes no loader of its own. A test that creates
+  `Table` it holds and writes no loader of its own. `Create` and
+  `RemoveOnCleanup` run as the anonymous user, and `CreateAs` and
+  `RemoveOnCleanupAs` take the user for a cluster that refuses the
+  anonymous user. A test that creates
   or pushes through its own door (an HTTP route) takes the blocks
   `Create` stacks on, which are `GenerateSchema`, `GenerateLike`
   (another table of the same columns) and `RemoveOnCleanup`. It does

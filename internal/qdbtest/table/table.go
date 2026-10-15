@@ -234,6 +234,25 @@ func (tbl Table) Select() string {
 	return "SELECT " + strings.Join(names, ", ") + " FROM " + tbl.Name
 }
 
+// SelectSQL is Select as DuckDB SQL over the cluster attached as qdb,
+// with every name quoted. The scan answers no $table column, and ORDER BY
+// fixes the row order, because the generated $timestamp values strictly
+// increase.
+func (tbl Table) SelectSQL() string {
+	names := make([]string, 0, len(tbl.Columns)+1)
+	names = append(names, quoteSQL("$timestamp"))
+	for _, c := range tbl.Columns {
+		names = append(names, quoteSQL(c.Name))
+	}
+	return "SELECT " + strings.Join(names, ", ") + " FROM qdb." + quoteSQL(tbl.Name) +
+		" ORDER BY " + quoteSQL("$timestamp")
+}
+
+// quoteSQL renders name as a SQL identifier.
+func quoteSQL(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
 // Rows is tbl's row count, and a nil batch has none.
 func (tbl Table) Rows() int {
 	if tbl.Batch == nil {
@@ -405,18 +424,24 @@ func entries(tbl Table) []string {
 	return names
 }
 
-// call runs f as the anonymous user.
-func call(c *qdb.Cluster, f func(*qdb.Session) error) error {
-	return c.Call(context.Background(), qdb.User{}, f)
+// call runs f as the user u.
+func call(c *qdb.Cluster, u qdb.User, f func(*qdb.Session) error) error {
+	return c.Call(context.Background(), u, f)
 }
 
 // RemoveOnCleanup removes tbl and its symtables on t's cleanup, however
 // the table came to exist, tolerating what is already gone. A failed
 // removal is reported and never fatal, so a leak is visible.
 func RemoveOnCleanup(t T, c *qdb.Cluster, tbl Table) {
+	RemoveOnCleanupAs(t, c, qdb.User{}, tbl)
+}
+
+// RemoveOnCleanupAs is RemoveOnCleanup as the user u, for a cluster that
+// refuses the anonymous user.
+func RemoveOnCleanupAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
 	t.Cleanup(func() {
 		for _, name := range entries(tbl) {
-			err := call(c, func(s *qdb.Session) error { return s.RemoveTable(name) })
+			err := call(c, u, func(s *qdb.Session) error { return s.RemoveTable(name) })
 			if err != nil && !errors.Is(err, qdbapi.ErrAliasNotFound) {
 				t.Errorf("remove %s: %v", name, err)
 			}
@@ -429,6 +454,13 @@ func RemoveOnCleanup(t T, c *qdb.Cluster, tbl Table) {
 // soon as the table exists, so a failed push leaves nothing behind.
 func Create(t T, c *qdb.Cluster, tbl Table) {
 	t.Helper()
+	CreateAs(t, c, qdb.User{}, tbl)
+}
+
+// CreateAs is Create as the user u, for a cluster that refuses the
+// anonymous user.
+func CreateAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
+	t.Helper()
 	// The table exists before anything can fail, and its removal is
 	// registered before anything is pushed:
 	//
@@ -440,7 +472,7 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	//     session.
 
 	// 1. create
-	err := call(c, func(s *qdb.Session) error {
+	err := call(c, u, func(s *qdb.Session) error {
 		return s.CreateTable(tbl.Name, 24*time.Hour, columnInfos(tbl)...)
 	})
 	if err != nil {
@@ -448,7 +480,7 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	}
 
 	// 2. the removal, before any push
-	RemoveOnCleanup(t, c, tbl)
+	RemoveOnCleanupAs(t, c, u, tbl)
 
 	// 3. nothing to push. The writer skips a table of no rows, so no
 	// session is leased for it
@@ -461,7 +493,7 @@ func Create(t T, c *qdb.Cluster, tbl Table) {
 	if err := w.SetTable(tbl.Name, tbl.Batch); err != nil {
 		t.Fatalf("writer for %s: %v", tbl.Name, err)
 	}
-	if err := call(c, func(s *qdb.Session) error { return s.PushArrow(&w) }); err != nil {
+	if err := call(c, u, func(s *qdb.Session) error { return s.PushArrow(&w) }); err != nil {
 		t.Fatalf("push %s: %v", tbl.Name, err)
 	}
 }
