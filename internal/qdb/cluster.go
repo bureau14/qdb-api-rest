@@ -418,7 +418,8 @@ func (c *Cluster) Probe(ctx context.Context) error {
 
 // InstanceLimitError is the error of a sql call that would open a DuckDB
 // instance past duckdb.max_instances. RetryAfter is the eviction tick,
-// the soonest an idle instance can close. The HTTP layer maps it to 503
+// the soonest an idle instance can close. A configurable value was
+// rejected as one more knob. The HTTP layer maps it to 503
 // with a Retry-After of RetryAfter.
 type InstanceLimitError struct {
 	RetryAfter time.Duration
