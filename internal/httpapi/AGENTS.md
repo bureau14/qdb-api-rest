@@ -155,13 +155,17 @@ This file, Handlers, holds the table reader's.
   One to three generated tables of one column list are created over
   HTTP. The first is read empty in every format. All are ingested in one
   body of a drawn format, under a drawn request coding and a drawn push
-  mode, read whole and under a drawn column subset, queried in every format, deleted, re-created over the
+  mode, read whole and under a drawn column subset, queried and read through `/api/v2/sql`
+  in every format, deleted, re-created over the
   symtables the delete leaves, and deleted again. Under `async` the
   read-back is the query's alone, because a query sees the rows at once
-  and the bulk reader only after the server's async flush. The oracle is
-  the encoder run directly over `Cluster.Read` or `Cluster.Query`, byte
-  for byte, and `table.Check` on the direct read against the rows
-  generated. The encoders' own tests prove the bytes decode. A new route
+  and the bulk reader, which qdb-duck's scan reads through, only after
+  the server's async flush. The oracle is
+  the encoder run directly over `Cluster.Read`, `Cluster.Query` or
+  `Cluster.SQL`, byte for byte, and `table.Check` on the direct read
+  against the rows generated. The sql step's Arrow body is compared
+  decoded, because DuckDB leaves the value bytes under a null slot
+  undefined. The encoders' own tests prove the bytes decode. A new route
   lands as a step of the round trip and not as a property of its own.
   The empty read runs on one table only, because an empty read through
   the bulk reader costs about a tenth of a second where a filled one

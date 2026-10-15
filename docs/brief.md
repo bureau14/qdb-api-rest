@@ -925,8 +925,8 @@ starts.
 - **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
   quasar extension linked in from qdb-duck's package, one instance per
   user, the `duckdb` config block, streamed responses through the
-  shared encoders, the native-versus-DuckDB equivalence property test
-  and the round-trip step (ADR-0017).
+  shared encoders, and the round-trip steps, which are the
+  native-versus-DuckDB equivalence check (ADR-0017).
 - **M5 -- Flight SQL (minimal)**: the `listen.flight` listener,
   Handshake and bearer auth, `CommandStatementQuery`/`DoGet` over the
   shared `#sql` dispatcher that `POST /api/v2/query` also gains,

@@ -78,35 +78,36 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 10. **Errors.** A DuckDB parse, bind or execution error is `400` with
     DuckDB's message as the detail. The instance cap is `503` with
     `Retry-After`. Content type, body cap and auth reuse ADR-0010.
-11. **Tests.** A property test generates a table, reads it through
-    `/api/v2/sql` and `/api/v2/query` and requires the decoded results
-    to be equal. The round trip gains a step that reads the generated
-    rows back through `/api/v2/sql` in every format and coding.
+11. **Tests.** The round trip gains a step that reads every generated
+    table back through `/api/v2/sql` in every format, and checks the
+    DuckDB read against the rows generated, as the native read is
+    checked. That step is the equivalence check between the native path
+    and the DuckDB path. The e2e round trip gains the same step.
 
 ## Consequences
 
 - M4 starts with this ADR and ends when the endpoint, the `duckdb`
-  block, the equivalence property test and the round-trip step are
-  landed and green in Buildkite on every platform.
+  block and the round-trip steps are landed and green in Buildkite on
+  every platform.
 - `internal/olap` exposes the query as the batch iterator the encoders
   take, and M5's Flight SQL endpoint calls the same function for the
   DuckDB layer.
 - `duckdb.threads` bounds how many qdbd sessions one user's query opens
   at once, because a qdb-duck scan takes one worker per four shards
   and one handle per worker.
-- The `$timestamp` to DuckDB type mapping decides whether the
-  equivalence test passes without a cast, and is checked when the test
-  is written.
+- qdb-duck answers `$timestamp` as `timestamp[ns]`, the native
+  reader's type, so the equivalence check needs no cast.
 - Open question 2 of the brief is closed.
 
 ## Alternatives rejected
 
-| Alternative                                              | Why not                                                                                                                       |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| One shared DuckDB instance with every user's catalog     | every connection sees every attached catalog, so one user queries under another's credentials                                 |
-| One instance per request                                 | every request attaches and dials the cluster, and the handle pool is thrown away each time                                    |
-| A shared service credential for DuckDB                   | the user's permissions would no longer apply, which the brief rules out                                                       |
-| Dropping FreeBSD from the platform matrix                | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                        |
-| Bumping qdb-duck to the newest go-duckdb release         | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster               |
-| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct |
-| An upstream pool size parameter before M4                | the pool is correct as is, and the budget question is better answered once the milestones are done                            |
+| Alternative                                                    | Why not                                                                                                                                      |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| One shared DuckDB instance with every user's catalog           | every connection sees every attached catalog, so one user queries under another's credentials                                                |
+| One instance per request                                       | every request attaches and dials the cluster, and the handle pool is thrown away each time                                                   |
+| A shared service credential for DuckDB                         | the user's permissions would no longer apply, which the brief rules out                                                                      |
+| Dropping FreeBSD from the platform matrix                      | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                                       |
+| Bumping qdb-duck to the newest go-duckdb release               | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                              |
+| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side       | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                |
+| An upstream pool size parameter before M4                      | the pool is correct as is, and the budget question is better answered once the milestones are done                                           |
+| A standalone property test of native-versus-DuckDB equivalence | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows |
