@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
+
+	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
 // readBatchRows is the rows per fetch when ReadOptions names none. It
@@ -91,20 +91,6 @@ func schemaOf(cols []qdbapi.TsColumnInfo, o ReadOptions) (*arrow.Schema, error) 
 	return arrow.NewSchema(picked, nil), nil
 }
 
-// emptyBatch is a batch of schema and no rows. It is what an empty table
-// answers, because the reader yields nothing for one.
-func emptyBatch(schema *arrow.Schema) arrow.RecordBatch {
-	cols := make([]arrow.Array, schema.NumFields())
-	for i, f := range schema.Fields() {
-		cols[i] = array.MakeArrayOfNull(memory.DefaultAllocator, f.Type, 0)
-	}
-	rec := array.NewRecordBatch(schema, cols, 0)
-	for _, c := range cols {
-		c.Release()
-	}
-	return rec
-}
-
 // Batches is a table read as the caller sees it: one record batch per
 // step, lent for that step and released when the step returns, so the
 // receiver releases none. An error step carries a nil batch and is the
@@ -135,7 +121,7 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 		// The reader yields nothing for an empty table, not even a schema,
 		// so the schema-only batch stands in and every receiver sees a step.
 		if !yielded {
-			rec := emptyBatch(schema)
+			rec := model.EmptyBatch(schema)
 			yield(rec, nil)
 			rec.Release()
 		}

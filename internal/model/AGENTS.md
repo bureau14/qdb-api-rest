@@ -4,7 +4,8 @@ Scope: the neutral table representation. Package-wide Go rules:
 `internal/AGENTS.md`.
 
 - `model` holds the types the layers hand each other and that no one of
-  them owns. A type belongs here when at least two packages share it and
+  them owns, and `EmptyBatch`, the schema-only batch that the table
+  reader and the DuckDB query both answer for a result of no rows. A type belongs here when at least two packages share it and
   it describes data. The package is Arrow by indirection. The record
   batch is the representation, and a consumer that needs the shape of a
   table takes a `model` type and never an `internal/qdb` or
