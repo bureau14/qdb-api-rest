@@ -40,6 +40,25 @@ In flight:
   2026-10-15). The branch head `9043e37` is a diagnostic commit (a
   probe in `internal/olap/winprobe/` and a Windows-only change to
   `scripts/cicd/30.test.sh`), which is reverted before the fix lands.
+- The owner's review of `sc-19567/rr-m4-sql` against
+  `sc-19567/rest-rewrite`, after the Windows build is green and before
+  the fast-forward merge. Every planned commit has landed, and the
+  doc-discipline runs found nothing left unlanded. The review looks at
+  four places where the code departs from the deleted plan:
+  - `Cluster.SQL` counts the call when it finds the pool, before the
+    instance opens, so an eviction pass cannot close a pool whose
+    instance is opening.
+  - On an insecure cluster every instance attaches anonymously
+    (`Cluster.credentialsOf`), because qdb-duck refuses a user name
+    without a cluster public key.
+  - DuckDB errors all arrive before the first byte, because duckdb-go
+    materializes the result before it answers the reader
+    (`Instance.Query`). The plan expected failures after the first
+    batch. A result is held whole in DuckDB's memory, up to
+    `duckdb.memory_limit`, before it streams.
+  - DuckDB leaves the value bytes under a null slot uninitialized, and
+    the Arrow stream carries them as they are, so the round trip
+    compares the sql step's Arrow body decoded (`checkSQLFormats`).
 
 Next:
 
