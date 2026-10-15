@@ -582,7 +582,8 @@ func (c *Cluster) evict() {
 // sessions, so a pool reads as empty within one reap tick of its last
 // session expiring. A sql call on the pool's instance is use of the pool.
 // An idle instance does not keep a pool, so the instance closes with its
-// pool after idle_timeout.
+// pool after idle_timeout. A separate idle timeout for instances was
+// rejected as one more knob.
 func (c *Cluster) takeIdle() []*userPool {
 	now := c.now()
 	c.mu.Lock()
