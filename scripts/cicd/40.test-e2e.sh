@@ -76,15 +76,14 @@ if [[ -z "${MAKE_BIN}" ]]; then
 fi
 echo "test-e2e: using '${MAKE_BIN}' as GNU make"
 
-# 4. On Windows, every DLL the binaries load is copied next to them. The
-#    Buildkite agent runs under a service whose spawned processes skip
-#    the PATH-based DLL search (NTSTATUS 0xC00000BE), so qdb_rest.exe
-#    would exit before main() with no output. Windows always searches
-#    the executable's own directory first, and qdb_rest and e2etool are
-#    both built into bin/, so one copy serves both. The DLLs come from
-#    the two extracted packages: qdb_api.dll from the C API's bin/ and
-#    duckdb.dll from qdb-duck's bin/, and a directory without DLLs or
-#    absent altogether is skipped.
+# 4. On Windows, qdb_api.dll from the C API package and duckdb.dll from
+#    qdb-duck's package are copied next to the binaries. The Buildkite
+#    agent runs under a service whose spawned processes skip the
+#    PATH-based DLL search (NTSTATUS 0xC00000BE), so qdb_rest.exe would
+#    exit before main() with no output. Windows always searches the
+#    executable's own directory first, and qdb_rest and e2etool are both
+#    built into bin/, so one copy serves both. A package directory that
+#    is absent or holds no DLL is skipped.
 SUFFIX=""
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)

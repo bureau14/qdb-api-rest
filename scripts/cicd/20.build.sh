@@ -4,17 +4,17 @@
 # It compiles bin/qdb_rest via ${GO} build directly, because FreeBSD
 # ships BSD make and the Windows MSYS2 agents none, composing the same
 # -ldflags the root Makefile uses. It then smoke-runs `qdb_rest
-# --version`, which prints the injected metadata and the linked C API's
-# version, so the smoke run also proves the link (static libqdb_api.a on
-# Linux) and, on the other platforms, that the shared library is found at
-# load time.
+# --version`, which prints the injected metadata and the versions of the
+# linked C API and DuckDB, so the smoke run also proves both links: the
+# static archives on Linux, and on the other platforms that every shared
+# library is found at load time.
 #
 # cicd_setup_go_toolchain (00.common.sh) wires the Go toolchain from the
 # GOROOT that pipeline.py::_go_env_for_agent() injects. The qdb-artifacts
-# plugin populates the qdb/ and duck/ trees. cicd_assert_qdb_tree checks
-# both are there, and
-# cicd_setup_qdb_env (the root .envrc) tells cgo where both are and
-# selects the DuckDB build tags.
+# plugin populates qdb/ with the C API and duck/ with qdb-duck's package,
+# cicd_assert_qdb_tree checks that both are there, and cicd_setup_qdb_env
+# (the root .envrc) tells cgo where they are and selects the DuckDB build
+# tags.
 
 set -euxo pipefail
 
