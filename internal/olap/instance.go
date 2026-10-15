@@ -5,14 +5,18 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/duckdb/duckdb-go/v2"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
 // Credentials are what an instance attaches the cluster with: one node of
@@ -142,6 +146,72 @@ func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) err
 		return fmt.Errorf("%w: %w", ErrAttach, err)
 	}
 	return nil
+}
+
+// lent turns the reader's batches into a sequence of steps, each batch
+// lent for its step. The reader owns each batch until its next step, so
+// the receiver releases none. An error the reader reports after its last
+// batch is the last step. A reader of no batches yields one step of its
+// schema alone.
+func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
+	return func(yield func(arrow.RecordBatch, error) bool) {
+		yielded := false
+		for rd.Next() {
+			yielded = true
+			if !yield(rd.RecordBatch(), nil) {
+				return
+			}
+		}
+		if err := rd.Err(); err != nil {
+			yield(nil, err)
+			return
+		}
+		if !yielded {
+			rec := model.EmptyBatch(rd.Schema())
+			defer rec.Release()
+			yield(rec, nil)
+		}
+	}
+}
+
+// Query runs q on a connection of its own and hands its result to sink,
+// one record batch per step, each lent for that step. An error before
+// sink runs is DuckDB's (a parse, bind or execution error) and is
+// returned as is. The error of sink is returned unchanged. A result of
+// no batches is one step of its schema alone.
+func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arrow.RecordBatch, error]) error) error {
+	// The connection lives for one query and closes when sink returns, so
+	// a request holds nothing of the instance afterwards:
+	//
+	//  1. open a connection and its Arrow interface;
+	//  2. run q, which fails before sink runs;
+	//  3. run sink over the reader's batches;
+	//  4. release the reader and close the connection, whatever sink did.
+
+	// 1. open a connection and its Arrow interface
+	conn, err := i.connector.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	// 4. close the connection, whatever sink did
+	defer conn.Close()
+	a, err := duckdb.NewArrowFromConn(conn)
+	if err != nil {
+		return err
+	}
+	// 2. run q. The binding executes the query to a materialized result
+	//    before it answers the reader, so every parse, bind and execution
+	//    error of DuckDB's arrives here, and nothing has reached sink.
+	//    The reader itself fails only on an Arrow conversion or a
+	//    cancelled ctx.
+	rd, err := a.QueryContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	// 4. release the reader, whatever sink did
+	defer rd.Release()
+	// 3. run sink
+	return sink(lent(rd))
 }
 
 // Close closes the instance. Its attached catalog and qdb-duck's sessions
