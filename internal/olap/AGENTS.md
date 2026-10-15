@@ -28,3 +28,8 @@ ADR-0017.
 - A query answers DuckDB's Arrow types. The encoders take five types,
   and a column of any other type fails at the encoder, which names the
   column. A caller casts in SQL to one of the five.
+- The test opens one instance per cluster and reads every generated
+  table through it, because qdb-duck holds up to 100 qdbd sessions per
+  attach and the test cluster punishes exhaustion
+  (`internal/AGENTS.md`, Tests). It runs on both clusters, so the secure
+  attach proves the secret's credentials.

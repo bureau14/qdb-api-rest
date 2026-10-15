@@ -161,9 +161,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
 
 - Pin genuine logic only, and write no test for glue. Tests are
   white-box, in the same package, with small helpers declared before
-  use and `t.Helper()`. The one exception is
-  `internal/qdb/read_test.go`, `package qdb_test`: it needs the table
-  fixture, which imports `internal/qdb`. Test bodies carry step
+  use and `t.Helper()`. The exceptions are
+  `internal/qdb/read_test.go` (`package qdb_test`) and
+  `internal/olap/olap_test.go` (`package olap_test`). Both need the
+  table fixture, which imports `internal/qdb`, and `internal/qdb`
+  imports `internal/olap`. Test bodies carry step
   comments (root `AGENTS.md`, "Code comments") wherever a step's
   purpose is not evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`).
