@@ -107,8 +107,7 @@ decisions are in `docs/adr/`.
 - `internal/qdb` imports the vendored `qdb-api-go`, so anything that
   imports it (the binary does) compiles through cgo against `qdb/`, and
   `internal/olap` imports the vendored `duckdb-go`, which compiles
-  against `duck/` (qdb-duck's package, absent on FreeBSD, where the
-  package is a stub). Run `source .envrc` (or direnv) before a bare
+  against `duck/` (qdb-duck's package). Run `source .envrc` (or direnv) before a bare
   `go build` or `go test`. The root Makefile does it for you. Without it
   the compile fails on missing qdb headers, and the DuckDB build tags
   (`.envrc` exports them through `GOFLAGS`) are missing, so the binary

@@ -1,10 +1,7 @@
-//go:build !freebsd
-
 // Package olap embeds DuckDB with the quasar extension, the engine behind
 // full SQL over QuasarDB data. The library comes from qdb-duck's package
 // in duck/, and the root .envrc locates it and selects the binding's
-// build tags per OS. FreeBSD builds the stub next to this file, because
-// qdb-duck does not build there (ADR-0017).
+// build tags per OS (ADR-0017).
 package olap
 
 import "github.com/duckdb/duckdb-go/v2/mapping"

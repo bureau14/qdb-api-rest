@@ -17,6 +17,6 @@ Scope: the binary's entry point. Packages it wires together live under
   is injected via `-ldflags` into `internal/build`, which `main` reads
   for `--version`, and no version constants live in source.
   `scripts/cicd/AGENTS.md` owns the composition rule.
-- `--version` prints the linked C API version and, on every platform
-  but FreeBSD, the linked DuckDB release as the library reports it, which
-  makes it CI's link smoke test for both (`scripts/cicd/20.build.sh`).
+- `--version` prints the linked C API version and the linked DuckDB
+  release as the library reports it, which makes it CI's link smoke test
+  for both (`scripts/cicd/20.build.sh`).
