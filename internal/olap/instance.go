@@ -142,7 +142,7 @@ func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) err
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	exec := conn.(driver.ExecerContext)
 	if _, err := exec.ExecContext(ctx, secretOf(c), nil); err != nil {
 		return err
@@ -199,7 +199,7 @@ func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arro
 		return err
 	}
 	// 4. close the connection, whatever sink did
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	a, err := duckdb.NewArrowFromConn(conn)
 	if err != nil {
 		return err
