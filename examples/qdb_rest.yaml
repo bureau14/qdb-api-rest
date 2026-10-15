@@ -96,3 +96,20 @@ auth:
   # Validity of a refresh token from the login or refresh that minted it.
   # Fourteen days; durations have no day unit.
   refresh_ttl: 336h
+
+duckdb:
+  # Every limit is per DuckDB instance, and the server opens one instance
+  # per user on that user's first sql call.
+  # Memory one instance may use, in bytes (1 GiB).
+  memory_limit: 1073741824
+  # Worker threads of one instance. A scan takes one qdbd session per
+  # worker thread.
+  threads: 4
+  # Directory an instance spills to when a query exceeds the memory
+  # limit. Empty disables spilling, so such a query fails.
+  spill_directory: ""
+  # Bytes one instance may spill.
+  max_spill_size: 0
+  # Instances live at once. A sql call that would open one more answers
+  # 503 until an idle user pool is evicted.
+  max_instances: 16

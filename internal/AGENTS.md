@@ -16,15 +16,19 @@ decisions are in `docs/adr/`.
   A negation belongs in a comment only where it records a rejected
   alternative or an invariant. A comment does not correct what an
   earlier version claimed.
-- Validation has one home. The component that consumes a value owns
-  its checks, makes them once, and makes them where a violation cannot
-  get past them (`tlsconf` owns the certificate-pair rule; the C API
-  judges the dial options at dial; `internal/auth` judges its
-  passphrases and argon2id costs). `internal/config` owns only shape,
-  which is parsing, layer folding and the vocabulary of enumerated
-  keys. It does not own a value's semantic bounds. A rule is not
-  duplicated at a second layer, and no eager check is added for what
-  the consumer already rejects loudly.
+- Validation has one home, and a rule is not duplicated at a second
+  layer. `internal/config` owns the shape of every value, which is
+  parsing, layer folding and the vocabulary of enumerated keys. It also
+  owns the simple bounds a value must meet for the server to serve,
+  such as a count of at least one or a size that is not negative, so
+  that startup refuses a configuration that cannot serve and names the
+  key (`validatePool`, `validateDuckDB`).
+- A check that needs I/O or another component's knowledge stays with
+  the component that does the work, and no eager copy of it runs at
+  startup. `tlsconf` owns the certificate-pair rule, the C API judges
+  the dial options at dial, `internal/auth` judges its passphrases and
+  argon2id costs, and DuckDB judges a spill directory when an instance
+  opens.
 - The v1 compatibility code lives in `internal/httpapi/v1` and nowhere
   else (ADR-0007). That is the v1 wire surface: the wrapper handlers,
   the wart encoders and the v1 token extraction. The package imports

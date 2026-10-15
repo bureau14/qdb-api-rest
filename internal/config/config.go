@@ -138,6 +138,18 @@ func (a Auth) LogValue() slog.Value {
 		slog.Duration("refresh_ttl", a.RefreshTTL))
 }
 
+// DuckDB governs every DuckDB instance the server opens, one per user:
+// the memory and the worker threads one instance may take, where it may
+// spill and how much, and how many instances may be live at once. The
+// sizes are in bytes.
+type DuckDB struct {
+	MemoryLimit    int64  `yaml:"memory_limit" help:"memory one DuckDB instance may use, in bytes"`
+	Threads        int    `yaml:"threads" help:"worker threads of one DuckDB instance"`
+	SpillDirectory string `yaml:"spill_directory" help:"directory a DuckDB instance spills to; empty disables spilling"`
+	MaxSpillSize   int64  `yaml:"max_spill_size" help:"bytes one DuckDB instance may spill"`
+	MaxInstances   int    `yaml:"max_instances" help:"DuckDB instances live at once, one per user"`
+}
+
 // Config is the full server configuration.
 type Config struct {
 	Listen  Listen  `yaml:"listen"`
@@ -147,14 +159,16 @@ type Config struct {
 	Pool    Pool    `yaml:"pool"`
 	Status  Status  `yaml:"status"`
 	Auth    Auth    `yaml:"auth"`
+	DuckDB  DuckDB  `yaml:"duckdb"`
 }
 
 // Default returns the configuration used when nothing is specified: both
 // listeners on their customary ports, JSON logs at info, the local
 // insecure cluster, C API knobs at their C API defaults, the pool sized
 // for one gateway in front of one cluster, no token passphrases (an
-// ephemeral key per start), and argon2id at RFC 9106's second
-// recommended cost.
+// ephemeral key per start), argon2id at RFC 9106's second recommended
+// cost, and one DuckDB instance per user at one gibibyte and four
+// threads, with no spilling and sixteen instances at once.
 func Default() Config {
 	return Config{
 		Listen: Listen{HTTP: ":40080", HTTPS: ":40443"},
@@ -182,6 +196,14 @@ func Default() Config {
 			AccessTTL:    15 * time.Minute,
 			RefreshTTL:   14 * 24 * time.Hour,
 		},
+		// DuckDB's own defaults take most of the RAM and every core, which
+		// suits a workstation and not a gateway next to qdbd, so these are
+		// conservative. Four threads bound one user's scan at four qdbd
+		// sessions, because a qdb-duck scan takes one worker per four
+		// shards and one qdbd handle per worker. The empty spill directory
+		// disables spilling, so a query over the memory limit fails
+		// instead of writing to disk.
+		DuckDB: DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
 	}
 }
 
@@ -574,6 +596,26 @@ func validatePool(p Pool) error {
 	return positive("pool.breaker.open_for", p.Breaker.OpenFor)
 }
 
+// validateDuckDB requires a positive memory limit, at least one thread,
+// a spill cap that is not negative, and at least one instance.
+func validateDuckDB(d DuckDB) error {
+	if d.MemoryLimit <= 0 {
+		return fmt.Errorf("duckdb.memory_limit must be positive, got %d", d.MemoryLimit)
+	}
+	if d.Threads < 1 {
+		return fmt.Errorf("duckdb.threads must be at least 1, got %d", d.Threads)
+	}
+	if d.MaxSpillSize < 0 {
+		return fmt.Errorf("duckdb.max_spill_size must not be negative, got %d", d.MaxSpillSize)
+	}
+	// Zero instances would answer 503 to every sql call, and nothing
+	// would say why until a request came in.
+	if d.MaxInstances < 1 {
+		return fmt.Errorf("duckdb.max_instances must be at least 1, got %d", d.MaxInstances)
+	}
+	return nil
+}
+
 // validate rejects impossible configurations before the server starts.
 func validate(cfg Config) error {
 	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
@@ -589,6 +631,9 @@ func validate(cfg Config) error {
 		return err
 	}
 	if err := validatePool(cfg.Pool); err != nil {
+		return err
+	}
+	if err := validateDuckDB(cfg.DuckDB); err != nil {
 		return err
 	}
 	if cfg.Status.ReadinessQuery == "" {
