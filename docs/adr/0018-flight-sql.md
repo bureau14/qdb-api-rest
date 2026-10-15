@@ -50,54 +50,52 @@ client. The owner made the decisions below on 2026-10-13.
    `flightsql` both call it. The native query is wrapped as a one-step
    iterator, so every result in the binary streams through
    `EncodeStream` and the Flight server has one `DoGet` body.
-6. **FreeBSD answers `UNIMPLEMENTED`** to a `#sql` query over Flight,
-   as the HTTP route answers `501` there (ADR-0017).
 
 ### Authentication
 
-7. **Handshake is a login.** It takes username and secret, checks them
+6. **Handshake is a login.** It takes username and secret, checks them
    against the cluster as `POST /api/v2/auth/login` does (ADR-0011),
    and answers the access token only. A client whose access token has
    expired reconnects, which is the stock driver's behaviour. Flight
    gets no refresh path until this proves to be a problem.
-8. **The bearer is the `authorization` metadata.** Every other RPC
+7. **The bearer is the `authorization` metadata.** Every other RPC
    presents the access token there, verified by the same verifier as
    HTTP, with `typ != access` refused.
-9. **Anonymous is admitted.** On a cluster without security, a call
+8. **Anonymous is admitted.** On a cluster without security, a call
    with no token runs as the anonymous user, as HTTP admits the
    anonymous token.
 
 ### Tickets and the surface
 
-10. **The server stores nothing between calls.** The ticket
-    `GetFlightInfo` answers carries the query text after dispatch, and
-    `DoGet` runs the query. `FlightInfo` has one endpoint and no
-    schema, because the native engine does not know a result's columns
-    before running the query. `GetSchemaStatement` is `UNIMPLEMENTED`
-    rather than running every query twice.
-11. **`GetSqlInfo` describes the server fully.** Server name, version,
+9. **The server stores nothing between calls.** The ticket
+   `GetFlightInfo` answers carries the query text after dispatch, and
+   `DoGet` runs the query. `FlightInfo` has one endpoint and no
+   schema, because the native engine does not know a result's columns
+   before running the query. `GetSchemaStatement` is `UNIMPLEMENTED`
+   rather than running every query twice.
+10. **`GetSqlInfo` describes the server fully.** Server name, version,
     read-only, no transactions, no prepared statements, and the
     information the drivers read about identifiers, keywords and
     supported statements, described for DuckDB as the SQL engine with
     the native engine named in the server name. The field list is the
     handler's.
-12. **Catalog commands are in this milestone.** `GetTables` answers the
+11. **Catalog commands are in this milestone.** `GetTables` answers the
     cluster's table list, and `GetCatalogs`, `GetDbSchemas` and
     `GetTableTypes` answer the fixed shape of one cluster. The table
     list core in `internal/qdb` is written here and the exploration
     milestone reuses it.
-13. **Everything else is `UNIMPLEMENTED`.** Prepared statements,
+12. **Everything else is `UNIMPLEMENTED`.** Prepared statements,
     transactions, savepoints, `DoPut` in every form, substrait, session
     options and the poll and renew RPCs.
-14. **Status codes.** A bad or missing token is `UNAUTHENTICATED`. A
+13. **Status codes.** A bad or missing token is `UNAUTHENTICATED`. A
     parse or execution error of either engine is `INVALID_ARGUMENT`
     with the engine's message. An open breaker or a budget timeout is
-    `UNAVAILABLE`. The unsupported surface and DuckDB on FreeBSD are
-    `UNIMPLEMENTED`. A mint or encoding failure is `INTERNAL`.
+    `UNAVAILABLE`. The unsupported surface is `UNIMPLEMENTED`. A mint
+    or encoding failure is `INTERNAL`.
 
 ### Tests
 
-15. **The tests are Go property tests.** The format-equivalence
+14. **The tests are Go property tests.** The format-equivalence
     property gains a Flight SQL client from arrow-go and requires the
     decoded Flight result to equal the HTTP formats, for the native
     engine and for the `#sql` engine against `/api/v2/sql`. A dispatch

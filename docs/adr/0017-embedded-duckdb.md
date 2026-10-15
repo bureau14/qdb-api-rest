@@ -15,8 +15,10 @@ names the Linux archive `libduckdb_bundle`. Three facts of the two
 dependencies shape the rest: DuckDB gives every connection of an
 instance the same view of every attached catalog, qdb-duck binds
 credentials at `ATTACH` time and pools up to 100 qdbd handles per
-attached catalog, and neither qdb-duck nor go-duckdb builds on FreeBSD.
-The owner made the decisions below on 2026-10-13.
+attached catalog, and qdb-duck builds on every platform of the matrix,
+FreeBSD since bureau14/qdb-duck#17. The owner made the decisions below
+on 2026-10-13, and revised Decision 4 on 2026-10-15 when the FreeBSD
+build appeared.
 
 ## Decision
 
@@ -29,23 +31,27 @@ The owner made the decisions below on 2026-10-13.
    available. The result streams through `EncodeStream` one DuckDB
    vector at a time.
 2. **The binary links qdb-duck's package.** `libduckdb_bundle.a` on
-   Linux, linked before `libqdb_api.a`, and the dynamic `libduckdb` on
-   macOS and Windows, fetched by the qdb-artifacts plugin into `duck/`
-   next to `qdb/` and located by `.envrc`. The binding's link tag
-   follows the library: `duckdb_use_static_lib` on Linux and
-   `duckdb_use_lib` on macOS and Windows, with `duckdb_arrow`
-   everywhere, exported once by `.envrc` through `GOFLAGS`. The
+   Linux and FreeBSD, linked before `libqdb_api`, and the dynamic
+   `libduckdb` on macOS and Windows, fetched by the qdb-artifacts plugin
+   into `duck/` next to `qdb/` and located by `.envrc`. The binding's
+   link tag follows the library: `duckdb_use_static_lib` on Linux and
+   FreeBSD and `duckdb_use_lib` on macOS and Windows, with
+   `duckdb_arrow` everywhere, exported once by `.envrc` through
+   `GOFLAGS`. The
    binding's five prebuilt DuckDB library modules are replaced by stubs
    so that a re-vendor does not commit them (`third_party/AGENTS.md`).
 3. **The DuckDB release is pinned in pairs.** The qdb-duck DuckDB
    submodule and the go-duckdb tag name the same release. Today that
    is 1.5.4, so go-duckdb is taken from the tag line that bundles it,
    and the next bump moves both.
-4. **FreeBSD builds without DuckDB.** `internal/olap` carries a
-   `!freebsd` build constraint and a FreeBSD stub with the same
-   surface. The route is mounted everywhere and answers `501` on
-   FreeBSD. The round trip skips its sql step there and the platform
-   matrix keeps its eight entries.
+4. **FreeBSD builds with DuckDB like Linux.** The decision of
+   2026-10-13 built FreeBSD without DuckDB, because qdb-duck did not
+   build there. qdb-duck gained that build on 2026-10-15, so FreeBSD
+   links `libduckdb_bundle.a` next to the shared `libqdb_api.so`, the
+   route and the round trip's sql step behave the same on all eight
+   platforms. FreeBSD stays in the
+   matrix for coverage only: the owner expects no FreeBSD release and
+   keeps the platform to surface obscure edge cases.
 
 ### Instances and credentials
 
@@ -85,8 +91,7 @@ The owner made the decisions below on 2026-10-13.
 
 - M4 starts with this ADR and ends when the endpoint, the `duckdb`
   block, the equivalence property test and the round-trip step are
-  landed and green in Buildkite on every platform, FreeBSD answering
-  `501`.
+  landed and green in Buildkite on every platform.
 - `internal/olap` exposes the query as the batch iterator the encoders
   take, and M5's Flight SQL endpoint calls the same function for the
   DuckDB layer.
@@ -105,7 +110,7 @@ The owner made the decisions below on 2026-10-13.
 | One shared DuckDB instance with every user's catalog     | every connection sees every attached catalog, so one user queries under another's credentials                                 |
 | One instance per request                                 | every request attaches and dials the cluster, and the handle pool is thrown away each time                                    |
 | A shared service credential for DuckDB                   | the user's permissions would no longer apply, which the brief rules out                                                       |
-| Dropping FreeBSD from the platform matrix                | the REST binary without DuckDB is a valid build there, and a `501` route costs a stub                                         |
+| Dropping FreeBSD from the platform matrix                | the platform is kept for the edge cases it surfaces, and qdb-duck builds there                                                |
 | Bumping qdb-duck to the newest go-duckdb release         | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster               |
 | Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct |
 | An upstream pool size parameter before M4                | the pool is correct as is, and the budget question is better answered once the milestones are done                            |

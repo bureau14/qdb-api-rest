@@ -38,15 +38,17 @@ Next:
   a multi-node `cluster.uri` is handed to it as its first node, and a
   qdb-duck story asking ATTACH to take a whole `qdb://` URI is filed
   when the owner says so (not yet).
-- M4, third slice: the e2e round trip's sql step, skipped on FreeBSD,
-  and the M4 closing entry.
+- M4, third slice: the e2e round trip's sql step and the M4 closing
+  entry.
+- When bureau14/qdb-duck#17 merges: remove the qdb-duck branch pin from
+  `.buildkite/pipeline.py`.
 
 M4 criteria. Entry: ADR-0017 accepted (met 2026-10-13). Exit: the
 `duckdb` config block, `POST /api/v2/sql` over one DuckDB instance per
 user held in the user pool state, linked from qdb-duck's package with
 the paired go-duckdb tag, the native-versus-DuckDB equivalence property
 test and the round trip's sql step, green in Buildkite on all eight
-platforms with FreeBSD answering `501`.
+platforms.
 
 M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed.
 Exit: the `listen.flight` listener on the HTTPS certificates, the
@@ -72,6 +74,14 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-15 -- M4 first slice: FreeBSD links DuckDB too
+
+- Owner decision: qdb-duck builds on FreeBSD since bureau14/qdb-duck#17,
+  so FreeBSD links the bundle like Linux and the `501` exception of
+  ADR-0017 is gone (Decision 4, edited in place, and `docs/brief.md`,
+  Embedded DuckDB). Until the pull request merges, the pipeline pins the
+  qdb-duck download to its branch (`.buildkite/pipeline.py`).
 
 ## 2026-10-14 -- M4 started: DuckDB linked on every platform but FreeBSD, nothing routed
 

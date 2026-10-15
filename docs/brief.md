@@ -473,11 +473,12 @@ with `duckdb_arrow` everywhere (ADR-0017). The qdb-duck
 DuckDB submodule and the go-duckdb tag name the same DuckDB release,
 and one is bumped only together with the other (owner, 2026-10-13).
 
-**FreeBSD builds without DuckDB** (owner, 2026-10-13). qdb-duck does
-not build there and the platform is not a useful DuckDB target. The
-`internal/olap` package is excluded there by build constraint and a
-stub keeps its surface, so the route is mounted on every platform and
-answers `501` on FreeBSD, and the round trip skips its sql step there.
+**FreeBSD builds with DuckDB** (owner, 2026-10-15, revising the
+decision of 2026-10-13 that built it without). qdb-duck builds there
+since bureau14/qdb-duck#17, so FreeBSD links the static bundle as Linux
+does and the route and the round trip's sql step are the same on every
+platform. The platform is in the matrix for the edge cases it surfaces,
+and no FreeBSD release is expected.
 
 **One DuckDB instance per user** (owner, 2026-10-13). qdb-duck binds
 credentials at `ATTACH` time, and DuckDB gives every connection of an
@@ -926,8 +927,7 @@ starts.
   quasar extension linked in from qdb-duck's package, one instance per
   user, the `duckdb` config block, streamed responses through the
   shared encoders, the native-versus-DuckDB equivalence property test
-  and the round-trip step, with FreeBSD building without it
-  (ADR-0017).
+  and the round-trip step (ADR-0017).
 - **M5 -- Flight SQL (minimal)**: the `listen.flight` listener,
   Handshake and bearer auth, `CommandStatementQuery`/`DoGet` over the
   shared `#sql` dispatcher that `POST /api/v2/query` also gains,
