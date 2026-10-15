@@ -69,17 +69,24 @@ func retryAfter(d time.Duration) string {
 }
 
 // writeClusterError maps a failed cluster call onto the wire by who
-// failed. An open breaker or an unreachable cluster is 503. Anything
+// failed. An open breaker or a full DuckDB instance cap is 503 with
+// Retry-After, and an unreachable cluster is 503 without it. Anything
 // the cluster itself answered is the caller's fault and gets the status
 // in answered (400 for a query, 401 for a login). A caller whose
 // context has ended gets no response at all.
 func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
+	var full *qdb.InstanceLimitError
 	switch {
 	case ctx.Err() != nil:
 		observe.Logger(ctx).DebugContext(ctx, "request abandoned by the caller", observe.Err(err))
 	case errors.As(err, &open):
 		w.Header().Set("Retry-After", retryAfter(open.RetryAfter))
+		writeProblem(w, http.StatusServiceUnavailable, err.Error())
+	// The instance cap answers like the open breaker, because both say
+	// that the server is full for now.
+	case errors.As(err, &full):
+		w.Header().Set("Retry-After", retryAfter(full.RetryAfter))
 		writeProblem(w, http.StatusServiceUnavailable, err.Error())
 	case qdb.IsClusterUnavailable(err):
 		writeProblem(w, http.StatusServiceUnavailable, err.Error())

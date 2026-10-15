@@ -4,7 +4,8 @@ Scope: the v2 HTTP handlers, the middleware and the probes. The
 package-wide Go rules, the logging rules and the test fixtures are in
 `internal/AGENTS.md`. ADR-0010 holds the wire contract of the query
 endpoint and the v2 error shape. ADR-0011 holds the login's, and
-ADR-0016 the refresh's, the logout's and the session's. The brief
+ADR-0016 the refresh's, the logout's and the session's. ADR-0017
+holds the sql endpoint's. The brief
 holds the table routes' (`docs/brief.md`, "Tables: create and delete").
 This file, Handlers, holds the table reader's.
 
@@ -21,9 +22,10 @@ This file, Handlers, holds the table reader's.
   called with `WithReadRetry` because nothing has been sent yet. A
   handler that has started streaming never retries.
 - The error mapping is by who failed, which is ADR-0010's table, and it
-  lives in one place, `writeClusterError`. A `*qdb.BreakerOpenError` or
-  `qdb.IsClusterUnavailable` is 503, with the breaker's `RetryAfter` on
-  the header and no header otherwise. Any other cluster error is the
+  lives in one place, `writeClusterError`. A `*qdb.BreakerOpenError`, a
+  `*qdb.InstanceLimitError` or `qdb.IsClusterUnavailable` is 503, with
+  the breaker's or the cap's `RetryAfter` on the header and no header
+  otherwise. Any other cluster error is the
   caller's, at the status the handler passes (400 for a query, 401 for
   a login) with the binding's message as the detail. The caller's own
   context ending gets nothing on the wire and one debug line. 500 is
@@ -77,6 +79,17 @@ This file, Handlers, holds the table reader's.
   error, so the breaker hears of a fetch that found the cluster gone. A
   read is never retried. An empty table answers its schema in every
   format.
+- The sql endpoint is `POST /api/v2/sql`. Its request is the query's:
+  query text under the query's content type and cap, `Accept`
+  negotiated, a bearer token. The body is DuckDB SQL over the cluster
+  attached as `qdb`, run through `Cluster.SQL` on the caller's own
+  DuckDB instance. The result streams as the reader's does, inside the
+  sink, with the same split between the sink's error and the call's.
+  DuckDB's parse, bind and execution errors arrive before the sink and
+  are 400. The instance cap is 503 with `Retry-After`, and a failed
+  attach is 503 without it. A column type no encoder writes (`SELECT 1`
+  is `int32`) is 500 before the first byte, and a caller casts in SQL
+  to one of the encoders' types. A sql call is never retried.
 - The ingest is `POST /api/v2/rows`. `Content-Type` picks the decoder
   from `decoders` by media type, and any other type is 415, naming the
   types accepted. The body streams into the decoder under a 64 MiB
