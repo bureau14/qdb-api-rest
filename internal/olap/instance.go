@@ -87,7 +87,9 @@ func secretOf(c Credentials) string {
 	// the SQL, and duckdb_secrets() shows the private key redacted. Only
 	// the host, the port and the credentials travel, so
 	// qdb-duck's own defaults apply to the timeout, the compression and
-	// the encryption. The secret is TEMPORARY, so it lives in memory with
+	// the encryption. Forwarding cluster.timeout, cluster.compression and
+	// cluster.encryption was rejected, because qdb-duck may spell their
+	// vocabulary differently. The secret is TEMPORARY, so it lives in memory with
 	// the instance and is never written to disk.
 	var b strings.Builder
 	fmt.Fprintf(&b, "CREATE TEMPORARY SECRET %s (TYPE quasar, HOST %s, PORT %s",
