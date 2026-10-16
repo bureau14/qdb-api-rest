@@ -11,7 +11,13 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 E2E_DIR   := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-REPO_ROOT := $(abspath $(E2E_DIR)/../..)
+
+# The Windows agents check out to the root of a subst drive, where abspath
+# answers Q:/ with its slash. The slash is stripped, because Q:/ joined with
+# /qdb reaches common.sh's LD_LIBRARY_PATH as Q://qdb/lib, and the MSYS
+# runtime resolves its //qdb/lib element as a network host every time bash
+# starts a process, which costs seconds per process.
+REPO_ROOT := $(patsubst %/,%,$(abspath $(E2E_DIR)/../..))
 
 QDB_DIR   ?= $(REPO_ROOT)/qdb
 QDB_URI   ?= qdb://127.0.0.1:2836
