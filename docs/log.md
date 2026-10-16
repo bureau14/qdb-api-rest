@@ -7,21 +7,28 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 Last updated: 2026-10-16
 
-| Milestone                       | State       | Note                                                   |
-| ------------------------------- | ----------- | ------------------------------------------------------ |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                             |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                      |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                      |
-| M3 -- v2 auth                   | done        | closed 2026-10-14                                      |
-| M4 -- Embedded DuckDB           | active      | closes when `sc-19567/rr-m4-sql` merges, see In flight |
-| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4  |
-| M6 -- Resilience                | not started |                                                        |
-| M7 -- Exploration               | not started |                                                        |
-| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015)  |
-| M9 -- Release                   | not started |                                                        |
+| Milestone                       | State       | Note                                                                        |
+| ------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                                                  |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                                           |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                                           |
+| M3 -- v2 auth                   | done        | closed 2026-10-14                                                           |
+| M4 -- Embedded DuckDB           | active      | closes when Windows is green and `sc-19567/rr-m4-sql` merges, see In flight |
+| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4                       |
+| M6 -- Resilience                | not started |                                                                             |
+| M7 -- Exploration               | not started |                                                                             |
+| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015)                       |
+| M9 -- Release                   | not started |                                                                             |
 
 In flight:
 
+- Why the Windows build steps are slow, the next thing to do (owner,
+  2026-10-16). The e2e round trip on `windows-core2` and
+  `windows-haswell` takes minutes per table, where every other platform
+  takes seconds, and the access token expires before the run ends, so
+  the step fails on `401 token expired`. The Go tests pass on Windows.
+  The owner knows which part is slow and leads the investigation of
+  why.
 - The owner's review of `sc-19567/rr-m4-sql` against
   `sc-19567/rest-rewrite`, before the fast-forward merge. Every planned
   commit has landed, and the doc-discipline runs found nothing left
