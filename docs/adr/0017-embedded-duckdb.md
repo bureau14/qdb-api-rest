@@ -97,6 +97,10 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
   and one handle per worker.
 - qdb-duck answers `$timestamp` as `timestamp[ns]`, the native
   reader's type, so the equivalence check needs no cast.
+- On Windows the cgo compiler is a UCRT build of MinGW, because the
+  DuckDB binding frees its own cgo allocations inside `duckdb.dll`, and
+  only a UCRT MinGW shares the heap with the MSVC runtime there (owner,
+  2026-10-16). The root `.envrc`, MINGW branch, explains the mechanism.
 - Open question 2 of the brief is closed.
 
 ## Alternatives rejected
@@ -111,3 +115,6 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 | Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side       | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                |
 | An upstream pool size parameter before M4                      | the pool is correct as is, and the budget question is better answered once the milestones are done                                           |
 | A standalone property test of native-versus-DuckDB equivalence | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows |
+| An msvcrt build of MinGW on Windows                            | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                   |
+| A MinGW build of qdb-duck's Windows package                    | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                           |
+| Freeing the binding's cgo allocations with `C.free` in vendor/ | the next re-vendor overwrites a local patch, and the change belongs upstream in duckdb-go-bindings                                           |
