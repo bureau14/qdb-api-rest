@@ -27,8 +27,14 @@ In flight:
   `windows-haswell` takes minutes per table, where every other platform
   takes seconds, and the access token expires before the run ends, so
   the step fails on `401 token expired`. The Go tests pass on Windows.
-  The owner knows which part is slow and leads the investigation of
-  why.
+  The owner suspects the cost of starting and stopping processes, which
+  is high on Windows, and wants no deep investigation (owner,
+  2026-10-16). The round trip starts one REST server per cluster and
+  keeps it, and `tests/e2e/round-trip.sh` starts a `curl` for every
+  request and an `e2etool` for every generated table and every decoded
+  comparison. The owner's example of a fix is reusing one process, and
+  since the server is already reused, the reuse would be on the client
+  side. The fix is to be decided with the owner.
 - The owner's review of `sc-19567/rr-m4-sql` against
   `sc-19567/rest-rewrite`, before the fast-forward merge. Every planned
   commit has landed, and the doc-discipline runs found nothing left
