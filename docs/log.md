@@ -5,46 +5,28 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
-| Milestone                       | State       | Note                                                  |
-| ------------------------------- | ----------- | ----------------------------------------------------- |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                     |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
-| M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
-| M4 -- Embedded DuckDB           | active      | closes when the Windows build is green, see In flight |
-| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4 |
-| M6 -- Resilience                | not started |                                                       |
-| M7 -- Exploration               | not started |                                                       |
-| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
-| M9 -- Release                   | not started |                                                       |
+| Milestone                       | State       | Note                                                   |
+| ------------------------------- | ----------- | ------------------------------------------------------ |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                             |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                      |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                      |
+| M3 -- v2 auth                   | done        | closed 2026-10-14                                      |
+| M4 -- Embedded DuckDB           | active      | closes when `sc-19567/rr-m4-sql` merges, see In flight |
+| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4  |
+| M6 -- Resilience                | not started |                                                        |
+| M7 -- Exploration               | not started |                                                        |
+| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015)  |
+| M9 -- Release                   | not started |                                                        |
 
 In flight:
 
-- The Windows crash on `sc-19567/rr-m4-sql`, the next thing to do, in
-  a fresh session. Buildkite build 139 (`8604c19`) is green on every
-  platform but Windows. On `windows-core2` and `windows-haswell` the
-  test binaries of `internal/olap` and `internal/httpapi` die the first
-  time a DuckDB instance opens (`olap.Open`), with no panic, no Go
-  stack and no exit code in the log. `internal/qdb` links the same
-  `duckdb.dll` and passes, so loading the library works. The package
-  is qdb-duck's, built with MSVC, importing the one `qdb_api.dll` from
-  `qdb/`. The causes not yet ruled out are the race detector
-  (`30.test.sh` runs `go test -race`), a stack overflow inside the DLL
-  on a cgo thread, the DSN settings, the secret, the attach, and a
-  defect of qdb-duck's Windows package. The investigation reproduces
-  the crash on a Hetzner Windows agent (`default-windows-amd64-h-0` to
-  `h-3`), with that machine's Buildkite agent paused for the
-  duration, in a fresh subagent that makes no commits (owner,
-  2026-10-15). The branch head `9043e37` is a diagnostic commit (a
-  probe in `internal/olap/winprobe/` and a Windows-only change to
-  `scripts/cicd/30.test.sh`), which is reverted before the fix lands.
 - The owner's review of `sc-19567/rr-m4-sql` against
-  `sc-19567/rest-rewrite`, after the Windows build is green and before
-  the fast-forward merge. Every planned commit has landed, and the
-  doc-discipline runs found nothing left unlanded. The review looks at
-  four places where the code departs from the deleted plan:
+  `sc-19567/rest-rewrite`, before the fast-forward merge. Every planned
+  commit has landed, and the doc-discipline runs found nothing left
+  unlanded. The review looks at four places where the code departs
+  from the deleted plan:
   - `Cluster.SQL` counts the call when it finds the pool, before the
     instance opens, so an eviction pass cannot close a pool whose
     instance is opening.
