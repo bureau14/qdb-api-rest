@@ -7,40 +7,22 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 Last updated: 2026-10-16
 
-| Milestone                       | State       | Note                                                   |
-| ------------------------------- | ----------- | ------------------------------------------------------ |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                             |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                      |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                      |
-| M3 -- v2 auth                   | done        | closed 2026-10-14                                      |
-| M4 -- Embedded DuckDB           | active      | closes when `sc-19567/rr-m4-sql` merges, see In flight |
-| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; follows M4  |
-| M6 -- Resilience                | not started |                                                        |
-| M7 -- Exploration               | not started |                                                        |
-| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015)  |
-| M9 -- Release                   | not started |                                                        |
+| Milestone                       | State       | Note                                                  |
+| ------------------------------- | ----------- | ----------------------------------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
+| M1 -- v2 query                  | done        | closed 2026-09-21                                     |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
+| M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
+| M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
+| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; next       |
+| M6 -- Resilience                | not started |                                                       |
+| M7 -- Exploration               | not started |                                                       |
+| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
+| M9 -- Release                   | not started |                                                       |
 
 In flight:
 
-- The owner's review of `sc-19567/rr-m4-sql` against
-  `sc-19567/rest-rewrite`, before the fast-forward merge. Every planned
-  commit has landed, and the doc-discipline runs found nothing left
-  unlanded. The review looks at four places where the code departs
-  from the deleted plan:
-  - `Cluster.SQL` counts the call when it finds the pool, before the
-    instance opens, so an eviction pass cannot close a pool whose
-    instance is opening.
-  - On an insecure cluster every instance attaches anonymously
-    (`Cluster.credentialsOf`), because qdb-duck refuses a user name
-    without a cluster public key.
-  - DuckDB errors all arrive before the first byte, because duckdb-go
-    materializes the result before it answers the reader
-    (`Instance.Query`). The plan expected failures after the first
-    batch. A result is held whole in DuckDB's memory, up to
-    `duckdb.memory_limit`, before it streams.
-  - DuckDB leaves the value bytes under a null slot uninitialized, and
-    the Arrow stream carries them as they are, so the round trip
-    compares the sql step's Arrow body decoded (`checkSQLFormats`).
+- Nothing.
 
 Next:
 
@@ -59,7 +41,7 @@ Next:
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
   DuckDB as its first node (`Cluster.credentialsOf`).
 
-M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed. Exit: the `listen.flight` listener on the HTTPS
+M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed (met 2026-10-16). Exit: the `listen.flight` listener on the HTTPS
 certificates, the `#sql` dispatcher behind `POST /api/v2/query` and the
 Flight server, Handshake and bearer auth, `CommandStatementQuery` to
 `DoGet` with the query as the ticket, `GetSqlInfo`, the catalog
@@ -83,6 +65,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-16 -- M4 closed: sc-19567/rr-m4-sql merged
+
+- The owner's review accepted the code's four departures from the plan,
+  which the comments of `Cluster.SQL`, `Cluster.credentialsOf`,
+  `Instance.Query` and `checkSQLFormats` record.
 
 ## 2026-10-15 -- M4 built: POST /api/v2/sql over one DuckDB instance per user; m4-sql-plan.md deleted
 
