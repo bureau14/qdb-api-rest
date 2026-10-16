@@ -17,6 +17,9 @@ ADR-0017.
 - qdb-duck pools its own qdbd sessions per attached catalog, up to 100,
   and they live until the instance closes. They do not count against
   `pool.max_sessions` (ADR-0017, Decision 7).
+- On Windows the package links only with a UCRT build of MinGW, because
+  the binding frees its own cgo allocations inside `duckdb.dll` (root
+  `.envrc`, MINGW branch, and ADR-0017).
 - A query answers DuckDB's Arrow types. The encoders take five types,
   and a column of any other type fails at the encoder, which names the
   column. A caller casts in SQL to one of the five.
