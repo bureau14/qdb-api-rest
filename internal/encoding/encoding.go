@@ -6,6 +6,7 @@ package encoding
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"iter"
 	"strconv"
@@ -69,10 +70,31 @@ func numRows(rec arrow.RecordBatch) int64 {
 // QuasarDB stores every timestamp in UTC.
 const timestampLayout = "2006-01-02T15:04:05.000000000Z"
 
+// dateLayout is how every text format writes a date32: the ISO 8601
+// calendar date. A date has no zone and no instant, so it carries no
+// time and no Z.
+const dateLayout = "2006-01-02"
+
 // nanosReader returns the reader of a's values as nanoseconds since the
 // epoch, whatever unit the field declares.
 func nanosReader(a *array.Timestamp) func(i int) int64 {
 	unit := int64(a.DataType().(*arrow.TimestampType).Unit.Multiplier())
+	return func(i int) int64 { return int64(a.Value(i)) * unit }
+}
+
+// appendTimeOfDay appends nanos since midnight as hh:mm:ss with nine
+// fixed fractional digits, the width of timestampLayout's fraction. The
+// hour runs to 24, because DuckDB answers TIME '24:00:00'.
+func appendTimeOfDay(dst []byte, nanos int64) []byte {
+	// time.Format was rejected, because it wraps 24:00:00 to 00:00:00.
+	h, m, s, ns := nanos/3600e9, nanos/60e9%60, nanos/1e9%60, nanos%1e9
+	return fmt.Appendf(dst, "%02d:%02d:%02d.%09d", h, m, s, ns)
+}
+
+// timeNanosReader returns the reader of a's values as nanoseconds since
+// midnight, whatever unit the field declares.
+func timeNanosReader(a *array.Time64) func(i int) int64 {
+	unit := int64(a.DataType().(*arrow.Time64Type).Unit.Multiplier())
 	return func(i int) int64 { return int64(a.Value(i)) * unit }
 }
 

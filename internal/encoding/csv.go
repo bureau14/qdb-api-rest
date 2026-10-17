@@ -62,13 +62,14 @@ func csvFloat[T float32 | float64](a floating[T]) func(i int) string {
 // text, with the empty field for null. Each type is written the way CSV
 // readers expect: an integer of any width and a float at its own
 // width's shortest round trip as plain text, a decimal as its exact
-// text, a bool as true or false, a timestamp in timestampLayout, a
-// string as its own bytes (the writer quotes what needs quoting), a
-// blob as standard base64. NaN and the infinities of float32 and
-// float64 become the empty field, because CSV has no null token and NaN
-// is the writer's own null for doubles. The type switch runs once per
-// column, so writing a cell is one call. The standard writer's
-// interface costs one string allocation per cell, which is accepted.
+// text, a bool as true or false, a timestamp in timestampLayout, a date
+// in dateLayout, a time of day with nine fractional digits, a string as
+// its own bytes (the writer quotes what needs quoting), a blob as
+// standard base64. NaN and the infinities of float32 and float64 become
+// the empty field, because CSV has no null token and NaN is the
+// writer's own null for doubles. The type switch runs once per column,
+// so writing a cell is one call. The standard writer's interface costs
+// one string allocation per cell, which is accepted.
 func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 	switch a := a.(type) {
 	case *array.Int8:
@@ -105,6 +106,21 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 				return ""
 			}
 			return strconv.FormatBool(a.Value(i))
+		}, nil
+	case *array.Date32:
+		return func(i int) string {
+			if a.IsNull(i) {
+				return ""
+			}
+			return a.Value(i).ToTime().Format(dateLayout)
+		}, nil
+	case *array.Time64:
+		nanos := timeNanosReader(a)
+		return func(i int) string {
+			if a.IsNull(i) {
+				return ""
+			}
+			return string(appendTimeOfDay(nil, nanos(i)))
 		}, nil
 	case *array.Timestamp:
 		nanos := nanosReader(a)

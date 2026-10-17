@@ -162,6 +162,25 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			}
 			return strconv.AppendBool(dst, a.Value(i))
 		}
+	case *array.Date32:
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			dst = append(dst, '"')
+			dst = a.Value(i).ToTime().AppendFormat(dst, dateLayout)
+			return append(dst, '"')
+		}
+	case *array.Time64:
+		nanos := timeNanosReader(a)
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			dst = append(dst, '"')
+			dst = appendTimeOfDay(dst, nanos(i))
+			return append(dst, '"')
+		}
 	case *array.Timestamp:
 		nanos := nanosReader(a)
 		c.cell = func(dst []byte, i int) []byte {

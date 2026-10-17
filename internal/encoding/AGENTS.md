@@ -64,16 +64,17 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   is shared: it is the record batch size on the Arrow wire and the
   stride between ctx checks on the text wires.
 - The query and the table reader answer the binding's five types:
-  `int64` (a count included), `float64`, `timestamp[ns]` without a
-  zone, and `utf8` and `binary` carrying `max_width` field metadata.
-  The sql endpoint answers DuckDB's types. The text encoders write those
-  five and DuckDB's scalars: every signed and unsigned integer width, `float32`,
-  `decimal128` and `bool`.
-  They write no type that no producer answers, so the other Arrow
-  scalars (`float16`, `decimal256`, `date64`, a duration) have no case.
-  Every field is nullable, and an all-null column keeps its type. Any
-  other type is an encode error that names the column
-  (`ErrUnsupportedType`), and the encoder does not panic on it.
+  `int64` (a count included), `float64`, `timestamp[ns]` without a zone,
+  and `utf8` and `binary` carrying `max_width` field metadata. The sql
+  endpoint answers DuckDB's types. The text encoders write those five
+  and DuckDB's scalars: every signed and unsigned integer width,
+  `float32`, `decimal128`, `bool`, `date32` and `time64`, and a
+  timestamp of any unit. They write no type that no producer answers, so
+  the other Arrow scalars (`float16`, `decimal256`, `date64`, a
+  duration) have no case. Every field is nullable, and an all-null
+  column keeps its type. Any other type is an encode error that names
+  the column (`ErrUnsupportedType`), and the encoder does not panic on
+  it.
 
 ## Arrow
 
@@ -90,24 +91,30 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 
 - JSON, NDJSON and CSV are the only code that must know a type to write
   a cell. Each format writes every type the way its own readers expect,
-  and the code for a format lives only in that format's file
-  (`json.go`, `csv.go`). The two files share nothing but the package's
-  `ErrUnsupportedType` and the timestamp text, which is RFC 3339 in UTC
-  with nine fixed fractional digits (`2026-06-11T00:00:00.000683000Z`).
-  The timestamp text is a fact about the wire, not about one format.
+  and the code for a format lives only in that format's file (`json.go`,
+  `csv.go`). The two files share nothing but the package's
+  `ErrUnsupportedType`, the number constraints (`signed`, `unsigned`,
+  `floating`, `floatBits`) and three texts. The timestamp text is RFC
+  3339 in UTC with nine fixed fractional digits
+  (`2026-06-11T00:00:00.000683000Z`). The date text is the ISO 8601
+  calendar date (`2026-06-11`). The time-of-day text has nine fixed
+  fractional digits, and its hour runs to 24 (`24:00:00.000000000`).
+  These texts are facts about the wire, not about one format.
 - JSON and NDJSON write `int64` and every other integer width as a bare
   number, and a `decimal128` as its exact text as a bare number. A
   client that parses JSON numbers as doubles loses digits past 2^53 in
   an `int64`, a `uint64` or a decimal, and a client that needs every
-  digit uses the Arrow format. They write `float32`
-  and `float64` through `jsontext.AppendFloat` at the column's own
-  width, the bytes `encoding/json` writes, and NaN and the infinities
-  as `null`. They write a `bool` as `true` or `false`. They write `utf8` through
+  digit uses the Arrow format. They write `float32` and `float64`
+  through `jsontext.AppendFloat` at the column's own width, the bytes
+  `encoding/json` writes, and NaN and the infinities as `null`. They
+  write a `bool` as `true` or `false`. They write `utf8` through
   `jsontext.AppendQuote`, which replaces invalid UTF-8 by U+FFFD. They
   write `binary` as a string of standard base64 with padding, and the
-  timestamp as a string. The type word is the Arrow type's name
-  (`DataType.Name()`): `int8` to `int64`, `uint8` to `uint64`,
-  `float32`, `float64`, `decimal`, `bool`, `utf8`, `binary`, `timestamp`. A symbol answers as `utf8` and a count as `int64`.
+  timestamp, the date and the time of day as strings in their texts. The
+  type word is the Arrow type's name (`DataType.Name()`): `int8` to
+  `int64`, `uint8` to `uint64`, `float32`, `float64`, `decimal`, `bool`,
+  `date32`, `time64`, `utf8`, `binary`, `timestamp`. A symbol answers as
+  `utf8` and a count as `int64`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
@@ -123,13 +130,14 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   line endings, and a field quoted only when the standard writer's rule
   says so. Every integer width, `float32` and `float64` are written as
   plain text through `strconv`, a float with its own width's shortest
-  round trip. A decimal is written as its exact text. A `bool` is written as `true` or `false`. `utf8` is written as its own
-  bytes and `binary` as standard base64. The empty field stands for
-  null, for NaN and the infinities, and for the empty string alike. A
-  nil batch encodes as an empty body, and no rows as the header alone.
-  A stream of batches is the first batch's header, then the rows of
-  every batch. Byte identity with the CSV of `qdb_export` is not a
-  goal.
+  round trip. A decimal is written as its exact text. A `bool` is
+  written as `true` or `false`. The date and the time of day are written
+  in their texts. `utf8` is written as its own bytes and `binary` as
+  standard base64. The empty field stands for null, for NaN and the
+  infinities, and for the empty string alike. A nil batch encodes as an
+  empty body, and no rows as the header alone. A stream of batches is
+  the first batch's header, then the rows of every batch. Byte identity
+  with the CSV of `qdb_export` is not a goal.
 
 ## Tests
 
