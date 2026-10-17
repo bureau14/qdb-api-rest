@@ -69,8 +69,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   endpoint answers DuckDB's types. The text encoders write those five
   and DuckDB's scalars: every signed and unsigned integer width,
   `float32`, `decimal128`, `bool`, `date32` and `time64`, and a
-  timestamp of any unit. They write no type that no producer answers, so
-  the other Arrow scalars (`float16`, `decimal256`, `date64`, a
+  timestamp of any unit. They write only the types a producer answers,
+  so the other Arrow scalars (`float16`, `decimal256`, `date64`, a
   duration) have no case. Every field is nullable, and an all-null
   column keeps its type. Any other type is an encode error that names
   the column (`ErrUnsupportedType`), and the encoder does not panic on
