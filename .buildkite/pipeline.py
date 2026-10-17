@@ -173,26 +173,18 @@ def _lint_step() -> dict:
     return step
 
 
-# qdb-duck's FreeBSD build (bureau14/qdb-duck#17) is not on its master
-# yet, so its download is pinned to the pull request's branch. Delete this
-# pin, and the by_project entry below, once the pull request merges.
-_DUCK_GIT_REF = "refs/heads/sc-19966/add-freebsd-support"
-
-
 def _download_options(variant: str, git_ref: str) -> dict:
     """Return the qdb-artifacts download options of one step.
 
     Every download project receives this repository's own ref and the
     step's variant. The plugin resolves a ref that holds no artifacts of
     a project to that project's master, so no ref is spelled out here
-    for quasardb-build or qdb-duck (.buildkite/AGENTS.md). The
-    by_project entry is the temporary pin explained at _DUCK_GIT_REF.
+    for quasardb-build or qdb-duck (.buildkite/AGENTS.md).
     """
     return {
         "download": {
             "variant": variant,
             "git_ref": git_ref,
-            "by_project": {"qdb-duck": {"git_ref": _DUCK_GIT_REF}},
         }
     }
 
