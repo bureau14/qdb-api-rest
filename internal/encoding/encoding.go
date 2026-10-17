@@ -92,6 +92,21 @@ type unsigned[T uint8 | uint16 | uint32 | uint64] interface {
 	Value(i int) T
 }
 
+// floating is signed for the two float widths.
+type floating[T float32 | float64] interface {
+	IsNull(i int) bool
+	Value(i int) T
+}
+
+// floatBits returns the bit size of T, which strconv and jsontext take
+// to write the shortest text that round-trips at that width.
+func floatBits[T float32 | float64]() int {
+	if _, ok := any(T(0)).(float32); ok {
+		return 32
+	}
+	return 64
+}
+
 // textAppender returns the function that parses one cell of text into
 // the builder b, the inverse of the text the encoders write: an integer
 // and a float through strconv, a timestamp in RFC 3339, a string as its

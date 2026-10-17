@@ -52,13 +52,13 @@ func appendQuoted(dst []byte, s string) []byte {
 	return dst
 }
 
-// appendFloat appends a finite f as a JSON number, the bytes
-// encoding/json writes: shortest round trip, plain notation for
+// appendFloat appends a finite f of bit size bits as a JSON number, the
+// bytes encoding/json writes: shortest round trip, plain notation for
 // exponents in [-6, 21). The appender would write NaN and the infinities
 // as strings; they are not JSON, and NaN is the writer's own null for
 // doubles, so the caller writes them as null.
-func appendFloat(dst []byte, f float64) []byte {
-	return jsontext.AppendFloat(dst, f, 64)
+func appendFloat(dst []byte, f float64, bits int) []byte {
+	return jsontext.AppendFloat(dst, f, bits)
 }
 
 // appendTimestamp appends nanos since the epoch as a JSON string in
@@ -101,6 +101,22 @@ func jsonUnsigned[T uint8 | uint16 | uint32 | uint64](a unsigned[T]) func(dst []
 	}
 }
 
+// jsonFloat returns the appender of a float column: null for null, NaN
+// and the infinities, and otherwise the shortest text that round-trips
+// at the column's own bit size. A float32 0.1 is written as 0.1. Widening
+// it to float64 first was rejected, because the text would then carry
+// digits the value never had (0.10000000149011612).
+func jsonFloat[T float32 | float64](a floating[T]) func(dst []byte, i int) []byte {
+	bits := floatBits[T]()
+	return func(dst []byte, i int) []byte {
+		v := float64(a.Value(i))
+		if a.IsNull(i) || math.IsNaN(v) || math.IsInf(v, 0) {
+			return appendNull(dst)
+		}
+		return appendFloat(dst, v, bits)
+	}
+}
+
 // jsonCell returns the type word and the appender of column a. The type
 // switch runs once per column, so appending a cell is one call. The word
 // is the Arrow type's name: a symbol column arrives as utf8 and reports
@@ -125,13 +141,10 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 		c.cell = jsonUnsigned(a)
 	case *array.Uint64:
 		c.cell = jsonUnsigned(a)
+	case *array.Float32:
+		c.cell = jsonFloat(a)
 	case *array.Float64:
-		c.cell = func(dst []byte, i int) []byte {
-			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
-				return appendNull(dst)
-			}
-			return appendFloat(dst, a.Value(i))
-		}
+		c.cell = jsonFloat(a)
 	case *array.Timestamp:
 		nanos := nanosReader(a)
 		c.cell = func(dst []byte, i int) []byte {

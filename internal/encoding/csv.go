@@ -44,13 +44,28 @@ func csvUnsigned[T uint8 | uint16 | uint32 | uint64](a unsigned[T]) func(i int) 
 	}
 }
 
+// csvFloat returns the writer of a float column: the shortest text that
+// round-trips at the column's own bit size, and the empty field for
+// null, NaN and the infinities.
+func csvFloat[T float32 | float64](a floating[T]) func(i int) string {
+	bits := floatBits[T]()
+	return func(i int) string {
+		v := float64(a.Value(i))
+		if a.IsNull(i) || math.IsNaN(v) || math.IsInf(v, 0) {
+			return ""
+		}
+		return strconv.FormatFloat(v, 'g', -1, bits)
+	}
+}
+
 // csvCell returns the function that writes cell i of column a as CSV
 // text, with the empty field for null. Each type is written the way CSV
-// readers expect: an integer of any width and a shortest round-trip
-// float as plain text, a timestamp in timestampLayout, a string as its own bytes (the
-// writer quotes what needs quoting), a blob as standard base64. NaN and
-// the infinities become the empty field, because CSV has no null token
-// and NaN is the writer's own null for doubles. The type switch runs
+// readers expect: an integer of any width and a float at its own width's
+// shortest round trip as plain text, a timestamp in timestampLayout, a
+// string as its own bytes (the writer quotes what needs quoting), a blob
+// as standard base64. NaN and the infinities of float32 and float64
+// become the empty field, because CSV has no null token and NaN is the
+// writer's own null for doubles. The type switch runs
 // once per column, so writing a cell is one call. The standard writer's
 // interface costs one string allocation per cell, which is accepted.
 func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
@@ -71,13 +86,10 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 		return csvUnsigned(a), nil
 	case *array.Uint64:
 		return csvUnsigned(a), nil
+	case *array.Float32:
+		return csvFloat(a), nil
 	case *array.Float64:
-		return func(i int) string {
-			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
-				return ""
-			}
-			return strconv.FormatFloat(a.Value(i), 'g', -1, 64)
-		}, nil
+		return csvFloat(a), nil
 	case *array.Timestamp:
 		nanos := nanosReader(a)
 		return func(i int) string {
