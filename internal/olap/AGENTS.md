@@ -20,6 +20,13 @@ ADR-0017.
 - On Windows the package links only with a UCRT build of MinGW, because
   the binding frees its own cgo allocations inside `duckdb.dll` (root
   `.envrc`, MINGW branch, and ADR-0017).
-- A query answers DuckDB's Arrow types. `internal/encoding/AGENTS.md`
-  lists the types the text encoders write, and a column of any other
-  type fails at the encoder, which names the column.
+- A query answers DuckDB's Arrow types, and the sql endpoint answers
+  them as DuckDB converts them. A TIMESTAMPTZ arrives as a UTC instant
+  tagged with the instance's TimeZone, which defaults to the host's
+  zone, and the text encoders write it in UTC. A TIMETZ arrives as a
+  plain `time64` without its offset. Setting the instance's TimeZone and
+  carrying the TIMETZ offset were rejected, because on the DuckDB path
+  the endpoint answers what DuckDB answers and adds no rule of its own.
+- `internal/encoding/AGENTS.md` lists the types the text encoders write,
+  and a column of any other type fails at the encoder, which names the
+  column.
