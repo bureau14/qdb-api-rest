@@ -55,7 +55,7 @@ func appendQuoted(dst []byte, s string) []byte {
 // appendFloat appends a finite f of bit size bits as a JSON number, the
 // bytes encoding/json writes: shortest round trip, plain notation for
 // exponents in [-6, 21). The appender would write NaN and the infinities
-// as strings; they are not JSON, and NaN is the writer's own null for
+// as strings. They are not JSON, and NaN is the writer's own null for
 // doubles, so the caller writes them as null.
 func appendFloat(dst []byte, f float64, bits int) []byte {
 	return jsontext.AppendFloat(dst, f, bits)
