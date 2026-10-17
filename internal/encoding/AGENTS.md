@@ -67,8 +67,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   `int64` (a count included), `float64`, `timestamp[ns]` without a
   zone, and `utf8` and `binary` carrying `max_width` field metadata.
   The sql endpoint answers DuckDB's types. The text encoders write those
-  five and DuckDB's scalars: every signed and unsigned integer width, `float32`
-  and `bool`.
+  five and DuckDB's scalars: every signed and unsigned integer width, `float32`,
+  `decimal128` and `bool`.
   They write no type that no producer answers, so the other Arrow
   scalars (`float16`, `decimal256`, `date64`, a duration) have no case.
   Every field is nullable, and an all-null column keeps its type. Any
@@ -96,8 +96,9 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   with nine fixed fractional digits (`2026-06-11T00:00:00.000683000Z`).
   The timestamp text is a fact about the wire, not about one format.
 - JSON and NDJSON write `int64` and every other integer width as a bare
-  number. A client that parses JSON numbers as doubles loses digits
-  past 2^53 in an `int64` or a `uint64`, and a client that needs every
+  number, and a `decimal128` as its exact text as a bare number. A
+  client that parses JSON numbers as doubles loses digits past 2^53 in
+  an `int64`, a `uint64` or a decimal, and a client that needs every
   digit uses the Arrow format. They write `float32`
   and `float64` through `jsontext.AppendFloat` at the column's own
   width, the bytes `encoding/json` writes, and NaN and the infinities
@@ -106,7 +107,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   write `binary` as a string of standard base64 with padding, and the
   timestamp as a string. The type word is the Arrow type's name
   (`DataType.Name()`): `int8` to `int64`, `uint8` to `uint64`,
-  `float32`, `float64`, `bool`, `utf8`, `binary`, `timestamp`. A symbol answers as `utf8` and a count as `int64`.
+  `float32`, `float64`, `decimal`, `bool`, `utf8`, `binary`, `timestamp`. A symbol answers as `utf8` and a count as `int64`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
@@ -122,7 +123,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   line endings, and a field quoted only when the standard writer's rule
   says so. Every integer width, `float32` and `float64` are written as
   plain text through `strconv`, a float with its own width's shortest
-  round trip. A `bool` is written as `true` or `false`. `utf8` is written as its own
+  round trip. A decimal is written as its exact text. A `bool` is written as `true` or `false`. `utf8` is written as its own
   bytes and `binary` as standard base64. The empty field stands for
   null, for NaN and the infinities, and for the empty string alike. A
   nil batch encodes as an empty body, and no rows as the header alone.

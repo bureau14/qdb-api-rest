@@ -145,6 +145,16 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 		c.cell = jsonFloat(a)
 	case *array.Float64:
 		c.cell = jsonFloat(a)
+	case *array.Decimal128:
+		// The exact text, scale's trailing zeros included, is written as a
+		// bare number, so the wire loses no digit.
+		scale := a.DataType().(*arrow.Decimal128Type).Scale
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			return append(dst, a.Value(i).ToString(scale)...)
+		}
 	case *array.Boolean:
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
