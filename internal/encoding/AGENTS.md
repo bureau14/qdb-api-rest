@@ -114,7 +114,13 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   type word is the Arrow type's name (`DataType.Name()`): `int8` to
   `int64`, `uint8` to `uint64`, `float32`, `float64`, `decimal`, `bool`,
   `date32`, `time64`, `utf8`, `binary`, `timestamp`. A symbol answers as
-  `utf8` and a count as `int64`.
+  `utf8` and a count as `int64`. The word is the name the Arrow wire
+  reports, so a result column's word differs from the table schema's
+  word for the same column (`float64` against `double`). QuasarDB's
+  words were rejected, because they would give the narrow and unsigned
+  integers a width they lack. DuckDB's SQL names were rejected, because
+  the encoders do not know DuckDB and the query endpoint never answers
+  those names.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
