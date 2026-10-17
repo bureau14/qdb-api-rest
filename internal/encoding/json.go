@@ -145,6 +145,13 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 		c.cell = jsonFloat(a)
 	case *array.Float64:
 		c.cell = jsonFloat(a)
+	case *array.Boolean:
+		c.cell = func(dst []byte, i int) []byte {
+			if a.IsNull(i) {
+				return appendNull(dst)
+			}
+			return strconv.AppendBool(dst, a.Value(i))
+		}
 	case *array.Timestamp:
 		nanos := nanosReader(a)
 		c.cell = func(dst []byte, i int) []byte {

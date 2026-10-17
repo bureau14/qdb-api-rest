@@ -67,8 +67,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   `int64` (a count included), `float64`, `timestamp[ns]` without a
   zone, and `utf8` and `binary` carrying `max_width` field metadata.
   The sql endpoint answers DuckDB's types. The text encoders write those
-  five and DuckDB's scalars: every signed and unsigned integer width and
-  `float32`.
+  five and DuckDB's scalars: every signed and unsigned integer width, `float32`
+  and `bool`.
   They write no type that no producer answers, so the other Arrow
   scalars (`float16`, `decimal256`, `date64`, a duration) have no case.
   Every field is nullable, and an all-null column keeps its type. Any
@@ -101,12 +101,12 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   digit uses the Arrow format. They write `float32`
   and `float64` through `jsontext.AppendFloat` at the column's own
   width, the bytes `encoding/json` writes, and NaN and the infinities
-  as `null`. They write `utf8` through
+  as `null`. They write a `bool` as `true` or `false`. They write `utf8` through
   `jsontext.AppendQuote`, which replaces invalid UTF-8 by U+FFFD. They
   write `binary` as a string of standard base64 with padding, and the
   timestamp as a string. The type word is the Arrow type's name
   (`DataType.Name()`): `int8` to `int64`, `uint8` to `uint64`,
-  `float32`, `float64`, `utf8`, `binary`, `timestamp`. A symbol answers as `utf8` and a count as `int64`.
+  `float32`, `float64`, `bool`, `utf8`, `binary`, `timestamp`. A symbol answers as `utf8` and a count as `int64`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
@@ -122,7 +122,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   line endings, and a field quoted only when the standard writer's rule
   says so. Every integer width, `float32` and `float64` are written as
   plain text through `strconv`, a float with its own width's shortest
-  round trip. `utf8` is written as its own
+  round trip. A `bool` is written as `true` or `false`. `utf8` is written as its own
   bytes and `binary` as standard base64. The empty field stands for
   null, for NaN and the infinities, and for the empty string alike. A
   nil batch encodes as an empty body, and no rows as the header alone.
