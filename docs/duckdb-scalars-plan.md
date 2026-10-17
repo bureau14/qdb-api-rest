@@ -353,9 +353,10 @@ the scalar property draws the DuckDB types in memory.
 
 ### `internal/encoding/decode_test.go`
 
-`tableCol` at line 441 says `"type":"utf8"`. The decoder does not read
-the member, so this keeps the hand-written bodies in the wire's
-vocabulary and proves nothing new.
+`tableCol` at line 441 says `"type":"string"`, and commit 3 changes it
+to `"type":"utf8"`. The decoder does not read the member, so the change
+keeps the hand-written bodies in the wire's vocabulary and proves
+nothing new.
 
 ### `internal/httpapi/errors_test.go`
 
