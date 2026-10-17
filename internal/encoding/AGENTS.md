@@ -95,9 +95,9 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   NaN and the infinities as `null`. They write `utf8` through
   `jsontext.AppendQuote`, which replaces invalid UTF-8 by U+FFFD. They
   write `binary` as a string of standard base64 with padding, and the
-  timestamp as a string. The wire type names are QuasarDB's words:
-  `int64`, `double`, `string`, `blob`, `timestamp`. A symbol answers as
-  a `string` and a count as an `int64`.
+  timestamp as a string. The type word is the Arrow type's name
+  (`DataType.Name()`): `int64`, `float64`, `utf8`, `binary`,
+  `timestamp`. A symbol answers as `utf8` and a count as `int64`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a

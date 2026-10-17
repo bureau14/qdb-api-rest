@@ -30,9 +30,9 @@ const (
 	NDJSONContentType = "application/x-ndjson"
 )
 
-// jsonColumn is one column with its JSON encoding: its name, its type in
-// QuasarDB's words (int64, double, string, blob, timestamp), and the
-// function that appends cell i as a JSON value, null included.
+// jsonColumn is one column with its JSON encoding: its name, its type as
+// the Arrow type's name, and the function that appends cell i as a JSON
+// value, null included.
 type jsonColumn struct {
 	name string
 	kind string
@@ -79,15 +79,14 @@ func appendBase64(dst []byte, b []byte) []byte {
 }
 
 // jsonCell returns the type word and the appender of column a. The type
-// switch runs once per column, so appending a cell is one call. The type
-// words on the wire are the binding's types: a symbol column arrives as
-// utf8 and is reported as a string, and a count column arrives as int64
-// and is reported as int64.
+// switch runs once per column, so appending a cell is one call. The word
+// is the Arrow type's name: a symbol column arrives as utf8 and reports
+// utf8, and a count arrives as int64. A type without a case is
+// ErrUnsupportedType, which names the column.
 func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
-	c := jsonColumn{name: f.Name}
+	c := jsonColumn{name: f.Name, kind: f.Type.Name()}
 	switch a := a.(type) {
 	case *array.Int64:
-		c.kind = "int64"
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
 				return appendNull(dst)
@@ -95,7 +94,6 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			return strconv.AppendInt(dst, a.Value(i), 10)
 		}
 	case *array.Float64:
-		c.kind = "double"
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
 				return appendNull(dst)
@@ -103,7 +101,6 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			return appendFloat(dst, a.Value(i))
 		}
 	case *array.Timestamp:
-		c.kind = "timestamp"
 		nanos := nanosReader(a)
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
@@ -112,7 +109,6 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			return appendTimestamp(dst, nanos(i))
 		}
 	case *array.String:
-		c.kind = "string"
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
 				return appendNull(dst)
@@ -120,7 +116,6 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			return appendQuoted(dst, a.Value(i))
 		}
 	case *array.Binary:
-		c.kind = "blob"
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) {
 				return appendNull(dst)

@@ -438,7 +438,7 @@ func TestDecodeFormatFaults(t *testing.T) {
 
 	// The JSON bodies are built from one result of one row, which every
 	// JSON case varies in one place
-	const tableCol = `{"name":"$table","type":"string","data":["a"]}`
+	const tableCol = `{"name":"$table","type":"utf8","data":["a"]}`
 	const timestampCol = `{"name":"$timestamp","type":"timestamp","data":["1970-01-01T00:00:00Z"]}`
 	const iCol = `{"name":"i","type":"int64","data":[1]}`
 	result := `{"columns":[` + tableCol + `,` + timestampCol + `,` + iCol + `]}`

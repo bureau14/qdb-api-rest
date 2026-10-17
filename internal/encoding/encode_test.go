@@ -173,22 +173,6 @@ func readCSV(t failer, body []byte) []wireColumn {
 	return cols
 }
 
-// wordOf returns the wire type word for an Arrow type.
-func wordOf(dt arrow.DataType) string {
-	switch dt.ID() {
-	case arrow.INT64:
-		return "int64"
-	case arrow.FLOAT64:
-		return "double"
-	case arrow.STRING:
-		return "string"
-	case arrow.BINARY:
-		return "blob"
-	default:
-		return "timestamp"
-	}
-}
-
 // parseTimestamp parses an encoded timestamp and checks its width: RFC
 // 3339 in UTC with exactly nine fractional digits.
 func parseTimestamp(s string) (int64, error) {
@@ -236,8 +220,8 @@ func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 	if got.name != f.Name {
 		t.Fatalf("column %q on the wire, %q encoded", got.name, f.Name)
 	}
-	if got.kind != "" && got.kind != wordOf(f.Type) {
-		t.Fatalf("%s: type %q on the wire, want %q", f.Name, got.kind, wordOf(f.Type))
+	if got.kind != "" && got.kind != f.Type.Name() {
+		t.Fatalf("%s: type %q on the wire, want %q", f.Name, got.kind, f.Type.Name())
 	}
 	if len(got.cells) != want.Len() {
 		t.Fatalf("%s: %d rows on the wire, %d encoded", f.Name, len(got.cells), want.Len())
@@ -400,10 +384,10 @@ func TestEdgeCells(t *testing.T) {
 	}{
 		{JSON{}, `{"columns":[` +
 			`{"name":"i","type":"int64","data":[9223372036854775807,-9223372036854775808,0,42,null]},` +
-			`{"name":"d","type":"double","data":[null,null,1e+21,0.1,null]},` +
+			`{"name":"d","type":"float64","data":[null,null,1e+21,0.1,null]},` +
 			`{"name":"t","type":"timestamp","data":["1970-01-01T00:00:00.000000000Z","1970-01-01T00:00:00.000000001Z","2026-06-11T00:00:00.000683000Z","1969-12-31T23:59:59.999999999Z",null]},` +
-			`{"name":"s","type":"string","data":["","a,b \"q\"\n"," lead","` + "\xef\xbf\xbd" + `",null]},` +
-			`{"name":"b","type":"blob","data":["","AP8=","aGk=","eA==",null]}]}`},
+			`{"name":"s","type":"utf8","data":["","a,b \"q\"\n"," lead","` + "\xef\xbf\xbd" + `",null]},` +
+			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]}]}`},
 		{NDJSON{}, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":""}` + "\n" +
 			`{"i":-9223372036854775808,"d":null,"t":"1970-01-01T00:00:00.000000001Z","s":"a,b \"q\"\n","b":"AP8="}` + "\n" +
 			`{"i":0,"d":1e+21,"t":"2026-06-11T00:00:00.000683000Z","s":" lead","b":"aGk="}` + "\n" +
