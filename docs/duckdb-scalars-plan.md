@@ -149,9 +149,9 @@ type unsigned[T uint8 | uint16 | uint32 | uint64] interface {
 	//   same closure differ only in the type [Rationale row 7]
 ```
 
-`int64` keeps its existing case and does not move to the generic path.
-The executor may fold it in if the case body becomes identical. The
-commit says so if it does.
+Whether the existing `int64` case moves onto `jsonSigned` and
+`csvSigned` is open question 1 of section 8. The plan's approval
+settles it with the recommendation recorded there.
 
 ### `internal/encoding/json.go`
 
@@ -553,11 +553,25 @@ internal/olap/AGENTS.md`, and make one small commit per finding.
 
 ## 8. Open questions and recommendations
 
-1. Should `int64` move onto the generic signed path for symmetry?
-   Recommendation: yes, if its case body becomes identical, and the
-   commit says so.
-2. Should dates outside years 1 to 9999 get a pin of the text Go
-   writes? Recommendation: no, because DuckDB users rarely store them,
-   and Arrow carries them exactly.
-3. Should the stale memory note on the qdb-duck FreeBSD pin be deleted
-   after the merge? Recommendation: yes (owner, 2026-10-17).
+1. Today each text encoder writes an `int64` column through its own
+   case in the type switch. This unit adds one shared generic writer per
+   format for the signed integers (`jsonSigned`, `csvSigned`), and the
+   new `int8`, `int16` and `int32` cases call it. The existing `int64`
+   case writes the same text the shared writer would write: `null` or
+   the empty field for a null, and the number in base 10 otherwise.
+   Should the `int64` case also call the shared writer, so that one
+   function per format writes every signed integer? The output does not
+   change either way. Recommendation: yes, in commit 4, because one
+   writer for all four widths is less code to read.
+2. DuckDB stores dates before year 1 and after year 9999. The encoders
+   write every date with Go's formatter in `dateLayout`, which writes
+   year 0 as `0000`, a year before 0 with a leading minus sign, and a
+   year after 9999 with five or more digits. The property draws only
+   years 1 to 9999, because its parser reads only the four-digit form.
+   So no test checks the text written for the other years. Should a
+   test fix that text, with the exact expected string for, say, year 0
+   and year 10000? Recommendation: no, because no reader parses those
+   texts as ISO 8601 dates anyway, and a client that needs such dates
+   reads them exactly through the Arrow format.
+3. The memory note on the qdb-duck FreeBSD pin is deleted after the
+   merge (owner, 2026-10-17, in the plan review).
