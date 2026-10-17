@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-16
+Last updated: 2026-10-17
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -26,13 +26,6 @@ In flight:
 
 Next:
 
-- Remove the qdb-duck branch pin from `.buildkite/pipeline.py`
-  (`_DUCK_GIT_REF` and the `by_project` entry), one commit.
-  bureau14/qdb-duck#17 is merged, and the qdb-artifacts plugin falls
-  back to `master`, so no ref is spelled out.
-- Widen the encoders to the DuckDB types outside their five, so that
-  `SELECT 1` (`int32`) and `sum()` (`decimal`) answer instead of 500
-  (owner, 2026-10-15; `internal/olap/AGENTS.md`).
 - Run the Go data-path tests on the secure cluster too: the round trip,
   its deduplicated variant, the error rows and the `internal/qdb` read
   tests (owner, 2026-10-15).
@@ -65,6 +58,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-17 -- the text encoders write every DuckDB scalar; duckdb-scalars-plan.md deleted
+
+- Owner decisions moved to `internal/encoding/AGENTS.md`,
+  `internal/olap/AGENTS.md`, `internal/httpapi/AGENTS.md` and the
+  comments of `internal/encoding`. The qdb-duck pin is gone.
 
 ## 2026-10-16 -- M4 closed: sc-19567/rr-m4-sql merged
 
