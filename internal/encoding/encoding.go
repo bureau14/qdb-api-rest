@@ -76,6 +76,22 @@ func nanosReader(a *array.Timestamp) func(i int) int64 {
 	return func(i int) int64 { return int64(a.Value(i)) * unit }
 }
 
+// signed is the part of an arrow-go signed integer array that a cell
+// writer reads. arrow-go gives each width its own struct, so the type
+// switch keeps a case per width and passes that width's array here. One
+// writer per format serves every width, int64 included. A case body per
+// width was rejected, because the copies would differ only in the type.
+type signed[T int8 | int16 | int32 | int64] interface {
+	IsNull(i int) bool
+	Value(i int) T
+}
+
+// unsigned is signed for the unsigned widths.
+type unsigned[T uint8 | uint16 | uint32 | uint64] interface {
+	IsNull(i int) bool
+	Value(i int) T
+}
+
 // textAppender returns the function that parses one cell of text into
 // the builder b, the inverse of the text the encoders write: an integer
 // and a float through strconv, a timestamp in RFC 3339, a string as its

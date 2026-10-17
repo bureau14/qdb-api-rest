@@ -20,6 +20,6 @@ ADR-0017.
 - On Windows the package links only with a UCRT build of MinGW, because
   the binding frees its own cgo allocations inside `duckdb.dll` (root
   `.envrc`, MINGW branch, and ADR-0017).
-- A query answers DuckDB's Arrow types. The encoders take five types,
-  and a column of any other type fails at the encoder, which names the
-  column. A caller casts in SQL to one of the five.
+- A query answers DuckDB's Arrow types. `internal/encoding/AGENTS.md`
+  lists the types the text encoders write, and a column of any other
+  type fails at the encoder, which names the column.

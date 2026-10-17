@@ -87,9 +87,10 @@ This file, Handlers, holds the table reader's.
   sink, with the same split between the sink's error and the call's.
   DuckDB's parse, bind and execution errors arrive before the sink and
   are 400. The instance cap is 503 with `Retry-After`, and a failed
-  attach is 503 without it. A column type no encoder writes (`SELECT 1`
-  is `int32`) is 500 before the first byte, and a caller casts in SQL
-  to one of the encoders' types. A sql call is never retried.
+  attach is 503 without it. A column type no text encoder writes (a
+  list, for one) is 500 before the first byte, and
+  `internal/encoding/AGENTS.md` lists the types the text encoders write.
+  A caller casts in SQL to one of those types or asks for Arrow. A sql call is never retried.
 - The ingest is `POST /api/v2/rows`. `Content-Type` picks the decoder
   from `decoders` by media type, and any other type is 415, naming the
   types accepted. The body streams into the decoder under a 64 MiB

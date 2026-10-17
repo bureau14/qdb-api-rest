@@ -75,11 +75,11 @@ func TestErrorRows(t *testing.T) {
 		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
 		"query: no token":      {http.MethodPost, "/api/v2/query", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
 		"query: bad token":     {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		// the sql. SELECT 1 answers an int32, which no encoder writes.
+		// the sql. A list is a type no text encoder writes.
 		"sql: invalid sql":      {http.MethodPost, "/api/v2/sql", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
 		"sql: json body":        {http.MethodPost, "/api/v2/sql", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
 		"sql: no token":         {http.MethodPost, "/api/v2/sql", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
-		"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT 1", bearer, http.StatusInternalServerError, ""},
+		"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT [1]", bearer, http.StatusInternalServerError, ""},
 		// the tables
 		"create: text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
 		"create: undecodable":             {http.MethodPost, tablesPath, `{"name":`, jsonBody, http.StatusBadRequest, ""},

@@ -78,6 +78,29 @@ func appendBase64(dst []byte, b []byte) []byte {
 	return append(dst, '"')
 }
 
+// jsonSigned returns the appender of a signed integer column: a bare
+// number, null for null.
+func jsonSigned[T int8 | int16 | int32 | int64](a signed[T]) func(dst []byte, i int) []byte {
+	return func(dst []byte, i int) []byte {
+		if a.IsNull(i) {
+			return appendNull(dst)
+		}
+		return strconv.AppendInt(dst, int64(a.Value(i)), 10)
+	}
+}
+
+// jsonUnsigned returns the appender of an unsigned integer column: a bare
+// number, null for null. A uint64 above 2^53 is a bare number too, and a
+// client that parses numbers as doubles loses digits.
+func jsonUnsigned[T uint8 | uint16 | uint32 | uint64](a unsigned[T]) func(dst []byte, i int) []byte {
+	return func(dst []byte, i int) []byte {
+		if a.IsNull(i) {
+			return appendNull(dst)
+		}
+		return strconv.AppendUint(dst, uint64(a.Value(i)), 10)
+	}
+}
+
 // jsonCell returns the type word and the appender of column a. The type
 // switch runs once per column, so appending a cell is one call. The word
 // is the Arrow type's name: a symbol column arrives as utf8 and reports
@@ -86,13 +109,22 @@ func appendBase64(dst []byte, b []byte) []byte {
 func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	c := jsonColumn{name: f.Name, kind: f.Type.Name()}
 	switch a := a.(type) {
+	case *array.Int8:
+		c.cell = jsonSigned(a)
+	case *array.Int16:
+		c.cell = jsonSigned(a)
+	case *array.Int32:
+		c.cell = jsonSigned(a)
 	case *array.Int64:
-		c.cell = func(dst []byte, i int) []byte {
-			if a.IsNull(i) {
-				return appendNull(dst)
-			}
-			return strconv.AppendInt(dst, a.Value(i), 10)
-		}
+		c.cell = jsonSigned(a)
+	case *array.Uint8:
+		c.cell = jsonUnsigned(a)
+	case *array.Uint16:
+		c.cell = jsonUnsigned(a)
+	case *array.Uint32:
+		c.cell = jsonUnsigned(a)
+	case *array.Uint64:
+		c.cell = jsonUnsigned(a)
 	case *array.Float64:
 		c.cell = func(dst []byte, i int) []byte {
 			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {

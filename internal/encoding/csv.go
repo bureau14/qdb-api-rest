@@ -22,10 +22,32 @@ import (
 // CSVContentType is the media type of RFC 4180 text.
 const CSVContentType = "text/csv"
 
+// csvSigned returns the writer of a signed integer column: plain text,
+// the empty field for null.
+func csvSigned[T int8 | int16 | int32 | int64](a signed[T]) func(i int) string {
+	return func(i int) string {
+		if a.IsNull(i) {
+			return ""
+		}
+		return strconv.FormatInt(int64(a.Value(i)), 10)
+	}
+}
+
+// csvUnsigned returns the writer of an unsigned integer column: plain
+// text, the empty field for null.
+func csvUnsigned[T uint8 | uint16 | uint32 | uint64](a unsigned[T]) func(i int) string {
+	return func(i int) string {
+		if a.IsNull(i) {
+			return ""
+		}
+		return strconv.FormatUint(uint64(a.Value(i)), 10)
+	}
+}
+
 // csvCell returns the function that writes cell i of column a as CSV
 // text, with the empty field for null. Each type is written the way CSV
-// readers expect: an integer and a shortest round-trip float as plain
-// text, a timestamp in timestampLayout, a string as its own bytes (the
+// readers expect: an integer of any width and a shortest round-trip
+// float as plain text, a timestamp in timestampLayout, a string as its own bytes (the
 // writer quotes what needs quoting), a blob as standard base64. NaN and
 // the infinities become the empty field, because CSV has no null token
 // and NaN is the writer's own null for doubles. The type switch runs
@@ -33,13 +55,22 @@ const CSVContentType = "text/csv"
 // interface costs one string allocation per cell, which is accepted.
 func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 	switch a := a.(type) {
+	case *array.Int8:
+		return csvSigned(a), nil
+	case *array.Int16:
+		return csvSigned(a), nil
+	case *array.Int32:
+		return csvSigned(a), nil
 	case *array.Int64:
-		return func(i int) string {
-			if a.IsNull(i) {
-				return ""
-			}
-			return strconv.FormatInt(a.Value(i), 10)
-		}, nil
+		return csvSigned(a), nil
+	case *array.Uint8:
+		return csvUnsigned(a), nil
+	case *array.Uint16:
+		return csvUnsigned(a), nil
+	case *array.Uint32:
+		return csvUnsigned(a), nil
+	case *array.Uint64:
+		return csvUnsigned(a), nil
 	case *array.Float64:
 		return func(i int) string {
 			if a.IsNull(i) || math.IsNaN(a.Value(i)) || math.IsInf(a.Value(i), 0) {
