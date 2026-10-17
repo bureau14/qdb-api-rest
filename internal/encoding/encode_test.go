@@ -3,10 +3,11 @@
 // encodes that batch in every format of its family, parses the output
 // with the standard library and compares the result with the batch.
 // The fixture's Check proves first that the batch is the table that was
-// written. The other tests need no cluster. TestEdgeCells pins the
-// exact bytes of values the fixture never generates, and the stream
-// tests pin the stream path of every encoder on the same hand-built
-// batch.
+// written. The other tests need no cluster. The scalar property draws
+// batches of the DuckDB scalars in memory and runs them through the
+// same comparison. TestEdgeCells pins the exact bytes of values the
+// fixture never generates, and the stream tests pin the stream path of
+// every encoder on the same hand-built batch.
 package encoding
 
 import (
@@ -16,14 +17,17 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"iter"
 	"math"
+	"math/big"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/decimal128"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"pgregory.net/rapid"
@@ -183,9 +187,54 @@ func parseTimestamp(s string) (int64, error) {
 	return ts.UnixNano(), err
 }
 
+// parseTimeOfDay parses hh:mm:ss.nnnnnnnnn and checks its width: nine
+// fixed fractional digits. The hour may be 24. time.Parse was rejected,
+// because it refuses hour 24.
+func parseTimeOfDay(s string) (int64, error) {
+	if len(s) != len("15:04:05.000000000") || s[2] != ':' || s[5] != ':' || s[8] != '.' {
+		return 0, errors.New("not the fixed nine-digit form")
+	}
+	var nanos int64
+	for _, f := range []struct {
+		digits string
+		unit   int64
+	}{{s[0:2], 3600e9}, {s[3:5], 60e9}, {s[6:8], 1e9}, {s[9:], 1}} {
+		v, err := strconv.ParseUint(f.digits, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		nanos += int64(v) * f.unit
+	}
+	return nanos, nil
+}
+
+// parseDate parses a date in dateLayout as days since the epoch.
+func parseDate(s string) (arrow.Date32, error) {
+	d, err := time.Parse(dateLayout, s)
+	return arrow.Date32(d.Unix() / 86400), err
+}
+
 func parseInt(s string) (int64, error)     { return strconv.ParseInt(s, 10, 64) }
+func parseUint(s string) (uint64, error)   { return strconv.ParseUint(s, 10, 64) }
 func parseFloat(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
 func parseText(s string) (string, error)   { return s, nil }
+
+func parseFloat32(s string) (float32, error) {
+	v, err := strconv.ParseFloat(s, 32)
+	return float32(v), err
+}
+
+// asInt64 reads the values of a signed column of any width as the int64
+// that parseInt returns.
+func asInt64[T int8 | int16 | int32 | int64](a signed[T]) func(int) int64 {
+	return func(i int) int64 { return int64(a.Value(i)) }
+}
+
+// asUint64 reads the values of an unsigned column of any width as the
+// uint64 that parseUint returns.
+func asUint64[T uint8 | uint16 | uint32 | uint64](a unsigned[T]) func(int) uint64 {
+	return func(i int) uint64 { return uint64(a.Value(i)) }
+}
 
 // parsed returns a reader that parses the text of cell i as a V and
 // fails the test when it cannot.
@@ -199,12 +248,26 @@ func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, e
 	}
 }
 
+// wantValid reports whether cell i of a is a value on the wire. A null
+// is not, and neither is a NaN or an infinity of a float column, which
+// every text format writes as null.
+func wantValid(a arrow.Array, i int) bool {
+	switch a := a.(type) {
+	case *array.Float32:
+		v := float64(a.Value(i))
+		return a.IsValid(i) && !math.IsNaN(v) && !math.IsInf(v, 0)
+	case *array.Float64:
+		return a.IsValid(i) && !math.IsNaN(a.Value(i)) && !math.IsInf(a.Value(i), 0)
+	}
+	return a.IsValid(i)
+}
+
 // checkValues compares every valid cell of a parsed column with the
 // value that was encoded.
 func checkValues[V any](t failer, name string, want arrow.Array, value func(int) V, got func(int) V, equal func(V, V) bool) {
 	t.Helper()
 	for i := range want.Len() {
-		if want.IsValid(i) && !equal(got(i), value(i)) {
+		if wantValid(want, i) && !equal(got(i), value(i)) {
 			t.Fatalf("%s row %d: %v on the wire, %v encoded", name, i, got(i), value(i))
 		}
 	}
@@ -227,15 +290,41 @@ func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 		t.Fatalf("%s: %d rows on the wire, %d encoded", f.Name, len(got.cells), want.Len())
 	}
 	for i := range want.Len() {
-		if got.cells[i].valid != want.IsValid(i) {
-			t.Fatalf("%s row %d: valid %v on the wire, %v encoded", f.Name, i, got.cells[i].valid, want.IsValid(i))
+		if got.cells[i].valid != wantValid(want, i) {
+			t.Fatalf("%s row %d: valid %v on the wire, %v encoded", f.Name, i, got.cells[i].valid, wantValid(want, i))
 		}
 	}
 	switch a := want.(type) {
+	case *array.Int8:
+		checkValues(t, f.Name, a, asInt64(a), parsed(t, f.Name, got.cells, parseInt), same[int64])
+	case *array.Int16:
+		checkValues(t, f.Name, a, asInt64(a), parsed(t, f.Name, got.cells, parseInt), same[int64])
+	case *array.Int32:
+		checkValues(t, f.Name, a, asInt64(a), parsed(t, f.Name, got.cells, parseInt), same[int64])
 	case *array.Int64:
 		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseInt), same[int64])
+	case *array.Uint8:
+		checkValues(t, f.Name, a, asUint64(a), parsed(t, f.Name, got.cells, parseUint), same[uint64])
+	case *array.Uint16:
+		checkValues(t, f.Name, a, asUint64(a), parsed(t, f.Name, got.cells, parseUint), same[uint64])
+	case *array.Uint32:
+		checkValues(t, f.Name, a, asUint64(a), parsed(t, f.Name, got.cells, parseUint), same[uint64])
+	case *array.Uint64:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseUint), same[uint64])
+	case *array.Float32:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseFloat32), same[float32])
 	case *array.Float64:
 		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseFloat), same[float64])
+	case *array.Boolean:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, strconv.ParseBool), same[bool])
+	case *array.Decimal128:
+		dt := a.DataType().(*arrow.Decimal128Type)
+		parse := func(s string) (decimal128.Num, error) { return decimal128.FromString(s, dt.Precision, dt.Scale) }
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parse), same[decimal128.Num])
+	case *array.Date32:
+		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseDate), same[arrow.Date32])
+	case *array.Time64:
+		checkValues(t, f.Name, a, timeNanosReader(a), parsed(t, f.Name, got.cells, parseTimeOfDay), same[int64])
 	case *array.Timestamp:
 		checkValues(t, f.Name, a, nanosReader(a), parsed(t, f.Name, got.cells, parseTimestamp), same[int64])
 	case *array.String:
@@ -274,6 +363,110 @@ func TestTextRoundTrip(t *testing.T) {
 		// the wire is compared with the batch and only one comparer, the
 		// fixture's, decides what was written.
 		table.Check(rt, tbl, rec)
+		names := make([]string, rec.NumCols())
+		for i, f := range rec.Schema().Fields() {
+			names[i] = f.Name
+		}
+		checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
+		checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
+		checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
+	})
+}
+
+// drawScalar draws a column of type dt and n rows, about one in eight of
+// them null. Dates run from 0001-01-01 to 9999-12-31, because outside
+// those years dateLayout writes a text no ISO 8601 reader parses, and a
+// client that needs such dates reads them through Arrow. Times run from
+// 00:00:00 to 24:00:00 inclusive, the range DuckDB answers. Floats
+// include NaN and the infinities, so the property pins that every text
+// format writes them as null.
+func drawScalar(t *rapid.T, dt arrow.DataType, n int) arrow.Array {
+	b := array.NewBuilder(memory.DefaultAllocator, dt)
+	defer b.Release()
+	specials := []float64{math.NaN(), math.Inf(1), math.Inf(-1)}
+	for range n {
+		if rapid.IntRange(0, 7).Draw(t, "null") == 0 {
+			b.AppendNull()
+			continue
+		}
+		switch b := b.(type) {
+		case *array.Int8Builder:
+			b.Append(rapid.Int8().Draw(t, "int8"))
+		case *array.Int16Builder:
+			b.Append(rapid.Int16().Draw(t, "int16"))
+		case *array.Int32Builder:
+			b.Append(rapid.Int32().Draw(t, "int32"))
+		case *array.Uint8Builder:
+			b.Append(rapid.Uint8().Draw(t, "uint8"))
+		case *array.Uint16Builder:
+			b.Append(rapid.Uint16().Draw(t, "uint16"))
+		case *array.Uint32Builder:
+			b.Append(rapid.Uint32().Draw(t, "uint32"))
+		case *array.Uint64Builder:
+			b.Append(rapid.Uint64().Draw(t, "uint64"))
+		case *array.Float32Builder:
+			special := rapid.SampledFrom(specials).Draw(t, "special")
+			b.Append(rapid.OneOf(rapid.Float32(), rapid.Just(float32(special))).Draw(t, "float32"))
+		case *array.BooleanBuilder:
+			b.Append(rapid.Bool().Draw(t, "bool"))
+		case *array.Decimal128Builder:
+			// The unscaled value has at most the precision's digits, so it
+			// always fits the column.
+			p := dt.(*arrow.Decimal128Type).Precision
+			v, _ := new(big.Int).SetString(rapid.StringMatching(fmt.Sprintf(`-?[0-9]{1,%d}`, p)).Draw(t, "decimal"), 10)
+			b.Append(decimal128.FromBigInt(v))
+		case *array.Date32Builder:
+			lo := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC).Unix() / 86400
+			hi := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC).Unix() / 86400
+			b.Append(arrow.Date32(rapid.Int64Range(lo, hi).Draw(t, "date32")))
+		case *array.Time64Builder:
+			unit := int64(dt.(*arrow.Time64Type).Unit.Multiplier())
+			b.Append(arrow.Time64(rapid.Int64Range(0, 86400e9/unit).Draw(t, "time64")))
+		default:
+			t.Fatalf("no draw for %s", dt)
+		}
+	}
+	return b.NewArray()
+}
+
+// drawScalarBatch draws one batch with one column per DuckDB scalar the
+// live round trip cannot generate: int8, int16, int32, uint8, uint16,
+// uint32, uint64, float32, one decimal128 of drawn precision and scale,
+// bool, date32, time64[us] and time64[ns]. The caller releases it.
+func drawScalarBatch(t *rapid.T) arrow.RecordBatch {
+	p := rapid.Int32Range(1, 38).Draw(t, "precision")
+	types := []arrow.DataType{
+		arrow.PrimitiveTypes.Int8, arrow.PrimitiveTypes.Int16, arrow.PrimitiveTypes.Int32,
+		arrow.PrimitiveTypes.Uint8, arrow.PrimitiveTypes.Uint16, arrow.PrimitiveTypes.Uint32, arrow.PrimitiveTypes.Uint64,
+		arrow.PrimitiveTypes.Float32,
+		&arrow.Decimal128Type{Precision: p, Scale: rapid.Int32Range(0, p).Draw(t, "scale")},
+		arrow.FixedWidthTypes.Boolean, arrow.FixedWidthTypes.Date32,
+		arrow.FixedWidthTypes.Time64us, arrow.FixedWidthTypes.Time64ns,
+	}
+	n := rapid.IntRange(0, 32).Draw(t, "rows")
+	fields := make([]arrow.Field, len(types))
+	arrays := make([]arrow.Array, len(types))
+	for i, dt := range types {
+		fields[i] = arrow.Field{Name: fmt.Sprintf("c%d", i), Type: dt, Nullable: true}
+		arrays[i] = drawScalar(t, dt, n)
+	}
+	rec := array.NewRecordBatch(arrow.NewSchema(fields, nil), arrays, int64(n))
+	for _, a := range arrays {
+		a.Release()
+	}
+	return rec
+}
+
+// TestScalarsTextRoundTrip checks that the three text encoders write
+// every DuckDB scalar so that the standard library parses it back to the
+// value encoded, nulls included, without a cluster.
+func TestScalarsTextRoundTrip(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// The batch is drawn in memory, because these types reach the
+		// encoders only through DuckDB, and the table fixture writes
+		// QuasarDB tables.
+		rec := drawScalarBatch(rt)
+		defer rec.Release()
 		names := make([]string, rec.NumCols())
 		for i, f := range rec.Schema().Fields() {
 			names[i] = f.Name
