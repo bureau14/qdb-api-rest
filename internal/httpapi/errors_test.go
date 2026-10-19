@@ -158,23 +158,23 @@ func TestErrorRows(t *testing.T) {
 	})
 }
 
-// TestSQLInstanceLimit: on each cluster, with duckdb.max_instances at
+// TestDuckDBInstanceLimit: on each cluster, with duckdb.max_instances at
 // one, the cluster's user's DuckDB call opens the one instance, and a second
 // user's call answers 503 with the eviction tick as its Retry-After. It
 // needs a cluster of its own limit, so it is not a row of TestErrorRows.
-func TestSQLInstanceLimit(t *testing.T) {
+func TestDuckDBInstanceLimit(t *testing.T) {
 	cluster.EachWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
 		// 1. The cluster's user opens the one instance. A string column is
 		//    one the encoders write.
-		if resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
+		if resp := s.post("/api/v2/query", "#sql SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
 			t.Fatalf("first user: status %d: %s", resp.Code, resp.Body.String())
 		}
 		// 2. The cap is taken before a second user's instance opens, so the
 		//    second user needs no credential the cluster accepts, and the
 		//    call answers past the cap on either cluster.
 		other := mint(t, s.tk, "access", qdb.User{Username: "qdbtest_other"}, time.Now().Add(time.Hour))
-		resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
+		resp := s.post("/api/v2/query", "#sql SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
 		if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {
 			t.Fatalf("second user: status %d, Retry-After %q: %s", resp.Code, resp.Header().Get("Retry-After"), resp.Body.String())
 		}

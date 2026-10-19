@@ -177,9 +177,10 @@ This file, Handlers, holds the table reader's.
   The empty read runs on one table only, because an empty read through
   the bulk reader costs about a tenth of a second where a filled one
   costs milliseconds.
-- The DuckDB scalars have one test, `TestSQLScalars` (`sql_test.go`).
-  It posts one row of every scalar the text encoders write to
-  `/api/v2/sql` and checks each column's type word and cell. The round
+- The DuckDB scalars have one test, `TestDuckDBScalars`
+  (`duckdb_test.go`). It posts one row of every scalar the text encoders
+  write behind `#sql` to `/api/v2/query` and checks each column's type
+  word and cell. The instance cap test is `TestDuckDBInstanceLimit`. The round
   trip does not reach these types, because its tables are QuasarDB
   tables.
 - Every error row of every route is one table, `TestErrorRows`

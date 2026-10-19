@@ -1,4 +1,4 @@
-// This file holds the sql endpoint's scalar test. The good path in every
+// This file holds the DuckDB scalar test. The good path in every
 // media type is the round trip (roundtrip_test.go), and the error rows
 // live in errors_test.go.
 package httpapi
@@ -14,12 +14,12 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 )
 
-// TestSQLScalars posts, on each cluster, one row of every DuckDB scalar
-// to /api/v2/sql and checks that the JSON result names each column by its
+// TestDuckDBScalars posts, on each cluster, one row of every DuckDB scalar
+// behind #sql to /api/v2/query and checks that the JSON result names each column by its
 // Arrow type and writes each cell in the encoders' text. It proves that
 // DuckDB answers the types the encoders write, in the words the encoders
 // write them.
-func TestSQLScalars(t *testing.T) {
+func TestDuckDBScalars(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
 
@@ -45,7 +45,7 @@ func TestSQLScalars(t *testing.T) {
 		for i, w := range want {
 			exprs[i] = fmt.Sprintf("%s AS c%d", w.expr, i)
 		}
-		resp := s.post("/api/v2/sql", "SELECT "+strings.Join(exprs, ", "), map[string]string{"Authorization": "Bearer " + s.token})
+		resp := s.post("/api/v2/query", "#sql SELECT "+strings.Join(exprs, ", "), map[string]string{"Authorization": "Bearer " + s.token})
 
 		// 2. The answer is 200 in JSON.
 		if resp.Code != http.StatusOK {
@@ -55,8 +55,8 @@ func TestSQLScalars(t *testing.T) {
 			t.Fatalf("Content-Type = %q", ct)
 		}
 
-		// 3. The sql endpoint streams, so the body is an array of results, here
-		// one result of one row.
+		// 3. The query endpoint streams, so the body is an array of results,
+		// here one result of one row.
 		var body []struct {
 			Columns []struct {
 				Name string
