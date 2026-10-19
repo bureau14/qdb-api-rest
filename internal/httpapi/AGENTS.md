@@ -144,9 +144,10 @@ This file, Handlers, holds the table reader's.
 ## Tests
 
 - The handler tests run through `NewHandler` with a context carrying a
-  discarding logger, a fixture cluster and a keychain. The cluster comes
-  from `qdbtest/cluster`, insecure by default, and `newServerOn` takes
-  the secure one or an unreachable URI. The keychain comes from
+  discarding logger, a fixture cluster and a keychain. `newServer` takes
+  a `cluster.Fixture` and acts as its user, every handler test that
+  dials qdbd runs on both clusters through `cluster.Each`, and
+  `newServerOn` takes an unreachable URI. The keychain comes from
   `config.Default().Auth`, which is ephemeral and pays no argon2id cost.
   The query tests mint their token directly, and only the login tests go
   through the login. The fixture keeps its `*auth.Tokens` so a test mints
@@ -179,5 +180,7 @@ This file, Handlers, holds the table reader's.
 - Every error row of every route is one table, `TestErrorRows`
   (`errors_test.go`), where a row is a request, its status, its
   challenge and a problem body. A new route's rows join the table. The
+  secure subtest adds one row per data route for an anonymous token,
+  which the secure cluster refuses, answered 401 `invalid_token`. The
   login verdicts, the bearer edge, the codings and the DuckDB instance cap keep their own tests, because they need the secure cluster, a fixed clock, a decompressor or a cluster of their own limit.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.

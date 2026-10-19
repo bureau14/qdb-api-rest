@@ -104,6 +104,15 @@ decisions are in `docs/adr/`.
   because qdb-duck pools its own qdbd sessions. On an insecure cluster
   every instance attaches anonymously. The result is the lent
   `Batches`, as a table read's is.
+- On a secure cluster, a dial that fails other than by an unreachable
+  cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
+  or the classification of a failed DuckDB attach dialed. The binding's
+  code for a refused handshake is `ErrInvalidReply`, which also means a
+  confused protocol, so the classification belongs to the dial alone.
+  The refusal is not retried, and it is an answer to the breaker. The
+  data routes answer it 401 with the `invalid_token` challenge
+  (ADR-0010), and the login answers it 401 without a challenge
+  (ADR-0011).
 - The neutral table types (`TableBatch`, `SchemaOf`) live in
   `internal/model`. `internal/encoding` and `internal/qdb` both import
   it, and it imports neither. Open `internal/model/AGENTS.md` before
@@ -185,13 +194,21 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
 - The tests are not in the business of testing the C API, which offers
   no way to mock an error or a stall. Never add a listener that stalls
   `connect`, and never mock the binding.
-- The `internal/qdb` and `internal/httpapi` tests dial a live qdbd (the
-  pair from `scripts/tests/setup/start-services.sh`, insecure `2836` and
-  secure `2838`), so a bare `go test ./...` needs those services up. The
-  fixture has one home, `internal/qdbtest`: the URIs, the key files, the
-  secure cluster's test user (`SecureUser`), and `Require`, which fails
-  fast with the start hint when a port does not answer. Nothing is
-  skipped under `-short`.
+- The tests that dial a live qdbd use the pair from
+  `scripts/tests/setup/start-services.sh`, insecure `2836` and secure
+  `2838`, so a bare `go test ./...` needs those services up. The fixture
+  has one home, `internal/qdbtest`. `qdbtest.Cluster` describes each
+  cluster (its URI, its key files and the user a test acts as),
+  `Clusters` lists both, `Config` binds a configuration to one, and
+  `Require` fails fast with the start hint when a port does not answer.
+  Nothing is skipped under `-short`.
+- Every test that dials qdbd runs once per cluster, as subtests named
+  `insecure` and `secure`, through `cluster.Each`, or over
+  `qdbtest.Clusters` inside `package qdb`, which cannot import the
+  cluster fixture. A test acts as the anonymous user on the insecure
+  cluster and as the test user on the secure one. `TestLoginVerdicts`
+  runs on the secure cluster alone, because the insecure cluster
+  accepts any secret, so its refusal has no insecure twin.
 - A test that needs rows draws a table with `internal/qdbtest/table`
   (`Generate`, then `Create` on a `*qdb.Cluster`). The table holds its
   rows as one record batch in the binding's Arrow types and pushes it
@@ -225,8 +242,12 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
 - qdbd's session pool is finite and exhaustion is punished. Past its
   limit the test cluster logs `out of free sessions` and refuses new
   ones for fifteen minutes. Run the packages serially
-  (`go test -p 1 ./...`), and bound the sessions every test holds open
-  at every step. A close in flight counts, because a handle holds its
+  (`go test -p 1 ./...`), as the CI test step does, because every
+  package that dials qdbd shares the two clusters, and one test's
+  effect on a cluster can fail a test in another package. Running the
+  tests that dial no qdbd in parallel was rejected, because
+  orchestrating the split is not worth it (owner, 2026-10-19). Bound
+  the sessions every test holds open at every step. A close in flight counts, because a handle holds its
   qdbd sessions until `qdb_close` returns.
 - Three qdbd defects are filed with the QuasarDB R&D team. This project
   does not fix them, and the tests carry no workaround for them. They
