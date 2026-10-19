@@ -119,7 +119,9 @@ func Clusters(t testing.TB) []Cluster {
 
 // Config is the default configuration bound to c: its URI, and on the
 // secure cluster its public key file and the REST API's own user. It
-// fails t with the start recipe when c does not answer.
+// fails t with the start recipe when c does not answer. The cluster
+// fixture and the package qdb tests both build their configurations
+// here, so the binding rule has one copy.
 func (c Cluster) Config(t testing.TB) config.Config {
 	t.Helper()
 	Require(t, c.URI)
