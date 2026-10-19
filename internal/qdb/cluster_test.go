@@ -179,9 +179,9 @@ func TestProbeAsOwnUser(t *testing.T) {
 }
 
 // TestAuthenticate: the secure cluster accepts its user and refuses a
-// wrong secret. The refusal is an answer, so it leaves the breaker
-// closed and creates no pool. The anonymous user passes the insecure
-// cluster.
+// wrong secret with ErrCredentialsRefused. The refusal is an answer, so
+// it leaves the breaker closed and creates no pool. The anonymous user
+// passes the insecure cluster.
 func TestAuthenticate(t *testing.T) {
 	c := New(qdbtest.Secure(t).Config(t), nil)
 	defer closeCluster(t, c)
@@ -192,7 +192,7 @@ func TestAuthenticate(t *testing.T) {
 		t.Fatalf("the fixture user refused: %v", err)
 	}
 	err := c.Authenticate(ctx, User{Username: u.Username, SecretKey: "bm90LWEta2V5"})
-	if err == nil || qdbapi.IsClusterUnavailable(err) {
+	if !errors.Is(err, ErrCredentialsRefused) || qdbapi.IsClusterUnavailable(err) {
 		t.Fatalf("want a refusal from a reachable cluster, got %v", err)
 	}
 	if got := c.Stats(); got.Users != 0 {

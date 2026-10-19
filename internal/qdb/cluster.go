@@ -153,9 +153,19 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 	return o
 }
 
+// ErrCredentialsRefused is the error of a dial the secure cluster
+// refused: it did not accept the user's name and secret, or the anonymous
+// user. The binding's error is wrapped, and its message stays in the
+// chain. The binding answers a refused handshake with ErrInvalidReply,
+// which it also uses for a confused protocol, so the code alone cannot
+// tell the two apart. The classification covers a dial only, so an
+// ErrInvalidReply on a push (sc-19944) keeps its own answer.
+var ErrCredentialsRefused = errors.New("qdb: the cluster refused the credentials")
+
 // connect dials one session for u. A budgeted dial takes a budget unit
 // first and holds it until the session's close returns. A dial that fails
-// gives its unit back at once.
+// gives its unit back at once. On a secure cluster, a dial that fails
+// other than by an unreachable cluster is ErrCredentialsRefused.
 func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
 	if budgeted {
 		if err := c.budget.acquire(ctx); err != nil {
@@ -166,6 +176,12 @@ func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qd
 	if err != nil {
 		if budgeted {
 			c.budget.release()
+		}
+		// An insecure cluster checks no credential, so only a secure
+		// cluster's failed dial is a refusal. The login and the data
+		// routes see one classification, because both dial through here.
+		if c.Secured() && !qdbapi.IsClusterUnavailable(err) {
+			err = fmt.Errorf("%w: %w", ErrCredentialsRefused, err)
 		}
 		return qdbapi.Session{}, err
 	}
@@ -327,10 +343,10 @@ func (c *Cluster) feedBreaker(err error) {
 // IsBadSession and Lease.Done. This layer decides two things, both per
 // cluster. The first is the breaker, which is fed only by the errors
 // that are evidence about the cluster (IsClusterUnavailable). The second
-// is the opt-in retry of an idempotent read after a retryable failure. A
-// retry after a bad session runs on a fresh session, because the pool
-// discarded the old one. A retry after any other retryable failure may
-// run on the same session again.
+// is the opt-in retry of an idempotent read after a retryable failure,
+// which a refused credential never gets. A retry after a bad session runs
+// on a fresh session, because the pool discarded the old one. A retry
+// after any other retryable failure may run on the same session again.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -347,7 +363,10 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 			return err
 		}
 		c.feedBreaker(err)
-		if !cc.retry || !qdbapi.IsRetryable(err) {
+		// A refusal is not retried although the binding calls
+		// ErrInvalidReply retryable, because a second dial with the same
+		// credentials is refused the same way.
+		if !cc.retry || !qdbapi.IsRetryable(err) || errors.Is(err, ErrCredentialsRefused) {
 			return err
 		}
 		cc.retry = false
@@ -378,8 +397,8 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOptio
 // so a lease could only confirm those. The breaker gates the dial and
 // hears of its outcome. The budget does not count the dial, because the
 // session lives for one handshake and closes on its own goroutine. A
-// refused dial is an answer and the caller's error. An unreachable
-// cluster is IsClusterUnavailable.
+// refused dial is an answer and the caller's error, ErrCredentialsRefused
+// on a secure cluster. An unreachable cluster is IsClusterUnavailable.
 func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 	remaining, ok := c.breaker.allow()
 	if !ok {
