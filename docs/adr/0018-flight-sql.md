@@ -95,23 +95,24 @@ client. The owner made the decisions below on 2026-10-13.
 
 ### Tests
 
-14. **The tests are Go property tests and one JDBC smoke test.** The
+14. **The tests are Go property tests and two driver smoke tests.** The
     format-equivalence property gains a Flight SQL client from arrow-go
     and requires the decoded Flight result to equal the HTTP formats,
     for the native engine and for the `#sql` engine against
     `/api/v2/sql`. A dispatch property generates prefixes and
-    whitespace around them. A smoke test drives the built binary
-    through Arrow's official Flight SQL JDBC driver, because customers
-    are likely to connect through that driver. `docs/e2e.md`, The
-    Flight SQL JDBC smoke test, specifies it. Flight has no step in the
+    whitespace around them. Two smoke tests drive the built binary
+    through Arrow's official Flight SQL drivers, because customers are
+    likely to connect through both: ADBC, tested from Go, and JDBC,
+    tested from Java. `docs/e2e.md`, The Flight SQL smoke tests,
+    specifies them. Flight has no step in the
     round trip and no stress case.
 
 ## Consequences
 
 - M5 starts with this ADR and ends when the listener, the dispatcher
   on both planes, Handshake and bearer auth, the statement and catalog
-  commands, `GetSqlInfo`, the property tests and the JDBC smoke test
-  are landed and green in Buildkite on every platform the smoke test
+  commands, `GetSqlInfo`, the property tests and the two smoke tests
+  are landed and green in Buildkite on every platform each smoke test
   runs on.
 - A `#sql` body on `POST /api/v2/query` runs on DuckDB from M5 on, so
   the HTTP query handler moves to `EncodeStream` and the dispatcher.
@@ -119,7 +120,8 @@ client. The owner made the decisions below on 2026-10-13.
   another instance answered, because the ticket is the query.
 - A long Flight job outlives `auth.access_ttl` only by reconnecting.
   The Python API as the primary client reconnects itself.
-- `vendor/` grows by grpc-go, protobuf and arrow-go's flight packages.
+- `vendor/` grows by grpc-go, protobuf, arrow-go's flight packages and
+  arrow-adbc's Go Flight SQL driver.
 - The old documentation's `tls_port: 40493` samples are corrected in
   `qdb-documentation` during this milestone.
 - `docs/e2e.md` no longer defers a Flight question to this milestone's
@@ -136,5 +138,5 @@ client. The owner made the decisions below on 2026-10-13.
 | A refresh token accepted on the Flight plane           | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise |
 | A `DoAction` refresh on the Flight port                | more surface before a problem is observed                                                                     |
 | Catalog commands deferred to the exploration milestone | drivers call `GetTables` at connect, and the table list core is small                                         |
-| An e2e Flight step through an `e2etool` subcommand     | the property test drives arrow-go's client already, and the e2e question is whether a stock driver works      |
+| An e2e Flight step through arrow-go's client           | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work    |
 | A plaintext Flight listener                            | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                         |

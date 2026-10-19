@@ -65,9 +65,9 @@ restated here, so that nothing cites a superseded document:
   each later milestone are written when it starts.
 - The brief's Testing doctrine has three layers: Go tests (property
   tests included), the e2e harness (the round trip and the Flight SQL
-  JDBC smoke test), and the stress. Nothing in the repository answers
+  smoke tests), and the stress. Nothing in the repository answers
   a question whose answer is a number.
-- `docs/e2e.md` describes the round trip, the JDBC smoke test, the
+- `docs/e2e.md` describes the round trip, the Flight SQL smoke tests, the
   stress definition and the service model only. The dataset, the v1
   goldens and the old server leave it.
 - ADR-0014's references to `make verify-dataset`, to the v1 suite and
