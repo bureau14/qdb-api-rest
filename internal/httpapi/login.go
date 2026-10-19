@@ -86,9 +86,15 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The dial is the credential check. Only its verdict reaches the
-	// wire.
+	// wire. A refused credential answers 401 without a challenge before
+	// writeClusterError runs, because the credentials were the body and
+	// no bearer was in play.
 	u := req.user()
 	if err := qdb.ClusterFrom(ctx).Authenticate(ctx, u); err != nil {
+		if errors.Is(err, qdb.ErrCredentialsRefused) && ctx.Err() == nil {
+			writeProblem(w, http.StatusUnauthorized, err.Error())
+			return
+		}
 		writeClusterError(ctx, w, err, http.StatusUnauthorized)
 		return
 	}
@@ -216,7 +222,8 @@ type sessionServer struct {
 
 // handleSession answers the caller's session from the claims, the
 // cluster it fronts, and the build version. It makes no cluster call,
-// so it is cheap enough to poll.
+// so it is cheap enough to poll. It reports what the token says, so a
+// token whose credentials the cluster refuses still reads its session.
 func handleSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	c := auth.ClaimsFrom(ctx)

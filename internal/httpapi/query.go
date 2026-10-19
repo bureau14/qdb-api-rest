@@ -69,17 +69,26 @@ func retryAfter(d time.Duration) string {
 }
 
 // writeClusterError maps a failed cluster call onto the wire by who
-// failed. An open breaker or a full DuckDB instance cap is 503 with
-// Retry-After, and an unreachable cluster is 503 without it. Anything
-// the cluster itself answered is the caller's fault and gets the status
-// in answered (400 for a query, 401 for a login). A caller whose
-// context has ended gets no response at all.
+// failed. A credential the secure cluster refused is 401 with the
+// invalid_token challenge, so the client logs in again. An open breaker
+// or a full DuckDB instance cap is 503 with Retry-After, and an
+// unreachable cluster is 503 without it. Anything else the cluster
+// answered is the caller's fault and gets the status in answered (400
+// for a query, 401 for a login). A caller whose context has ended gets no
+// response at all.
 func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
 	var full *qdb.InstanceLimitError
 	switch {
 	case ctx.Err() != nil:
 		observe.Logger(ctx).DebugContext(ctx, "request abandoned by the caller", observe.Err(err))
+	// The token's credentials are what failed, so the answer is the
+	// bearer edge's own for an invalid token. 403 was rejected, because
+	// the cluster never accepted the identity. The case comes before the
+	// unreachable one, because a refused attach would otherwise count as
+	// an unreachable cluster.
+	case errors.Is(err, qdb.ErrCredentialsRefused):
+		unauthorized(w, true, err.Error())
 	case errors.As(err, &open):
 		w.Header().Set("Retry-After", retryAfter(open.RetryAfter))
 		writeProblem(w, http.StatusServiceUnavailable, err.Error())
