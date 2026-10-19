@@ -9,7 +9,7 @@ ADR-0017.
   instance sees every catalog the instance attached, so an instance
   serves one user, and no query runs under a shared credential.
   `internal/qdb` owns the instances. It holds each one on the user's
-  pool state, opens it on the user's first sql call and closes it with
+  pool state, opens it on the user's first DuckDB call and closes it with
   the pool. The package knows nothing of `internal/qdb`.
 - The credentials reach qdb-duck only through a temporary DuckDB
   secret, and the attach names the secret. `secretOf` says why the

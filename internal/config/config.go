@@ -609,7 +609,7 @@ func validateDuckDB(d DuckDB) error {
 	if d.MaxSpillSize < 0 {
 		return fmt.Errorf("duckdb.max_spill_size must not be negative, got %d", d.MaxSpillSize)
 	}
-	// Zero instances would answer 503 to every sql call, and nothing
+	// Zero instances would answer 503 to every DuckDB call, and nothing
 	// would say why until a request came in.
 	if d.MaxInstances < 1 {
 		return fmt.Errorf("duckdb.max_instances must be at least 1, got %d", d.MaxInstances)

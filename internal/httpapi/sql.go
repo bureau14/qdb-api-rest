@@ -39,7 +39,7 @@ func handleSQL(w http.ResponseWriter, r *http.Request) {
 	cw := &countingWriter{w: w}
 	// 2. the query
 	var streamErr error
-	err := qdb.ClusterFrom(ctx).SQL(ctx, caller(r), string(q), func(batches qdb.Batches) error {
+	err := qdb.ClusterFrom(ctx).Duck(ctx, caller(r), string(q), func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
 		streamErr = enc.EncodeStream(ctx, cw, batches)
 		return streamErr

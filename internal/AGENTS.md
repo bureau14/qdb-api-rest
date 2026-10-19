@@ -92,14 +92,14 @@ decisions are in `docs/adr/`.
   `fast` and `transactional` are visible on both paths when the push
   returns. No format is QuasarDB's. The package's story is the lease,
   the type map and the push.
-- A sql call runs DuckDB SQL on the caller's own DuckDB instance
-  (`Cluster.SQL`, ADR-0017). The instance lives on the user's pool
-  state, opens on the user's first sql call and counts against
+- A DuckDB call runs DuckDB SQL on the caller's own DuckDB instance
+  (`Cluster.Duck`, ADR-0017). The instance lives on the user's pool
+  state, opens on the user's first DuckDB call and counts against
   `duckdb.max_instances` from before its open until its close returns.
   Past the cap the call is `InstanceLimitError`, whose `RetryAfter` is
-  the eviction tick. A sql call is use of the pool for as long as it
+  the eviction tick. A DuckDB call is use of the pool for as long as it
   runs, and an idle instance does not keep a pool, so the instance
-  closes with its pool after `pool.idle_timeout`. A sql call is never
+  closes with its pool after `pool.idle_timeout`. A DuckDB call is never
   retried, does not feed the breaker, and takes no unit of the budget,
   because qdb-duck pools its own qdbd sessions. On an insecure cluster
   every instance attaches anonymously. The result is the lent

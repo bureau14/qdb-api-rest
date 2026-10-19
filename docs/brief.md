@@ -486,7 +486,7 @@ FreeBSD release is expected.
 credentials at `ATTACH` time, and DuckDB gives every connection of an
 instance the same view of every attached catalog, so users cannot
 share one instance. The instance is a field of the user's pool state
-in `internal/qdb`, opened lazily on the user's first sql call, attached
+in `internal/qdb`, opened lazily on the user's first DuckDB call, attached
 with the user's credentials from the token and the cluster public key
 from the config, and closed when the user pool is evicted. Anonymous is
 one user. Each request opens one DuckDB connection on the instance and

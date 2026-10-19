@@ -159,7 +159,7 @@ func TestErrorRows(t *testing.T) {
 }
 
 // TestSQLInstanceLimit: on each cluster, with duckdb.max_instances at
-// one, the cluster's user's sql call opens the one instance, and a second
+// one, the cluster's user's DuckDB call opens the one instance, and a second
 // user's call answers 503 with the eviction tick as its Retry-After. It
 // needs a cluster of its own limit, so it is not a row of TestErrorRows.
 func TestSQLInstanceLimit(t *testing.T) {

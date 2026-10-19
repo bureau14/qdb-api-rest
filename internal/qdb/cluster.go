@@ -22,7 +22,7 @@ import (
 const evictInterval = 10 * time.Second
 
 // userPool is one user's bounded set of sessions, the user's DuckDB
-// instance once a sql call has opened it, the connections open on that
+// instance once a DuckDB call has opened it, the connections open on that
 // instance, and the time at which the pool was last found holding none of
 // these, for LRU eviction.
 type userPool struct {
@@ -32,8 +32,8 @@ type userPool struct {
 	// so that two first calls of one user open one instance and other
 	// users are not held.
 	duckMu sync.Mutex
-	duck   *olap.Instance // nil until the user's first sql call; guarded by duckMu
-	duckIn int            // sql calls on duck; guarded by Cluster.mu
+	duck   *olap.Instance // nil until the user's first DuckDB call; guarded by duckMu
+	duckIn int            // DuckDB calls on duck; guarded by Cluster.mu
 }
 
 // Cluster binds this process to one configured cluster: the dial options,
@@ -445,7 +445,7 @@ func (c *Cluster) Probe(ctx context.Context) error {
 	return qerr
 }
 
-// InstanceLimitError is the error of a sql call that would open a DuckDB
+// InstanceLimitError is the error of a DuckDB call that would open a DuckDB
 // instance past duckdb.max_instances. RetryAfter is the eviction tick,
 // the soonest an idle instance can close. A configurable value was
 // rejected as one more knob. The HTTP layer maps it to 503
@@ -529,7 +529,7 @@ func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.I
 	//    one direct dial as u asks the cluster. A refused dial replaces the
 	//    attach error, and any other outcome keeps olap.ErrAttach and its
 	//    503. The dial runs on this failure path only. It goes through
-	//    connect and not Authenticate, because a sql call does not feed the
+	//    connect and not Authenticate, because a DuckDB call does not feed the
 	//    breaker. Refusing an empty username in credentialsOf was rejected,
 	//    because it misses a user removed after login.
 	if errors.Is(err, olap.ErrAttach) && c.Secured() {
@@ -570,15 +570,16 @@ func (up *userPool) closeInstance(c *Cluster) {
 	c.releaseInstance()
 }
 
-// SQL runs q on DuckDB as u and hands its batches to sink, on a connection
-// of u's instance that closes when sink returns. An error before sink runs
-// is the instance cap (*InstanceLimitError), a refused credential on a
-// secure cluster (ErrCredentialsRefused), the attach (olap.ErrAttach,
-// which IsClusterUnavailable reports) or DuckDB's. The error of sink is
-// returned unchanged. A sql call is never retried and does not feed the
-// breaker. The budget does not count it, because qdb-duck pools its own
-// qdbd sessions.
-func (c *Cluster) SQL(ctx context.Context, u User, q string, sink func(Batches) error) error {
+// Duck runs q, DuckDB SQL, as u on u's own DuckDB instance and hands its
+// batches to sink, on a connection of the instance that closes when sink
+// returns. An error before sink runs is the instance cap
+// (*InstanceLimitError), a refused credential on a secure cluster
+// (ErrCredentialsRefused), the attach (olap.ErrAttach, which
+// IsClusterUnavailable reports) or DuckDB's. The error of sink is returned
+// unchanged. A DuckDB call is never retried and does not feed the breaker.
+// The budget does not count it, because qdb-duck pools its own qdbd
+// sessions.
+func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
 	// The call counts as use of u's pool from before the instance opens
 	// until after sink returns, on every path, so eviction never closes
 	// an instance that a call is opening or querying:
@@ -630,7 +631,7 @@ func (c *Cluster) evict() {
 // A later pass past idle_timeout takes the pool. A pool that holds
 // anything again loses the stamp. A pool's own reaper closes its idle
 // sessions, so a pool reads as empty within one reap tick of its last
-// session expiring. A sql call on the pool's instance is use of the pool.
+// session expiring. A DuckDB call on the pool's instance is use of the pool.
 // An idle instance does not keep a pool, so the instance closes with its
 // pool after idle_timeout. A separate idle timeout for instances was
 // rejected as one more knob.

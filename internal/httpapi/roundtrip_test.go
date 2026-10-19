@@ -180,7 +180,7 @@ func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	err := s.c.SQL(context.Background(), s.user, q, func(batches qdb.Batches) error {
+	err := s.c.Duck(context.Background(), s.user, q, func(batches qdb.Batches) error {
 		return e.EncodeStream(context.Background(), &buf, batches)
 	})
 	if err != nil {
@@ -194,7 +194,7 @@ func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
 // the native read answers. The fixture's tables fit one batch.
 func (s server) checkSQL(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	err := s.c.SQL(context.Background(), s.user, tbl.SelectSQL(), func(batches qdb.Batches) error {
+	err := s.c.Duck(context.Background(), s.user, tbl.SelectSQL(), func(batches qdb.Batches) error {
 		for rec, err := range batches {
 			if err != nil {
 				return err
