@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-17
+Last updated: 2026-10-19
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -41,8 +41,9 @@ Flight server, Handshake and bearer auth, `CommandStatementQuery` to
 commands on a table list core in `internal/qdb`, the rest of the
 surface answering `UNIMPLEMENTED`, the format-equivalence property
 extended with a Flight SQL client for both engines and a dispatch
-property over generated prefixes, green in Buildkite on all eight
-platforms, and the `tls_port` sample configs corrected in
+property over generated prefixes, the smoke test through Arrow's Flight
+SQL JDBC driver (`docs/e2e.md`), green in Buildkite on all eight
+platforms (FreeBSD may drop out of the smoke test), and the `tls_port` sample configs corrected in
 `qdb-documentation`.
 
 Handoff to M6 and M7:
@@ -58,6 +59,11 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-19 -- M5 gains a smoke test through Arrow's Flight SQL JDBC driver
+
+- Owner decision; ADR-0018, Decision 14, edited in place, and
+  `docs/e2e.md`, The Flight SQL JDBC smoke test.
 
 ## 2026-10-17 -- the text encoders write every DuckDB scalar; duckdb-scalars-plan.md deleted
 
