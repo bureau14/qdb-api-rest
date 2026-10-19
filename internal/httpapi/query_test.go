@@ -100,9 +100,17 @@ func TestQueryCompressed(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
 		rapid.Check(t, func(rt *rapid.T) {
+			// 1. A generated table, created as the cluster's user.
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, s.c, s.user, tbl)
+			// 2. The expected body: the same query run on the cluster
+			//    directly and written by the JSON encoder. The requests
+			//    below send no Accept header, so JSON is what the endpoint
+			//    answers, and once decompressed its body must be these
+			//    bytes.
 			want := s.direct(rt, encoding.JSON{}, tbl.Select())
+			// 3. Each coding answers 200, labels the body with its coding,
+			//    and decompresses to the expected body.
 			for _, c := range []coding{identityCoding, gzipCoding, zstdCoding} {
 				resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept-Encoding": string(c)})
 				if resp.Code != http.StatusOK {
