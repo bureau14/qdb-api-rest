@@ -21,8 +21,6 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
-	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -60,40 +58,23 @@ func open(t *testing.T, c olap.Credentials) *olap.Instance {
 	return in
 }
 
-// fixture is one cluster of the test services: a binding to create
-// tables through, the user they are created as, and the credentials an
-// instance attaches with as that user.
-type fixture struct {
-	cluster *qdb.Cluster
-	user    qdb.User
-	creds   olap.Credentials
-}
-
-func insecure(t *testing.T) fixture {
+// credentialsOf is what an instance attaches with as f's user: the host
+// and port of f's URI, and on the secure cluster the user's credentials
+// and the cluster public key.
+func credentialsOf(t *testing.T, f cluster.Fixture) olap.Credentials {
 	t.Helper()
-	c := cluster.NewInsecure(t)
-	host, port := hostPort(t, qdbtest.InsecureURI)
-	return fixture{cluster: c, creds: olap.Credentials{Host: host, Port: port}}
-}
-
-func secure(t *testing.T) fixture {
-	t.Helper()
-	c := cluster.NewSecure(t)
-	host, port := hostPort(t, qdbtest.SecureURI)
-	name, key := qdbtest.SecureUser(t)
-	pub, err := os.ReadFile(qdbtest.ClusterPublicKeyFile())
+	host, port := hostPort(t, f.Spec.URI)
+	creds := olap.Credentials{Host: host, Port: port}
+	if !f.Spec.Secured {
+		return creds
+	}
+	pub, err := os.ReadFile(f.Spec.PublicKeyFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{
-		cluster: c,
-		user:    qdb.User{Username: name, SecretKey: key},
-		creds: olap.Credentials{
-			Host: host, Port: port,
-			Username: name, SecretKey: key,
-			ClusterPublicKey: strings.TrimSpace(string(pub)),
-		},
-	}
+	creds.Username, creds.SecretKey = f.User.Username, f.User.SecretKey
+	creds.ClusterPublicKey = strings.TrimSpace(string(pub))
+	return creds
 }
 
 // TestQueryReadsGeneratedTable: on each cluster, a generated table read
@@ -104,42 +85,39 @@ func TestQueryReadsGeneratedTable(t *testing.T) {
 	// 1. The insecure cluster runs as the anonymous user and the secure
 	//    one as its test user, so the secure attach proves the secret's
 	//    credentials.
-	for name, fix := range map[string]func(*testing.T) fixture{"insecure": insecure, "secure": secure} {
-		t.Run(name, func(t *testing.T) {
-			f := fix(t)
-			// 2. One instance serves every iteration, because qdb-duck
-			//    holds up to 100 qdbd sessions per attach and the test
-			//    cluster punishes exhaustion.
-			in := open(t, f.creds)
-			rapid.Check(t, func(rt *rapid.T) {
-				// 3. A generated table read back in $timestamp order. Its
-				//    rows are few enough to fit in one DuckDB vector, so
-				//    the result is one batch.
-				tbl := table.Generate(rt)
-				table.CreateAs(rt, f.cluster, f.user, tbl)
-				err := in.Query(context.Background(), tbl.SelectSQL(), func(seq iter.Seq2[arrow.RecordBatch, error]) error {
-					for rec, err := range seq {
-						if err != nil {
-							return err
-						}
-						// 4. table.Check compares the batch with the rows
-						//    written.
-						table.Check(rt, tbl, rec)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		// 2. One instance serves every iteration, because qdb-duck
+		//    holds up to 100 qdbd sessions per attach and the test
+		//    cluster punishes exhaustion.
+		in := open(t, credentialsOf(t, f))
+		rapid.Check(t, func(rt *rapid.T) {
+			// 3. A generated table read back in $timestamp order. Its
+			//    rows are few enough to fit in one DuckDB vector, so
+			//    the result is one batch.
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+			err := in.Query(context.Background(), tbl.SelectSQL(), func(seq iter.Seq2[arrow.RecordBatch, error]) error {
+				for rec, err := range seq {
+					if err != nil {
+						return err
 					}
-					return nil
-				})
-				if err != nil {
-					rt.Fatal(err)
+					// 4. table.Check compares the batch with the rows
+					//    written.
+					table.Check(rt, tbl, rec)
 				}
+				return nil
 			})
-			// 5. A parse error arrives from Query, and the sink never
-			//    runs.
-			err := in.Query(context.Background(), "SELEC", func(iter.Seq2[arrow.RecordBatch, error]) error {
-				return errors.New("sink ran")
-			})
-			if err == nil || !strings.Contains(err.Error(), "Parser Error") {
-				t.Fatalf("parse error = %v", err)
+			if err != nil {
+				rt.Fatal(err)
 			}
 		})
-	}
+		// 5. A parse error arrives from Query, and the sink never
+		//    runs.
+		err := in.Query(context.Background(), "SELEC", func(iter.Seq2[arrow.RecordBatch, error]) error {
+			return errors.New("sink ran")
+		})
+		if err == nil || !strings.Contains(err.Error(), "Parser Error") {
+			t.Fatalf("parse error = %v", err)
+		}
+	})
 }
