@@ -183,9 +183,9 @@ compare_csv() {
 }
 
 # check_response <out_dir> <name> <format> <media_type> <coding> <table> <csv> <csv_is>:
-# the assertions the read, the query and the sql read share once their
+# the assertions the read, the query and the DuckDB read share once their
 # request answered 200. <csv_is> is raw for the read and tool for the
-# query and the sql read (compare_csv). content-type equals the format's media type exactly,
+# query and the DuckDB read (compare_csv). content-type equals the format's media type exactly,
 # with no charset, as the in-process round trip asserts it, and
 # content-encoding equals the coding and is absent for identity. Nothing
 # else in the headers is read. A gzip body is decompressed through
@@ -245,21 +245,22 @@ query_back() {
     check_response "$out" "$name" "$format" "$type" "$coding" "$table" "$csv" tool
 }
 
-# sql_back <out_dir> <url> <token> <table> <format> <media_type> <coding> <csv>:
-# POST /api/v2/sql with SELECT '<table>' AS "$table", * FROM qdb.<table>
-# ORDER BY "$timestamp" as the text/plain body, checked through
-# check_response like the query, every format decoded through the tool.
-# qdb-duck's scan answers no $table column, and the tool routes rows by
-# it, so the select names the table as a constant.
-sql_back() {
+# duckdb_back <out_dir> <url> <token> <table> <format> <media_type> <coding> <csv>:
+# POST /api/v2/query with #sql SELECT '<table>' AS "$table", * FROM
+# qdb.<table> ORDER BY "$timestamp" as the text/plain body, so the select
+# runs on DuckDB, checked through check_response like the query, every
+# format decoded through the tool. qdb-duck's scan answers no $table
+# column, and the tool routes rows by it, so the select names the table
+# as a constant.
+duckdb_back() {
     local out="$1" url="$2" token="$3" table="$4" format="$5" type="$6" coding="$7" csv="$8"
-    local name="$table.sql.$format.$coding" status
+    local name="$table.duckdb.$format.$coding" status
     local -a enc=()
     while IFS= read -r arg; do enc+=("$arg"); done < <(accept_encoding "$coding")
     status=$(request "$out" "$name" -X POST -H "Authorization: Bearer $token" -H "Accept: $type" \
         -H 'Content-Type: text/plain' \
-        --data-binary "SELECT '$table' AS \"\$table\", * FROM qdb.$table ORDER BY \"\$timestamp\"" \
-        "${enc[@]+"${enc[@]}"}" "$url/api/v2/sql")
+        --data-binary "#sql SELECT '$table' AS \"\$table\", * FROM qdb.$table ORDER BY \"\$timestamp\"" \
+        "${enc[@]+"${enc[@]}"}" "$url/api/v2/query")
     expect 200 "$status" "$out" "$name" || return 1
     check_response "$out" "$name" "$format" "$type" "$coding" "$table" "$csv" tool
 }
@@ -295,10 +296,10 @@ run_cluster() {
             for coding in "${CODINGS[@]}"; do
                 read_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
                 query_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
-                sql_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
+                duckdb_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
             done
         done
-        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through sql back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
+        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
     done
 }
 
