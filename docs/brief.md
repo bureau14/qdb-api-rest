@@ -813,6 +813,7 @@ internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
 internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the v1 wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
+internal/query/        one query string to the engine its #sql prefix names (ADR-0018)
 internal/observe/      metrics, logging setup
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)

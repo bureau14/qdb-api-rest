@@ -104,6 +104,11 @@ decisions are in `docs/adr/`.
   because qdb-duck pools its own qdbd sessions. On an insecure cluster
   every instance attaches anonymously. The result is the lent
   `Batches`, as a table read's is.
+- A query string reaches an engine through `query.Run` (`internal/query`),
+  which alone recognizes the `#sql` prefix (ADR-0018). The HTTP query
+  route calls it, and the Flight server will. A native result reaches
+  the sink as one step, and `Run` releases the batch after the sink
+  returns, so a sink that never pulls the step leaks nothing.
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
   or the classification of a failed DuckDB attach dialed. The
