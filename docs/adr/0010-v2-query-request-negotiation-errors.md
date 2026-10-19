@@ -54,20 +54,24 @@ so a change after release is a protocol change.
    meshes act on it. A run of 5xx ejects a backend, and a client typing
    invalid queries must not eject a healthy gateway.
 
-   | Condition                              | Status                                                |
-   | -------------------------------------- | ----------------------------------------------------- |
-   | unreadable body                        | 400                                                   |
-   | body over the cap                      | 413                                                   |
-   | `Content-Type` not text                | 415                                                   |
-   | no bearer                              | 401, `WWW-Authenticate: Bearer`                       |
-   | bad, expired or non-access bearer      | 401, `WWW-Authenticate: Bearer error="invalid_token"` |
-   | the cluster answered, whatever it said | 400, `detail` the binding's message                   |
-   | the cluster unreachable or timed out   | 503                                                   |
-   | the breaker open                       | 503, `Retry-After` in whole seconds, rounded up       |
-   | the caller's context ended             | nothing on the wire, one debug line                   |
-   | the REST API itself failed             | 500                                                   |
+   | Condition                                          | Status                                                |
+   | -------------------------------------------------- | ----------------------------------------------------- |
+   | unreadable body                                    | 400                                                   |
+   | body over the cap                                  | 413                                                   |
+   | `Content-Type` not text                            | 415                                                   |
+   | no bearer                                          | 401, `WWW-Authenticate: Bearer`                       |
+   | bad, expired or non-access bearer                  | 401, `WWW-Authenticate: Bearer error="invalid_token"` |
+   | the secure cluster refused the token's credentials | 401, `WWW-Authenticate: Bearer error="invalid_token"` |
+   | the cluster answered, whatever it said             | 400, `detail` the binding's message                   |
+   | the cluster unreachable or timed out               | 503                                                   |
+   | the breaker open                                   | 503, `Retry-After` in whole seconds, rounded up       |
+   | the caller's context ended                         | nothing on the wire, one debug line                   |
+   | the REST API itself failed                         | 500                                                   |
 
-   An answer from the cluster is the caller's problem, whether it is an
+   A credential the secure cluster refuses is the token failing, so it
+   answers as an invalid token does, and the client logs in again. The
+   login answers its own refusal without a challenge (ADR-0011). An
+   answer from the cluster is the caller's problem, whether it is an
    invalid query, an unknown table, a denied access or an oversized
    reply. That is the same line the breaker draws. An unreachable
    cluster is 503, which is honest because the readiness probe fails in
