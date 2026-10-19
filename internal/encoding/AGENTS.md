@@ -152,12 +152,12 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   queries it once, and appends drawn columns of the DuckDB scalars,
   because those types reach the encoders only through DuckDB and the
   table fixture writes QuasarDB tables. It encodes the batch in every
-  format, parses the output with the standard library and compares
-  every cell with the batch it encoded. The fixture's `Check` has
-  proven the queried part to be the table written. Values the fixture
-  does not generate are pinned byte for byte on one hand-built batch,
-  and the stream path is pinned on that batch twice, as the two
-  one-shot bodies joined. Neither pin needs a cluster.
+  format, parses the output with the standard library and compares every
+  cell with the batch it encoded. The fixture's `Check` has proven the
+  queried part to be the table written. Values the fixture does not
+  generate are pinned byte for byte on one hand-built batch, and a nil
+  batch in every format, and the stream path is pinned on that batch
+  twice, as the two one-shot bodies joined. Neither pin needs a cluster.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them
   as one body over `table.Body` and decodes them back to the batches it

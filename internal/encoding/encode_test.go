@@ -499,15 +499,6 @@ func TestRoundTrip(t *testing.T) {
 	})
 }
 
-// TestArrowNilBatch checks that a statement without a result set encodes
-// as a complete stream with no fields and no batches.
-func TestArrowNilBatch(t *testing.T) {
-	schema, _, batches := readIPC(t, encode(t, Arrow{}, nil))
-	if schema.NumFields() != 0 || batches != 0 {
-		t.Fatalf("%d fields and %d batches, want none", schema.NumFields(), batches)
-	}
-}
-
 // edgeBatch builds one batch of the values the fixture does not generate:
 // the int64 extremes, NaN and an infinity, a float above 1e21, the epoch
 // and the nanosecond before it, the empty string, invalid UTF-8, the
@@ -542,37 +533,56 @@ func edgeBatch(t *testing.T) arrow.RecordBatch {
 	return rec
 }
 
+// emptyIPCStream is the IPC stream the ipc package writes for a schema
+// with no fields and no batches.
+func emptyIPCStream(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := ipc.NewWriter(&buf, ipc.WithSchema(arrow.NewSchema(nil, nil))).Close(); err != nil {
+		t.Fatalf("ipc close: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // TestEdgeCells pins the exact bytes of the edge batch in every text
-// format. NaN and the infinity become null. Invalid UTF-8 becomes U+FFFD
-// in JSON and stays a raw byte in CSV. CSV quotes the leading space and
-// the field that holds a comma, a quote and a newline. The empty string
-// becomes the empty field.
+// format, and of a nil batch in every format. NaN and the infinity
+// become null. Invalid UTF-8 becomes U+FFFD in JSON and stays a raw byte
+// in CSV. CSV quotes the leading space and the field that holds a comma,
+// a quote and a newline. The empty string becomes the empty field. A nil
+// batch, which a statement without a result set answers, is a complete
+// body: an empty result in JSON, no bytes in NDJSON and CSV, and in
+// Arrow a stream of a schema with no fields and no batches.
 func TestEdgeCells(t *testing.T) {
 	rec := edgeBatch(t)
 	for _, tc := range []struct {
 		e    Encoder
+		rec  arrow.RecordBatch
 		want string
 	}{
-		{JSON{}, `{"columns":[` +
+		{JSON{}, rec, `{"columns":[` +
 			`{"name":"i","type":"int64","data":[9223372036854775807,-9223372036854775808,0,42,null]},` +
 			`{"name":"d","type":"float64","data":[null,null,1e+21,0.1,null]},` +
 			`{"name":"t","type":"timestamp","data":["1970-01-01T00:00:00.000000000Z","1970-01-01T00:00:00.000000001Z","2026-06-11T00:00:00.000683000Z","1969-12-31T23:59:59.999999999Z",null]},` +
 			`{"name":"s","type":"utf8","data":["","a,b \"q\"\n"," lead","` + "\xef\xbf\xbd" + `",null]},` +
 			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]}]}`},
-		{NDJSON{}, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":""}` + "\n" +
+		{NDJSON{}, rec, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":""}` + "\n" +
 			`{"i":-9223372036854775808,"d":null,"t":"1970-01-01T00:00:00.000000001Z","s":"a,b \"q\"\n","b":"AP8="}` + "\n" +
 			`{"i":0,"d":1e+21,"t":"2026-06-11T00:00:00.000683000Z","s":" lead","b":"aGk="}` + "\n" +
 			`{"i":42,"d":0.1,"t":"1969-12-31T23:59:59.999999999Z","s":"` + "\xef\xbf\xbd" + `","b":"eA=="}` + "\n" +
 			`{"i":null,"d":null,"t":null,"s":null,"b":null}` + "\n"},
-		{CSV{}, "i,d,t,s,b\n" +
+		{CSV{}, rec, "i,d,t,s,b\n" +
 			"9223372036854775807,,1970-01-01T00:00:00.000000000Z,,\n" +
 			"-9223372036854775808,,1970-01-01T00:00:00.000000001Z,\"a,b \"\"q\"\"\n\",AP8=\n" +
 			"0,1e+21,2026-06-11T00:00:00.000683000Z,\" lead\",aGk=\n" +
 			"42,0.1,1969-12-31T23:59:59.999999999Z,\xff,eA==\n" +
 			",,,,\n"},
+		{JSON{}, nil, `{"columns":[]}`},
+		{NDJSON{}, nil, ""},
+		{CSV{}, nil, ""},
+		{Arrow{}, nil, string(emptyIPCStream(t))},
 	} {
-		if got := string(encode(t, tc.e, rec)); got != tc.want {
-			t.Errorf("%s:\n got %q\nwant %q", tc.e.ContentType(), got, tc.want)
+		if got := string(encode(t, tc.e, tc.rec)); got != tc.want {
+			t.Errorf("%s, %d rows:\n got %q\nwant %q", tc.e.ContentType(), numRows(tc.rec), got, tc.want)
 		}
 	}
 }
