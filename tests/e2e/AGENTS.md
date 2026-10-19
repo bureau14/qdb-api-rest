@@ -46,4 +46,4 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   example `direct_set_node` followed by `direct_int_get`) goes in via
   stdin.
 - Shell style: `set -euo pipefail`, small named functions, definitions
-  before use, ASCII only. There is no Python in this directory.
+  before use, ASCII only.

@@ -2,7 +2,8 @@
 
 Status: approved. This document specifies the permanent e2e harness
 described in the brief's Testing doctrine (items 2 and 3): the v2 round
-trip and the stress against a live qdbd. It is a permanent
+trip, the Flight SQL JDBC smoke test and the stress against a live
+qdbd. It is a permanent
 specification (`docs/AGENTS.md`, Specifications). Verified facts and
 dates are recorded here, not in the brief. Progress is recorded in
 `docs/log.md`, not here. Decisions are in the dated decision logs at
@@ -16,7 +17,9 @@ driven over HTTP like a client:
 1. works as a client expects on the v2 surface: login, create tables,
    ingest rows in every body format, read and query them back in every
    format and content coding (the v2 round trip, ADR-0014);
-2. behaves honestly under stress: fast, explicit failure under overload,
+2. answers a stock Flight SQL client: Arrow's JDBC driver logs in and
+   queries both engines (the Flight SQL JDBC smoke test, ADR-0018);
+3. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
 Every assertion is pass or fail. The harness measures nothing
@@ -24,7 +27,8 @@ Every assertion is pass or fail. The harness measures nothing
 harness when that milestone starts (`docs/brief.md`, Milestones).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) plus one Go tool, and contains no Python. It runs
+lineage) plus one Go tool and one Java source file for the JDBC smoke
+test. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -181,8 +185,39 @@ that client; a Go client would repeat `TestRoundtrip` in
 
 An endpoint lands with its step in the round trip, so the round trip
 grows with the milestones (`docs/brief.md`, Milestones). Refresh and
-session join the login step, and the exploration endpoints add steps. Flight SQL has no step in the round trip. Its tests are the Go
-property tests, driven by arrow-go's Flight SQL client (ADR-0018).
+session join the login step, and the exploration endpoints add steps.
+Flight SQL has no step in the round trip. Its tests are the Go property
+tests, driven by arrow-go's Flight SQL client, and the JDBC smoke test
+below (ADR-0018).
+
+## The Flight SQL JDBC smoke test
+
+Arrow publishes an official Flight SQL JDBC driver, and customers are
+likely to reach the Flight listener through it. The smoke test checks
+that this stock driver works against the built binary. It is a smoke
+test and does not repeat the format-equivalence property. Through the
+driver it:
+
+1. connects to `listen.flight`, with a username and secret on the
+   secure cluster, which exercises Handshake and the bearer, and as the
+   anonymous user on the insecure cluster;
+2. runs one native query and reads its rows;
+3. runs one `#sql` query and reads its rows, with at least one column of
+   a DuckDB type that QuasarDB does not have.
+
+The test is one Java source file that `java` runs directly, with no
+build tool, because JDBC is a Java API and a Java program uses the
+driver as Java customers do. The Makefile downloads a pinned version of
+the driver jar (`org.apache.arrow:flight-sql-jdbc-driver`) from Maven
+Central on first use, checks its SHA-256 and caches it outside the
+tree. The server serves the Flight listener on its ephemeral
+self-signed certificate, and the test connects with
+`disableCertificateVerification=true`.
+
+The test runs on both clusters and on all eight platforms. Every agent
+already builds the QuasarDB Java API, which uses JNI, so every agent
+has a JVM. FreeBSD may drop out if the driver does not run there, which
+is unverified.
 
 ## In Buildkite
 
@@ -321,3 +356,12 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | The sql step selects the table name as `$table` | qdb-duck's scan answers no `$table` column, and tocsv routes rows by it                     | teaching tocsv a missing `$table`, because the tool would then shape a table |
 | The sql step runs on both clusters              | the secure attach through the DuckDB secret is proven over HTTP on the built binary (owner) | the insecure cluster alone                                                   |
+
+## Decision log (2026-10-19)
+
+| Decision                                                   | Why                                                                                                                 | Rejected                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A smoke test through Arrow's Flight SQL JDBC driver        | customers are likely to connect through the official driver, and the property tests drive arrow-go's client (owner) | Flight covered by the Go property tests alone                                           |
+| One Java source file drives the driver                     | JDBC is a Java API, and `java` runs one source file without a build tool (owner)                                    | Python through JayDeBeApi, a Python ADBC test next to it, ADBC from Go in place of JDBC |
+| The smoke test runs on both clusters                       | the secure cluster proves Handshake and the bearer, and the insecure cluster proves the anonymous user (owner)      | the secure cluster alone                                                                |
+| The driver jar comes from Maven Central, pinned and hashed | no large binary in git and nothing extra on the agent images (owner)                                                | the jar committed to the repository, the jar installed by agent provisioning            |
