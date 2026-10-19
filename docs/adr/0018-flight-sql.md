@@ -95,19 +95,24 @@ client. The owner made the decisions below on 2026-10-13.
 
 ### Tests
 
-14. **The tests are Go property tests.** The format-equivalence
-    property gains a Flight SQL client from arrow-go and requires the
-    decoded Flight result to equal the HTTP formats, for the native
-    engine and for the `#sql` engine against `/api/v2/sql`. A dispatch
-    property generates prefixes and whitespace around them. There is
-    no e2e step and no stress case for Flight.
+14. **The tests are Go property tests and one JDBC smoke test.** The
+    format-equivalence property gains a Flight SQL client from arrow-go
+    and requires the decoded Flight result to equal the HTTP formats,
+    for the native engine and for the `#sql` engine against
+    `/api/v2/sql`. A dispatch property generates prefixes and
+    whitespace around them. A smoke test drives the built binary
+    through Arrow's official Flight SQL JDBC driver, because customers
+    are likely to connect through that driver. `docs/e2e.md`, The
+    Flight SQL JDBC smoke test, specifies it. Flight has no step in the
+    round trip and no stress case.
 
 ## Consequences
 
 - M5 starts with this ADR and ends when the listener, the dispatcher
   on both planes, Handshake and bearer auth, the statement and catalog
-  commands, `GetSqlInfo` and the property tests are landed and green
-  in Buildkite on every platform.
+  commands, `GetSqlInfo`, the property tests and the JDBC smoke test
+  are landed and green in Buildkite on every platform the smoke test
+  runs on.
 - A `#sql` body on `POST /api/v2/query` runs on DuckDB from M5 on, so
   the HTTP query handler moves to `EncodeStream` and the dispatcher.
 - Any instance behind a load balancer serves a `DoGet` for a ticket
@@ -131,5 +136,5 @@ client. The owner made the decisions below on 2026-10-13.
 | A refresh token accepted on the Flight plane           | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise |
 | A `DoAction` refresh on the Flight port                | more surface before a problem is observed                                                                     |
 | Catalog commands deferred to the exploration milestone | drivers call `GetTables` at connect, and the table list core is small                                         |
-| An e2e Flight step through an `e2etool` subcommand     | the owner wants no e2e for Flight now, and the property test drives the same client                           |
+| An e2e Flight step through an `e2etool` subcommand     | the property test drives arrow-go's client already, and the e2e question is whether a stock driver works      |
 | A plaintext Flight listener                            | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                         |
