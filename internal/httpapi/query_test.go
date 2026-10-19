@@ -20,7 +20,6 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -94,30 +93,33 @@ func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	return buf.Bytes()
 }
 
-// TestQueryCompressed: for a generated table, each coding answers the
-// encoder's own bytes under Content-Encoding, and identity stays bare.
+// TestQueryCompressed: on each cluster, for a generated table, each
+// coding answers the encoder's own bytes under Content-Encoding, and
+// identity stays bare.
 func TestQueryCompressed(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, s.c, tbl)
-		want := s.direct(rt, encoding.JSON{}, tbl.Select())
-		for _, c := range []coding{identityCoding, gzipCoding, zstdCoding} {
-			resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept-Encoding": string(c)})
-			if resp.Code != http.StatusOK {
-				rt.Fatalf("%s: status %d: %s", c, resp.Code, resp.Body.String())
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, s.c, s.user, tbl)
+			want := s.direct(rt, encoding.JSON{}, tbl.Select())
+			for _, c := range []coding{identityCoding, gzipCoding, zstdCoding} {
+				resp := s.query(tbl.Select(), map[string]string{"Authorization": "Bearer " + s.token, "Accept-Encoding": string(c)})
+				if resp.Code != http.StatusOK {
+					rt.Fatalf("%s: status %d: %s", c, resp.Code, resp.Body.String())
+				}
+				// Identity is never labelled. A compressed body names its coding.
+				wantLabel := string(c)
+				if c == identityCoding {
+					wantLabel = ""
+				}
+				if got := resp.Header().Get("Content-Encoding"); got != wantLabel {
+					rt.Fatalf("%s: Content-Encoding = %q", c, got)
+				}
+				if !bytes.Equal(decompress(rt, c, resp.Body.Bytes()), want) {
+					rt.Fatalf("%s: body differs from the encoder's own bytes", c)
+				}
 			}
-			// Identity is never labelled. A compressed body names its coding.
-			wantLabel := string(c)
-			if c == identityCoding {
-				wantLabel = ""
-			}
-			if got := resp.Header().Get("Content-Encoding"); got != wantLabel {
-				rt.Fatalf("%s: Content-Encoding = %q", c, got)
-			}
-			if !bytes.Equal(decompress(rt, c, resp.Body.Bytes()), want) {
-				rt.Fatalf("%s: body differs from the encoder's own bytes", c)
-			}
-		}
+		})
 	})
 }

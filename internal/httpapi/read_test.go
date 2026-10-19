@@ -14,7 +14,6 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -38,23 +37,26 @@ func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.Re
 	return buf.Bytes()
 }
 
-// TestReadTableRange: a range that covers the table answers what the
-// whole read answers, and a range before it answers the schema alone.
+// TestReadTableRange: on each cluster, a range that covers the table
+// answers what the whole read answers, and a range before it answers the
+// schema alone.
 func TestReadTableRange(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, s.c, tbl)
-		bearer := map[string]string{"Authorization": "Bearer " + s.token, "Accept": encoding.CSVContentType}
-		whole := s.readTable(tbl.Name, "", bearer)
-		covering := s.readTable(tbl.Name, "start=2020-01-01T00:00:00Z&end=2100-01-01T00:00:00Z", bearer)
-		if covering.Code != http.StatusOK || !bytes.Equal(covering.Body.Bytes(), whole.Body.Bytes()) {
-			rt.Fatalf("covering range: status %d: %s", covering.Code, covering.Body.String())
-		}
-		before := s.readTable(tbl.Name, "start=2000-01-01T00:00:00Z&end=2000-01-02T00:00:00Z", bearer)
-		header := whole.Body.Bytes()[:bytes.IndexByte(whole.Body.Bytes(), '\n')+1]
-		if before.Code != http.StatusOK || !bytes.Equal(before.Body.Bytes(), header) {
-			rt.Fatalf("range before the rows: status %d: %q, want the header alone", before.Code, before.Body.String())
-		}
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, s.c, s.user, tbl)
+			bearer := map[string]string{"Authorization": "Bearer " + s.token, "Accept": encoding.CSVContentType}
+			whole := s.readTable(tbl.Name, "", bearer)
+			covering := s.readTable(tbl.Name, "start=2020-01-01T00:00:00Z&end=2100-01-01T00:00:00Z", bearer)
+			if covering.Code != http.StatusOK || !bytes.Equal(covering.Body.Bytes(), whole.Body.Bytes()) {
+				rt.Fatalf("covering range: status %d: %s", covering.Code, covering.Body.String())
+			}
+			before := s.readTable(tbl.Name, "start=2000-01-01T00:00:00Z&end=2000-01-02T00:00:00Z", bearer)
+			header := whole.Body.Bytes()[:bytes.IndexByte(whole.Body.Bytes(), '\n')+1]
+			if before.Code != http.StatusOK || !bytes.Equal(before.Body.Bytes(), header) {
+				rt.Fatalf("range before the rows: status %d: %q, want the header alone", before.Code, before.Body.String())
+			}
+		})
 	})
 }
