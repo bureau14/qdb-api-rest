@@ -467,35 +467,36 @@ func checkArrow(t *rapid.T, rec arrow.RecordBatch, batchRows int64) {
 // the batch it was given, for every type the text encoders write, any
 // nulls and any row count, and across Arrow batch boundaries.
 func TestRoundTrip(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		// 1. A table is generated, written and queried back. The fixture's
-		// Check proves that the batch is the table written, so the wire is
-		// compared with the batch and only one comparer, the fixture's,
-		// decides what was written.
-		tbl := table.Generate(rt)
-		table.Create(rt, c, tbl)
-		queried := run(rt, c, tbl.Select())
-		defer queried.Release()
-		table.Check(rt, tbl, queried)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		rapid.Check(t, func(rt *rapid.T) {
+			// 1. A table is generated, written and queried back. The fixture's
+			// Check proves that the batch is the table written, so the wire is
+			// compared with the batch and only one comparer, the fixture's,
+			// decides what was written.
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+			queried := run(rt, f.Cluster, f.User, tbl.Select())
+			defer queried.Release()
+			table.Check(rt, tbl, queried)
 
-		// 2. The DuckDB scalars join the queried batch as drawn columns.
-		rec := withScalars(rt, queried)
-		defer rec.Release()
+			// 2. The DuckDB scalars join the queried batch as drawn columns.
+			rec := withScalars(rt, queried)
+			defer rec.Release()
 
-		// 3. Every text format parses back to the batch.
-		names := make([]string, rec.NumCols())
-		for i, f := range rec.Schema().Fields() {
-			names[i] = f.Name
-		}
-		checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
-		checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
-		checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
+			// 3. Every text format parses back to the batch.
+			names := make([]string, rec.NumCols())
+			for i, f := range rec.Schema().Fields() {
+				names[i] = f.Name
+			}
+			checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
+			checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
+			checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
 
-		// 4. The Arrow stream parses back to the batch. A batch size below
-		// the row count is what exercises slicing and the offset rebasing
-		// of string and blob columns.
-		checkArrow(rt, rec, int64(rapid.IntRange(1, 16).Draw(rt, "batch rows")))
+			// 4. The Arrow stream parses back to the batch. A batch size below
+			// the row count is what exercises slicing and the offset rebasing
+			// of string and blob columns.
+			checkArrow(rt, rec, int64(rapid.IntRange(1, 16).Draw(rt, "batch rows")))
+		})
 	})
 }
 

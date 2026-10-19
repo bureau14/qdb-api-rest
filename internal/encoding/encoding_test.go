@@ -23,11 +23,11 @@ type failer interface {
 	Fatalf(string, ...any)
 }
 
-// run executes q as the anonymous user and fails the test on error. The
-// caller releases the batch it returns.
-func run(t failer, c *qdb.Cluster, q string) arrow.RecordBatch {
+// run executes q as u and fails the test on error. The caller releases
+// the batch it returns.
+func run(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	t.Helper()
-	rec, err := c.Query(context.Background(), qdb.User{}, q)
+	rec, err := c.Query(context.Background(), u, q)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
