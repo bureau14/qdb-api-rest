@@ -442,8 +442,11 @@ A gateway note: under the gateway direction (see Strategic context), the
 primary Flight SQL client is expected to become QuasarDB's own Python
 API. This partially de-risks the minimal-subset bet, because we control
 both ends of the connection that matters most, and it means the subset
-is chosen with `qdb-api-python`'s needs in the loop. Stock ADBC and JDBC
-compatibility is upside, not a hard dependency.
+is chosen with `qdb-api-python`'s needs in the loop. Arrow's official
+Flight SQL JDBC driver is a supported client, because customers are
+likely to connect through it, and a smoke test in the e2e harness gates
+it (ADR-0018). Stock ADBC compatibility is upside and not a hard
+dependency.
 
 ### Embedded DuckDB (qdb-duck)
 
@@ -813,7 +816,7 @@ internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/observe/      metrics, logging setup
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
-tests/e2e/             e2e harness (make + shell + curl + one Go tool, live qdbd; runs in Buildkite)
+tests/e2e/             e2e harness (make + shell + curl + one Go tool + one Java file, live qdbd; runs in Buildkite)
 vendor/                vendored dependencies (committed)
 ```
 
@@ -884,8 +887,10 @@ timing assertion, no performance budget.
    rows. Nothing is captured and nothing is audited, because the
    expected value is known by construction. The round trip loads no
    dataset, and it grows a step with every endpoint a milestone lands.
-   Error rows are Go tests, never e2e cases. The specification is
-   `docs/e2e.md`.
+   Error rows are Go tests, never e2e cases. A Flight SQL smoke test
+   drives the built binary through Arrow's official JDBC driver. It
+   logs in and runs one native query and one `#sql` query (ADR-0018).
+   The specification is `docs/e2e.md`.
 3. **Stress as behaviour**, in the same harness and on rows it
    generates: a concurrency stress (N parallel clients) asserting that
    the session budget bounds memory and load (excess waits or times
@@ -930,9 +935,9 @@ starts.
 - **M5 -- Flight SQL (minimal)**: the `listen.flight` listener,
   Handshake and bearer auth, `CommandStatementQuery`/`DoGet` over the
   shared `#sql` dispatcher that `POST /api/v2/query` also gains,
-  `GetSqlInfo`, the catalog commands on a table list core, and the
-  format-equivalence property test extended with a Flight SQL client
-  (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
+  `GetSqlInfo`, the catalog commands on a table list core, the
+  format-equivalence property test extended with a Flight SQL client,
+  and a smoke test through Arrow's Flight SQL JDBC driver (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
   query and the DuckDB query layer of M4. The stale `tls_port` sample
   configs in `qdb-documentation` are fixed here.
 - **M6 -- Resilience**: `/metrics`, the graceful-drain and
