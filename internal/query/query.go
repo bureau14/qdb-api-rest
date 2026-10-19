@@ -35,7 +35,8 @@ func split(q string) (text string, duck bool) {
 	//  4. strip the prefix and that one byte.
 
 	// 1. skip the leading whitespace, because the rule reads the first
-	//    non-whitespace bytes
+	//    non-whitespace bytes. unicode.IsSpace over runes was rejected,
+	//    because it depends on decoding the text.
 	i := 0
 	for i < len(q) && isSpace(q[i]) {
 		i++
@@ -102,7 +103,7 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 	//    step, so a sink that never pulls the step leaks nothing. A nil
 	//    batch, a statement without a result set, becomes a batch of an
 	//    empty schema, because Arrow's EncodeStream reads the first step's
-	//    schema.
+	//    schema and Batches promises at least one step.
 	if rec == nil {
 		rec = model.EmptyBatch(arrow.NewSchema(nil, nil))
 	}
