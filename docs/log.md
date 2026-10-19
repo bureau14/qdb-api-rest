@@ -14,7 +14,7 @@ Last updated: 2026-10-19
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
 | M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
 | M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
-| M5 -- Flight SQL                | not started | ADR-0018 fixes the design, criteria below; next       |
+| M5 -- Flight SQL                | in flight   | ADR-0018 fixes the design, criteria below             |
 | M6 -- Resilience                | not started |                                                       |
 | M7 -- Exploration               | not started |                                                       |
 | M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
@@ -22,11 +22,20 @@ Last updated: 2026-10-19
 
 In flight:
 
-- Nothing.
+- M5. The `#sql` dispatcher (`query.Run`, `internal/query`) behind
+  `POST /api/v2/query`, the one query route, is landed. The rest of the
+  milestone is the Next list.
 
 Next:
 
-- M5, from ADR-0018.
+- The Flight listener (`listen.flight`), Handshake, bearer and anonymous
+  auth, the status codes, and `CommandStatementQuery` to `DoGet` through
+  `query.Run` (ADR-0018, Decisions 1, 2, 6 to 9, 13).
+- `GetSqlInfo` and the catalog commands on a table list core in
+  `internal/qdb` (ADR-0018, Decisions 10 to 12).
+- The format-equivalence property with a Flight SQL client, and the ADBC
+  and JDBC smoke tests (ADR-0018, Decision 14, `docs/e2e.md`).
+- The `tls_port` sample configs corrected in `qdb-documentation`.
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
   DuckDB as its first node (`Cluster.credentialsOf`).
