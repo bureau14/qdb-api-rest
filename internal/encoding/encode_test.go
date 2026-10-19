@@ -5,8 +5,8 @@
 // compares the result with the batch. The fixture's Check proves first
 // that the queried batch is the table that was written. The other tests
 // need no cluster. TestEdgeCells pins the exact bytes of values the
-// fixture never generates, and the stream tests pin the stream path of
-// every encoder on the same hand-built batch.
+// fixture never generates, and TestStream pins the stream path of every
+// encoder on the same hand-built batch.
 package encoding
 
 import (
@@ -629,15 +629,17 @@ func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 	return buf.Bytes()
 }
 
-// TestStreamIsBatchesJoined checks that two batches stream as the IPC
-// stream with two record batches, the CSV with one header, the NDJSON
-// lines appended, and a JSON array of two results.
-func TestStreamIsBatchesJoined(t *testing.T) {
+// TestStream checks the stream path of every encoder. Two batches
+// stream as the IPC stream with two record batches, the CSV with one
+// header, the NDJSON lines appended, and a JSON array of two results. An
+// error step after a batch ends the stream with that error.
+func TestStream(t *testing.T) {
 	rec := edgeBatch(t)
 	csv := encode(t, CSV{}, rec)
 	header := csv[:bytes.IndexByte(csv, '\n')+1]
 	ndjson := encode(t, NDJSON{}, rec)
 	json := encode(t, JSON{}, rec)
+	errStep := errors.New("fetch failed")
 	for _, tc := range []struct {
 		e    Encoder
 		want []byte
@@ -650,18 +652,9 @@ func TestStreamIsBatchesJoined(t *testing.T) {
 		if got := encodeStream(t, tc.e, steps([]arrow.RecordBatch{rec, rec}, nil)); !bytes.Equal(got, tc.want) {
 			t.Errorf("%s:\n got %q\nwant %q", tc.e.ContentType(), got, tc.want)
 		}
-	}
-}
-
-// TestStreamErrorStep checks that an error step after a batch ends every
-// encoder's stream with that error.
-func TestStreamErrorStep(t *testing.T) {
-	rec := edgeBatch(t)
-	errStep := errors.New("fetch failed")
-	for _, e := range []Encoder{Arrow{}, CSV{}, NDJSON{}, JSON{}} {
 		var buf bytes.Buffer
-		if err := e.EncodeStream(context.Background(), &buf, steps([]arrow.RecordBatch{rec}, errStep)); !errors.Is(err, errStep) {
-			t.Errorf("%s: error %v, want %v", e.ContentType(), err, errStep)
+		if err := tc.e.EncodeStream(context.Background(), &buf, steps([]arrow.RecordBatch{rec}, errStep)); !errors.Is(err, errStep) {
+			t.Errorf("%s: error %v, want %v", tc.e.ContentType(), err, errStep)
 		}
 	}
 }

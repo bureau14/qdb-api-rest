@@ -155,9 +155,11 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   format, parses the output with the standard library and compares every
   cell with the batch it encoded. The fixture's `Check` has proven the
   queried part to be the table written. Values the fixture does not
-  generate are pinned byte for byte on one hand-built batch, and a nil
-  batch in every format, and the stream path is pinned on that batch
-  twice, as the two one-shot bodies joined. Neither pin needs a cluster.
+  generate are pinned byte for byte on one hand-built batch, and so is a
+  nil batch in every format. One test, `TestStream`, pins the stream
+  path on that batch: two batches stream as the two one-shot bodies
+  joined, and an error step ends the stream with its error. Neither pin
+  needs a cluster.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them
   as one body over `table.Body` and decodes them back to the batches it
