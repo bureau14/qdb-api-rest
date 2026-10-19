@@ -26,9 +26,6 @@ In flight:
 
 Next:
 
-- Run the Go data-path tests on the secure cluster too: the round trip,
-  its deduplicated variant, the error rows and the `internal/qdb` read
-  tests (owner, 2026-10-15).
 - M5, from ADR-0018.
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
@@ -36,7 +33,8 @@ Next:
 
 M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed (met 2026-10-16). Exit: the `listen.flight` listener on the HTTPS
 certificates, the `#sql` dispatcher behind `POST /api/v2/query` and the
-Flight server, Handshake and bearer auth, `CommandStatementQuery` to
+Flight server, Handshake and bearer auth, a refused credential
+(`qdb.ErrCredentialsRefused`) answering `UNAUTHENTICATED` (owner, 2026-10-19), `CommandStatementQuery` to
 `DoGet` with the query as the ticket, `GetSqlInfo`, the catalog
 commands on a table list core in `internal/qdb`, the rest of the
 surface answering `UNIMPLEMENTED`, the format-equivalence property
