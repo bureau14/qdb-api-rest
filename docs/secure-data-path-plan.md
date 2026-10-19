@@ -197,8 +197,30 @@ that runs once per cluster.
 
 ### `internal/qdbtest/cluster/cluster.go`
 
-`NewInsecure`, `NewInsecureWith` and `NewSecure` are removed once
-their last caller has moved (commit 18). `bind` stays. The file gains:
+The cluster's kind becomes part of the fixture. `Fixture.Spec` says
+which cluster it is, whether it is secured, which key files bind it and
+which user a test acts as there. A test no longer chooses a constructor
+by kind: it runs on every cluster through `Each`, and on one named
+cluster through `Bind`. `Each`, `EachWith` and `Bind` replace
+`NewInsecure`, `NewInsecureWith` and `NewSecure`, and the three are
+deleted in the commit that moves their last caller (commit 18). `bind`
+stays as the private helper behind `Bind`. The callers move as follows:
+
+| caller today                                                      | replacement                               | commit |
+| ----------------------------------------------------------------- | ----------------------------------------- | ------ |
+| `olap_test.go:74`, `:81` (`insecure`, `secure`)                   | `cluster.Each`                            | 10     |
+| `read_test.go:118`, `:154`                                        | `cluster.Each`                            | 12     |
+| `encode_test.go:470`                                              | `cluster.Each`                            | 13     |
+| `query_test.go:44` (`newServer`), and every `newServer(t)` caller | `newServer(t, f)` inside `cluster.Each`   | 14-18  |
+| `errors_test.go:142` (`NewInsecureWith`, `TestSQLInstanceLimit`)  | `cluster.EachWith`                        | 18     |
+| `login_test.go:80` (`NewSecure`, `TestLoginVerdicts`)             | `cluster.Bind(t, qdbtest.Secure(t), nil)` | 15     |
+
+`TestLoginVerdicts` is the only test that binds one cluster by name,
+because it is the only test that cannot run on both (Rationale R3).
+The `package qdb` tests in `internal/qdb/cluster_test.go` cannot import
+this package (fact 19), so they loop over `qdbtest.Clusters` and build
+their clusters from `Cluster.Config`. They follow the same rule
+without the fixture type. The file gains:
 
 ```go
 // Fixture is one cluster of the test services bound for a test's life:
@@ -545,8 +567,8 @@ of the decision:
 - the login answers its own refusal without a challenge (ADR-0011)
 ```
 
-`docs/AGENTS.md`, ADRs. The sentence on in-place edits gains this
-claim:
+`docs/AGENTS.md`, ADRs, and the ADR row of its routing table ("Edited
+in place when a detail proves wrong"). Both gain this claim:
 
 ```
 - an in-place edit also adds a decision that falls within the
