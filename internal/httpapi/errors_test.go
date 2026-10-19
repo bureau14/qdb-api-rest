@@ -77,11 +77,13 @@ func TestErrorRows(t *testing.T) {
 			"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
 			"query: no token":      {http.MethodPost, "/api/v2/query", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
 			"query: bad token":     {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-			// the sql. A list is a type no text encoder writes.
-			"sql: invalid sql":      {http.MethodPost, "/api/v2/sql", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
-			"sql: json body":        {http.MethodPost, "/api/v2/sql", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
-			"sql: no token":         {http.MethodPost, "/api/v2/sql", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
-			"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT [1]", bearer, http.StatusInternalServerError, ""},
+			// the query on DuckDB. DuckDB's error arrives before the sink and is
+			// 400. A list is a type no text encoder writes, so it is 500 before
+			// the first byte. #sqlx is not the prefix, so the native engine
+			// gets it whole and answers its parse error.
+			"query: invalid #sql":          {http.MethodPost, "/api/v2/query", "#sql NOT A QUERY", bearer, http.StatusBadRequest, ""},
+			"query: #sql unsupported type": {http.MethodPost, "/api/v2/query", "#sql SELECT [1]", bearer, http.StatusInternalServerError, ""},
+			"query: #sqlx is native":       {http.MethodPost, "/api/v2/query", "#sqlx SELECT 1", bearer, http.StatusBadRequest, ""},
 			// the tables
 			"create: text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
 			"create: undecodable":             {http.MethodPost, tablesPath, `{"name":`, jsonBody, http.StatusBadRequest, ""},
@@ -132,12 +134,12 @@ func TestErrorRows(t *testing.T) {
 			anonCSV := map[string]string{"Authorization": anon, "Content-Type": encoding.CSVContentType}
 			anonJSON := map[string]string{"Authorization": anon, "Content-Type": "application/json"}
 			for name, row := range map[string]errorRow{
-				"query: anonymous on the secure cluster":  {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
-				"sql: anonymous on the secure cluster":    {http.MethodPost, "/api/v2/sql", "SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
-				"read: anonymous on the secure cluster":   {http.MethodGet, read(a.Name, ""), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
-				"ingest: anonymous on the secure cluster": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\n", anonCSV, http.StatusUnauthorized, refused},
-				"create: anonymous on the secure cluster": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"int64"}]}`, anonJSON, http.StatusUnauthorized, refused},
-				"delete: anonymous on the secure cluster": {http.MethodDelete, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"query: anonymous on the secure cluster":      {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"query: #sql anonymous on the secure cluster": {http.MethodPost, "/api/v2/query", "#sql SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"read: anonymous on the secure cluster":       {http.MethodGet, read(a.Name, ""), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"ingest: anonymous on the secure cluster":     {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\n", anonCSV, http.StatusUnauthorized, refused},
+				"create: anonymous on the secure cluster":     {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"int64"}]}`, anonJSON, http.StatusUnauthorized, refused},
+				"delete: anonymous on the secure cluster":     {http.MethodDelete, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 			} {
 				rows[name] = row
 			}
