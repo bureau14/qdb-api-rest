@@ -85,10 +85,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, "invalid body: "+err.Error())
 		return
 	}
-	// The dial is the credential check. Only its verdict reaches the
-	// wire. A refused credential answers 401 without a challenge before
-	// writeClusterError runs, because the credentials were the body and
-	// no bearer was in play.
+	// Authenticate opens one connection to the cluster as the caller,
+	// and the cluster checks the credentials when it accepts or refuses
+	// it. A refusal answers 401 without a WWW-Authenticate challenge,
+	// because the caller sent its credentials in the body and not as a
+	// bearer token. A caller that has gone away gets no answer, and every
+	// other failure is writeClusterError's.
 	u := req.user()
 	if err := qdb.ClusterFrom(ctx).Authenticate(ctx, u); err != nil {
 		if errors.Is(err, qdb.ErrCredentialsRefused) && ctx.Err() == nil {
