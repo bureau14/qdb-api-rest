@@ -206,7 +206,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   cluster fixture. A test acts as the anonymous user on the insecure
   cluster and as the test user on the secure one. `TestLoginVerdicts`
   runs on the secure cluster alone, because the insecure cluster
-  accepts any secret, so its refusal has no insecure twin.
+  accepts any secret, so its refusal has no insecure twin. A copy of
+  the cluster pair in each package was rejected, because the fixture
+  has one home. One CI run per cluster through an environment variable
+  was rejected, because it needs a second CI step and runs the tests
+  that dial no qdbd twice.
 - A test that needs rows draws a table with `internal/qdbtest/table`
   (`Generate`, then `Create` on a `*qdb.Cluster`). The table holds its
   rows as one record batch in the binding's Arrow types and pushes it
