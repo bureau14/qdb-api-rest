@@ -443,10 +443,10 @@ primary Flight SQL client is expected to become QuasarDB's own Python
 API. This partially de-risks the minimal-subset bet, because we control
 both ends of the connection that matters most, and it means the subset
 is chosen with `qdb-api-python`'s needs in the loop. Arrow's official
-Flight SQL JDBC driver is a supported client, because customers are
-likely to connect through it, and a smoke test in the e2e harness gates
-it (ADR-0018). Stock ADBC compatibility is upside and not a hard
-dependency.
+Flight SQL drivers for ADBC and JDBC are supported clients, because
+customers are likely to connect through both, DataFrame frameworks
+such as pandas and polars through ADBC. A smoke test per driver in the
+e2e harness gates them (ADR-0018).
 
 ### Embedded DuckDB (qdb-duck)
 
@@ -887,9 +887,10 @@ timing assertion, no performance budget.
    rows. Nothing is captured and nothing is audited, because the
    expected value is known by construction. The round trip loads no
    dataset, and it grows a step with every endpoint a milestone lands.
-   Error rows are Go tests, never e2e cases. A Flight SQL smoke test
-   drives the built binary through Arrow's official JDBC driver. It
-   logs in and runs one native query and one `#sql` query (ADR-0018).
+   Error rows are Go tests, never e2e cases. Two Flight SQL smoke tests
+   drive the built binary through Arrow's official drivers, ADBC from
+   Go and JDBC from Java. Each logs in and runs one native query and
+   one `#sql` query (ADR-0018).
    The specification is `docs/e2e.md`.
 3. **Stress as behaviour**, in the same harness and on rows it
    generates: a concurrency stress (N parallel clients) asserting that
@@ -937,7 +938,8 @@ starts.
   shared `#sql` dispatcher that `POST /api/v2/query` also gains,
   `GetSqlInfo`, the catalog commands on a table list core, the
   format-equivalence property test extended with a Flight SQL client,
-  and a smoke test through Arrow's Flight SQL JDBC driver (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
+  and smoke tests through Arrow's Flight SQL ADBC and JDBC drivers
+  (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
   query and the DuckDB query layer of M4. The stale `tls_port` sample
   configs in `qdb-documentation` are fixed here.
 - **M6 -- Resilience**: `/metrics`, the graceful-drain and
