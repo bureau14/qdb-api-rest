@@ -5,7 +5,7 @@
 // token creates generated tables that share one column list over HTTP, reads them
 // empty, ingests them in one body of a drawn format under a drawn
 // request coding, reads them, queries them and reads them through DuckDB
-// SQL in every format, deletes them, re-creates them over what the
+// behind #sql on the query route in every format, deletes them, re-creates them over what the
 // delete leaves behind, and deletes them again. What went in comes back
 // out. Each response equals the encoder run directly over the cluster,
 // and each direct read passes table.Check against the rows generated, so
@@ -175,9 +175,9 @@ func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// directSQL runs q on DuckDB over the cluster and encodes the stream
+// directDuckDB runs q on DuckDB over the cluster and encodes the stream
 // with e. The endpoint must answer these exact bytes.
-func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
+func (s server) directDuckDB(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	err := s.c.Duck(context.Background(), s.user, q, func(batches qdb.Batches) error {
@@ -189,10 +189,10 @@ func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
 	return buf.Bytes()
 }
 
-// checkSQL reads tbl through DuckDB over the cluster and compares what
+// checkDuckDB reads tbl through DuckDB over the cluster and compares what
 // comes back with the rows generated, so the DuckDB path answers the rows
 // the native read answers. The fixture's tables fit one batch.
-func (s server) checkSQL(t *rapid.T, tbl table.Table) {
+func (s server) checkDuckDB(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	err := s.c.Duck(context.Background(), s.user, tbl.SelectSQL(), func(batches qdb.Batches) error {
 		for rec, err := range batches {
@@ -204,7 +204,7 @@ func (s server) checkSQL(t *rapid.T, tbl table.Table) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("sql %s: %v", tbl.Name, err)
+		t.Fatalf("duckdb %s: %v", tbl.Name, err)
 	}
 }
 
@@ -233,29 +233,33 @@ func sameArrowStream(t *rapid.T, got, want []byte) bool {
 	return !g.Next() && g.Err() == nil && w.Err() == nil
 }
 
-// checkSQLFormats posts tbl's select to /api/v2/sql in every format and
-// compares each body with directSQL.
-func (s server) checkSQLFormats(t *rapid.T, tbl table.Table) {
+// checkDuckDBFormats posts tbl's DuckDB select behind the #sql prefix to
+// /api/v2/query in every format and compares each body with directDuckDB
+// over the select alone.
+func (s server) checkDuckDBFormats(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	for accept, e := range encoders {
-		resp := s.post("/api/v2/sql", tbl.SelectSQL(), map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
+		resp := s.post("/api/v2/query", "#sql "+tbl.SelectSQL(), map[string]string{"Authorization": "Bearer " + s.token, "Accept": accept})
 		if resp.Code != http.StatusOK {
-			t.Fatalf("sql %s: status %d: %s", accept, resp.Code, resp.Body.String())
+			t.Fatalf("duckdb %s: status %d: %s", accept, resp.Code, resp.Body.String())
 		}
 		if ct := resp.Header().Get("Content-Type"); ct != e.ContentType() {
-			t.Fatalf("sql %s: Content-Type = %q", accept, ct)
+			t.Fatalf("duckdb %s: Content-Type = %q", accept, ct)
 		}
-		// DuckDB leaves the value bytes under a null slot undefined, and the
-		// Arrow stream carries the buffers as they are, so two runs of one
-		// query differ there. The Arrow body is compared decoded, and the
-		// text formats, which write no value for a null, byte for byte.
-		want := s.directSQL(t, e, tbl.SelectSQL())
+		// The oracle runs the stripped text on DuckDB directly, so equal
+		// bytes prove that the prefix reached DuckDB and the rest of the text
+		// reached it unchanged. DuckDB leaves the value bytes under a null
+		// slot undefined, and the Arrow stream carries the buffers as they
+		// are, so two runs of one query differ there. The Arrow body is
+		// compared decoded, and the text formats, which write no value for a
+		// null, byte for byte.
+		want := s.directDuckDB(t, e, tbl.SelectSQL())
 		same := bytes.Equal(resp.Body.Bytes(), want)
 		if accept == encoding.ArrowContentType {
 			same = sameArrowStream(t, resp.Body.Bytes(), want)
 		}
 		if !same {
-			t.Fatalf("sql %s: body differs from the stream encoder's own output", accept)
+			t.Fatalf("duckdb %s: body differs from the stream encoder's own output", accept)
 		}
 	}
 }
@@ -388,9 +392,10 @@ func TestRoundtrip(t *testing.T) {
 				rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 			}
 
-			// 6. read, query and read through DuckDB each in every format. The
-			// rows written are the rows generated, and every format's body
-			// carries the encoder's own bytes. After an async push a query sees
+			// 6. read, query and read through DuckDB behind #sql on the query
+			// route, each in every format. The rows written are the rows
+			// generated, and every format's body carries the encoder's own
+			// bytes. After an async push a query sees
 			// the rows at once, but the bulk reader sees them only once the
 			// server has flushed. Before that it answers none of them, or some
 			// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so the
@@ -404,8 +409,8 @@ func TestRoundtrip(t *testing.T) {
 				}
 				s.checkRead(rt, tbl)
 				s.checkReadFormats(rt, tbl, picked)
-				s.checkSQL(rt, tbl)
-				s.checkSQLFormats(rt, tbl)
+				s.checkDuckDB(rt, tbl)
+				s.checkDuckDBFormats(rt, tbl)
 			}
 
 			// 7. delete each (204), which leaves the symtables. The same create
