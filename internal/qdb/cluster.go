@@ -480,8 +480,9 @@ func (c *Cluster) credentialsOf(u User) (olap.Credentials, error) {
 
 // instanceOf answers u's instance from up, opening it on u's first sql
 // call. The open counts against duckdb.max_instances, and past the cap the
-// answer is an *InstanceLimitError. A failed open is not kept, so the next
-// call tries again.
+// answer is an *InstanceLimitError. On a secure cluster, a failed attach
+// whose credentials the cluster refuses is ErrCredentialsRefused. A
+// failed open is not kept, so the next call tries again.
 func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.Instance, error) {
 	// The instance is opened once per user and counted against the cap
 	// before the open:
@@ -489,7 +490,8 @@ func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.I
 	//  1. under duckMu, answer the instance when it exists;
 	//  2. take a unit of the cap under mu, or answer InstanceLimitError;
 	//  3. open outside mu;
-	//  4. on failure, give the unit back.
+	//  4. on a secure cluster, classify a failed attach by one direct dial;
+	//  5. on failure, give the unit back.
 
 	// 1. answer the instance when it exists. duckMu is held through the
 	//    open, so a second first call waits for this one's instance.
@@ -512,7 +514,24 @@ func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.I
 	if err == nil {
 		up.duck, err = olap.Open(ctx, c.duckCfg, creds)
 	}
-	// 4. give the unit back on failure
+	// 4. classify a failed attach on a secure cluster. qdb-duck's message
+	//    does not say whether the cluster refused or was unreachable, so
+	//    one direct dial as u asks the cluster. A refused dial replaces the
+	//    attach error, and any other outcome keeps olap.ErrAttach and its
+	//    503. The dial runs on this failure path only. It goes through
+	//    connect and not Authenticate, because a sql call does not feed the
+	//    breaker. Refusing an empty username in credentialsOf was rejected,
+	//    because it misses a user removed after login.
+	if errors.Is(err, olap.ErrAttach) && c.Secured() {
+		hdl, derr := c.connect(ctx, u.credentials(), false)
+		switch {
+		case derr == nil:
+			newSession(hdl).closeAsync()
+		case errors.Is(derr, ErrCredentialsRefused):
+			err = derr
+		}
+	}
+	// 5. give the unit back on failure
 	if err != nil {
 		c.releaseInstance()
 		return nil, err
@@ -543,7 +562,8 @@ func (up *userPool) closeInstance(c *Cluster) {
 
 // SQL runs q on DuckDB as u and hands its batches to sink, on a connection
 // of u's instance that closes when sink returns. An error before sink runs
-// is the instance cap (*InstanceLimitError), the attach (olap.ErrAttach,
+// is the instance cap (*InstanceLimitError), a refused credential on a
+// secure cluster (ErrCredentialsRefused), the attach (olap.ErrAttach,
 // which IsClusterUnavailable reports) or DuckDB's. The error of sink is
 // returned unchanged. A sql call is never retried and does not feed the
 // breaker. The budget does not count it, because qdb-duck pools its own
