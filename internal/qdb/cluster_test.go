@@ -186,22 +186,31 @@ func TestAuthenticate(t *testing.T) {
 	c := New(qdbtest.Secure(t).Config(t), nil)
 	defer closeCluster(t, c)
 
+	// 1. The secure cluster accepts the fixture's test user.
 	ctx := context.Background()
 	u := userOf(qdbtest.Secure(t))
 	if err := c.Authenticate(ctx, u); err != nil {
 		t.Fatalf("the fixture user refused: %v", err)
 	}
+	// 2. It refuses the same user with a wrong secret. The secret is
+	//    base64 for "not-a-key", so it is well formed, and only the
+	//    cluster can reject it.
 	err := c.Authenticate(ctx, User{Username: u.Username, SecretKey: "bm90LWEta2V5"})
 	if !errors.Is(err, ErrCredentialsRefused) || qdbapi.IsClusterUnavailable(err) {
 		t.Fatalf("want a refusal from a reachable cluster, got %v", err)
 	}
+	// 3. Neither login left a pool behind, because Authenticate dials
+	//    outside the user pools.
 	if got := c.Stats(); got.Users != 0 {
 		t.Fatalf("a login left %d pool(s) behind", got.Users)
 	}
+	// 4. The breaker stays closed, because a refusal is an answer from a
+	//    cluster that is up.
 	if _, ok := c.breaker.allow(); !ok {
 		t.Fatal("a refused credential opened the breaker")
 	}
 
+	// 5. The insecure cluster accepts the anonymous user.
 	i := New(qdbtest.Insecure().Config(t), nil)
 	defer closeCluster(t, i)
 	if err := i.Authenticate(ctx, anonymous); err != nil {
