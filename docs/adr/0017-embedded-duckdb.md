@@ -23,8 +23,9 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 
 ### Endpoint and dependency
 
-1. **The endpoint is `POST /api/v2/sql`.** Its request is the one of
-   `POST /api/v2/query` (ADR-0010): a text body, `Accept` negotiation,
+1. **DuckDB is reached through `POST /api/v2/query` behind the `#sql`
+   prefix (ADR-0018, Decision 4).** The request is the query's
+   (ADR-0010): a text body, `Accept` negotiation,
    a bearer access token, the shared encoders. The query text is
    DuckDB SQL, the cluster is attached as `qdb`, and `qdb_query` is
    available. The result streams through `EncodeStream` one DuckDB
@@ -79,7 +80,7 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
     DuckDB's message as the detail. The instance cap is `503` with
     `Retry-After`. Content type, body cap and auth reuse ADR-0010.
 11. **Tests.** The round trip gains a step that reads every generated
-    table back through `/api/v2/sql` in every format, and checks the
+    table back through `#sql` on `/api/v2/query` in every format, and checks the
     DuckDB read against the rows generated, as the native read is
     checked. That step is the equivalence check between the native path
     and the DuckDB path. The e2e round trip gains the same step.

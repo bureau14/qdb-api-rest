@@ -1,6 +1,7 @@
 # internal/olap -- Agent Instructions
 
-Scope: the embedded DuckDB engine behind `POST /api/v2/sql`.
+Scope: the embedded DuckDB engine behind the `#sql` prefix of
+`POST /api/v2/query`.
 Package-wide Go rules: `internal/AGENTS.md`. The decisions are in
 ADR-0017.
 

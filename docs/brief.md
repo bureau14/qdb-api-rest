@@ -403,8 +403,8 @@ string chooses the engine. A query whose first non-whitespace bytes are
 `#sql`, matched case-insensitively and followed by one whitespace
 character, runs on DuckDB with the prefix removed, in the style of
 BigQuery's `#standardSQL`. Every other query runs on the native engine.
-`POST /api/v2/query` honors the same prefix, and `POST /api/v2/sql`
-stays the direct DuckDB route. One dispatcher above `internal/qdb` and
+`POST /api/v2/query` honors the same prefix and is the one query route
+of the HTTP plane (owner, 2026-10-19). One dispatcher above `internal/qdb` and
 `internal/olap` recognizes the prefix and answers the batch iterator the
 encoders take, so the HTTP handlers and the Flight server share it and
 `internal/flightsql` holds no query code.
@@ -454,8 +454,8 @@ QuasarDB's own query language is deliberately limited. `qdb-duck` is the
 native C++ DuckDB extension that attaches QuasarDB clusters into DuckDB
 (catalog integration, so schemas and tables are visible and queryable).
 This project embeds DuckDB into the REST binary through go-duckdb (cgo)
-with the quasar extension linked in, behind a **dedicated endpoint**,
-`POST /api/v2/sql` (owner, 2026-10-13). The endpoint exposes full SQL
+with the quasar extension linked in, behind the `#sql` prefix of
+`POST /api/v2/query` (owner, 2026-10-19). The endpoint exposes full SQL
 (joins, window functions, the entire DuckDB surface) over QuasarDB data
 through the same streaming, content-negotiated response path as
 `POST /api/v2/query`. Tables appear as `qdb.<name>`, and the
@@ -543,7 +543,6 @@ POST   /api/v2/auth/refresh        refresh token -> new token pair
 POST   /api/v2/auth/logout         invalidates client state; server-side revocation is a future layer
 GET    /api/v2/session             "who am i": session/user/instance introspection (see below)
 POST   /api/v2/query               native qdb query, or DuckDB behind a `#sql` prefix (ADR-0018); streamed, content-negotiated; JSON is the array of results, one per batch (ADR-0010)
-POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, content-negotiated
 POST   /api/v2/rows                multi-table ingest, a $table column routes each row; body content-negotiated
                                    (CSV, NDJSON, Arrow IPC, and the columnar JSON the query answers;
                                    Content-Encoding); push and deduplication modes
@@ -929,7 +928,8 @@ starts.
 - **M3 -- v2 auth**: `/api/v2/auth/refresh`, `/api/v2/auth/logout`,
   `GET /api/v2/session`, access and refresh TTL configuration, key
   rotation through refresh.
-- **M4 -- Embedded DuckDB**: `/api/v2/sql` backed by go-duckdb with the
+- **M4 -- Embedded DuckDB**: DuckDB behind `#sql` on `/api/v2/query`,
+  backed by go-duckdb with the
   quasar extension linked in from qdb-duck's package, one instance per
   user, the `duckdb` config block, streamed responses through the
   shared encoders, and the round-trip steps, which are the

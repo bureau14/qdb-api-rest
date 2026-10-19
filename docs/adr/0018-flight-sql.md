@@ -40,9 +40,9 @@ client. The owner made the decisions below on 2026-10-13.
    character removed. Every other query runs on the native engine as
    is. `#sqlx` and `#sql` without a following whitespace character are
    native queries and fail there.
-4. **`POST /api/v2/query` honors the same prefix.** `POST /api/v2/sql`
-   stays the direct DuckDB route of ADR-0017 and does not look for the
-   prefix.
+4. **`POST /api/v2/query` is the one query route of the HTTP plane.** A
+   `#sql` body runs on DuckDB there as on the Flight port. There is no
+   `POST /api/v2/sql`.
 5. **The dispatcher is shared.** One function recognizes the prefix,
    strips it and calls the native query or the DuckDB query for the
    caller's user, answering the `Batches` iterator either way. It lives
@@ -99,8 +99,8 @@ client. The owner made the decisions below on 2026-10-13.
 14. **The tests are Go property tests and two driver smoke tests.** The
     format-equivalence property gains a Flight SQL client from arrow-go
     and requires the decoded Flight result to equal the HTTP formats,
-    for the native engine and for the `#sql` engine against
-    `/api/v2/sql`. A dispatch property generates prefixes and
+    for the native engine and for the `#sql` engine against `#sql` on
+    `/api/v2/query`. A dispatch property generates prefixes and
     whitespace around them. Two smoke tests drive the built binary
     through Arrow's official Flight SQL drivers, because customers are
     likely to connect through both: ADBC, tested from Go, and JDBC,
@@ -117,6 +117,8 @@ client. The owner made the decisions below on 2026-10-13.
   runs on.
 - A `#sql` body on `POST /api/v2/query` runs on DuckDB from M5 on, so
   the HTTP query handler moves to `EncodeStream` and the dispatcher.
+  `POST /api/v2/sql` is removed with it, and its tests post `#sql` to
+  the query route.
 - Any instance behind a load balancer serves a `DoGet` for a ticket
   another instance answered, because the ticket is the query.
 - A long Flight job outlives `auth.access_ttl` only by reconnecting.
@@ -130,14 +132,15 @@ client. The owner made the decisions below on 2026-10-13.
 
 ## Alternatives rejected
 
-| Alternative                                            | Why not                                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| A gRPC metadata header choosing the engine             | needs a driver knob per client, and the query text travels through every driver untouched                     |
-| Flight SQL session options choosing the engine         | server-side session state, which the project rules out everywhere else                                        |
-| A listener that is off until configured                | the owner wants Flight SQL available on every install, and the port is the configurable part                  |
-| Running the query in `GetFlightInfo` and caching it    | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to  |
-| A refresh token accepted on the Flight plane           | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise |
-| A `DoAction` refresh on the Flight port                | more surface before a problem is observed                                                                     |
-| Catalog commands deferred to the exploration milestone | drivers call `GetTables` at connect, and the table list core is small                                         |
-| An e2e Flight step through arrow-go's client           | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work    |
-| A plaintext Flight listener                            | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                         |
+| Alternative                                            | Why not                                                                                                                           |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| A gRPC metadata header choosing the engine             | needs a driver knob per client, and the query text travels through every driver untouched                                         |
+| Flight SQL session options choosing the engine         | server-side session state, which the project rules out everywhere else                                                            |
+| A listener that is off until configured                | the owner wants Flight SQL available on every install, and the port is the configurable part                                      |
+| Running the query in `GetFlightInfo` and caching it    | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                      |
+| A refresh token accepted on the Flight plane           | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise                     |
+| A `DoAction` refresh on the Flight port                | more surface before a problem is observed                                                                                         |
+| Catalog commands deferred to the exploration milestone | drivers call `GetTables` at connect, and the table list core is small                                                             |
+| An e2e Flight step through arrow-go's client           | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work                        |
+| A plaintext Flight listener                            | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                                             |
+| `POST /api/v2/sql` kept as a direct DuckDB route       | the prefix already chooses the engine on both planes, so a second route is a second way to say the same thing (owner, 2026-10-19) |

@@ -5,7 +5,7 @@ package-wide Go rules, the logging rules and the test fixtures are in
 `internal/AGENTS.md`. ADR-0010 holds the wire contract of the query
 endpoint and the v2 error shape. ADR-0011 holds the login's, and
 ADR-0016 the refresh's, the logout's and the session's. ADR-0017
-holds the sql endpoint's. The brief
+holds DuckDB's, which the query endpoint reaches behind `#sql`. The brief
 holds the table routes' (`docs/brief.md`, "Tables: create and delete").
 This file, Handlers, holds the table reader's.
 
@@ -84,14 +84,12 @@ This file, Handlers, holds the table reader's.
   error, so the breaker hears of a fetch that found the cluster gone. A
   read is never retried. An empty table answers its schema in every
   format.
-- The sql endpoint is `POST /api/v2/sql`. Its request is the query's:
-  query text under the query's content type and cap, `Accept`
-  negotiated, a bearer token. The body is DuckDB SQL over the cluster
+- A `#sql` body on the query endpoint is DuckDB SQL over the cluster
   attached as `qdb`, run through `Cluster.Duck` on the caller's own
-  DuckDB instance. The result streams as the reader's does, inside the
-  sink, with the same split between the sink's error and the call's.
-  DuckDB's parse, bind and execution errors arrive before the sink and
-  are 400. The instance cap is 503 with `Retry-After`, and a failed
+  DuckDB instance, with the prefix stripped by `query.Run`. The result
+  streams as the reader's does, inside the sink, with the same split
+  between the sink's error and the call's. DuckDB's parse, bind and
+  execution errors arrive before the sink and are 400. The instance cap is 503 with `Retry-After`, and a failed
   attach is 503 without it. A column type no text encoder writes (a
   list, for one) is 500 before the first byte, and
   `internal/encoding/AGENTS.md` lists the types the text encoders write.
