@@ -10,9 +10,12 @@ written for an executor who has none of the seed conversation of
 
 When the unit lands:
 
+- `Cluster.SQL` in `internal/qdb` is `Cluster.Duck`, after qdb-duck,
+  and the comments and documents that call its call "a sql call" say "a
+  DuckDB call". `Cluster.Query` stays the native path.
 - A new package, `internal/query`, holds one exported function, `Run`. It
   takes a query string, recognizes the `#sql` prefix of ADR-0018, Decision
-  3, and runs the query on the caller's DuckDB instance (`Cluster.SQL`)
+  3, and runs the query on the caller's DuckDB instance (`Cluster.Duck`)
   with the prefix stripped, or on the native engine (`Cluster.Query`)
   unchanged. Either way it hands the result to a sink as `qdb.Batches`.
 - `POST /api/v2/query` is the one query route of the HTTP plane. It runs
@@ -77,7 +80,7 @@ Left for later units, each named in `docs/log.md` once this lands:
    is back in its pool before the caller reads a row
    [`internal/qdb/cluster.go:387-405`]. `WithReadRetry` is safe on it
    because nothing has been sent [`internal/httpapi/query.go:131-133`].
-10. `Cluster.SQL` returns the sink's error unchanged, is never retried,
+10. `Cluster.SQL` (`Cluster.Duck` from commit 4 on) returns the sink's error unchanged, is never retried,
     does not feed the breaker, and answers the instance cap, a refused
     credential, a failed attach or DuckDB's error before the sink runs
     [`internal/qdb/cluster.go:575-610`, `internal/olap/instance.go:183-215`].
@@ -114,11 +117,38 @@ Left for later units, each named in `docs/log.md` once this lands:
     [`internal/httpapi/sql_test.go:48-`], so on `/api/v2/query` behind
     `#sql` it reads the same body.
 18. Unverified: that qdbd answers `#sqlx SELECT 1` with a parse error
-    (400) rather than something else. The executor checks it in commit 8
+    (400) rather than something else. The executor checks it in commit 10
     before writing the row, and reports a different answer in the
     build-stage message.
+19. Every mention of `Cluster.SQL` and of "sql call" outside vendored
+    code and log entries (grep of 2026-10-19): `internal/qdb/cluster.go:25`,
+    `:35-36`, `:448`, `:532`, `:575-581`, `:633`,
+    `internal/httpapi/sql.go:42`, `internal/httpapi/roundtrip_test.go:183`,
+    `:197`, `internal/httpapi/errors_test.go:162`,
+    `internal/httpapi/AGENTS.md:85`, `:93`, `:167`,
+    `internal/AGENTS.md:95-102`, `internal/olap/AGENTS.md:12`,
+    `internal/config/config.go:612`, `docs/brief.md:489`.
+    `docs/log.md:81` is a log entry and keeps its wording.
 
 ## 3. Design
+
+### `internal/qdb/cluster.go`, the rename
+
+```go
+// Duck runs q, DuckDB SQL, as u on u's own DuckDB instance and hands its batches to sink. [cluster.go:575-581, the doc comment of SQL with the name changed]
+// The rest of the doc comment and the body of SQL stay as they are, with "sql call" read "DuckDB call". [Rationale: Cluster.Duck]
+func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
+	// style: doc comment + numbered overview + step comments
+	// because: the body of SQL moves unchanged, and it already has this shape [cluster.go:582-610]
+}
+```
+
+The rename touches nothing but the name and the wording of fact 19: the
+callers (`sql.go:42`, `roundtrip_test.go:183`, `:197`), the field
+comments of `userPool.duck` and `duckIn`, `InstanceLimitError`'s comment,
+the eviction comments, `config.go:612`, and the document rows of fact 19,
+where "a sql call" becomes "a DuckDB call" and `Cluster.SQL` becomes
+`Cluster.Duck`. The field names `duck` and `duckIn` already say Duck.
 
 ### `internal/query/query.go` (new), in file order
 
@@ -170,7 +200,7 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 	//
 	// 1. split q into its text and its engine
 	//    text, duck := split(q)
-	// 2. a DuckDB query is Cluster.SQL, which is never retried and streams its own lent batches [fact 10]
+	// 2. a DuckDB query is Cluster.Duck, which is never retried and streams its own lent batches [fact 10]
 	// 3. a native query is Cluster.Query with one read retry, safe because the query runs before sink and nothing has been sent [fact 9]
 	// 4. the native batch is owned here and released after sink returns, so a sink that never pulls a step leaks nothing [fact 9; Rationale: release in Run]
 	//    a nil batch becomes model.EmptyBatch of an empty schema, because Arrow's EncodeStream reads the first step's schema [fact 5, fact 11]
@@ -238,7 +268,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 
 ### `internal/httpapi/sql.go` and `httpapi.go`
 
-`sql.go` is deleted in commit 10: `handleSQL` and `registerSQLRoutes` have
+`sql.go` is deleted in commit 12: `handleSQL` and `registerSQLRoutes` have
 no route left. `NewHandler` loses `registerSQLRoutes(mux)`. Its comment
 needs no change.
 
@@ -262,7 +292,7 @@ array of one result [fact 4].
 `roundtrip_test.go`: `directSQL`, `checkSQL` and `checkSQLFormats` are
 renamed `directDuckDB`, `checkDuckDB` and `checkDuckDBFormats` (Rationale,
 "DuckDB in the test names"). `directDuckDB` and `checkDuckDB` keep their
-bodies, because they call `Cluster.SQL` directly as the oracle and the
+bodies, because they call `Cluster.Duck` directly as the oracle and the
 check.
 
 ```go
@@ -415,27 +445,31 @@ array as every route's answer and the object as `Encode`'s [fact 7].
 
 ## 4. Rationale
 
-| decision                                                                                                                                                      | why                                                                                                                                                                                                                 | rejected, and why                                                                                                                                                                                                                                    | gained                                                   | given up                                                                                                                  | settled by                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| one query route: `POST /api/v2/query`, and `POST /api/v2/sql` is removed                                                                                      | "query" is not a QuasarDB term and "sql" is not a DuckDB term, so routes named that way mislead; with the prefix on `/query`, `/sql` is a second way to say the same thing, and the Flight port has only the prefix | keeping both routes and naming the handlers by engine: the routes keep the naming problem                                                                                                                                                            | one way to choose the engine on both planes, one handler | a reversed owner decision (2026-10-13), moved tests                                                                       | owner, 2026-10-19                                                          |
-| the reversal is an in-place edit of ADR-0017 and ADR-0018, with no new ADR and no log entry                                                                   | one clause of each changes and the rest of both stays valid                                                                                                                                                         | a new ADR-0019 superseding the clause: one more document, and two ADRs left "accepted" with one clause overridden                                                                                                                                    | the decision reads in the ADRs that own it               | stretches the in-place rule of `docs/AGENTS.md` to a reversed clause                                                      | owner, 2026-10-19                                                          |
-| JSON on `POST /api/v2/query` is always the array of results                                                                                                   | one body shape per route whatever the prefix, the shape the reader answers, and ADR-0018 D5 as written                                                                                                              | the native object with the array for `#sql` only: one route answers two shapes by query text and the dispatcher needs two result paths; merging batches into one object: cannot stream                                                               | one JSON shape across the result routes, one encode path | the v2 query's JSON shape breaks for existing v2 callers (no released client)                                             | owner, 2026-10-19                                                          |
-| ascii whitespace: space, tab, LF, CR, VT, FF, byte by byte                                                                                                    | matches ADR-0018's "bytes"; no UTF-8 decoding, so any encoding splits alike                                                                                                                                         | `unicode.IsSpace` over runes: depends on decoding, larger alphabet                                                                                                                                                                                   | a split independent of the text's encoding               | a Unicode space before or after `#sql` makes the query native                                                             | owner, 2026-10-19                                                          |
-| package `internal/query`, function `Run`                                                                                                                      | the package turns one query string into one result stream, and `query.Run` reads as that at the call site                                                                                                           | `internal/dispatch`: names nothing; `internal/engine`: as generic and `engine.Run` reads oddly; inside `internal/httpapi`: the Flight server would import the HTTP package; a `Cluster` method: ADR-0018 D5 puts the dispatcher above `internal/qdb` | one home for the prefix rule, callable from both planes  | a package of one file                                                                                                     | owner, 2026-10-19                                                          |
-| the tests name DuckDB where they said "sql" (`TestDuckDBScalars`, `TestDuckDBInstanceLimit`, `checkDuckDB*`, `directDuckDB`, `duckdb_back`, `duckdb_test.go`) | the owner's review: "sql" for DuckDB makes the naming problem worse, and these names change with the route anyway                                                                                                   | keeping the names: they point at a route that is gone                                                                                                                                                                                                | names that say which engine a test drives                | a rename in the diff                                                                                                      | proposal                                                                   |
-| `Cluster.SQL`, `olap`'s names and the fixture's `SelectSQL` keep their names                                                                                  | they name what they run (DuckDB SQL text) and no route; renaming them is outside the unit                                                                                                                           | renaming them here: a wider diff with no route change behind it                                                                                                                                                                                      | a smaller unit                                           | the word "sql" stays in `internal/qdb`                                                                                    | proposal                                                                   |
-| the tests move to `/query` before `/sql` is removed                                                                                                           | each commit builds and passes its tests                                                                                                                                                                             | removal first: the sql tests fail in that commit                                                                                                                                                                                                     | every commit green                                       | one more commit                                                                                                           | proposal                                                                   |
-| `Run` reads the cluster from ctx                                                                                                                              | handlers read the cluster from the request context and nothing is injected                                                                                                                                          | a `*qdb.Cluster` parameter: a second way in for what ctx already carries                                                                                                                                                                             | the handlers' rule holds below them                      | callers need a ctx that carries a cluster (`qdb.ClusterFrom` panics otherwise)                                            | `internal/AGENTS.md`, Logging                                              |
-| the native batch is released by `Run` after the sink returns                                                                                                  | a sink that never pulls the step would otherwise leak C-allocated buffers                                                                                                                                           | release inside the iterator after the step, as `qdb.lent` does: leaks when the sink never iterates                                                                                                                                                   | no leak on any sink path                                 | the batch lives until the sink returns, which is longer than one step (harmless, the session is already back in its pool) | proposal                                                                   |
-| a statement without a result set is one step of an empty-schema batch                                                                                         | Arrow's `EncodeStream` reads the first step's schema, and a nil step panics there [fact 5]                                                                                                                          | a nil step: panics in Arrow; zero steps: breaks the `Batches` rule of at least one step                                                                                                                                                              | every encoder sees a step                                | JSON answers `[{"columns":[]}]` where `Encode` answered `{"columns":[]}`                                                  | proposal                                                                   |
-| one read retry on the native leg, none on DuckDB                                                                                                              | the native query runs before the sink and nothing has been sent; a DuckDB call is never retried                                                                                                                     | retrying in the handler: the handler no longer calls `Cluster.Query`                                                                                                                                                                                 | both planes get the retry from one place                 | none                                                                                                                      | `internal/httpapi/AGENTS.md`, Handlers; `internal/AGENTS.md`, the sql call |
-| `split` and `isSpace` unexported, `Run` the only export                                                                                                       | nothing outside the package needs the split; the property is white-box                                                                                                                                              | an exported `Split` or an `Engine` type: surface with no caller                                                                                                                                                                                      | minimal surface                                          | the Flight slice exports something only if it needs it                                                                    | proposal                                                                   |
-| `split` and `Run` land in one commit                                                                                                                          | `unused` in the lint stack fails a commit that adds an unexported function with no caller [fact 15]                                                                                                                 | split first, Run next: the first commit fails lint                                                                                                                                                                                                   | every commit lints                                       | one commit carries two functions                                                                                          | `.golangci.yml:5-8`                                                        |
-| the brief's endpoint sketch names the array and drops the sql line                                                                                            | the owner asked to keep the sketch in step with the tree                                                                                                                                                            | leaving the sketch alone and pointing at ADR-0010                                                                                                                                                                                                    | the sketch reads correctly                               | one more place states the shape, with ADR-0010 as its owner                                                               | owner, 2026-10-19                                                          |
+| decision                                                                                                                                                      | why                                                                                                                                                                                                                 | rejected, and why                                                                                                                                                                                                                                    | gained                                                               | given up                                                                                                                  | settled by                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| one query route: `POST /api/v2/query`, and `POST /api/v2/sql` is removed                                                                                      | "query" is not a QuasarDB term and "sql" is not a DuckDB term, so routes named that way mislead; with the prefix on `/query`, `/sql` is a second way to say the same thing, and the Flight port has only the prefix | keeping both routes and naming the handlers by engine: the routes keep the naming problem                                                                                                                                                            | one way to choose the engine on both planes, one handler             | a reversed owner decision (2026-10-13), moved tests                                                                       | owner, 2026-10-19                                                          |
+| the reversal is an in-place edit of ADR-0017 and ADR-0018, with no new ADR and no log entry                                                                   | one clause of each changes and the rest of both stays valid                                                                                                                                                         | a new ADR-0019 superseding the clause: one more document, and two ADRs left "accepted" with one clause overridden                                                                                                                                    | the decision reads in the ADRs that own it                           | stretches the in-place rule of `docs/AGENTS.md` to a reversed clause                                                      | owner, 2026-10-19                                                          |
+| JSON on `POST /api/v2/query` is always the array of results                                                                                                   | one body shape per route whatever the prefix, the shape the reader answers, and ADR-0018 D5 as written                                                                                                              | the native object with the array for `#sql` only: one route answers two shapes by query text and the dispatcher needs two result paths; merging batches into one object: cannot stream                                                               | one JSON shape across the result routes, one encode path             | the v2 query's JSON shape breaks for existing v2 callers (no released client)                                             | owner, 2026-10-19                                                          |
+| ascii whitespace: space, tab, LF, CR, VT, FF, byte by byte                                                                                                    | matches ADR-0018's "bytes"; no UTF-8 decoding, so any encoding splits alike                                                                                                                                         | `unicode.IsSpace` over runes: depends on decoding, larger alphabet                                                                                                                                                                                   | a split independent of the text's encoding                           | a Unicode space before or after `#sql` makes the query native                                                             | owner, 2026-10-19                                                          |
+| package `internal/query`, function `Run`                                                                                                                      | the package turns one query string into one result stream, and `query.Run` reads as that at the call site                                                                                                           | `internal/dispatch`: names nothing; `internal/engine`: as generic and `engine.Run` reads oddly; inside `internal/httpapi`: the Flight server would import the HTTP package; a `Cluster` method: ADR-0018 D5 puts the dispatcher above `internal/qdb` | one home for the prefix rule, callable from both planes              | a package of one file                                                                                                     | owner, 2026-10-19                                                          |
+| the tests name DuckDB where they said "sql" (`TestDuckDBScalars`, `TestDuckDBInstanceLimit`, `checkDuckDB*`, `directDuckDB`, `duckdb_back`, `duckdb_test.go`) | the owner's review: "sql" for DuckDB makes the naming problem worse, and these names change with the route anyway                                                                                                   | keeping the names: they point at a route that is gone                                                                                                                                                                                                | names that say which engine a test drives                            | a rename in the diff                                                                                                      | proposal                                                                   |
+| `Cluster.SQL` is `Cluster.Duck`, and "a sql call" is "a DuckDB call"                                                                                          | the owner names DuckDB after qdb-duck, and "SQL" names no engine once `/api/v2/sql` is gone                                                                                                                         | keeping `Cluster.SQL`: it names the SQL text and reads as a route that no longer exists; `Cluster.DuckDB`: the owner picked Duck, the name of the extension                                                                                          | `Cluster.Query` and `Cluster.Duck` name the two engines side by side | one rename across the callers and the documents of fact 19                                                                | owner, 2026-10-19 for the name; proposal for "a DuckDB call"               |
+| `olap` names and the fixture's `SelectSQL` keep their names                                                                                                   | they name the DuckDB SQL text they run and no route                                                                                                                                                                 | renaming them here: a wider diff with no route change behind it                                                                                                                                                                                      | a smaller unit                                                       | the word "sql" stays in `olap` and the fixture                                                                            | proposal                                                                   |
+| the tests move to `/query` before `/sql` is removed                                                                                                           | each commit builds and passes its tests                                                                                                                                                                             | removal first: the sql tests fail in that commit                                                                                                                                                                                                     | every commit green                                                   | one more commit                                                                                                           | proposal                                                                   |
+| `Run` reads the cluster from ctx                                                                                                                              | handlers read the cluster from the request context and nothing is injected                                                                                                                                          | a `*qdb.Cluster` parameter: a second way in for what ctx already carries                                                                                                                                                                             | the handlers' rule holds below them                                  | callers need a ctx that carries a cluster (`qdb.ClusterFrom` panics otherwise)                                            | `internal/AGENTS.md`, Logging                                              |
+| the native batch is released by `Run` after the sink returns                                                                                                  | a sink that never pulls the step would otherwise leak C-allocated buffers                                                                                                                                           | release inside the iterator after the step, as `qdb.lent` does: leaks when the sink never iterates                                                                                                                                                   | no leak on any sink path                                             | the batch lives until the sink returns, which is longer than one step (harmless, the session is already back in its pool) | proposal                                                                   |
+| a statement without a result set is one step of an empty-schema batch                                                                                         | Arrow's `EncodeStream` reads the first step's schema, and a nil step panics there [fact 5]                                                                                                                          | a nil step: panics in Arrow; zero steps: breaks the `Batches` rule of at least one step                                                                                                                                                              | every encoder sees a step                                            | JSON answers `[{"columns":[]}]` where `Encode` answered `{"columns":[]}`                                                  | proposal                                                                   |
+| one read retry on the native leg, none on DuckDB                                                                                                              | the native query runs before the sink and nothing has been sent; a DuckDB call is never retried                                                                                                                     | retrying in the handler: the handler no longer calls `Cluster.Query`                                                                                                                                                                                 | both planes get the retry from one place                             | none                                                                                                                      | `internal/httpapi/AGENTS.md`, Handlers; `internal/AGENTS.md`, the sql call |
+| `split` and `isSpace` unexported, `Run` the only export                                                                                                       | nothing outside the package needs the split; the property is white-box                                                                                                                                              | an exported `Split` or an `Engine` type: surface with no caller                                                                                                                                                                                      | minimal surface                                                      | the Flight slice exports something only if it needs it                                                                    | proposal                                                                   |
+| `split` and `Run` land in one commit                                                                                                                          | `unused` in the lint stack fails a commit that adds an unexported function with no caller [fact 15]                                                                                                                 | split first, Run next: the first commit fails lint                                                                                                                                                                                                   | every commit lints                                                   | one commit carries two functions                                                                                          | `.golangci.yml:5-8`                                                        |
+| the brief's endpoint sketch names the array and drops the sql line                                                                                            | the owner asked to keep the sketch in step with the tree                                                                                                                                                            | leaving the sketch alone and pointing at ADR-0010                                                                                                                                                                                                    | the sketch reads correctly                                           | one more place states the shape, with ADR-0010 as its owner                                                               | owner, 2026-10-19                                                          |
 
 ## 5. Knowledge
 
-Commit 3 (`internal/query`):
+Commit 4 (`Cluster.Duck`): the wording of fact 19, and row "Cluster.Duck"
+in the method name itself. No document records the old name.
+
+Commit 5 (`internal/query`):
 
 - `split`, `Run`: the overview claims of section 3, with ADR-0018 D3 and
   D5, facts 5, 8, 9, 10 and 11, and the rows "ascii whitespace",
@@ -448,10 +482,10 @@ Commit 3 (`internal/query`):
 - The row "Run reads the cluster from ctx" lands in `Run`'s doc comment.
   The row "unexported split" is stated by the code and lands nowhere.
 
-Commit 4 (`TestSplit`): the shapes of section 3, with the "ascii
+Commit 6 (`TestSplit`): the shapes of section 3, with the "ascii
 whitespace" row at step 1 and step 3.
 
-Commit 5 (`handleQuery` on `query.Run`):
+Commit 7 (`handleQuery` on `query.Run`):
 
 - `handleQuery`'s narrative of section 3.
 - ADR-0010 edits of section 3: the row "JSON array" with both rejected
@@ -464,20 +498,20 @@ Commit 5 (`handleQuery` on `query.Run`):
   `docs/e2e.md:161`: facts 4, 6 and 7.
 - `direct` and `TestQueryCompressed` comments.
 
-Commits 6 to 9 (tests and e2e on `/query`): the comments of section 3;
+Commits 8 to 11 (tests and e2e on `/query`): the comments of section 3;
 `internal/httpapi/AGENTS.md`, Tests; `docs/e2e.md:109`; row "DuckDB in
 the test names" in the renamed names themselves, and row "tests move
 first" in the commit order.
 
-Commit 10 (`/sql` removed):
+Commit 12 (`/sql` removed):
 
 - ADR-0018 Decisions 4 and 14, Consequences and the rejected row; ADR-0017
   Decisions 1 and 11: rows "one query route" and "in-place reversal".
 - `docs/brief.md` `:406`, `:458`, the sketch's sql line, `:931`.
 - `internal/httpapi/AGENTS.md`: Scope paragraph and the DuckDB bullet.
 - `internal/olap/AGENTS.md`, Scope.
-- Row "`Cluster.SQL` keeps its name" lands nowhere, because a name that
-  stays needs no record. It is open question 2 for the owner.
+- Row "`olap` names and `SelectSQL` keep their names" lands nowhere,
+  because a name that stays needs no record.
 
 ## 6. How the knowledge lands
 
@@ -499,25 +533,27 @@ docs/brief.md docs/e2e.md` and land one small commit per finding.
    "Unlanded from the plan" finding.
 6. Before each commit, run `npx prettier --write` on every Markdown file
    touched, `make lint` and `go test -p 1 ./...` (with the qdbd services
-   up). Commit 9 also runs `make -C tests/e2e test-round-trip`.
-7. After commit 10, grep fact 16's list again. Only log entries may still
+   up). Commit 11 also runs `make -C tests/e2e test-round-trip`.
+7. After commit 12, grep fact 16's list again. Only log entries may still
    name `/api/v2/sql`.
 
 ## 7. Commits
 
 1. `docs(plan): query-dispatch-plan.md, one function runs a query string on the engine its #sql prefix names` (committed)
-2. `docs(plan): query-dispatch-plan.md, post /api/v2/query becomes the one query route` (this revision)
-3. `feat(query): Run answers a query as batches on the engine its #sql prefix names`
-4. `test(query): a property over generated prefixes and ascii whitespace pins the split`
-5. `feat(httpapi): POST /api/v2/query streams through query.Run and honors #sql`
-6. `test(httpapi): the round trip reads every table through #sql on POST /api/v2/query`
-7. `test(httpapi): the duckdb scalars and the instance cap go through #sql on POST /api/v2/query`
-8. `test(httpapi): the error rows answer #sql failures on POST /api/v2/query and #sqlx natively`
-9. `test(e2e): the round trip reads every table through #sql on POST /api/v2/query`
-10. `feat(httpapi): POST /api/v2/sql is removed, and #sql on POST /api/v2/query reaches duckdb`
-11. The `/doc-discipline all` run of section 6, one `docs(<scope>): ...` commit per finding, then the `/doc-discipline check` against this plan.
-12. `docs(log): m5 in flight with one query route over both engines`
-13. Verify: push `sc-19567/rr-query-dispatch`, build its head in
+2. `docs(plan): query-dispatch-plan.md, post /api/v2/query becomes the one query route` (committed)
+3. `docs(plan): query-dispatch-plan.md, Cluster.SQL becomes Cluster.Duck` (this revision)
+4. `refactor(qdb): Cluster.SQL is Cluster.Duck, after qdb-duck`
+5. `feat(query): Run answers a query as batches on the engine its #sql prefix names`
+6. `test(query): a property over generated prefixes and ascii whitespace pins the split`
+7. `feat(httpapi): POST /api/v2/query streams through query.Run and honors #sql`
+8. `test(httpapi): the round trip reads every table through #sql on POST /api/v2/query`
+9. `test(httpapi): the duckdb scalars and the instance cap go through #sql on POST /api/v2/query`
+10. `test(httpapi): the error rows answer #sql failures on POST /api/v2/query and #sqlx natively`
+11. `test(e2e): the round trip reads every table through #sql on POST /api/v2/query`
+12. `feat(httpapi): POST /api/v2/sql is removed, and #sql on POST /api/v2/query reaches duckdb`
+13. The `/doc-discipline all` run of section 6, one `docs(<scope>): ...` commit per finding, then the `/doc-discipline check` against this plan.
+14. `docs(log): m5 in flight with one query route over both engines`
+15. Verify: push `sc-19567/rr-query-dispatch`, build its head in
     Buildkite, wait for the result. Green: report the build number. Red:
     fix with further small commits on this branch, push, build again.
 
@@ -526,13 +562,9 @@ docs/brief.md docs/e2e.md` and land one small commit per finding.
 1. Should the error table keep one row proving `POST /api/v2/sql` is
    gone (404)? Recommendation: no. The mux's 404 for an unknown path
    needs no row, and the row would name a route nothing serves.
-2. Should `Cluster.SQL` be renamed (to `Cluster.DuckDB`, for one), in
-   line with the review's naming point? Recommendation: not in this unit;
-   it names the SQL text it runs and no route, and a rename belongs with
-   the Flight slice if it reads badly there.
-3. Should `Run` release the native batch after the sink returns, or
+2. Should `Run` release the native batch after the sink returns, or
    should it be released inside the iterator after the step as `qdb.lent`
    does? Recommendation: in `Run`, because it cannot leak.
-4. A native statement without a result set answers JSON
+3. A native statement without a result set answers JSON
    `[{"columns":[]}]`. Recommendation: accept it as the array shape's
    empty result.
