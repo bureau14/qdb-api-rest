@@ -216,8 +216,8 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   It does not produce a NUL either, which the bulk reader drops from the
   end of a string (sc-19829). Strings draw the characters the text wires
   quote, and symbols draw only what a symtable takes. The table fixture
-  and the cluster fixture (`internal/qdbtest/cluster`, `NewInsecure` and
-  `NewSecure`) are subpackages, because `internal/qdb`'s own tests
+  and the cluster fixture (`internal/qdbtest/cluster`, `Bind`, `Each`
+  and `EachWith`) are subpackages, because `internal/qdb`'s own tests
   import `qdbtest`, and a `qdbtest` that imported `internal/qdb` would
   be a test import cycle. Every fixture table is removed on the test's
   cleanup, per `rapid.Check` iteration too. Run `qdbsh` for `qdbtest_*`

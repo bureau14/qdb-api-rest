@@ -55,36 +55,6 @@ func EachWith(t *testing.T, edit func(*config.Config), test func(t *testing.T, f
 	}
 }
 
-// NewInsecure binds a cluster to the insecure fixture, fails fast when
-// it is down, and closes the cluster on t's cleanup.
-func NewInsecure(t testing.TB) *qdb.Cluster {
-	t.Helper()
-	return NewInsecureWith(t, func(*config.Config) {})
-}
-
-// NewInsecureWith is NewInsecure over the default configuration as edit
-// leaves it, for a test that needs a smaller limit.
-func NewInsecureWith(t testing.TB, edit func(*config.Config)) *qdb.Cluster {
-	t.Helper()
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
-	edit(&cfg)
-	return bind(t, cfg)
-}
-
-// NewSecure binds a cluster to the secure fixture, with the fixture's
-// test user as the REST API's own user, for the test's life.
-func NewSecure(t testing.TB) *qdb.Cluster {
-	t.Helper()
-	qdbtest.Require(t, qdbtest.SecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.SecureURI
-	cfg.Cluster.PublicKeyFile = qdbtest.ClusterPublicKeyFile()
-	cfg.Cluster.UserSecurityFile = qdbtest.UserSecurityFile()
-	return bind(t, cfg)
-}
-
 // bind builds the cluster from cfg and closes it on t's cleanup.
 func bind(t testing.TB, cfg config.Config) *qdb.Cluster {
 	t.Helper()

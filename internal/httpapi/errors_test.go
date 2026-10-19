@@ -19,7 +19,6 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -39,119 +38,124 @@ func withHeader(headers map[string]string, name, value string) map[string]string
 	return out
 }
 
-// TestErrorRows: every row answers its status, its challenge and a
-// problem body. Two fixed tables of one column each, an int64 and a
+// TestErrorRows: on each cluster, every row answers its status, its
+// challenge and a problem body. Two fixed tables of one column each, an int64 and a
 // double, give the reader's and the ingest's rows something to name.
 func TestErrorRows(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	a := table.Table{Name: "qdbtest_errors_a", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
-	b := table.Table{Name: "qdbtest_errors_b", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnDouble}}}
-	table.Create(t, s.c, a)
-	table.Create(t, s.c, b)
-	bearer := map[string]string{"Authorization": "Bearer " + s.token}
-	jsonBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"}
-	csvBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
-	read := func(name, params string) string { return tablesPath + "/" + name + "/rows?" + params }
-	ingest := func(params string) string { return rowsPath + "?" + params }
-	csvHeader := "$table,$timestamp,c0\n"
-	// The refresh rows need tokens the keychain mints: a refresh token
-	// already expired, and the fixture's access token presented as one.
-	expiredRefresh := mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(-time.Hour))
-	refreshBearer := map[string]string{"Authorization": "Bearer " + mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(time.Hour))}
-	refreshBody := func(token string) string { return `{"refresh_token":` + strconv.Quote(token) + `}` }
-	rows := map[string]errorRow{
-		// the refresh
-		"refresh: text body":     {http.MethodPost, "/api/v2/auth/refresh", "x", map[string]string{"Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
-		"refresh: undecodable":   {http.MethodPost, "/api/v2/auth/refresh", `{"refresh_token":`, map[string]string{"Content-Type": "application/json"}, http.StatusBadRequest, ""},
-		"refresh: garbage token": {http.MethodPost, "/api/v2/auth/refresh", refreshBody("nope"), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		"refresh: expired":       {http.MethodPost, "/api/v2/auth/refresh", refreshBody(expiredRefresh), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		"refresh: access token":  {http.MethodPost, "/api/v2/auth/refresh", refreshBody(s.token), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		// the logout
-		"logout: no token":      {http.MethodPost, "/api/v2/auth/logout", "", nil, http.StatusUnauthorized, "Bearer"},
-		"logout: refresh token": {http.MethodPost, "/api/v2/auth/logout", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		// the session
-		"session: no token":      {http.MethodGet, "/api/v2/session", "", nil, http.StatusUnauthorized, "Bearer"},
-		"session: refresh token": {http.MethodGet, "/api/v2/session", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		// the query
-		"query: invalid query": {http.MethodPost, "/api/v2/query", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
-		"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
-		"query: no token":      {http.MethodPost, "/api/v2/query", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
-		"query: bad token":     {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
-		// the sql. A list is a type no text encoder writes.
-		"sql: invalid sql":      {http.MethodPost, "/api/v2/sql", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
-		"sql: json body":        {http.MethodPost, "/api/v2/sql", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
-		"sql: no token":         {http.MethodPost, "/api/v2/sql", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
-		"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT [1]", bearer, http.StatusInternalServerError, ""},
-		// the tables
-		"create: text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
-		"create: undecodable":             {http.MethodPost, tablesPath, `{"name":`, jsonBody, http.StatusBadRequest, ""},
-		"create: no shard_size":           {http.MethodPost, tablesPath, `{"name":"qdbtest_err","columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: fractional shard_size":   {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1.5,"columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: shard_size out of range": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":9223372036854775807,"columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: unknown type":            {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"count"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: symbol without symtable": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"symbol"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: symtable on a string":    {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"string","symtable":"s"}]}`, jsonBody, http.StatusBadRequest, ""},
-		"create: taken name":              {http.MethodPost, tablesPath, `{"name":"qdbtest_errors_a","shard_size":1000,"columns":[{"name":"c0","type":"int64"}]}`, jsonBody, http.StatusConflict, ""},
-		"create: no token":                {http.MethodPost, tablesPath, `{}`, map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, "Bearer"},
-		"delete: no token":                {http.MethodDelete, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized, "Bearer"},
-		"delete: no such table":           {http.MethodDelete, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound, ""},
-		// the reader
-		"read: no token":         {http.MethodGet, read(a.Name, ""), "", nil, http.StatusUnauthorized, "Bearer"},
-		"read: no such table":    {http.MethodGet, read("qdbtest_read_none", ""), "", bearer, http.StatusNotFound, ""},
-		"read: unparsable start": {http.MethodGet, read(a.Name, "start=yesterday&end=2020-01-02T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
-		"read: start alone":      {http.MethodGet, read(a.Name, "start=2020-01-01T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
-		"read: end not after":    {http.MethodGet, read(a.Name, "start=2020-01-02T00:00:00Z&end=2020-01-01T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
-		"read: unknown column":   {http.MethodGet, read(a.Name, "columns=nope"), "", bearer, http.StatusBadRequest, ""},
-		// the ingest
-		"ingest: no token":                 {http.MethodPost, ingest(""), csvHeader, map[string]string{"Content-Type": encoding.CSVContentType}, http.StatusUnauthorized, "Bearer"},
-		"ingest: text body":                {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Type", "text/plain"), http.StatusUnsupportedMediaType, ""},
-		"ingest: unknown content-encoding": {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "br"), http.StatusUnsupportedMediaType, ""},
-		"ingest: corrupt gzip":             {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "gzip"), http.StatusBadRequest, ""},
-		"ingest: over the cap":             {http.MethodPost, ingest(""), csvHeader + strings.Repeat("qdbtest_errors_a,2020-01-01T00:00:00.000000000Z,1\n", maxIngestBytes/48+1), csvBody, http.StatusRequestEntityTooLarge, ""},
-		"ingest: unknown push mode":        {http.MethodPost, ingest("push-mode=eventually"), csvHeader, csvBody, http.StatusBadRequest, ""},
-		"ingest: unknown dedup mode":       {http.MethodPost, ingest("deduplication-mode=merge&deduplication-columns=c0"), csvHeader, csvBody, http.StatusBadRequest, ""},
-		"ingest: dedup without columns":    {http.MethodPost, ingest("deduplication-mode=drop"), csvHeader, csvBody, http.StatusBadRequest, ""},
-		"ingest: columns without a mode":   {http.MethodPost, ingest("deduplication-columns=c0"), csvHeader, csvBody, http.StatusBadRequest, ""},
-		"ingest: no $table":                {http.MethodPost, ingest(""), "$timestamp,c0\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: no $timestamp":            {http.MethodPost, ingest(""), "$table,c0\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: unknown column":           {http.MethodPost, ingest(""), "$table,$timestamp,nope\nqdbtest_errors_a,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: short record":             {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: unparsable field":         {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,one\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: empty $timestamp":         {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,,1\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: tables of differing type": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\nqdbtest_errors_b,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
-		"ingest: no such table":            {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_none,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusNotFound, ""},
-	}
-	for name, tc := range rows {
-		resp := s.send(tc.method, tc.path, tc.body, tc.headers)
-		if resp.Code != tc.status {
-			t.Errorf("%s: status %d, want %d: %s", name, resp.Code, tc.status, resp.Body.String())
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		a := table.Table{Name: "qdbtest_errors_a", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
+		b := table.Table{Name: "qdbtest_errors_b", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnDouble}}}
+		table.CreateAs(t, s.c, s.user, a)
+		table.CreateAs(t, s.c, s.user, b)
+		bearer := map[string]string{"Authorization": "Bearer " + s.token}
+		jsonBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"}
+		csvBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
+		read := func(name, params string) string { return tablesPath + "/" + name + "/rows?" + params }
+		ingest := func(params string) string { return rowsPath + "?" + params }
+		csvHeader := "$table,$timestamp,c0\n"
+		// The refresh rows need tokens the keychain mints: a refresh token
+		// already expired, and the fixture's access token presented as one.
+		expiredRefresh := mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(-time.Hour))
+		refreshBearer := map[string]string{"Authorization": "Bearer " + mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(time.Hour))}
+		refreshBody := func(token string) string { return `{"refresh_token":` + strconv.Quote(token) + `}` }
+		rows := map[string]errorRow{
+			// the refresh
+			"refresh: text body":     {http.MethodPost, "/api/v2/auth/refresh", "x", map[string]string{"Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
+			"refresh: undecodable":   {http.MethodPost, "/api/v2/auth/refresh", `{"refresh_token":`, map[string]string{"Content-Type": "application/json"}, http.StatusBadRequest, ""},
+			"refresh: garbage token": {http.MethodPost, "/api/v2/auth/refresh", refreshBody("nope"), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			"refresh: expired":       {http.MethodPost, "/api/v2/auth/refresh", refreshBody(expiredRefresh), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			"refresh: access token":  {http.MethodPost, "/api/v2/auth/refresh", refreshBody(s.token), map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			// the logout
+			"logout: no token":      {http.MethodPost, "/api/v2/auth/logout", "", nil, http.StatusUnauthorized, "Bearer"},
+			"logout: refresh token": {http.MethodPost, "/api/v2/auth/logout", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			// the session
+			"session: no token":      {http.MethodGet, "/api/v2/session", "", nil, http.StatusUnauthorized, "Bearer"},
+			"session: refresh token": {http.MethodGet, "/api/v2/session", "", refreshBearer, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			// the query
+			"query: invalid query": {http.MethodPost, "/api/v2/query", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
+			"query: json body":     {http.MethodPost, "/api/v2/query", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
+			"query: no token":      {http.MethodPost, "/api/v2/query", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
+			"query: bad token":     {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized, `Bearer error="invalid_token"`},
+			// the sql. A list is a type no text encoder writes.
+			"sql: invalid sql":      {http.MethodPost, "/api/v2/sql", "NOT A QUERY", bearer, http.StatusBadRequest, ""},
+			"sql: json body":        {http.MethodPost, "/api/v2/sql", `{"query":"SELECT 1"}`, jsonBody, http.StatusUnsupportedMediaType, ""},
+			"sql: no token":         {http.MethodPost, "/api/v2/sql", "SELECT 1", nil, http.StatusUnauthorized, "Bearer"},
+			"sql: unsupported type": {http.MethodPost, "/api/v2/sql", "SELECT [1]", bearer, http.StatusInternalServerError, ""},
+			// the tables
+			"create: text body":               {http.MethodPost, tablesPath, `{}`, map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "text/plain"}, http.StatusUnsupportedMediaType, ""},
+			"create: undecodable":             {http.MethodPost, tablesPath, `{"name":`, jsonBody, http.StatusBadRequest, ""},
+			"create: no shard_size":           {http.MethodPost, tablesPath, `{"name":"qdbtest_err","columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: fractional shard_size":   {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1.5,"columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: shard_size out of range": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":9223372036854775807,"columns":[{"name":"c","type":"int64"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: unknown type":            {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"count"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: symbol without symtable": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"symbol"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: symtable on a string":    {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"string","symtable":"s"}]}`, jsonBody, http.StatusBadRequest, ""},
+			"create: taken name":              {http.MethodPost, tablesPath, `{"name":"qdbtest_errors_a","shard_size":1000,"columns":[{"name":"c0","type":"int64"}]}`, jsonBody, http.StatusConflict, ""},
+			"create: no token":                {http.MethodPost, tablesPath, `{}`, map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, "Bearer"},
+			"delete: no token":                {http.MethodDelete, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized, "Bearer"},
+			"delete: no such table":           {http.MethodDelete, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound, ""},
+			// the reader
+			"read: no token":         {http.MethodGet, read(a.Name, ""), "", nil, http.StatusUnauthorized, "Bearer"},
+			"read: no such table":    {http.MethodGet, read("qdbtest_read_none", ""), "", bearer, http.StatusNotFound, ""},
+			"read: unparsable start": {http.MethodGet, read(a.Name, "start=yesterday&end=2020-01-02T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
+			"read: start alone":      {http.MethodGet, read(a.Name, "start=2020-01-01T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
+			"read: end not after":    {http.MethodGet, read(a.Name, "start=2020-01-02T00:00:00Z&end=2020-01-01T00:00:00Z"), "", bearer, http.StatusBadRequest, ""},
+			"read: unknown column":   {http.MethodGet, read(a.Name, "columns=nope"), "", bearer, http.StatusBadRequest, ""},
+			// the ingest
+			"ingest: no token":                 {http.MethodPost, ingest(""), csvHeader, map[string]string{"Content-Type": encoding.CSVContentType}, http.StatusUnauthorized, "Bearer"},
+			"ingest: text body":                {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Type", "text/plain"), http.StatusUnsupportedMediaType, ""},
+			"ingest: unknown content-encoding": {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "br"), http.StatusUnsupportedMediaType, ""},
+			"ingest: corrupt gzip":             {http.MethodPost, ingest(""), csvHeader, withHeader(csvBody, "Content-Encoding", "gzip"), http.StatusBadRequest, ""},
+			"ingest: over the cap":             {http.MethodPost, ingest(""), csvHeader + strings.Repeat("qdbtest_errors_a,2020-01-01T00:00:00.000000000Z,1\n", maxIngestBytes/48+1), csvBody, http.StatusRequestEntityTooLarge, ""},
+			"ingest: unknown push mode":        {http.MethodPost, ingest("push-mode=eventually"), csvHeader, csvBody, http.StatusBadRequest, ""},
+			"ingest: unknown dedup mode":       {http.MethodPost, ingest("deduplication-mode=merge&deduplication-columns=c0"), csvHeader, csvBody, http.StatusBadRequest, ""},
+			"ingest: dedup without columns":    {http.MethodPost, ingest("deduplication-mode=drop"), csvHeader, csvBody, http.StatusBadRequest, ""},
+			"ingest: columns without a mode":   {http.MethodPost, ingest("deduplication-columns=c0"), csvHeader, csvBody, http.StatusBadRequest, ""},
+			"ingest: no $table":                {http.MethodPost, ingest(""), "$timestamp,c0\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: no $timestamp":            {http.MethodPost, ingest(""), "$table,c0\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: unknown column":           {http.MethodPost, ingest(""), "$table,$timestamp,nope\nqdbtest_errors_a,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: short record":             {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: unparsable field":         {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,one\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: empty $timestamp":         {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,,1\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: tables of differing type": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\nqdbtest_errors_b,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
+			"ingest: no such table":            {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_none,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusNotFound, ""},
 		}
-		if got := resp.Header().Get("WWW-Authenticate"); got != tc.challenge {
-			t.Errorf("%s: WWW-Authenticate = %q, want %q", name, got, tc.challenge)
+		for name, tc := range rows {
+			resp := s.send(tc.method, tc.path, tc.body, tc.headers)
+			if resp.Code != tc.status {
+				t.Errorf("%s: status %d, want %d: %s", name, resp.Code, tc.status, resp.Body.String())
+			}
+			if got := resp.Header().Get("WWW-Authenticate"); got != tc.challenge {
+				t.Errorf("%s: WWW-Authenticate = %q, want %q", name, got, tc.challenge)
+			}
+			var p problem
+			if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
+				t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
+			}
 		}
-		var p problem
-		if err := json.Unmarshal(resp.Body.Bytes(), &p); err != nil || p.Status != tc.status || p.Title != http.StatusText(tc.status) {
-			t.Errorf("%s: problem body %s (%v)", name, resp.Body.String(), err)
-		}
-	}
+	})
 }
 
-// TestSQLInstanceLimit: with duckdb.max_instances at one, the anonymous
-// user's sql call opens the one instance, and a second user's call
-// answers 503 with the eviction tick as its Retry-After. It needs a
-// cluster of its own limit, so it is not a row of TestErrorRows.
+// TestSQLInstanceLimit: on each cluster, with duckdb.max_instances at
+// one, the cluster's user's sql call opens the one instance, and a second
+// user's call answers 503 with the eviction tick as its Retry-After. It
+// needs a cluster of its own limit, so it is not a row of TestErrorRows.
 func TestSQLInstanceLimit(t *testing.T) {
-	s := newServerOn(t, cluster.NewInsecureWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }), qdb.User{})
-	// 1. The anonymous user opens the one instance. A string column is
-	//    one the encoders write.
-	if resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
-		t.Fatalf("anonymous: status %d: %s", resp.Code, resp.Body.String())
-	}
-	// 2. The insecure cluster accepts any user name, so a second user is
-	//    a second instance, past the cap.
-	other := mint(t, s.tk, "access", qdb.User{Username: "qdbtest_other"}, time.Now().Add(time.Hour))
-	resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
-	if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {
-		t.Fatalf("second user: status %d, Retry-After %q: %s", resp.Code, resp.Header().Get("Retry-After"), resp.Body.String())
-	}
+	cluster.EachWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		// 1. The cluster's user opens the one instance. A string column is
+		//    one the encoders write.
+		if resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
+			t.Fatalf("first user: status %d: %s", resp.Code, resp.Body.String())
+		}
+		// 2. The cap is taken before a second user's instance opens, so the
+		//    second user needs no credential the cluster accepts, and the
+		//    call answers past the cap on either cluster.
+		other := mint(t, s.tk, "access", qdb.User{Username: "qdbtest_other"}, time.Now().Add(time.Hour))
+		resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
+		if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {
+			t.Fatalf("second user: status %d, Retry-After %q: %s", resp.Code, resp.Header().Get("Retry-After"), resp.Body.String())
+		}
+	})
 }
