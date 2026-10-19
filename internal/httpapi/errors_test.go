@@ -121,6 +121,27 @@ func TestErrorRows(t *testing.T) {
 			"ingest: tables of differing type": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\nqdbtest_errors_b,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
 			"ingest: no such table":            {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_none,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusNotFound, ""},
 		}
+		// The secure cluster refuses the anonymous user, and an anonymous
+		// token reaches it only by minting, because the login refuses the
+		// anonymous user. Each data route answers the refusal as an invalid
+		// token. The rows run on the secure cluster alone, because the
+		// insecure cluster accepts the anonymous user.
+		if f.Spec.Secured {
+			anon := "Bearer " + mint(t, s.tk, "access", qdb.User{}, time.Now().Add(time.Hour))
+			refused := `Bearer error="invalid_token"`
+			anonCSV := map[string]string{"Authorization": anon, "Content-Type": encoding.CSVContentType}
+			anonJSON := map[string]string{"Authorization": anon, "Content-Type": "application/json"}
+			for name, row := range map[string]errorRow{
+				"query: anonymous on the secure cluster":  {http.MethodPost, "/api/v2/query", "SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"sql: anonymous on the secure cluster":    {http.MethodPost, "/api/v2/sql", "SELECT 1", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"read: anonymous on the secure cluster":   {http.MethodGet, read(a.Name, ""), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"ingest: anonymous on the secure cluster": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\n", anonCSV, http.StatusUnauthorized, refused},
+				"create: anonymous on the secure cluster": {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"int64"}]}`, anonJSON, http.StatusUnauthorized, refused},
+				"delete: anonymous on the secure cluster": {http.MethodDelete, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+			} {
+				rows[name] = row
+			}
+		}
 		for name, tc := range rows {
 			resp := s.send(tc.method, tc.path, tc.body, tc.headers)
 			if resp.Code != tc.status {
