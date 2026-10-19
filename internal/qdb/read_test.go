@@ -69,14 +69,14 @@ func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow
 	return array.NewRecordBatch(schema, cols, rows)
 }
 
-// read reads table name under o as the anonymous user into one batch
+// read reads table name under o as u into one batch
 // the caller owns, asserting that no batch exceeded BatchRows. Each
 // batch is only lent by the sequence and is released when the step
 // returns, so it is retained here.
-func read(t *rapid.T, c *qdb.Cluster, name string, o qdb.ReadOptions) arrow.RecordBatch {
+func read(t *rapid.T, c *qdb.Cluster, u qdb.User, name string, o qdb.ReadOptions) arrow.RecordBatch {
 	t.Helper()
 	var batches []arrow.RecordBatch
-	err := c.Read(context.Background(), qdb.User{}, name, o, func(seq qdb.Batches) error {
+	err := c.Read(context.Background(), u, name, o, func(seq qdb.Batches) error {
 		for rec, err := range seq {
 			if err != nil {
 				return err
@@ -115,69 +115,72 @@ func names(rec arrow.RecordBatch) []string {
 // A drawn subset of names answers exactly those, in that order. A drawn
 // row count of zero is the schema-only batch.
 func TestReadAnswersRowsWritten(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, c, tbl)
-		// A batch size below the row count is what makes the read span
-		// fetches.
-		o := qdb.ReadOptions{BatchRows: rapid.IntRange(1, 16).Draw(rt, "batch rows")}
-		whole := read(rt, c, tbl.Name, o)
-		defer whole.Release()
-		all := []string{"$table", "$timestamp"}
-		for _, col := range tbl.Columns {
-			all = append(all, col.Name)
-		}
-		if got := names(whole); !slices.Equal(got, all) {
-			rt.Fatalf("columns %v read back, want %v", got, all)
-		}
-		table.Check(rt, tbl, whole)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+			// A batch size below the row count is what makes the read span
+			// fetches.
+			o := qdb.ReadOptions{BatchRows: rapid.IntRange(1, 16).Draw(rt, "batch rows")}
+			whole := read(rt, f.Cluster, f.User, tbl.Name, o)
+			defer whole.Release()
+			all := []string{"$table", "$timestamp"}
+			for _, col := range tbl.Columns {
+				all = append(all, col.Name)
+			}
+			if got := names(whole); !slices.Equal(got, all) {
+				rt.Fatalf("columns %v read back, want %v", got, all)
+			}
+			table.Check(rt, tbl, whole)
 
-		// The subset is read in a drawn order, and the specials are drawn
-		// like any other name.
-		o.Columns = rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
-		subset := read(rt, c, tbl.Name, o)
-		defer subset.Release()
-		if got := names(subset); !slices.Equal(got, o.Columns) {
-			rt.Fatalf("columns %v read back, want %v", got, o.Columns)
-		}
-		table.Check(rt, tbl, subset)
+			// The subset is read in a drawn order, and the specials are drawn
+			// like any other name.
+			o.Columns = rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
+			subset := read(rt, f.Cluster, f.User, tbl.Name, o)
+			defer subset.Release()
+			if got := names(subset); !slices.Equal(got, o.Columns) {
+				rt.Fatalf("columns %v read back, want %v", got, o.Columns)
+			}
+			table.Check(rt, tbl, subset)
+		})
 	})
 }
 
 // TestReadDropsTrailingNUL pins a C API defect, sc-19829. The bulk
 // reader's Arrow path drops one trailing NUL byte from a string cell,
-// while the query answers the byte. When this test fails, the C API has
-// been fixed. Delete the test then, and let the fixture's drawString
-// draw NUL.
+// while the query answers the byte, on either cluster. When this test
+// fails, the C API has been fixed. Delete the test then, and let the
+// fixture's drawString draw NUL.
 func TestReadDropsTrailingNUL(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
-	tbl.Batch = oneRow(tbl, "x\x00")
-	defer tbl.Batch.Release()
-	table.Create(t, c, tbl)
-	// A string value aliases the batch's buffer, which a lent batch frees
-	// when the step returns, so the read copies it out.
-	cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
-	queried, err := c.Query(context.Background(), qdb.User{}, "SELECT c0 FROM "+tbl.Name)
-	if err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	defer queried.Release()
-	var read string
-	err = c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
-		for rec, err := range seq {
-			if err != nil {
-				return err
-			}
-			read = cell(rec)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		c, u := f.Cluster, f.User
+		tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
+		tbl.Batch = oneRow(tbl, "x\x00")
+		defer tbl.Batch.Release()
+		table.CreateAs(t, c, u, tbl)
+		// A string value aliases the batch's buffer, which a lent batch frees
+		// when the step returns, so the read copies it out.
+		cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
+		queried, err := c.Query(context.Background(), u, "SELECT c0 FROM "+tbl.Name)
+		if err != nil {
+			t.Fatalf("query: %v", err)
 		}
-		return nil
+		defer queried.Release()
+		var read string
+		err = c.Read(context.Background(), u, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
+			for rec, err := range seq {
+				if err != nil {
+					return err
+				}
+				read = cell(rec)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if cell(queried) != "x\x00" || read != "x" {
+			t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", cell(queried), read)
+		}
 	})
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if cell(queried) != "x\x00" || read != "x" {
-		t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", cell(queried), read)
-	}
 }
