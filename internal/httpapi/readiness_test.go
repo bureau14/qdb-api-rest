@@ -38,21 +38,23 @@ func observeContext() context.Context {
 	return observe.WithLogger(context.Background(), logger)
 }
 
-// TestReadinessOKAgainstLiveCluster: a reachable cluster answers 200 with
-// no Retry-After and an empty body.
+// TestReadinessOKAgainstLiveCluster: each reachable cluster answers 200
+// with no Retry-After and an empty body. On the secure cluster the probe
+// dials as the fixture's test user, the REST API's own user there.
 func TestReadinessOKAgainstLiveCluster(t *testing.T) {
-	qdbtest.Require(t, qdbtest.InsecureURI)
-	cfg := config.Default()
-	cfg.Cluster.URI = qdbtest.InsecureURI
-	resp := probe(t, cfg)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("readiness = %d, want 200", resp.Code)
-	}
-	if resp.Body.Len() != 0 {
-		t.Fatalf("readiness body = %q, want empty", resp.Body.String())
-	}
-	if resp.Header().Get("Retry-After") != "" {
-		t.Fatal("readiness set Retry-After")
+	for _, spec := range qdbtest.Clusters(t) {
+		t.Run(spec.Name, func(t *testing.T) {
+			resp := probe(t, spec.Config(t))
+			if resp.Code != http.StatusOK {
+				t.Fatalf("readiness = %d, want 200", resp.Code)
+			}
+			if resp.Body.Len() != 0 {
+				t.Fatalf("readiness body = %q, want empty", resp.Body.String())
+			}
+			if resp.Header().Get("Retry-After") != "" {
+				t.Fatal("readiness set Retry-After")
+			}
+		})
 	}
 }
 

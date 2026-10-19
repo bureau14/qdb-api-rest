@@ -38,29 +38,31 @@ func tokenOf(t *testing.T, resp *httptest.ResponseRecorder) tokenResponse {
 	return tr
 }
 
-// TestLoginThenQuery: an anonymous login on the insecure cluster answers
-// the RFC 6749 shape, its access token opens the query endpoint, and its
-// refresh token is a refresh token of the same session that the query
-// endpoint refuses.
+// TestLoginThenQuery: on each cluster, a login as the cluster's user
+// answers the RFC 6749 shape, its access token opens the query endpoint,
+// and its refresh token is a refresh token of the same session that the
+// query endpoint refuses. The user is anonymous on the insecure cluster.
 func TestLoginThenQuery(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	tr := tokenOf(t, s.login(`{"username":"","secret_key":""}`))
-	if tr.TokenType != "Bearer" || tr.AccessToken == "" || tr.RefreshToken == "" || tr.ExpiresIn != int64(config.Default().Auth.AccessTTL.Seconds()) {
-		t.Fatalf("token response %+v", tr)
-	}
-	if resp := s.query("SELECT 1", map[string]string{"Authorization": "Bearer " + tr.AccessToken}); resp.Code != http.StatusOK {
-		t.Fatalf("query with the minted token: status %d: %s", resp.Code, resp.Body.String())
-	}
-	access, refresh := claimsOf(t, s, tr.AccessToken), claimsOf(t, s, tr.RefreshToken)
-	if refresh.Typ != "refresh" || refresh.SessionID != access.SessionID {
-		t.Fatalf("refresh token %+v does not pair with access token %+v", refresh, access)
-	}
-	// The refresh token never opens the data plane. This is one request
-	// and not an error row, because it needs this login's token.
-	resp := s.query("SELECT 1", map[string]string{"Authorization": "Bearer " + tr.RefreshToken})
-	if resp.Code != http.StatusUnauthorized || resp.Header().Get("WWW-Authenticate") != `Bearer error="invalid_token"` {
-		t.Fatalf("query with the refresh token: status %d, challenge %q", resp.Code, resp.Header().Get("WWW-Authenticate"))
-	}
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		tr := tokenOf(t, s.login(fmt.Sprintf(`{"username":%q,"secret_key":%q}`, f.User.Username, f.User.SecretKey)))
+		if tr.TokenType != "Bearer" || tr.AccessToken == "" || tr.RefreshToken == "" || tr.ExpiresIn != int64(config.Default().Auth.AccessTTL.Seconds()) {
+			t.Fatalf("token response %+v", tr)
+		}
+		if resp := s.query("SELECT 1", map[string]string{"Authorization": "Bearer " + tr.AccessToken}); resp.Code != http.StatusOK {
+			t.Fatalf("query with the minted token: status %d: %s", resp.Code, resp.Body.String())
+		}
+		access, refresh := claimsOf(t, s, tr.AccessToken), claimsOf(t, s, tr.RefreshToken)
+		if refresh.Typ != "refresh" || refresh.SessionID != access.SessionID {
+			t.Fatalf("refresh token %+v does not pair with access token %+v", refresh, access)
+		}
+		// The refresh token never opens the data plane. This is one request
+		// and not an error row, because it needs this login's token.
+		resp := s.query("SELECT 1", map[string]string{"Authorization": "Bearer " + tr.RefreshToken})
+		if resp.Code != http.StatusUnauthorized || resp.Header().Get("WWW-Authenticate") != `Bearer error="invalid_token"` {
+			t.Fatalf("query with the refresh token: status %d, challenge %q", resp.Code, resp.Header().Get("WWW-Authenticate"))
+		}
+	})
 }
 
 // claimsOf verifies token with the fixture's keychain.
@@ -75,7 +77,9 @@ func claimsOf(t *testing.T, s server, token string) auth.Claims {
 
 // TestLoginVerdicts: the secure cluster accepts its user and refuses a
 // wrong secret with 401 and no challenge. A non-JSON body answers 415
-// and an undecodable one answers 400.
+// and an undecodable one answers 400. The test runs on the secure
+// cluster alone, because the insecure cluster accepts any secret, so the
+// refusal has no insecure twin.
 func TestLoginVerdicts(t *testing.T) {
 	s := newServer(t, cluster.Bind(t, qdbtest.Secure(t), nil))
 	name, secret := qdbtest.SecureUser(t)
