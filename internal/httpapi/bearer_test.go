@@ -10,6 +10,7 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
 // epoch is the fixed clock every token in these tests is judged against.
@@ -26,10 +27,10 @@ func tokensAt(t *testing.T, now time.Time) *auth.Tokens {
 	return tk
 }
 
-// mint seals a token of kind typ for user, expiring at exp.
-func mint(t *testing.T, tk *auth.Tokens, typ, user string, exp time.Time) string {
+// mint seals a token of kind typ for u, expiring at exp.
+func mint(t *testing.T, tk *auth.Tokens, typ string, u qdb.User, exp time.Time) string {
 	t.Helper()
-	token, err := tk.Mint(auth.Claims{Username: user, Typ: typ, SessionID: "sid-1", ExpiresAt: exp.Unix()})
+	token, err := tk.Mint(auth.Claims{Username: u.Username, SecretKey: u.SecretKey, Typ: typ, SessionID: "sid-1", ExpiresAt: exp.Unix()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func problemDetail(t *testing.T, resp *httptest.ResponseRecorder) string {
 // with its claims, whatever the case of the scheme.
 func TestBearerAccessTokenPasses(t *testing.T) {
 	tk := tokensAt(t, epoch)
-	token := mint(t, tk, "access", "alice", epoch.Add(time.Minute))
+	token := mint(t, tk, "access", qdb.User{Username: "alice"}, epoch.Add(time.Minute))
 	for _, scheme := range []string{"Bearer", "bearer", "BEARER"} {
 		resp, seen := challenge(t, tk, scheme+" "+token)
 		if resp.Code != http.StatusNoContent || seen == nil || seen.Username != "alice" {
@@ -95,8 +96,8 @@ func TestBearerRejects(t *testing.T) {
 		"missing":      {"", "Bearer", "missing bearer token"},
 		"wrong scheme": {"Basic abc", `Bearer error="invalid_token"`, "malformed bearer credentials"},
 		"garbage":      {"Bearer not.a.token", `Bearer error="invalid_token"`, "invalid token"},
-		"refresh":      {"Bearer " + mint(t, tk, "refresh", "alice", epoch.Add(time.Hour)), `Bearer error="invalid_token"`, "not an access token"},
-		"expired":      {"Bearer " + mint(t, tk, "access", "alice", epoch.Add(-time.Second)), `Bearer error="invalid_token"`, "token expired"},
+		"refresh":      {"Bearer " + mint(t, tk, "refresh", qdb.User{Username: "alice"}, epoch.Add(time.Hour)), `Bearer error="invalid_token"`, "not an access token"},
+		"expired":      {"Bearer " + mint(t, tk, "access", qdb.User{Username: "alice"}, epoch.Add(-time.Second)), `Bearer error="invalid_token"`, "token expired"},
 	}
 	for name, tc := range cases {
 		resp, seen := challenge(t, tk, tc.authorization)

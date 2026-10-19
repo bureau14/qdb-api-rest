@@ -14,6 +14,8 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -27,7 +29,7 @@ func (s server) readTable(name, params string, headers map[string]string) *httpt
 func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.ReadOptions) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	err := s.c.Read(context.Background(), qdb.User{}, name, o, func(batches qdb.Batches) error {
+	err := s.c.Read(context.Background(), s.user, name, o, func(batches qdb.Batches) error {
 		return e.EncodeStream(context.Background(), &buf, batches)
 	})
 	if err != nil {
@@ -39,7 +41,7 @@ func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.Re
 // TestReadTableRange: a range that covers the table answers what the
 // whole read answers, and a range before it answers the schema alone.
 func TestReadTableRange(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, s.c, tbl)

@@ -31,6 +31,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -92,7 +94,7 @@ func (s server) drawnIngest(t *rapid.T, tables []table.Table, mode string) *http
 // the rows generated. The fixture's tables fit one batch.
 func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	err := s.c.Read(context.Background(), qdb.User{}, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
+	err := s.c.Read(context.Background(), s.user, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
 		for rec, err := range batches {
 			if err != nil {
 				return err
@@ -112,7 +114,7 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 // the ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), qdb.User{}, tbl.Select())
+	rec, err := s.c.Query(context.Background(), s.user, tbl.Select())
 	if err != nil {
 		t.Fatalf("query %s: %v", tbl.Name, err)
 	}
@@ -177,7 +179,7 @@ func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	err := s.c.SQL(context.Background(), qdb.User{}, q, func(batches qdb.Batches) error {
+	err := s.c.SQL(context.Background(), s.user, q, func(batches qdb.Batches) error {
 		return e.EncodeStream(context.Background(), &buf, batches)
 	})
 	if err != nil {
@@ -191,7 +193,7 @@ func (s server) directSQL(t *rapid.T, e encoding.Encoder, q string) []byte {
 // the native read answers. The fixture's tables fit one batch.
 func (s server) checkSQL(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	err := s.c.SQL(context.Background(), qdb.User{}, tbl.SelectSQL(), func(batches qdb.Batches) error {
+	err := s.c.SQL(context.Background(), s.user, tbl.SelectSQL(), func(batches qdb.Batches) error {
 		for rec, err := range batches {
 			if err != nil {
 				return err
@@ -320,7 +322,7 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 // TestRoundtrip: the round trip above, run per iteration over one to
 // three generated tables that share one column list.
 func TestRoundtrip(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	rapid.Check(t, func(rt *rapid.T) {
 		// 1. the auth steps: login, refresh, session, logout, and every
 		// later step runs under the refreshed access token, so the round
@@ -422,7 +424,7 @@ func TestRoundtrip(t *testing.T) {
 // TestRoundtripDeduplicated: the same body ingested twice under drop on
 // $timestamp reads back once.
 func TestRoundtripDeduplicated(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		if tbl.Rows() == 0 {

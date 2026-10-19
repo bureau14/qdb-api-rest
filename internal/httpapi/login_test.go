@@ -43,7 +43,7 @@ func tokenOf(t *testing.T, resp *httptest.ResponseRecorder) tokenResponse {
 // refresh token is a refresh token of the same session that the query
 // endpoint refuses.
 func TestLoginThenQuery(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	tr := tokenOf(t, s.login(`{"username":"","secret_key":""}`))
 	if tr.TokenType != "Bearer" || tr.AccessToken == "" || tr.RefreshToken == "" || tr.ExpiresIn != int64(config.Default().Auth.AccessTTL.Seconds()) {
 		t.Fatalf("token response %+v", tr)
@@ -77,7 +77,7 @@ func claimsOf(t *testing.T, s server, token string) auth.Claims {
 // wrong secret with 401 and no challenge. A non-JSON body answers 415
 // and an undecodable one answers 400.
 func TestLoginVerdicts(t *testing.T) {
-	s := newServerOn(t, cluster.NewSecure(t))
+	s := newServer(t, cluster.Bind(t, qdbtest.Secure(t), nil))
 	name, secret := qdbtest.SecureUser(t)
 	tokenOf(t, s.login(fmt.Sprintf(`{"username":%q,"secret_key":%q}`, name, secret)))
 	cases := map[string]struct {
@@ -115,7 +115,7 @@ func TestLoginUnreachable(t *testing.T) {
 		defer cancel()
 		_ = c.Close(ctx)
 	})
-	s := newServerOn(t, c)
+	s := newServerOn(t, c, qdb.User{})
 	first := s.login(`{}`)
 	if first.Code != http.StatusServiceUnavailable || first.Header().Get("Retry-After") != "" {
 		t.Fatalf("unreachable: status %d, Retry-After %q", first.Code, first.Header().Get("Retry-After"))

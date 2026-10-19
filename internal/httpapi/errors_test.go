@@ -18,6 +18,8 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -41,7 +43,7 @@ func withHeader(headers map[string]string, name, value string) map[string]string
 // problem body. Two fixed tables of one column each, an int64 and a
 // double, give the reader's and the ingest's rows something to name.
 func TestErrorRows(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	a := table.Table{Name: "qdbtest_errors_a", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
 	b := table.Table{Name: "qdbtest_errors_b", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnDouble}}}
 	table.Create(t, s.c, a)
@@ -54,8 +56,8 @@ func TestErrorRows(t *testing.T) {
 	csvHeader := "$table,$timestamp,c0\n"
 	// The refresh rows need tokens the keychain mints: a refresh token
 	// already expired, and the fixture's access token presented as one.
-	expiredRefresh := mint(t, s.tk, "refresh", "", time.Now().Add(-time.Hour))
-	refreshBearer := map[string]string{"Authorization": "Bearer " + mint(t, s.tk, "refresh", "", time.Now().Add(time.Hour))}
+	expiredRefresh := mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(-time.Hour))
+	refreshBearer := map[string]string{"Authorization": "Bearer " + mint(t, s.tk, "refresh", qdb.User{}, time.Now().Add(time.Hour))}
 	refreshBody := func(token string) string { return `{"refresh_token":` + strconv.Quote(token) + `}` }
 	rows := map[string]errorRow{
 		// the refresh
@@ -139,7 +141,7 @@ func TestErrorRows(t *testing.T) {
 // answers 503 with the eviction tick as its Retry-After. It needs a
 // cluster of its own limit, so it is not a row of TestErrorRows.
 func TestSQLInstanceLimit(t *testing.T) {
-	s := newServerOn(t, cluster.NewInsecureWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }))
+	s := newServerOn(t, cluster.NewInsecureWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }), qdb.User{})
 	// 1. The anonymous user opens the one instance. A string column is
 	//    one the encoders write.
 	if resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
@@ -147,7 +149,7 @@ func TestSQLInstanceLimit(t *testing.T) {
 	}
 	// 2. The insecure cluster accepts any user name, so a second user is
 	//    a second instance, past the cap.
-	other := mint(t, s.tk, "access", "qdbtest_other", time.Now().Add(time.Hour))
+	other := mint(t, s.tk, "access", qdb.User{Username: "qdbtest_other"}, time.Now().Add(time.Hour))
 	resp := s.post("/api/v2/sql", "SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
 	if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {
 		t.Fatalf("second user: status %d, Retry-After %q: %s", resp.Code, resp.Header().Get("Retry-After"), resp.Body.String())

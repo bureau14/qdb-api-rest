@@ -20,6 +20,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -27,29 +28,36 @@ import (
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
 // server is the root handler plus the request context main would give
-// it: logger, cluster and keychain. The keychain is kept so a test mints
-// what a row needs, such as an expired refresh token.
+// it: logger, cluster and keychain, and the user every request acts as,
+// with one access token minted for that user. The keychain is kept so a
+// test mints what a row needs, such as an expired refresh token.
 type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
 	tk      *auth.Tokens
 	handler http.Handler
-	token   string // an anonymous access token
+	// user is who the direct oracle calls and the fixture's cleanups act
+	// as, so on the secure cluster they pass the cluster's check.
+	user  qdb.User
+	token string
 }
 
-// newServer binds the insecure fixture cluster and mints one anonymous
-// access token, the caller every query here runs as.
-func newServer(t *testing.T) server {
+// newServer binds the server to f and acts as f's user.
+func newServer(t *testing.T, f cluster.Fixture) server {
 	t.Helper()
-	return newServerOn(t, cluster.NewInsecure(t))
+	return newServerOn(t, f.Cluster, f.User)
 }
 
-// newServerOn is newServer over any cluster.
-func newServerOn(t *testing.T, c *qdb.Cluster) server {
+// newServerOn is newServer over any cluster and user, for the unreachable
+// cluster.
+func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
 	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
-	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), token: mint(t, tk, "access", "", time.Now().Add(time.Hour))}
+	// The token carries the user's secret key, because the data routes
+	// dial the cluster with the token's credentials.
+	token := mint(t, tk, "access", u, time.Now().Add(time.Hour))
+	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), user: u, token: token}
 }
 
 // post sends body to path with the given headers, nil meaning none.
@@ -72,7 +80,7 @@ func (s server) query(body string, headers map[string]string) *httptest.Response
 // endpoint must answer these exact bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), qdb.User{}, q)
+	rec, err := s.c.Query(context.Background(), s.user, q)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
@@ -89,7 +97,7 @@ func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 // TestQueryCompressed: for a generated table, each coding answers the
 // encoder's own bytes under Content-Encoding, and identity stays bare.
 func TestQueryCompressed(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 	rapid.Check(t, func(rt *rapid.T) {
 		tbl := table.Generate(rt)
 		table.Create(rt, s.c, tbl)

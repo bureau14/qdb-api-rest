@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 )
 
 // TestSQLScalars posts one row of every DuckDB scalar to /api/v2/sql and
@@ -18,7 +20,7 @@ import (
 // writes each cell in the encoders' text. It proves that DuckDB answers
 // the types the encoders write, in the words the encoders write them.
 func TestSQLScalars(t *testing.T) {
-	s := newServer(t)
+	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
 
 	// 1. The query casts one literal to each type. NULL stands alone,
 	// because DuckDB types a bare NULL as int32.
