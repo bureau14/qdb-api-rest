@@ -39,9 +39,9 @@ Flight server, Handshake and bearer auth, a refused credential
 commands on a table list core in `internal/qdb`, the rest of the
 surface answering `UNIMPLEMENTED`, the format-equivalence property
 extended with a Flight SQL client for both engines and a dispatch
-property over generated prefixes, the smoke test through Arrow's Flight
-SQL JDBC driver (`docs/e2e.md`), green in Buildkite on all eight
-platforms (FreeBSD may drop out of the smoke test), and the `tls_port` sample configs corrected in
+property over generated prefixes, the smoke tests through Arrow's Flight
+SQL ADBC and JDBC drivers (`docs/e2e.md`), green in Buildkite on all
+eight platforms (FreeBSD may drop out of the JDBC smoke test), and the `tls_port` sample configs corrected in
 `qdb-documentation`.
 
 Handoff to M6 and M7:
@@ -64,10 +64,10 @@ Blocked on:
   `internal/httpapi/AGENTS.md`, ADR-0010 and the comments of
   `internal/qdb`, `internal/qdbtest` and `internal/httpapi`.
 
-## 2026-10-19 -- M5 gains a smoke test through Arrow's Flight SQL JDBC driver
+## 2026-10-19 -- M5 gains smoke tests through Arrow's Flight SQL ADBC and JDBC drivers
 
 - Owner decision; ADR-0018, Decision 14, edited in place, and
-  `docs/e2e.md`, The Flight SQL JDBC smoke test.
+  `docs/e2e.md`, The Flight SQL smoke tests.
 
 ## 2026-10-17 -- the text encoders write every DuckDB scalar; duckdb-scalars-plan.md deleted
 
