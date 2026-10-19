@@ -8,9 +8,10 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 - Every encoder implements `Encoder` over the Arrow record batches the
   core returns (`internal/AGENTS.md`, Code, the result rule). An encoder
   knows only its media type and its bytes. It does not flush, log or
-  negotiate, and it does not release a batch. `Encode` takes the one
-  batch of a query. `EncodeStream` takes the sequence of batches of a
-  table read and encodes each batch before it pulls the next. It
+  negotiate, and it does not release a batch. `Encode` writes one
+  batch: the bodies the e2e tool and the fixture write. `EncodeStream`
+  writes every response the server sends, and encodes each batch of the
+  sequence before it pulls the next. It
   assumes every batch shares the first batch's schema and does not
   check it. An error step ends the encoding with that error. A buffered
   writer inside either method is flushed once at the end. The HTTP
@@ -44,8 +45,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   order. A later object's absent key is null, and
   a key outside the list is `ErrInvalidRows`. A number in an `int64`
   column must be an integer literal.
-- The JSON decoder reads the one result the query answers or the array
-  of results the table reader answers. It reads one result at a time,
+- The JSON decoder reads one result (what `Encode` writes) or the array
+  of results (what every route answers). It reads one result at a time,
   whole, through the standard library, and then routes it row by row,
   because `$table` is a column at any position. The first result fixes
   the column list, `$table` and `$timestamp` among them, and a later

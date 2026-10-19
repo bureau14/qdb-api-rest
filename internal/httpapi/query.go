@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
 // maxBodyBytes caps every request body. A QuasarDB query is a line of
@@ -103,53 +103,61 @@ func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, an
 	}
 }
 
-// handleQuery runs the body as a query and streams the batch in the
-// negotiated format. The status is decided before the first byte. The
-// batch is materialized before anything is written, so every cluster
-// error is known up front.
+// handleQuery runs the body through query.Run as the bearer's user and
+// streams the result in the negotiated format. A #sql body runs on
+// DuckDB, and any other body on the native engine. The status is decided
+// before the first byte.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// A non-text body is a clear 415 instead of a cluster parse error.
+	// The query runs inside the sink, and every error of the run arrives
+	// before the sink runs, so the status is decided before the first byte.
+	// Two kinds of failure come out, and they answer differently:
+	//
+	//  1. read the body as query text;
+	//  2. run the query through query.Run, with the encoder streaming
+	//     inside the sink;
+	//  3. a failure of the stream. With zero bytes out it is 500, which is
+	//     where a column type no encoder writes lands. After the first
+	//     byte the stream is cut and only the log hears of it;
+	//  4. a failure of the run, before any byte. The engine's error is the
+	//     caller's 400, and writeClusterError maps the rest.
+
+	// 1. the body. A non-text body is a clear 415 instead of an engine's
+	//    parse error, and the body is capped and read whole.
 	if !isQueryText(r.Header.Get("Content-Type")) {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be text/plain or application/sql")
 		return
 	}
-	// The body is capped and read whole. It is not inspected.
 	q, ok := readBody(w, r)
 	if !ok {
 		return
 	}
 	enc := negotiate(r.Header.Get("Accept"))
-	// The caller is whoever the bearer middleware verified.
-	c := auth.ClaimsFrom(ctx)
-	u := qdb.User{Username: c.Username, SecretKey: c.SecretKey}
-	// A read is idempotent and nothing has been sent, so one retry on a
-	// fresh session is safe.
-	rec, err := qdb.ClusterFrom(ctx).Query(ctx, u, string(q), qdb.WithReadRetry())
-	if err != nil {
-		writeClusterError(ctx, w, err, http.StatusBadRequest)
-		return
-	}
-	// A statement without a result set is a nil batch, which every
-	// encoder encodes as empty. Only a real batch has buffers to free.
-	if rec != nil {
-		defer rec.Release()
-	}
-	w.Header().Set("Content-Type", enc.ContentType())
 	cw := &countingWriter{w: w}
-	if err := enc.Encode(ctx, cw, rec); err != nil {
-		// Before the first byte the failure is this process's own, such
-		// as a column the encoder cannot encode, and the answer is 500.
-		// After the first byte, or once the caller has left, the stream
-		// is cut and only the log hears of it.
+	// 2. the query. query.Run retries the native engine once and DuckDB
+	//    never, so the handler retries nothing itself.
+	var streamErr error
+	err := query.Run(ctx, caller(r), string(q), func(batches qdb.Batches) error {
+		w.Header().Set("Content-Type", enc.ContentType())
+		streamErr = enc.EncodeStream(ctx, cw, batches)
+		return streamErr
+	})
+	switch {
+	// 3. the stream failed
+	case streamErr != nil:
 		switch {
 		case ctx.Err() != nil:
-			observe.Logger(ctx).DebugContext(ctx, "response abandoned by the caller", slog.Int64("bytes", cw.n), observe.Err(err))
+			observe.Logger(ctx).DebugContext(ctx, "response abandoned by the caller", slog.Int64("bytes", cw.n), observe.Err(streamErr))
 		case cw.n == 0:
-			writeProblem(w, http.StatusInternalServerError, err.Error())
+			writeProblem(w, http.StatusInternalServerError, streamErr.Error())
 		default:
-			observe.Logger(ctx).WarnContext(ctx, "response cut mid-stream", slog.Int64("bytes", cw.n), observe.Err(err))
+			observe.Logger(ctx).WarnContext(ctx, "response cut mid-stream", slog.Int64("bytes", cw.n), observe.Err(streamErr))
 		}
+	// 4. the run failed. The instance cap, a refused credential, an open
+	//    breaker and an unreachable cluster answer as writeClusterError
+	//    maps them, and anything else an engine answered is 400.
+	case err != nil:
+		writeClusterError(ctx, w, err, http.StatusBadRequest)
 	}
 }
 

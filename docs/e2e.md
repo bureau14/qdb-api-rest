@@ -158,8 +158,8 @@ through a decoder of the same package.
   `$table` in front, the same shape the decoders' tests answer. The
   decoder drops `$table`, so the tool puts a `$table` column of the
   name back in front, and encodes through the package's CSV encoder.
-  The JSON it reads is the one result the query answers or the array
-  of results the table reader answers.
+  The JSON it reads is the array of results every route answers or the
+  one result `Encode` writes.
 
 ### The driver
 

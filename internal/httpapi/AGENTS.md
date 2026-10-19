@@ -61,8 +61,13 @@ This file, Handlers, holds the table reader's.
 - The session is `GET /api/v2/session` behind the bearer edge. It
   answers the claims, `Cluster.URI` and `Secured`, and `build.Version`.
   Times are the claims' unix seconds. It makes no cluster call.
-- The batch is released on return. A nil batch, which is a statement
-  without a result set, has nothing to release and encodes as empty.
+- The query endpoint runs its body through `query.Run`, which calls
+  `Cluster.Query` with `WithReadRetry` for a native body and
+  `Cluster.Duck` for a `#sql` body, and streams the result inside the
+  sink as the reader does. `query.Run` releases the native batch after
+  the sink returns, and a statement without a result set is one step of
+  no fields, which encodes as an empty result. The JSON body of every
+  result route is the array of results (ADR-0010).
 - The table reader is `GET /api/v2/tables/{name}/rows`. `?columns=a,b`
   answers those fields in that order, with `$table` and `$timestamp`
   only when named. Without `?columns` it answers every column, the two

@@ -304,7 +304,7 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows i
 //
 // There is one object per column, with the keys in that order so a
 // streaming reader knows the type before the data. There is no tables
-// wrapper, because one query is one result and the table a row came
+// wrapper, because one batch is one result and the table a row came
 // from is a column like any other. A nil batch encodes as
 // {"columns":[]}. There is no trailing newline.
 //
@@ -754,8 +754,8 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 	return res, nil
 }
 
-// jsonResults yields the results of a body: the one result the query
-// answers, or each result of the array the table reader answers. An
+// jsonResults yields the results of a body: the one result Encode
+// writes, or each result of the array every route answers. An
 // empty array yields nothing. A body that is neither, a result the
 // standard library cannot read, a member a result does not declare, and
 // a value after the body are ErrInvalidRows, which names the result,
@@ -859,9 +859,8 @@ func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
 	return names, rows, nil
 }
 
-// Decode implements Decoder. The body is the columnar JSON the query
-// answers, one result, or the array of results the table reader
-// answers. The first result fixes the column list, $table and
+// Decode implements Decoder. The body is the columnar JSON Encode
+// writes, one result, or the array of results every route answers. The first result fixes the column list, $table and
 // $timestamp among them, in any order, and every later result names the
 // same columns. The type member of a column is not read.
 func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {

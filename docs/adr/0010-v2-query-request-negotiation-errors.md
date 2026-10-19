@@ -20,8 +20,10 @@ so a change after release is a protocol change.
 
 1. **The query is the request body**, `text/plain` or `application/sql`
    (absent counts as `text/plain`, and anything else is 415). The body
-   bytes reach the C API unchanged, with no transcoding, no trimming and
-   no prefix routing. A charset parameter is neither honored nor checked.
+   bytes reach the engine unchanged, with no transcoding and no trimming,
+   except that a `#sql` prefix (ADR-0018, Decision 3) is stripped and
+   sends the rest to DuckDB. A charset parameter is neither honored nor
+   checked.
    An empty or blank body reaches the cluster like any other query.
 2. **The body is capped at 1 MiB**, and over it the answer is 413. A
    QuasarDB query is a line of text.
@@ -37,10 +39,12 @@ so a change after release is a protocol change.
    absent header and no match all mean JSON. `q` weights are not read.
    A client that wants a format names it (`text/csv;q=0` selects CSV).
 5. **200, `Content-Type` from the encoder, body chunked.** The status is
-   decided before the first byte. The batch is materialized before
-   anything is written, so every cluster error is known up front. A
-   failure in the middle of the stream cuts the stream and is logged.
-   It is not a status.
+   decided before the first byte: a native batch is materialized before
+   anything is written, and DuckDB answers a `#sql` query's errors
+   before its first batch, so every engine error is known up front. The
+   JSON body is a top-level array of results, one per batch, for either
+   engine (owner, 2026-10-19). A failure in the middle of the stream
+   cuts the stream and is logged. It is not a status.
 
 ### Errors
 
@@ -65,6 +69,7 @@ so a change after release is a protocol change.
    | the cluster answered, whatever it said             | 400, `detail` the binding's message                   |
    | the cluster unreachable or timed out               | 503                                                   |
    | the breaker open                                   | 503, `Retry-After` in whole seconds, rounded up       |
+   | the DuckDB instance cap is full (a `#sql` query)   | 503, `Retry-After` in whole seconds, rounded up       |
    | the caller's context ended                         | nothing on the wire, one debug line                   |
    | the REST API itself failed                         | 500                                                   |
 
@@ -107,18 +112,20 @@ so a change after release is a protocol change.
 
 ## Alternatives rejected
 
-| Alternative                                 | Why not                                                                                           |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| A JSON envelope or `?query=` for the query  | the query is the resource's whole input, and a format or a database belongs in a header or config |
-| `?format=`, or 406 on no match              | one mechanism, the brief's table, and an unmatched `Accept` still gets the default                |
-| A house error envelope                      | RFC 9457 has a registered media type and a fixed vocabulary a client parses without knowing us    |
-| 500 for every cluster error, or 200 + error | a run of 5xx ejects a healthy gateway, and a problem under 200 is parsed as a result              |
-| An `ErrorType` to status table now          | no client asks for it yet, and one row when one does                                              |
-| Not checking `Content-Type`, no body cap    | one comparison turns a JSON body into a clear 415, and one line bounds what a request can read    |
-| A writer that flushes per encoder write     | the encoder's and `net/http`'s buffers already stream, and a flush only adds chunk frames         |
-| Deferring the `typ` check to M3             | one line, and a refresh token is never a data-plane credential                                    |
-| 403 for a refused credential                | the cluster never accepted the identity                                                           |
-| 400 for a refused credential                | it blames the request, and the token is what failed                                               |
+| Alternative                                               | Why not                                                                                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| A JSON envelope or `?query=` for the query                | the query is the resource's whole input, and a format or a database belongs in a header or config                            |
+| `?format=`, or 406 on no match                            | one mechanism, the brief's table, and an unmatched `Accept` still gets the default                                           |
+| A house error envelope                                    | RFC 9457 has a registered media type and a fixed vocabulary a client parses without knowing us                               |
+| 500 for every cluster error, or 200 + error               | a run of 5xx ejects a healthy gateway, and a problem under 200 is parsed as a result                                         |
+| An `ErrorType` to status table now                        | no client asks for it yet, and one row when one does                                                                         |
+| Not checking `Content-Type`, no body cap                  | one comparison turns a JSON body into a clear 415, and one line bounds what a request can read                               |
+| A writer that flushes per encoder write                   | the encoder's and `net/http`'s buffers already stream, and a flush only adds chunk frames                                    |
+| Deferring the `typ` check to M3                           | one line, and a refresh token is never a data-plane credential                                                               |
+| 403 for a refused credential                              | the cluster never accepted the identity                                                                                      |
+| A JSON object for a native query and the array for `#sql` | one route would answer two JSON shapes by its query text, and the dispatcher would need two result paths (owner, 2026-10-19) |
+| One JSON object merging every batch                       | a columnar object finishes column one before column two starts, so it cannot stream                                          |
+| 400 for a refused credential                              | it blames the request, and the token is what failed                                                                          |
 
                                      |
 

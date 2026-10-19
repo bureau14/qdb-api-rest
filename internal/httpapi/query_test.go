@@ -22,6 +22,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
+	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
@@ -75,20 +76,17 @@ func (s server) query(body string, headers map[string]string) *httptest.Response
 	return s.post("/api/v2/query", body, headers)
 }
 
-// direct runs q over the cluster and encodes the result with e. The
-// endpoint must answer these exact bytes.
+// direct runs q through query.Run as the server's user and encodes the
+// stream with e. The endpoint must answer these exact bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), s.user, q)
-	if err != nil {
-		t.Fatalf("%s: %v", q, err)
-	}
-	if rec != nil {
-		defer rec.Release()
-	}
 	var buf bytes.Buffer
-	if err := e.Encode(context.Background(), &buf, rec); err != nil {
-		t.Fatalf("%s: %v", e.ContentType(), err)
+	// The ctx is the server's, because query.Run reads the cluster from it.
+	err := query.Run(s.ctx, s.user, q, func(batches qdb.Batches) error {
+		return e.EncodeStream(s.ctx, &buf, batches)
+	})
+	if err != nil {
+		t.Fatalf("%s %s: %v", e.ContentType(), q, err)
 	}
 	return buf.Bytes()
 }
@@ -104,7 +102,8 @@ func TestQueryCompressed(t *testing.T) {
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, s.c, s.user, tbl)
 			// 2. The expected body: the same query run on the cluster
-			//    directly and written by the JSON encoder. The requests
+			//    directly and written by the JSON stream encoder, the array
+			//    of one result. The requests
 			//    below send no Accept header, so JSON is what the endpoint
 			//    answers, and once decompressed its body must be these
 			//    bytes.

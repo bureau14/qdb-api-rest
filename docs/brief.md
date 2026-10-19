@@ -542,7 +542,7 @@ POST   /api/v2/auth/login          {username?, secret_key?} -> {access_token, re
 POST   /api/v2/auth/refresh        refresh token -> new token pair
 POST   /api/v2/auth/logout         invalidates client state; server-side revocation is a future layer
 GET    /api/v2/session             "who am i": session/user/instance introspection (see below)
-POST   /api/v2/query               native qdb query, or DuckDB behind a `#sql` prefix (ADR-0018); streamed, content-negotiated (see above)
+POST   /api/v2/query               native qdb query, or DuckDB behind a `#sql` prefix (ADR-0018); streamed, content-negotiated; JSON is the array of results, one per batch (ADR-0010)
 POST   /api/v2/sql                 full SQL via embedded DuckDB; streamed, content-negotiated
 POST   /api/v2/rows                multi-table ingest, a $table column routes each row; body content-negotiated
                                    (CSV, NDJSON, Arrow IPC, and the columnar JSON the query answers;
