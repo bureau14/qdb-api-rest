@@ -167,19 +167,29 @@ var ErrCredentialsRefused = errors.New("qdb: the cluster refused the credentials
 // gives its unit back at once. On a secure cluster, a dial that fails
 // other than by an unreachable cluster is ErrCredentialsRefused.
 func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
+	// A dial is three steps, and a failure at any of them leaves the
+	// budget as it found it:
+	//
+	//  1. a budgeted dial takes its unit first;
+	//  2. dial;
+	//  3. on a failed dial, give the unit back and classify a refusal.
+
+	// 1. take the unit
 	if budgeted {
 		if err := c.budget.acquire(ctx); err != nil {
 			return qdbapi.Session{}, err
 		}
 	}
+	// 2. dial
 	hdl, err := qdbapi.NewSessionFactory(c.handleOptions(u)).NewSession()
+	// 3. give the unit back and classify a refusal. An insecure cluster
+	//    checks no credential, so only a secure cluster's failed dial is
+	//    a refusal. The login and the data routes see one classification,
+	//    because both dial through here.
 	if err != nil {
 		if budgeted {
 			c.budget.release()
 		}
-		// An insecure cluster checks no credential, so only a secure
-		// cluster's failed dial is a refusal. The login and the data
-		// routes see one classification, because both dial through here.
 		if c.Secured() && !qdbapi.IsClusterUnavailable(err) {
 			err = fmt.Errorf("%w: %w", ErrCredentialsRefused, err)
 		}
