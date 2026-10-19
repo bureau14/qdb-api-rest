@@ -1,5 +1,6 @@
 // The good path of the v2 surface is one round trip against the live qdbd
-// fixture, the in-process twin of the e2e flow. The test logs in,
+// fixture, the in-process twin of the e2e flow. It runs once per cluster,
+// as the cluster's user, anonymous on the insecure one. The test logs in,
 // refreshes, reads its session and logs out, then under the refreshed
 // token creates generated tables that share one column list over HTTP, reads them
 // empty, ingests them in one body of a drawn format under a drawn
@@ -16,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +33,6 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
-	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
@@ -269,14 +270,17 @@ func grantOf(t table.T, step string, resp *httptest.ResponseRecorder) tokenRespo
 	return tr
 }
 
-// authRoundTrip logs in anonymously, refreshes, reads the session under
-// the refreshed access token and logs out, and returns the refreshed
-// access token. The refreshed token carries the login's session, and the
-// session answers that token's claims, this cluster and this build.
-func (s server) authRoundTrip(t *rapid.T) string {
+// authRoundTrip logs in as the server's user, refreshes, reads the
+// session under the refreshed access token and logs out, and returns the
+// refreshed access token. The user is anonymous on the insecure cluster.
+// The refreshed token carries the login's session, and the session
+// answers that token's claims, this user, this cluster as secured says
+// the fixture is, and this build.
+func (s server) authRoundTrip(t *rapid.T, secured bool) string {
 	t.Helper()
 	jsonBody := map[string]string{"Content-Type": "application/json"}
-	login := grantOf(t, "login", s.post("/api/v2/auth/login", `{"username":"","secret_key":""}`, jsonBody))
+	body := fmt.Sprintf(`{"username":%q,"secret_key":%q}`, s.user.Username, s.user.SecretKey)
+	login := grantOf(t, "login", s.post("/api/v2/auth/login", body, jsonBody))
 	refreshed := grantOf(t, "refresh", s.post("/api/v2/auth/refresh", `{"refresh_token":"`+login.RefreshToken+`"}`, jsonBody))
 	first, err := s.tk.Verify(login.AccessToken)
 	if err != nil {
@@ -296,9 +300,10 @@ func (s server) authRoundTrip(t *rapid.T) string {
 		t.Fatalf("session: status %d: %s", resp.Code, resp.Body.String())
 	}
 	want := sessionResponse{
-		Cluster: sessionCluster{URI: s.c.URI(), Secured: false},
-		Token:   sessionToken{Typ: "access", IssuedAt: next.IssuedAt, ExpiresAt: next.ExpiresAt, JTI: next.JTI, AuthTime: next.AuthTime},
-		Server:  sessionServer{Version: build.Version},
+		Username: s.user.Username,
+		Cluster:  sessionCluster{URI: s.c.URI(), Secured: secured},
+		Token:    sessionToken{Typ: "access", IssuedAt: next.IssuedAt, ExpiresAt: next.ExpiresAt, JTI: next.JTI, AuthTime: next.AuthTime},
+		Server:   sessionServer{Version: build.Version},
 	}
 	if got != want {
 		t.Fatalf("session: got %+v, want %+v", got, want)
@@ -319,125 +324,129 @@ func ingestResponseOf(t table.T, resp *httptest.ResponseRecorder) ingestResponse
 	return r
 }
 
-// TestRoundtrip: the round trip above, run per iteration over one to
-// three generated tables that share one column list.
+// TestRoundtrip: the round trip above, on each cluster, run per iteration
+// over one to three generated tables that share one column list.
 func TestRoundtrip(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	rapid.Check(t, func(rt *rapid.T) {
-		// 1. the auth steps: login, refresh, session, logout, and every
-		// later step runs under the refreshed access token, so the round
-		// trip proves a refreshed token is a working token on every route.
-		// The logout is a step here and not in the shell round trip,
-		// because its 204 is all there is to observe
-		s.token = s.authRoundTrip(rt)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		rapid.Check(t, func(rt *rapid.T) {
+			// 1. the auth steps: login, refresh, session, logout, and every
+			// later step runs under the refreshed access token, so the round
+			// trip proves a refreshed token is a working token on every route.
+			// The logout is a step here and not in the shell round trip,
+			// because its 204 is all there is to observe
+			s.token = s.authRoundTrip(rt, f.Spec.Secured)
 
-		// 2. the tables: the first is drawn whole, the rest are generated over its columns
-		first := table.Generate(rt)
-		tables := []table.Table{first}
-		for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
-			tables = append(tables, table.GenerateLike(rt, first))
-		}
-		wantRows, wantTables := 0, 0
-		for _, tbl := range tables {
-			wantRows += tbl.Rows()
-			if tbl.Rows() > 0 {
-				wantTables++
+			// 2. the tables: the first is drawn whole, the rest are generated over its columns
+			first := table.Generate(rt)
+			tables := []table.Table{first}
+			for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
+				tables = append(tables, table.GenerateLike(rt, first))
 			}
-		}
-		all := []string{"$table", "$timestamp"}
-		for _, c := range first.Columns {
-			all = append(all, c.Name)
-		}
-		picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
+			wantRows, wantTables := 0, 0
+			for _, tbl := range tables {
+				wantRows += tbl.Rows()
+				if tbl.Rows() > 0 {
+					wantTables++
+				}
+			}
+			all := []string{"$table", "$timestamp"}
+			for _, c := range first.Columns {
+				all = append(all, c.Name)
+			}
+			picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 
-		// 3. create each table, which answers 201 with its Location
-		for _, tbl := range tables {
-			table.RemoveOnCleanup(rt, s.c, tbl)
-			resp := s.createTable(rt, createBodyOf(tbl))
-			if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
-				rt.Fatalf("create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			// 3. create each table, which answers 201 with its Location
+			for _, tbl := range tables {
+				table.RemoveOnCleanupAs(rt, s.c, s.user, tbl)
+				resp := s.createTable(rt, createBodyOf(tbl))
+				if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
+					rt.Fatalf("create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+				}
+				if got := resp.Header().Get("Location"); got != tablesPath+"/"+tbl.Name {
+					rt.Fatalf("create %s: Location = %q", tbl.Name, got)
+				}
 			}
-			if got := resp.Header().Get("Location"); got != tablesPath+"/"+tbl.Name {
-				rt.Fatalf("create %s: Location = %q", tbl.Name, got)
-			}
-		}
 
-		// 4. read the first table empty, which answers the schema alone in
-		// every format, and the schema is the one generated. The others share it, and an
-		// empty read through the bulk reader is slow (about a tenth of a
-		// second where a filled read is milliseconds), so one table stands
-		// for all
-		empty := first
-		empty.Batch = nil
-		s.checkRead(rt, empty)
-		s.checkReadFormats(rt, first, nil)
+			// 4. read the first table empty, which answers the schema alone in
+			// every format, and the schema is the one generated. The others share it, and an
+			// empty read through the bulk reader is slow (about a tenth of a
+			// second where a filled read is milliseconds), so one table stands
+			// for all
+			empty := first
+			empty.Batch = nil
+			s.checkRead(rt, empty)
+			s.checkReadFormats(rt, first, nil)
 
-		// 5. ingest every table's rows in one body of a drawn format under a
-		// drawn request coding and a drawn push mode, the default included.
-		// The counts answered are the rows generated and the tables that
-		// had any
-		mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
-		got := ingestResponseOf(rt, s.drawnIngest(rt, tables, mode))
-		if got.Rows != wantRows || got.Tables != wantTables {
-			rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
-		}
+			// 5. ingest every table's rows in one body of a drawn format under a
+			// drawn request coding and a drawn push mode, the default included.
+			// The counts answered are the rows generated and the tables that
+			// had any
+			mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
+			got := ingestResponseOf(rt, s.drawnIngest(rt, tables, mode))
+			if got.Rows != wantRows || got.Tables != wantTables {
+				rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
+			}
 
-		// 6. read, query and read through DuckDB each in every format. The
-		// rows written are the rows generated, and every format's body
-		// carries the encoder's own bytes. After an async push a query sees
-		// the rows at once, but the bulk reader sees them only once the
-		// server has flushed. Before that it answers none of them, or some
-		// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so the
-		// async mode is read back through the query alone. qdb-duck scans
-		// through the bulk reader, so the DuckDB read is skipped with it
-		for _, tbl := range tables {
-			s.checkQuery(rt, tbl)
-			s.checkQueryFormats(rt, tbl)
-			if mode == "async" {
-				continue
+			// 6. read, query and read through DuckDB each in every format. The
+			// rows written are the rows generated, and every format's body
+			// carries the encoder's own bytes. After an async push a query sees
+			// the rows at once, but the bulk reader sees them only once the
+			// server has flushed. Before that it answers none of them, or some
+			// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so the
+			// async mode is read back through the query alone. qdb-duck scans
+			// through the bulk reader, so the DuckDB read is skipped with it
+			for _, tbl := range tables {
+				s.checkQuery(rt, tbl)
+				s.checkQueryFormats(rt, tbl)
+				if mode == "async" {
+					continue
+				}
+				s.checkRead(rt, tbl)
+				s.checkReadFormats(rt, tbl, picked)
+				s.checkSQL(rt, tbl)
+				s.checkSQLFormats(rt, tbl)
 			}
-			s.checkRead(rt, tbl)
-			s.checkReadFormats(rt, tbl, picked)
-			s.checkSQL(rt, tbl)
-			s.checkSQLFormats(rt, tbl)
-		}
 
-		// 7. delete each (204), which leaves the symtables. The same create
-		// is accepted again over them (201), and a second delete is 404
-		for _, tbl := range tables {
-			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
-				rt.Fatalf("delete %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+			// 7. delete each (204), which leaves the symtables. The same create
+			// is accepted again over them (201), and a second delete is 404
+			for _, tbl := range tables {
+				if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
+					rt.Fatalf("delete %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+				}
+				if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
+					rt.Fatalf("re-create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+				}
+				if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent {
+					rt.Fatalf("delete %s again: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+				}
+				if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNotFound {
+					rt.Fatalf("delete %s of nothing: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
+				}
 			}
-			if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
-				rt.Fatalf("re-create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
-			}
-			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent {
-				rt.Fatalf("delete %s again: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
-			}
-			if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNotFound {
-				rt.Fatalf("delete %s of nothing: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
-			}
-		}
+		})
 	})
 }
 
-// TestRoundtripDeduplicated: the same body ingested twice under drop on
-// $timestamp reads back once.
+// TestRoundtripDeduplicated: on each cluster, the same body ingested
+// twice under drop on $timestamp reads back once.
 func TestRoundtripDeduplicated(t *testing.T) {
-	s := newServer(t, cluster.Bind(t, qdbtest.Insecure(), nil))
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		if tbl.Rows() == 0 {
-			return
-		}
-		table.RemoveOnCleanup(rt, s.c, tbl)
-		if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
-			rt.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
-		}
-		query := "deduplication-mode=drop&deduplication-columns=" + url.QueryEscape("$timestamp")
-		for range 2 {
-			ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, encoding.CSV{}, []table.Table{tbl}), query, nil))
-		}
-		s.checkRead(rt, tbl)
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			if tbl.Rows() == 0 {
+				return
+			}
+			table.RemoveOnCleanupAs(rt, s.c, s.user, tbl)
+			if resp := s.createTable(rt, createBodyOf(tbl)); resp.Code != http.StatusCreated {
+				rt.Fatalf("create: status %d: %s", resp.Code, resp.Body.String())
+			}
+			query := "deduplication-mode=drop&deduplication-columns=" + url.QueryEscape("$timestamp")
+			for range 2 {
+				ingestResponseOf(rt, s.ingest(ingestBodyOf(rt, encoding.CSV{}, []table.Table{tbl}), query, nil))
+			}
+			s.checkRead(rt, tbl)
+		})
 	})
 }
