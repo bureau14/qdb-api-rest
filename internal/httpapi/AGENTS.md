@@ -182,5 +182,8 @@ This file, Handlers, holds the table reader's.
   challenge and a problem body. A new route's rows join the table. The
   secure subtest adds one row per data route for an anonymous token,
   which the secure cluster refuses, answered 401 `invalid_token`. The
+  whole table runs on both clusters, because running only the rows that
+  reach qdbd would need a classification of every row that nothing
+  checks. The
   login verdicts, the bearer edge, the codings and the DuckDB instance cap keep their own tests, because they need the secure cluster, a fixed clock, a decompressor or a cluster of their own limit.
 - The bearer edge is pinned with a fixed clock passed to `auth.New`.
