@@ -1,11 +1,10 @@
-// Tests for the encoders. The two round trips need a live qdbd. Each
+// Tests for the encoders. The round trip needs a live qdbd. It
 // generates a table, writes it, queries it back as a record batch,
-// encodes that batch in every format of its family, parses the output
-// with the standard library and compares the result with the batch.
-// The fixture's Check proves first that the batch is the table that was
-// written. The other tests need no cluster. The scalar property draws
-// batches of the DuckDB scalars in memory and runs them through the
-// same comparison. TestEdgeCells pins the exact bytes of values the
+// appends drawn columns of the DuckDB scalars, encodes that batch in
+// every format, parses the output with the standard library and
+// compares the result with the batch. The fixture's Check proves first
+// that the queried batch is the table that was written. The other tests
+// need no cluster. TestEdgeCells pins the exact bytes of values the
 // fixture never generates, and the stream tests pin the stream path of
 // every encoder on the same hand-built batch.
 package encoding
@@ -348,31 +347,6 @@ func checkText(t failer, rec arrow.RecordBatch, got []wireColumn) {
 	}
 }
 
-// TestTextRoundTrip checks that the output of the three text encoders
-// parses back to the batch they were given, for any column types, nulls
-// and row count.
-func TestTextRoundTrip(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, c, tbl)
-		rec := run(rt, c, tbl.Select())
-		defer rec.Release()
-
-		// The fixture's Check proves that the batch is the table written, so
-		// the wire is compared with the batch and only one comparer, the
-		// fixture's, decides what was written.
-		table.Check(rt, tbl, rec)
-		names := make([]string, rec.NumCols())
-		for i, f := range rec.Schema().Fields() {
-			names[i] = f.Name
-		}
-		checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
-		checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
-		checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
-	})
-}
-
 // drawScalar draws a column of type dt and n rows, about one in eight of
 // them null. Dates run from 0001-01-01 to 9999-12-31, because outside
 // those years dateLayout writes a text no ISO 8601 reader parses, and a
@@ -429,11 +403,13 @@ func drawScalar(t *rapid.T, dt arrow.DataType, n int) arrow.Array {
 	return b.NewArray()
 }
 
-// drawScalarBatch draws one batch with one column per DuckDB scalar the
-// live round trip cannot generate: int8, int16, int32, uint8, uint16,
+// withScalars returns rec with one column appended per DuckDB scalar
+// the table fixture cannot generate: int8, int16, int32, uint8, uint16,
 // uint32, uint64, float32, one decimal128 of drawn precision and scale,
-// bool, date32, time64[us] and time64[ns]. The caller releases it.
-func drawScalarBatch(t *rapid.T) arrow.RecordBatch {
+// bool, date32, time64[us] and time64[ns]. These types reach the
+// encoders only through DuckDB, and the fixture writes QuasarDB tables,
+// so the columns are drawn in memory. The caller releases the batch.
+func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
 	p := rapid.Int32Range(1, 38).Draw(t, "precision")
 	types := []arrow.DataType{
 		arrow.PrimitiveTypes.Int8, arrow.PrimitiveTypes.Int16, arrow.PrimitiveTypes.Int32,
@@ -443,30 +419,71 @@ func drawScalarBatch(t *rapid.T) arrow.RecordBatch {
 		arrow.FixedWidthTypes.Boolean, arrow.FixedWidthTypes.Date32,
 		arrow.FixedWidthTypes.Time64us, arrow.FixedWidthTypes.Time64ns,
 	}
-	n := rapid.IntRange(0, 32).Draw(t, "rows")
-	fields := make([]arrow.Field, len(types))
-	arrays := make([]arrow.Array, len(types))
+	fields := rec.Schema().Fields()
+	arrays := append([]arrow.Array{}, rec.Columns()...)
+	var drawn []arrow.Array
 	for i, dt := range types {
-		fields[i] = arrow.Field{Name: fmt.Sprintf("c%d", i), Type: dt, Nullable: true}
-		arrays[i] = drawScalar(t, dt, n)
+		fields = append(fields, arrow.Field{Name: fmt.Sprintf("scalar%d", i), Type: dt, Nullable: true})
+		drawn = append(drawn, drawScalar(t, dt, int(rec.NumRows())))
 	}
-	rec := array.NewRecordBatch(arrow.NewSchema(fields, nil), arrays, int64(n))
-	for _, a := range arrays {
+	out := array.NewRecordBatch(arrow.NewSchema(fields, nil), append(arrays, drawn...), rec.NumRows())
+	for _, a := range drawn {
 		a.Release()
 	}
-	return rec
+	return out
 }
 
-// TestScalarsTextRoundTrip checks that the three text encoders write
-// every DuckDB scalar so that the standard library parses it back to the
-// value encoded, nulls included, without a cluster.
-func TestScalarsTextRoundTrip(t *testing.T) {
+// checkArrow writes rec through the Arrow encoder in batches of
+// batchRows rows and compares the stream it parses back with rec: the
+// schema, the number of batches, and every column.
+func checkArrow(t *rapid.T, rec arrow.RecordBatch, batchRows int64) {
+	var buf bytes.Buffer
+	if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	schema, cols, batches := readIPC(t, buf.Bytes())
+	if !schema.Equal(rec.Schema()) {
+		t.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
+	}
+	if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
+		t.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
+	}
+	if batches == 0 {
+		return // no rows: the schema and the marker are the whole stream
+	}
+	for i, f := range rec.Schema().Fields() {
+		// ApproxEqual with no tolerance is exact, and unlike Equal it takes
+		// a NaN to equal a NaN, which the drawn float32 column holds.
+		if !array.ApproxEqual(rec.Column(i), cols[i], array.WithNaNsEqual(true), array.WithAbsTolerance(0)) {
+			t.Fatalf("%s: on the wire\n%v\nencoded\n%v", f.Name, cols[i], rec.Column(i))
+		}
+	}
+	for _, col := range cols {
+		col.Release()
+	}
+}
+
+// TestRoundTrip checks that the output of every encoder parses back to
+// the batch it was given, for every type the text encoders write, any
+// nulls and any row count, and across Arrow batch boundaries.
+func TestRoundTrip(t *testing.T) {
+	c := cluster.NewInsecure(t)
 	rapid.Check(t, func(rt *rapid.T) {
-		// The batch is drawn in memory, because these types reach the
-		// encoders only through DuckDB, and the table fixture writes
-		// QuasarDB tables.
-		rec := drawScalarBatch(rt)
+		// 1. A table is generated, written and queried back. The fixture's
+		// Check proves that the batch is the table written, so the wire is
+		// compared with the batch and only one comparer, the fixture's,
+		// decides what was written.
+		tbl := table.Generate(rt)
+		table.Create(rt, c, tbl)
+		queried := run(rt, c, tbl.Select())
+		defer queried.Release()
+		table.Check(rt, tbl, queried)
+
+		// 2. The DuckDB scalars join the queried batch as drawn columns.
+		rec := withScalars(rt, queried)
 		defer rec.Release()
+
+		// 3. Every text format parses back to the batch.
 		names := make([]string, rec.NumCols())
 		for i, f := range rec.Schema().Fields() {
 			names[i] = f.Name
@@ -474,50 +491,11 @@ func TestScalarsTextRoundTrip(t *testing.T) {
 		checkText(rt, rec, readJSON(rt, encode(rt, JSON{}, rec)))
 		checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
 		checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
-	})
-}
 
-// TestArrowRoundTrip checks that the Arrow encoder's output parses back
-// to the batch it was given, for any types, nulls and row count, and
-// across batch boundaries.
-func TestArrowRoundTrip(t *testing.T) {
-	c := cluster.NewInsecure(t)
-	rapid.Check(t, func(rt *rapid.T) {
-		tbl := table.Generate(rt)
-		table.Create(rt, c, tbl)
-		rec := run(rt, c, tbl.Select())
-		defer rec.Release()
-		// The fixture's Check proves that the batch is the table written, so
-		// the wire is compared with the batch and only one comparer, the
-		// fixture's, decides what was written.
-		table.Check(rt, tbl, rec)
-
-		// A batch size below the row count is what exercises slicing and
-		// the offset rebasing of string and blob columns.
-		batchRows := int64(rapid.IntRange(1, 16).Draw(rt, "batch rows"))
-		var buf bytes.Buffer
-		if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
-			rt.Fatalf("encode: %v", err)
-		}
-
-		schema, cols, batches := readIPC(rt, buf.Bytes())
-		if !schema.Equal(rec.Schema()) {
-			rt.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
-		}
-		if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
-			rt.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
-		}
-		if batches == 0 {
-			return // no rows: the schema and the marker are the whole stream
-		}
-		for i, f := range rec.Schema().Fields() {
-			if !array.Equal(rec.Column(i), cols[i]) {
-				rt.Fatalf("%s: on the wire\n%v\nencoded\n%v", f.Name, cols[i], rec.Column(i))
-			}
-		}
-		for _, col := range cols {
-			col.Release()
-		}
+		// 4. The Arrow stream parses back to the batch. A batch size below
+		// the row count is what exercises slicing and the offset rebasing
+		// of string and blob columns.
+		checkArrow(rt, rec, int64(rapid.IntRange(1, 16).Draw(rt, "batch rows")))
 	})
 }
 

@@ -147,18 +147,17 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 
 ## Tests
 
-- The encoders' tests are in `encode_test.go`. Each wire family has one
-  round trip against the live fixture. The test generates a table,
-  queries it once, encodes the result, parses the output with the
-  standard library and compares every cell with the batch it encoded.
-  The fixture's `Check` has proven that batch to be the table written.
-  Values the fixture does not generate are pinned byte for byte on one
-  hand-built batch, and the stream path is pinned on that batch twice,
-  as the two one-shot bodies joined. Neither pin needs a cluster.
-- The DuckDB scalars have one property, `TestScalarsTextRoundTrip`. It
-  draws a batch in memory, because those types reach the encoders only
-  through DuckDB, and the table fixture writes QuasarDB tables. It runs
-  the round trip's comparison without a cluster.
+- The encoders' tests are in `encode_test.go`. One round trip,
+  `TestRoundTrip`, runs against the live fixture. It generates a table,
+  queries it once, and appends drawn columns of the DuckDB scalars,
+  because those types reach the encoders only through DuckDB and the
+  table fixture writes QuasarDB tables. It encodes the batch in every
+  format, parses the output with the standard library and compares
+  every cell with the batch it encoded. The fixture's `Check` has
+  proven the queried part to be the table written. Values the fixture
+  does not generate are pinned byte for byte on one hand-built batch,
+  and the stream path is pinned on that batch twice, as the two
+  one-shot bodies joined. Neither pin needs a cluster.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them
   as one body over `table.Body` and decodes them back to the batches it
