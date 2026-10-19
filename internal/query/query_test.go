@@ -12,7 +12,7 @@ var asciiSpaces = []byte{' ', '\t', '\n', '\r', '\v', '\f'}
 
 // unicodeSpaces are spaces outside ASCII, which the prefix rule does not
 // read as whitespace: no-break space, next line and em space.
-var unicodeSpaces = []string{" ", "\u0085", " "}
+var unicodeSpaces = []string{"\u00a0", "\u0085", "\u2003"}
 
 // drawSpaces draws zero to three ASCII whitespace bytes.
 func drawSpaces(t *rapid.T, label string) string {
