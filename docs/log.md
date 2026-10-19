@@ -58,6 +58,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-19 -- every qdbd test runs on both clusters; secure-data-path-plan.md deleted
+
+- Owner decisions moved to `internal/AGENTS.md` (Code, Tests),
+  `internal/httpapi/AGENTS.md`, ADR-0010 and the comments of
+  `internal/qdb`, `internal/qdbtest` and `internal/httpapi`.
+
 ## 2026-10-19 -- M5 gains a smoke test through Arrow's Flight SQL JDBC driver
 
 - Owner decision; ADR-0018, Decision 14, edited in place, and
