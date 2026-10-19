@@ -83,10 +83,9 @@ func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, an
 	case ctx.Err() != nil:
 		observe.Logger(ctx).DebugContext(ctx, "request abandoned by the caller", observe.Err(err))
 	// The token's credentials are what failed, so the answer is the
-	// bearer edge's own for an invalid token. 403 was rejected, because
-	// the cluster never accepted the identity. The case comes before the
-	// unreachable one, because a refused attach would otherwise count as
-	// an unreachable cluster.
+	// bearer edge's own for an invalid token (ADR-0010 names what it
+	// beat). The case comes before the unreachable one, because a refused
+	// attach would otherwise count as an unreachable cluster.
 	case errors.Is(err, qdb.ErrCredentialsRefused):
 		unauthorized(w, true, err.Error())
 	case errors.As(err, &open):

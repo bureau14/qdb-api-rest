@@ -117,6 +117,8 @@ so a change after release is a protocol change.
 | Not checking `Content-Type`, no body cap    | one comparison turns a JSON body into a clear 415, and one line bounds what a request can read    |
 | A writer that flushes per encoder write     | the encoder's and `net/http`'s buffers already stream, and a flush only adds chunk frames         |
 | Deferring the `typ` check to M3             | one line, and a refresh token is never a data-plane credential                                    |
+| 403 for a refused credential                | the cluster never accepted the identity                                                           |
+| 400 for a refused credential                | it blames the request, and the token is what failed                                               |
 
                                      |
 
