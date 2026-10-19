@@ -2,7 +2,7 @@
 
 Status: approved. This document specifies the permanent e2e harness
 described in the brief's Testing doctrine (items 2 and 3): the v2 round
-trip, the Flight SQL JDBC smoke test and the stress against a live
+trip, the Flight SQL smoke tests and the stress against a live
 qdbd. It is a permanent
 specification (`docs/AGENTS.md`, Specifications). Verified facts and
 dates are recorded here, not in the brief. Progress is recorded in
@@ -17,8 +17,9 @@ driven over HTTP like a client:
 1. works as a client expects on the v2 surface: login, create tables,
    ingest rows in every body format, read and query them back in every
    format and content coding (the v2 round trip, ADR-0014);
-2. answers a stock Flight SQL client: Arrow's JDBC driver logs in and
-   queries both engines (the Flight SQL JDBC smoke test, ADR-0018);
+2. answers the stock Flight SQL clients: Arrow's ADBC and JDBC drivers
+   each log in and query both engines (the Flight SQL smoke tests,
+   ADR-0018);
 3. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
@@ -28,7 +29,7 @@ harness when that milestone starts (`docs/brief.md`, Milestones).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
 lineage) plus one Go tool and one Java source file for the JDBC smoke
-test. It runs
+test. The Go tool also drives the ADBC smoke test. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -187,16 +188,19 @@ An endpoint lands with its step in the round trip, so the round trip
 grows with the milestones (`docs/brief.md`, Milestones). Refresh and
 session join the login step, and the exploration endpoints add steps.
 Flight SQL has no step in the round trip. Its tests are the Go property
-tests, driven by arrow-go's Flight SQL client, and the JDBC smoke test
+tests, driven by arrow-go's Flight SQL client, and the two smoke tests
 below (ADR-0018).
 
-## The Flight SQL JDBC smoke test
+## The Flight SQL smoke tests
 
-Arrow publishes an official Flight SQL JDBC driver, and customers are
-likely to reach the Flight listener through it. The smoke test checks
-that this stock driver works against the built binary. It is a smoke
-test and does not repeat the format-equivalence property. Through the
-driver it:
+Arrow publishes two official Flight SQL drivers, and customers are
+likely to reach the Flight listener through both. DataFrame frameworks
+such as pandas and polars connect through ADBC, and Java programs
+through JDBC. The two drivers share no client code. Each sends its own
+handshake, auth metadata and connect-time metadata calls, so each gets
+its own smoke test against the built binary. ADBC is tested in Go and
+JDBC in Java. The smoke tests do not repeat the format-equivalence
+property. Through its driver, each test:
 
 1. connects to `listen.flight`, with a username and secret on the
    secure cluster, which exercises Handshake and the bearer, and as the
@@ -205,8 +209,17 @@ driver it:
 3. runs one `#sql` query and reads its rows, with at least one column of
    a DuckDB type that QuasarDB does not have.
 
-The test is one Java source file that `java` runs directly, with no
-build tool, because JDBC is a Java API and a Java program uses the
+The ADBC test is an `e2etool` subcommand that drives arrow-adbc's Go
+Flight SQL driver. The Python and C packages of that driver bind the
+same Go code (the `adbc_driver_flightsql` README, 2026-10-19), so the
+Go test runs the driver logic that pandas and polars load. arrow-adbc's
+Go module is pinned in `go.mod` and vendored. It and the server use
+one arrow-go release (v18.8.0 on both sides, 2026-10-19), and one is
+bumped only together with the other. The test connects with
+certificate verification disabled.
+
+The JDBC test is one Java source file that `java` runs directly, with
+no build tool, because JDBC is a Java API and a Java program uses the
 driver as Java customers do. The Makefile downloads a pinned version of
 the driver jar (`org.apache.arrow:flight-sql-jdbc-driver`) from Maven
 Central on first use, checks its SHA-256 and caches it outside the
@@ -214,10 +227,11 @@ tree. The server serves the Flight listener on its ephemeral
 self-signed certificate, and the test connects with
 `disableCertificateVerification=true`.
 
-The test runs on both clusters and on all eight platforms. Every agent
-already builds the QuasarDB Java API, which uses JNI, so every agent
-has a JVM. FreeBSD may drop out if the driver does not run there, which
-is unverified.
+Both tests run on both clusters and on all eight platforms. The ADBC
+test is Go and runs wherever the server builds. Every agent already
+builds the QuasarDB Java API, which uses JNI, so every agent has a JVM.
+FreeBSD may drop out of the JDBC test if the driver does not run there,
+which is unverified.
 
 ## In Buildkite
 
@@ -359,9 +373,10 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 
 ## Decision log (2026-10-19)
 
-| Decision                                                   | Why                                                                                                                 | Rejected                                                                                |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| A smoke test through Arrow's Flight SQL JDBC driver        | customers are likely to connect through the official driver, and the property tests drive arrow-go's client (owner) | Flight covered by the Go property tests alone                                           |
-| One Java source file drives the driver                     | JDBC is a Java API, and `java` runs one source file without a build tool (owner)                                    | Python through JayDeBeApi, a Python ADBC test next to it, ADBC from Go in place of JDBC |
-| The smoke test runs on both clusters                       | the secure cluster proves Handshake and the bearer, and the insecure cluster proves the anonymous user (owner)      | the secure cluster alone                                                                |
-| The driver jar comes from Maven Central, pinned and hashed | no large binary in git and nothing extra on the agent images (owner)                                                | the jar committed to the repository, the jar installed by agent provisioning            |
+| Decision                                                     | Why                                                                                                                                                 | Rejected                                                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Smoke tests through Arrow's Flight SQL ADBC and JDBC drivers | customers are likely to connect through both official drivers, the two share no client code, and the property tests drive arrow-go's client (owner) | Flight covered by the Go property tests alone                                             |
+| ADBC from Go, through an `e2etool` subcommand                | the ADBC Flight SQL driver is Go code that its Python and C packages bind (owner)                                                                   | Python through the driver's Python package, which needs a Python toolchain on every agent |
+| JDBC from one Java source file                               | JDBC is a Java API, and `java` runs one source file without a build tool (owner)                                                                    | Python through JayDeBeApi                                                                 |
+| The smoke tests run on both clusters                         | the secure cluster proves Handshake and the bearer, and the insecure cluster proves the anonymous user (owner)                                      | the secure cluster alone                                                                  |
+| The driver jar comes from Maven Central, pinned and hashed   | no large binary in git and nothing extra on the agent images (owner)                                                                                | the jar committed to the repository, the jar installed by agent provisioning              |
