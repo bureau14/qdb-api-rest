@@ -32,12 +32,8 @@ fi
 # -mod=vendor resolves strictly from vendor/ and fails loudly instead of fetching.
 # -buildvcs=false works around the same rhel7 VCS-stamping failure as 20.build.sh.
 # There is no -short, because every test assumes qdbd is up (started in the build step).
-# -p 1 runs the test packages one at a time. Every package that dials qdbd
-# shares the two test clusters, so one test's effect on a cluster can fail a
-# test in another package. Parallel packages would be safe only against a
-# qdbd per package, which brings problems of its own. Running the tests that
-# dial no qdbd in parallel was rejected, because orchestrating the split is
-# hard and not worth it.
+# -p 1 runs the test packages one at a time, because they share the two test
+# clusters (internal/AGENTS.md, Tests, says why and what was rejected).
 GOAMD64="${GOAMD64:-}" \
     "${GO}" test "${GO_EXTRA_FLAGS[@]+"${GO_EXTRA_FLAGS[@]}"}" -mod=vendor -buildvcs=false -p 1 -v -race ./... \
     | "${GO_JUNIT_REPORT}" -out "${TEST_REPORT_DIR}/unit-junit-report.xml" -iocopy

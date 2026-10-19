@@ -106,10 +106,8 @@ decisions are in `docs/adr/`.
   `Batches`, as a table read's is.
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
-  or the classification of a failed DuckDB attach dialed. The binding's
-  code for a refused handshake is `ErrInvalidReply`, which also means a
-  confused protocol, so the classification belongs to the dial alone.
-  The refusal is not retried, and it is an answer to the breaker. The
+  or the classification of a failed DuckDB attach dialed. The
+  sentinel's comment says why the dial alone classifies. The refusal is not retried, and it is an answer to the breaker. The
   data routes answer it 401 with the `invalid_token` challenge
   (ADR-0010), and the login answers it 401 without a challenge
   (ADR-0011).
@@ -244,9 +242,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   ones for fifteen minutes. Run the packages serially
   (`go test -p 1 ./...`), as the CI test step does, because every
   package that dials qdbd shares the two clusters, and one test's
-  effect on a cluster can fail a test in another package. Running the
-  tests that dial no qdbd in parallel was rejected, because
-  orchestrating the split is not worth it (owner, 2026-10-19). Bound
+  effect on a cluster can fail a test in another package. Parallel
+  packages would be safe only against a qdbd per package, which brings
+  problems of its own. Running the tests that dial no qdbd in parallel
+  was rejected, because orchestrating the split is hard and not worth it
+  (owner, 2026-10-19). Bound
   the sessions every test holds open at every step. A close in flight counts, because a handle holds its
   qdbd sessions until `qdb_close` returns.
 - Three qdbd defects are filed with the QuasarDB R&D team. This project
