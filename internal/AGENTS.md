@@ -237,7 +237,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   import the fixture, which would be a test import cycle. What came
   back is compared with `table.Check` (a record batch, column by column
   by name, `$table` and `$timestamp` included) or `table.CheckColumn`,
-  by array equality. No test carries a comparer of its own. The draw
+  by array equality. No test carries a comparer of its own. A test
+  that reads a generated table passes the table's span (`table.Range`)
+  as the read's range, because a bulk reader opened on a table with no
+  rows under no range probes every shard of a forever range, and the
+  owner chose the bound over a qdbd story. The draw
   does not produce `MinInt64`, `NaN`, the empty string or the empty
   blob, which the server reads back as null whichever writer sent them.
   It does not produce a NUL either, which the bulk reader drops from the
