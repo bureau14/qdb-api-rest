@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -28,10 +28,6 @@ In flight:
 
 Next:
 
-- Find out why `TestRoundtrip` in `internal/httpapi` runs for minutes
-  where the rest of the suite runs in seconds: the rows each drawn case
-  ingests and queries, slow setup or teardown per case, or a
-  performance defect in the server or the binding (owner, 2026-10-20).
 - The Flight listener (`listen.flight`), Handshake, bearer and anonymous
   auth, the status codes, and `CommandStatementQuery` to `DoGet` through
   `query.Run` (ADR-0018, Decisions 1, 2, 6 to 9, 13).
