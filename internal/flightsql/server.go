@@ -37,26 +37,27 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	// flight.Server helper, because the helper's shutdown is a bare
 	// GracefulStop with no forced stop after the grace. The steps:
 	//
-	//  1. the interceptor chain on the unary and the stream path alike:
-	//     the access line outermost, then the auth edge, so a refused
-	//     call is logged too, and the access line carries no user tag,
-	//     as the HTTP access line does not because its bearer edge runs
-	//     inside it as well;
-	//  2. the TLS credentials from tlsConfig, and no plaintext option;
-	//  3. register the Flight SQL service, wrapped by arrow-go's router
-	//     from Flight RPCs to Flight SQL commands;
-	//  4. listen on addr, so a port in use fails the start here, as it
-	//     does for the HTTP listeners.
+	//  1. the interceptor chain, the same on the unary and the stream
+	//     path;
+	//  2. the TLS credentials;
+	//  3. register the Flight SQL service;
+	//  4. listen on addr.
 	s := &Server{root: ctx}
-	// 1. access line outermost, auth edge inside
-	// 2. TLS only: the port serves the HTTPS listener's certificates.
+	// 1. The access line is outermost and the auth edge inside it, so a
+	//    refused call is logged too. The access line therefore carries
+	//    no user tag, as the HTTP access line does not, because on both
+	//    planes the bearer edge runs inside the logging edge.
+	// 2. TLS only, with no plaintext option: the port serves the HTTPS
+	//    listener's certificates (ADR-0018).
 	s.grpc = grpc.NewServer(
 		grpc.ChainUnaryInterceptor(s.accessUnary, s.authUnary),
 		grpc.ChainStreamInterceptor(s.accessStream, s.authStream),
 		grpc.Creds(credentials.NewTLS(tlsConfig)))
-	// 3. the Flight SQL service
+	// 3. The service, wrapped by arrow-go's router from Flight RPCs to
+	//    Flight SQL commands.
 	flight.RegisterFlightServiceServer(s.grpc, flightsql.NewFlightServer(s))
-	// 4. listen, so the start fails here on a port in use
+	// 4. Listen now, so a port in use fails the start here, as it does
+	//    for the HTTP listeners.
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err

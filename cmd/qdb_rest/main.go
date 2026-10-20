@@ -69,7 +69,7 @@ type listener interface {
 
 // httpListener adapts *http.Server: ListenAndServe or ListenAndServeTLS
 // by TLSConfig, ErrServerClosed as a clean stop, and Shutdown's error
-// dropped, because the deadline it would report is the shared grace.
+// not reported.
 type httpListener struct{ *http.Server }
 
 func (l httpListener) Serve() error {
@@ -111,11 +111,9 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	// The steps:
 	//
 	//  1. HTTP, when configured;
-	//  2. the TLS material, loaded once for HTTPS and Flight, because both
-	//     serve the same certificate and an ephemeral certificate must be
-	//     one identity per start, with its warning logged once;
+	//  2. the TLS material, once;
 	//  3. HTTPS, when configured;
-	//  4. Flight, always, which fails the start here on a port in use.
+	//  4. Flight, always.
 	log := observe.Logger(ctx)
 	var listeners []listener
 	// 1. HTTP
@@ -123,7 +121,9 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
 	}
-	// 2. one TLS load and one warning for both TLS listeners
+	// 2. The TLS material is loaded once for HTTPS and Flight, because
+	//    both serve the same certificate and an ephemeral certificate
+	//    must be one identity per start, and its warning is logged once.
 	tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
 	if err != nil {
 		return nil, err
@@ -139,7 +139,8 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 		log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 			"certificate", string(info.Source), "not_after", info.NotAfter)
 	}
-	// 4. Flight, always on
+	// 4. Flight, always on (ADR-0018). Binding the port happens here, so
+	//    a port in use fails the start as the TLS material does.
 	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
 	if err != nil {
 		return nil, err
