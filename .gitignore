@@ -3,9 +3,9 @@
 # Extracted qdb-duck package (DuckDB with the quasar extension); fetched, never committed
 /duck/
 # Local qdbd data dirs and test-setup residue
-db/
-insecure/
-secure/
+/db/
+/insecure/
+/secure/
 *.out.txt
 *.err.txt
 cluster_private.key
