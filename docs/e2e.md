@@ -169,8 +169,9 @@ Makefile is the only source of URLs, ports and paths.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a
 server started from `QDB_REST_BIN` (`40090` on the insecure node,
 `40091` on the secure node with `--cluster-public-key-file` and
-`--cluster-user-security-file`), with the TLS listener off and
-`TZ=UTC`. Working files go to `actual/round-trip/<cluster>/`, one
+`--cluster-user-security-file`), with the TLS listener off, the Flight
+listener on `40092` and `40093` because it cannot be turned off and the
+two servers must not collide, and `TZ=UTC`. Working files go to `actual/round-trip/<cluster>/`, one
 `.body` and one `.headers` file per request. The driver is one file:
 generic request and status helpers, one function per
 step kind (login, create, ingest, read back, query back, sql back) that

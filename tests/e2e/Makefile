@@ -25,12 +25,16 @@ export QDB_DIR QDB_URI
 
 # The server under test is either a URL of a running server, or a binary
 # the harness starts on REST_PORT with REST_ARGS. The default REST_ARGS
-# match the flags of this repo's cmd/qdb_rest, and the TLS listener is
-# disabled so a test server never binds the deployment port 40443.
+# match the flags of this repo's cmd/qdb_rest, the TLS listener is
+# disabled so a test server never binds the deployment port 40443, and
+# the Flight listener, which cannot be disabled, takes a test port of
+# its own for the same reason and so the two servers do not collide.
 REST_URL     ?=
 QDB_REST_BIN ?=
 REST_PORT    ?= 40090
-REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) --listen-https=
+FLIGHT_PORT  ?= 40092
+REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) --listen-https= \
+                --listen-flight 127.0.0.1:$(FLIGHT_PORT)
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
@@ -51,17 +55,19 @@ E2ETOOL := $(BIN_DIR)/e2etool$(EXE_EXT)
 # reproduces. A cluster whose URL is given is used as it is. Otherwise
 # its server is started from QDB_REST_BIN. The secure server takes the
 # key files start-services.sh writes at the repo root, and both run
-# with the TLS listener off.
+# with the TLS listener off and the Flight listener on a test port.
 ROWS              ?= 10000
 SEED              ?= $(shell date +%s)
 REST_URL_INSECURE ?= $(REST_URL)
 REST_URL_SECURE   ?=
 QDB_URI_SECURE    := qdb://127.0.0.1:2838
 REST_PORT_SECURE  ?= 40091
+FLIGHT_PORT_SECURE ?= 40093
 REST_ARGS_SECURE  ?= --cluster $(QDB_URI_SECURE) \
                      --cluster-public-key-file $(REPO_ROOT)/cluster_public.key \
                      --cluster-user-security-file $(REPO_ROOT)/user_private.key \
-                     --listen-http 127.0.0.1:$(REST_PORT_SECURE) --listen-https=
+                     --listen-http 127.0.0.1:$(REST_PORT_SECURE) --listen-https= \
+                     --listen-flight 127.0.0.1:$(FLIGHT_PORT_SECURE)
 REST_PID_SECURE   := $(E2E_DIR)/rest-secure.pid
 REST_LOG_SECURE   := $(E2E_DIR)/rest-secure.log
 ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
