@@ -37,19 +37,22 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	// flight.Server helper, because the helper's shutdown is a bare
 	// GracefulStop with no forced stop after the grace. The steps:
 	//
-	//  1. the interceptor chain, the auth edge on the unary and the
-	//     stream path alike, so every call runs as someone;
+	//  1. the interceptor chain on the unary and the stream path alike:
+	//     the access line outermost, then the auth edge, so a refused
+	//     call is logged too, and the access line carries no user tag,
+	//     as the HTTP access line does not because its bearer edge runs
+	//     inside it as well;
 	//  2. the TLS credentials from tlsConfig, and no plaintext option;
 	//  3. register the Flight SQL service, wrapped by arrow-go's router
 	//     from Flight RPCs to Flight SQL commands;
 	//  4. listen on addr, so a port in use fails the start here, as it
 	//     does for the HTTP listeners.
 	s := &Server{root: ctx}
-	// 1. the auth edge on both paths
+	// 1. access line outermost, auth edge inside
 	// 2. TLS only: the port serves the HTTPS listener's certificates.
 	s.grpc = grpc.NewServer(
-		grpc.ChainUnaryInterceptor(s.authUnary),
-		grpc.ChainStreamInterceptor(s.authStream),
+		grpc.ChainUnaryInterceptor(s.accessUnary, s.authUnary),
+		grpc.ChainStreamInterceptor(s.accessStream, s.authStream),
 		grpc.Creds(credentials.NewTLS(tlsConfig)))
 	// 3. the Flight SQL service
 	flight.RegisterFlightServiceServer(s.grpc, flightsql.NewFlightServer(s))

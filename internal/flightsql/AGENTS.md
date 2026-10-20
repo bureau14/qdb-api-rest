@@ -12,6 +12,17 @@ fixtures are in `internal/AGENTS.md`. ADR-0018 holds the wire contract.
   `GracefulStop` has no deadline of its own. `Server.Shutdown` races
   `GracefulStop` against the caller's deadline and calls `Stop` when it
   ends.
+- The interceptor chain is the access line outermost and the auth edge
+  inside it, on the unary and the stream path alike, so a refused call
+  is logged too. The access line carries no user tag, as the HTTP
+  access line does not, because on both planes the bearer edge runs
+  inside the logging edge. The user and the session are on the lines
+  the handler logs below it.
+- The access line is one `request` line per RPC with the method, the
+  gRPC code and the duration, in the HTTP line's vocabulary, under a
+  request id minted per call. The id is never read from the metadata,
+  because no stock driver sends one by default and the inbound-id
+  validation lives in `httpapi`.
 - The call context gets the process values (the logger, the cluster and
   the keychain) through `callContext`, one explicit line per value,
   because grpc-go has no `BaseContext` as `net/http` has. A merged

@@ -194,9 +194,9 @@ func (s *Server) handshake(ctx context.Context, stream grpc.ServerStream) error 
 // authUnary is the auth edge of a unary call: the call runs under
 // authenticate's ctx or not at all.
 func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
-	// The call ctx is callContext first, so authenticate can read the
-	// cluster and the keychain.
-	ctx, err := s.authenticate(s.callContext(ctx))
+	// The ctx carries the process values from the access edge outside, so
+	// authenticate can read the cluster and the keychain.
+	ctx, err := s.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -206,9 +206,9 @@ func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo
 // authStream is the auth edge of a stream: a Handshake goes to handshake,
 // and every other stream runs under authenticate's ctx or not at all.
 func (s *Server) authStream(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
-	// The call ctx is callContext first, so handshake and authenticate
-	// can read the cluster and the keychain.
-	ctx := s.callContext(stream.Context())
+	// The ctx carries the process values from the access edge outside, so
+	// handshake and authenticate can read the cluster and the keychain.
+	ctx := stream.Context()
 	// A Handshake is matched by the method's suffix, as arrow-go matches
 	// it. The base RPC body is a no-op, so the headers handshake sent are
 	// the whole reply.
