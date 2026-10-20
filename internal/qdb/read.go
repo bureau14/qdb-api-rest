@@ -91,20 +91,20 @@ func schemaOf(cols []qdbapi.TsColumnInfo, o ReadOptions) (*arrow.Schema, error) 
 	return arrow.NewSchema(picked, nil), nil
 }
 
-// Batches is a table read as the caller sees it: one record batch per
-// step, lent for that step and released when the step returns, so the
-// receiver releases none. An error step carries a nil batch and is the
-// last. There is always at least one step.
+// Batches is a result as the receiver sees it: a sequence of record
+// batches, each lent until yield returns and released by the sequence,
+// so the receiver releases none. An error element carries a nil batch
+// and is the last. The sequence is never empty.
 type Batches = iter.Seq2[arrow.RecordBatch, error]
 
 // lent turns the batches the reader owns into the lent Batches. schema
-// is the schema the reader answers. It shapes the schema-only step an
-// empty table yields.
+// is the schema the reader answers. It shapes the empty batch an empty
+// table yields.
 func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		// The binding hands out one owned reference per batch and wants it
-		// released exactly once. Releasing after the step returns, whether
-		// the receiver broke out or not, keeps that promise in one place.
+		// released exactly once. Releasing after yield returns, whether the
+		// receiver broke out or not, keeps that promise in one place.
 		// Note: a value read from the batch aliases its buffers and is
 		// garbage after the release. A receiver that keeps one copies it.
 		yielded := false
@@ -119,7 +119,7 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 			}
 		}
 		// The reader yields nothing for an empty table, not even a schema,
-		// so the schema-only batch stands in and every receiver sees a step.
+		// so the empty batch stands in and every receiver sees a batch.
 		if !yielded {
 			rec := model.EmptyBatch(schema)
 			yield(rec, nil)
@@ -130,7 +130,7 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 
 // Read reads the table called name under o through the bulk reader and
 // hands its batches to sink, one per fetch, the next fetched only when
-// sink's step returns. An error before sink runs comes from the table,
+// yield returns. An error before sink runs comes from the table,
 // the range or a column. The error of sink itself is returned unchanged.
 func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) error {
 	// Everything that can refuse the read runs before the sink, so a caller

@@ -286,7 +286,7 @@ func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) (
 	//     table seen for the first time
 	//     is typed through schemaOf against the body's schema, and every
 	//     run is kept as a retained slice, because the reader releases
-	//     the batch on its next step;
+	//     the batch when it reads the next;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	tables := map[string]*arrowTable{}
 	var order []*arrowTable

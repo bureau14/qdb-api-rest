@@ -26,7 +26,7 @@ type TableBatch struct {
 type SchemaOf func(table string) (*arrow.Schema, error)
 
 // EmptyBatch is a batch of schema and no rows. A reader that yields no
-// batch answers it as its one step, so every receiver sees the schema.
+// batch answers it as its one element, so every receiver sees the schema.
 // The caller owns the batch and releases it once.
 func EmptyBatch(schema *arrow.Schema) arrow.RecordBatch {
 	cols := make([]arrow.Array, schema.NumFields())

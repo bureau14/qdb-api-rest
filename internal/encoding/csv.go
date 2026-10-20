@@ -240,7 +240,7 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 		}
 	}
 	// The standard writer buffers and reports its first write error only
-	// here. An error step above returns before the buffer is flushed.
+	// here. An error element above returns before the buffer is flushed.
 	cw.Flush()
 	return cw.Error()
 }

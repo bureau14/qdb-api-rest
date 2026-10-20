@@ -153,11 +153,11 @@ func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) err
 	return nil
 }
 
-// lent turns the reader's batches into a sequence of steps, each batch
-// lent for its step. The reader owns each batch until its next step, so
+// lent turns the reader's batches into a sequence, each batch lent until
+// yield returns. The reader owns each batch until it reads the next, so
 // the receiver releases none. An error the reader reports after its last
-// batch is the last step. A reader of no batches yields one step of its
-// schema alone.
+// batch is the last element. A reader of no batches yields one empty
+// batch of its schema.
 func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		yielded := false
@@ -179,11 +179,11 @@ func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	}
 }
 
-// Query runs q on a connection of its own and hands its result to sink,
-// one record batch per step, each lent for that step. An error before
-// sink runs is DuckDB's (a parse, bind or execution error) and is
-// returned as is. The error of sink is returned unchanged. A result of
-// no batches is one step of its schema alone.
+// Query runs q on a connection of its own and hands its result to sink
+// as a sequence of record batches, each lent until yield returns. An
+// error before sink runs is DuckDB's (a parse, bind or execution error)
+// and is returned as is. The error of sink is returned unchanged. A
+// result of no batches is one empty batch of its schema.
 func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arrow.RecordBatch, error]) error) error {
 	// The connection lives for one query and closes when sink returns, so
 	// a request holds nothing of the instance afterwards:

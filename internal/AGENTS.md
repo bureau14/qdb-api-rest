@@ -53,13 +53,13 @@ decisions are in `docs/adr/`.
 - A table read is a sequence of such batches (`qdb.Batches`), one per
   fetch of the bulk reader, handed to a sink while the session is held.
   `Cluster.Read` leases one session of the caller's pool for as long as
-  the sink runs, and it is not retried. The sink borrows each batch for
-  its step, and the sequence releases the batch when the step returns,
-  so a value that outlives the step is copied (a `Value` of an Arrow
-  array aliases the batch's buffers). A missing table, a bad range and
+  the sink runs, and it is not retried. The sink borrows each batch
+  until yield returns, and the sequence releases it then, so a value
+  that outlives the loop body is copied (a `Value` of an Arrow array
+  aliases the batch's buffers). A missing table, a bad range and
   an unknown column fail before the sink runs. An empty table is one
-  batch of schema alone, built from `ColumnsInfo`, so there is always a
-  step. The Arrow type of a column type is the binding's
+  empty batch of its schema, built from `ColumnsInfo`, so the sequence
+  is never empty. The Arrow type of a column type is the binding's
   `TsColumnType.ArrowType` (a symbol reads as a string). The server
   declares no map of its own. Two C API defects surface here without a
   workaround, filed as sc-19829 and sc-19830. The first: the Arrow path

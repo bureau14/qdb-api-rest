@@ -13,7 +13,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   writes every response the server sends, and encodes each batch of the
   sequence before it pulls the next. It
   assumes every batch shares the first batch's schema and does not
-  check it. An error step ends the encoding with that error. A buffered
+  check it. An error element ends the encoding with that error. A buffered
   writer inside either method is flushed once at the end. The HTTP
   flush belongs to the handler, so an error before the first flush
   leaves nothing on the wire.
@@ -159,7 +159,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   generate are pinned byte for byte on one hand-built batch, and so is a
   nil batch in every format. One test, `TestStream`, pins the stream
   path on that batch: two batches stream as the two one-shot bodies
-  joined, and an error step ends the stream with its error. Neither pin
+  joined, and an error element ends the stream with its error. Neither pin
   needs a cluster.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them

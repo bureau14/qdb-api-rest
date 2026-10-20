@@ -20,7 +20,7 @@ import (
 
 // Encoder writes record batches to w in one wire format. It does not
 // release a batch. It returns the first error it meets: a write error,
-// the error of an error step, or the ctx ending between chunks.
+// the error of an error element, or the ctx ending between chunks.
 type Encoder interface {
 	// ContentType is the media type the handler answers with.
 	ContentType() string
@@ -28,8 +28,8 @@ type Encoder interface {
 	// set and encodes as zero columns and zero rows.
 	Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
 	// EncodeStream writes a sequence of batches as one body. Every batch
-	// shares the first batch's schema. A batch is valid only during its
-	// step.
+	// shares the first batch's schema. A batch is valid only until yield
+	// returns.
 	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 

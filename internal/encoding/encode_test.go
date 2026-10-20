@@ -588,8 +588,8 @@ func TestEdgeCells(t *testing.T) {
 	}
 }
 
-// steps yields every batch in recs, then err when it is not nil.
-func steps(recs []arrow.RecordBatch, err error) iter.Seq2[arrow.RecordBatch, error] {
+// sequence yields every batch in recs, then err when it is not nil.
+func sequence(recs []arrow.RecordBatch, err error) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		for _, rec := range recs {
 			if !yield(rec, nil) {
@@ -633,14 +633,14 @@ func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 // TestStream checks the stream path of every encoder. Two batches
 // stream as the IPC stream with two record batches, the CSV with one
 // header, the NDJSON lines appended, and a JSON array of two results. An
-// error step after a batch ends the stream with that error.
+// error element after a batch ends the stream with that error.
 func TestStream(t *testing.T) {
 	rec := edgeBatch(t)
 	csv := encode(t, CSV{}, rec)
 	header := csv[:bytes.IndexByte(csv, '\n')+1]
 	ndjson := encode(t, NDJSON{}, rec)
 	json := encode(t, JSON{}, rec)
-	errStep := errors.New("fetch failed")
+	errLast := errors.New("fetch failed")
 	for _, tc := range []struct {
 		e    Encoder
 		want []byte
@@ -650,12 +650,12 @@ func TestStream(t *testing.T) {
 		{NDJSON{}, append(ndjson[:len(ndjson):len(ndjson)], ndjson...)},
 		{JSON{}, []byte("[" + string(json) + "," + string(json) + "]")},
 	} {
-		if got := encodeStream(t, tc.e, steps([]arrow.RecordBatch{rec, rec}, nil)); !bytes.Equal(got, tc.want) {
+		if got := encodeStream(t, tc.e, sequence([]arrow.RecordBatch{rec, rec}, nil)); !bytes.Equal(got, tc.want) {
 			t.Errorf("%s:\n got %q\nwant %q", tc.e.ContentType(), got, tc.want)
 		}
 		var buf bytes.Buffer
-		if err := tc.e.EncodeStream(context.Background(), &buf, steps([]arrow.RecordBatch{rec}, errStep)); !errors.Is(err, errStep) {
-			t.Errorf("%s: error %v, want %v", tc.e.ContentType(), err, errStep)
+		if err := tc.e.EncodeStream(context.Background(), &buf, sequence([]arrow.RecordBatch{rec}, errLast)); !errors.Is(err, errLast) {
+			t.Errorf("%s: error %v, want %v", tc.e.ContentType(), err, errLast)
 		}
 	}
 }

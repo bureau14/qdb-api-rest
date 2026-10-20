@@ -71,7 +71,7 @@ func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow
 
 // read reads table name under o as u into one batch
 // the caller owns, asserting that no batch exceeded BatchRows. Each
-// batch is only lent by the sequence and is released when the step
+// batch is only lent by the sequence and is released when yield
 // returns, so it is retained here.
 func read(t *rapid.T, c *qdb.Cluster, u qdb.User, name string, o qdb.ReadOptions) arrow.RecordBatch {
 	t.Helper()

@@ -378,7 +378,7 @@ func TestDecodeInterleaved(t *testing.T) {
 					bodies[i] = pc.body
 				}
 				var buf bytes.Buffer
-				if err := c.EncodeStream(context.Background(), &buf, steps(bodies, nil)); err != nil {
+				if err := c.EncodeStream(context.Background(), &buf, sequence(bodies, nil)); err != nil {
 					rt.Fatalf("encode: %v", err)
 				}
 				got, err := c.Decode(context.Background(), &buf, constant(table.WithTable(rt, first).Schema()))

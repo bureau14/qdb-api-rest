@@ -344,7 +344,7 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 	}
 	first := true
 	for rec, err := range batches {
-		// An error step returns before the buffered writer is flushed, so a
+		// An error element returns before the buffered writer is flushed, so a
 		// failure on the first fetch leaves nothing on the wire and the
 		// handler can still answer a status.
 		if err != nil {
