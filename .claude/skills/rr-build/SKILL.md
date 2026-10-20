@@ -81,14 +81,31 @@ Incorrect: the plan's Rationale says the schema cache was rejected, no
 comment or document says so, and the plan is deleted with that reason
 in it.
 
+## The plan's deletion
+
+Once the check is clean, land the plan's deletion commit, the one its
+Commits section lists after the `/doc-discipline` runs: `git rm
+docs/<slug>-plan.md`, the log entry `<slug>-plan.md deleted; facts
+moved to <where>` and the Current state update, as `docs/AGENTS.md`,
+Plans, prescribes, in one commit
+`docs(log): <slug>-plan.md deleted, facts moved to <where>`. It lands
+here and not in the merge stage, so the owner reviews it with the code
+and the build lints it. A plan whose Commits section lacks the
+deletion is an older plan; land the deletion anyway and say so in the
+build-stage message. Nothing is pushed while the plan is in the tree.
+
+Incorrect: the plan is pushed with the branch because the deletion
+"belongs to the merge", and it survives on the base, where no stage
+may commit.
+
 ## The Buildkite build and the code review
 
 Local lint and tests cover one platform; the pipeline covers the whole
 matrix, and the owner reviews the code while the pipeline runs rather
 than after it. So once the checks above are clean, in this order:
 
-1. Push `sc-19567/rr-<slug>` and create the Buildkite build for its
-   head. The mechanics (API-created build, branch-filter bypass, full
+1. With the plan deleted from the tree, push `sc-19567/rr-<slug>`
+   and create the Buildkite build for its head. The mechanics (API-created build, branch-filter bypass, full
    40-character SHA, reprioritizing the scheduled jobs) live in
    `.buildkite/AGENTS.md`; follow them rather than a copy kept here.
    Wait for the build in the background; do not block on it.
@@ -141,7 +158,8 @@ merges a commit they never saw.
 
 Exactly: the branch name; a summary of the change in plain words; each
 deviation from the plan with the reason the code forced it; the
-doc-discipline check's report, or "clean"; the review's decision with
+doc-discipline check's report, or "clean"; the plan's deletion commit
+by its sha; the review's decision with
 its notes quoted, if any; the Buildkite build number and its state,
 and any superseded build numbers; the command
 `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`; one line saying

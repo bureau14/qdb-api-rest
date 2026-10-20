@@ -24,10 +24,18 @@ Base vs origin, commits ahead / behind:
 
 !`git rev-list --left-right --count sc-19567/rest-rewrite...origin/sc-19567/rest-rewrite`
 
+Plan documents on this branch (empty means none):
+
+!`git ls-tree --name-only HEAD docs/ | grep -- '-plan.md' || true`
+
 The current branch is a `sc-19567/rr-<slug>` whose build-stage message
-in the conversation names a green build. Without that message, or on
-any other branch, or with a dirty tree, stop and say so; the owner
-decides.
+in the conversation names a green build, and it carries no plan
+document: the build stage deleted the unit's plan as its last commit
+before the push, with the log entry. Without that message, on any
+other branch, with a dirty tree, or with a plan still present, stop
+and say so; the owner decides. A plan still present means the build
+stage is incomplete, and the fix is its deletion commit on this branch,
+reviewed and built, never a commit on the base.
 
 ## Step by step
 
@@ -46,7 +54,6 @@ decides.
 Close with one line: what merged, as `<slug>: <n> commits,
 <first sha>..<last sha>`, plus "rebased first" when step 1 ran.
 
-The plan document is deleted once its work has landed, under the rules
-of `docs/AGENTS.md`, Plans, and that deletion is a commit of its own on
-a feature branch, never a commit here on the base. A plan still present
-after the merge is named in the closing line.
+Incorrect: the entry check lists `docs/<slug>-plan.md`, and the merge
+runs anyway because the build is green, so the base carries a plan
+that no stage may remove there.

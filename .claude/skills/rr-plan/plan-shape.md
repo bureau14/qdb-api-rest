@@ -92,8 +92,8 @@ these sections in this order. A section with nothing to say says
 7. **Commits.** The numbered list, one subject each in the commit form
    of the workflow, in landing order: commit 1 is this document,
    already committed; the build commits follow; the `/doc-discipline`
-   runs are placed after the commits they follow; the Verify step is
-   last (below).
+   runs are placed after the commits they follow; then the plan's own
+   deletion (below); the Verify step is last (below).
 8. **Open questions and recommendations.** Every question the owner has
    not answered, with your recommendation, one line each. The plan's
    approval settles them.
@@ -144,6 +144,29 @@ numbered overview; claims: ...; ...;"), so a reviewer rebuilds the
 function in their head to see what is covered; or the style line says
 "narrated (rule 3)" and nothing else; or the Rationale says what was
 chosen and not what lost, so the next unit tries the loser again.
+
+## The plan deletes itself
+
+A plan is deleted once its work has landed, never archived
+(`docs/AGENTS.md`, Plans), and the deletion is part of the unit, not a
+cleanup after it. So the Commits section carries, after the last
+`/doc-discipline` run and before the Verify step, one commit that
+removes `docs/<slug>-plan.md` and appends the log entry the rules
+prescribe, `<slug>-plan.md deleted; facts moved to <where>`, with
+Current state updated:
+
+> N. `docs(log): <slug>-plan.md deleted, facts moved to <where>`
+
+It comes after the `/doc-discipline check` against the plan, because
+that check reads the plan from the tree, and it lands on the feature
+branch, so the owner reviews it with the code and the build lints it.
+By then every fact of sections 4 and 5 has its home, so the commit
+moves nothing; a fact still without one is a finding of the check,
+fixed before this commit.
+
+Incorrect: the Commits section ends with the Verify step, the plan is
+pushed with the branch, and it survives the merge onto the base, where
+no stage may commit.
 
 ## The plan ends with a Buildkite build
 
