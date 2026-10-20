@@ -71,6 +71,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-20 -- query-dispatch-plan.md deleted; one query route over both engines
+
+- Owner decisions moved to ADR-0010, ADR-0017 and ADR-0018 (edited in
+  place), `internal/AGENTS.md`, `internal/httpapi/AGENTS.md` and the
+  comments of `internal/query` and `internal/qdb`.
+
 ## 2026-10-19 -- every qdbd test runs on both clusters; secure-data-path-plan.md deleted
 
 - Owner decisions moved to `internal/AGENTS.md` (Code, Tests),
