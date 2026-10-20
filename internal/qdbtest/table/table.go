@@ -261,6 +261,26 @@ func (tbl Table) Rows() int {
 	return int(tbl.Batch.NumRows())
 }
 
+// Range is the half-open span of tbl's index as the reader takes a
+// range: the first $timestamp to the last plus one nanosecond. A table
+// with no rows, a nil batch or a batch of none, answers the
+// one-nanosecond span at the start every index begins at, so a read of
+// it is bounded too.
+func (tbl Table) Range() (start, end time.Time) {
+	// No rows were written, so there is no span to read. The
+	// one-nanosecond span keeps the read bounded without inventing rows.
+	if tbl.Rows() == 0 {
+		return indexStart, indexStart.Add(time.Nanosecond)
+	}
+	// The index is strictly ascending, so its first and last values are
+	// the span.
+	index := tbl.Batch.Column(0).(*array.Timestamp)
+	start = index.Value(0).ToTime(arrow.Nanosecond)
+	last := index.Value(index.Len() - 1).ToTime(arrow.Nanosecond)
+	// Plus one nanosecond, because the binding's range is half-open.
+	return start, last.Add(time.Nanosecond)
+}
+
 // batchOf is tbl's batch, retained, or an empty batch of its schema when
 // tbl has none. The caller releases it.
 func batchOf(tbl Table) arrow.RecordBatch {
