@@ -44,6 +44,14 @@ decision before anything else):
 
 !`git branch --list 'sc-19567/rr-*'`
 
+Read the state as it is, not as a story: a merged unit is a
+fast-forward, so its commits sit on the base with no branch and no
+merge commit, and that is the workflow working, not a unit that
+skipped it. The merge stage pushes the base, so a base ahead of origin
+means one merge was not pushed; that is a line under Open questions,
+not a reason to stop. A leftover is a feature branch in the list
+above, a dirty tree, or a `docs/*-plan.md` whose unit has merged.
+
 ## Steps
 
 1. `/rr-workflow`: the rules every later stage is held to, and the

@@ -131,7 +131,9 @@ than after it. So once the checks above are clean, in this order:
 
 3. Wait for the build of the reviewed head:
    - Green: the build-stage message names the build by its real
-     number.
+     number, read back from
+     `bk api "pipelines/qdb-api-rest/builds?commit=<full sha of HEAD>"`
+     with state `passed`, never from memory of having created it.
    - A red build caused by the branch is fixed with further small
      commits on the branch, pushed, built again, and reviewed again
      from step 2, because the owner has not seen the fix.

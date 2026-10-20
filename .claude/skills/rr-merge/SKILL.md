@@ -28,12 +28,20 @@ Plan documents on this branch (empty means none):
 
 !`git ls-tree --name-only HEAD docs/ | grep -- '-plan.md' || true`
 
-The current branch is a `sc-19567/rr-<slug>` whose build-stage message
-in the conversation names a green build, and it carries no plan
-document: the build stage deleted the unit's plan as its last commit
-before the push, with the log entry. Without that message, on any
-other branch, with a dirty tree, or with a plan still present, stop
-and say so; the owner decides. A plan still present means the build
+Buildkite builds of this head (number, state):
+
+!`bk api "pipelines/qdb-api-rest/builds?commit=$(git rev-parse HEAD)" 2>/dev/null | python3 -c 'import sys,json; print(*[(b["number"], b["state"]) for b in json.load(sys.stdin)] or ["none"])'`
+
+The current branch is a `sc-19567/rr-<slug>`, the tree is clean, the
+list above shows a build of this exact head in state `passed`, and
+the branch carries no plan document: the build stage deleted the
+unit's plan as its last commit before the push, with the log entry.
+The build's state is read from the list, never from the conversation:
+a build-stage message that names a green build is a claim, and the
+list is the evidence. Anything else (another branch, a dirty tree, no
+build of this head, a build still `running` or `scheduled`, a
+`failed` build, a plan still present) is a stop; say which, and the
+owner decides. A plan still present means the build
 stage is incomplete, and the fix is its deletion commit on this branch,
 reviewed and built, never a commit on the base.
 
@@ -48,12 +56,17 @@ reviewed and built, never a commit on the base.
 3. Delete the feature branch locally and on origin, where the build
    stage pushed it:
    `git branch -d sc-19567/rr-<slug> && git push origin --delete sc-19567/rr-<slug>`.
-4. Push the base only if the owner asks; the base's relation to origin
-   is the owner's.
+4. `git push origin sc-19567/rest-rewrite`. The head it publishes is
+   the one the entry check saw pass, so the base on origin is always
+   a built head. A rejected push (origin moved) is stopped and
+   reported; the owner decides.
 
-Close with one line: what merged, as `<slug>: <n> commits,
-<first sha>..<last sha>`, plus "rebased first" when step 1 ran.
+Close with one line: what merged and that the base is pushed, as
+`<slug>: <n> commits, <first sha>..<last sha>, base pushed`, plus
+"rebased first" when step 1 ran.
 
 Incorrect: the entry check lists `docs/<slug>-plan.md`, and the merge
 runs anyway because the build is green, so the base carries a plan
-that no stage may remove there.
+that no stage may remove there. Or: the build list says `running`,
+the build-stage message said green, and the merge runs on the
+message, so the base takes a head whose matrix has not finished.
