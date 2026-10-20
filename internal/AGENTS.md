@@ -131,6 +131,9 @@ decisions are in `docs/adr/`.
 - The v2 handlers, the problem body and the bearer middleware live in
   `internal/httpapi`. Open `internal/httpapi/AGENTS.md` before touching
   a handler, an error mapping or a route.
+- The Flight SQL server lives in `internal/flightsql`. Open
+  `internal/flightsql/AGENTS.md` before touching an interceptor, the
+  Handshake or the listener.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), and not a bare
   `Stats`. A bare `Stats` exists only as the type that composes every
@@ -155,6 +158,9 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   of a PR that is squash-merged does not reach `master`, so the work
   that vendored it re-points `go.mod` at the squash commit before it
   merges.
+- grpc-go and protobuf are vendored at the versions arrow-go requires,
+  and nothing pins them on their own. Bumping arrow-go is what moves
+  them, through `go mod tidy` and `go mod vendor` (owner, 2026-10-20).
 
 ## Logging (ADR-0002)
 
