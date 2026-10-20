@@ -61,7 +61,7 @@ func TestRejectedQueryReusesSession(t *testing.T) {
 		defer closeCluster(t, c)
 		u := userOf(spec)
 
-		_, err := c.Query(context.Background(), u, "NOT A QUERY")
+		err := c.Query(context.Background(), u, "NOT A QUERY", func(Batches) error { return nil })
 		if err == nil {
 			t.Fatal("want an error for a malformed query")
 		}
@@ -271,7 +271,7 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		defer closeCluster(t, c)
 		u := userOf(spec)
 
-		if _, err := c.Query(context.Background(), u, "SELECT 1"); err != nil {
+		if err := c.Query(context.Background(), u, "SELECT 1", func(Batches) error { return nil }); err != nil {
 			t.Fatalf("query: %v", err)
 		}
 		if s := c.Stats(); s.Users != 1 {

@@ -15,6 +15,7 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/model"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
 )
 
@@ -384,12 +385,31 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 	return err
 }
 
-// Query runs q as u and returns its result as an Arrow record batch the
-// caller owns and releases once. The batch outlives the session, which is
-// back in its pool before the caller reads a row, so a slow response holds
-// no session. On any error there is no batch. A statement that produces
-// no result set yields a nil batch.
-func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOption) (arrow.RecordBatch, error) {
+// one is rec as a sequence of that one batch. The caller owns rec and
+// releases it after sink returns.
+func one(rec arrow.RecordBatch) Batches {
+	return func(yield func(arrow.RecordBatch, error) bool) {
+		yield(rec, nil)
+	}
+}
+
+// Query runs q as u and hands its result to sink as a sequence of one
+// batch. The session is back in its pool before sink runs, so a slow
+// receiver holds no session. Every error other than sink's own is
+// returned before sink is called, and sink's error is returned as is. A
+// statement with no result set yields one empty batch with no columns.
+// Under WithReadRetry the query is retried once on a fresh session, which
+// is safe because the query completes before sink runs.
+func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches) error, opts ...CallOption) error {
+	// The binding materializes the whole result in one fetch, so the
+	// session is needed only for that fetch and sink runs after the call
+	// returns it:
+	//
+	//  1. fetch the result on a leased session, retried as opts say;
+	//  2. stand in an empty batch for a statement with no result set;
+	//  3. run sink over the one batch and release it afterwards.
+
+	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
 	err := c.Call(ctx, u, func(s *Session) error {
 		var err error
@@ -397,9 +417,19 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, opts ...CallOptio
 		return err
 	}, opts...)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return rec, nil
+	// 2. a nil batch becomes an empty batch with no columns, because every
+	//    receiver expects a batch: Arrow's EncodeStream reads the first
+	//    batch's schema, and Batches is never empty.
+	if rec == nil {
+		rec = model.EmptyBatch(arrow.NewSchema(nil, nil))
+	}
+	// 3. the batch is released after sink returns rather than when yield
+	//    returns, so a sink that never ranges over the sequence leaks
+	//    nothing.
+	defer rec.Release()
+	return sink(one(rec))
 }
 
 // Authenticate proves u's credentials by one direct dial, outside the

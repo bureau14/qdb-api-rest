@@ -115,15 +115,18 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 // the ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	rec, err := s.c.Query(context.Background(), s.user, tbl.Select())
+	err := s.c.Query(context.Background(), s.user, tbl.Select(), func(seq qdb.Batches) error {
+		for rec, err := range seq {
+			if err != nil {
+				return err
+			}
+			table.Check(t, tbl, rec)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("query %s: %v", tbl.Name, err)
 	}
-	if rec == nil {
-		t.Fatalf("query %s: no result set", tbl.Name)
-	}
-	defer rec.Release()
-	table.Check(t, tbl, rec)
 }
 
 // checkReadFormats reads tbl over HTTP in every format, once whole and,

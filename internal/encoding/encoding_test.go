@@ -24,14 +24,25 @@ type failer interface {
 }
 
 // run executes q as u and fails the test on error. The caller releases
-// the batch it returns.
+// the batch it returns, which is retained here because the sequence
+// releases its batch once the sink returns.
 func run(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	t.Helper()
-	rec, err := c.Query(context.Background(), u, q)
+	var out arrow.RecordBatch
+	err := c.Query(context.Background(), u, q, func(seq qdb.Batches) error {
+		for rec, err := range seq {
+			if err != nil {
+				return err
+			}
+			rec.Retain()
+			out = rec
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
-	return rec
+	return out
 }
 
 // encode runs e over rec and returns the body.

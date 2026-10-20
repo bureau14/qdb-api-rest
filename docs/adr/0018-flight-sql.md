@@ -47,9 +47,10 @@ client. The owner made the decisions below on 2026-10-13.
    strips it and calls the native query or the DuckDB query for the
    caller's user, answering the `Batches` iterator either way. It lives
    above `internal/qdb` and `internal/olap`, and `httpapi` and
-   `flightsql` both call it. The native query is wrapped as a one-step
-   iterator, so every result in the binary streams through
-   `EncodeStream` and the Flight server has one `DoGet` body. The
+   `flightsql` both call it. `Cluster.Query` hands its one batch to the
+   sink as a sequence of one batch, so every result in the binary
+   streams through `EncodeStream` and the Flight server has one `DoGet`
+   body. The
    dispatcher is `query.Run` in `internal/query`.
 
 ### Authentication

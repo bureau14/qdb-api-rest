@@ -18,9 +18,10 @@ This file, Handlers, holds the table reader's.
   9457 body. The handler sets a header that belongs to the status
   (`WWW-Authenticate`, `Retry-After`) before the call. No handler
   answers 200 with an error body.
-- The status is decided before the first byte. `Cluster.Query` is
-  called with `WithReadRetry` because nothing has been sent yet. A
-  handler that has started streaming never retries.
+- The status is decided before the first byte. `query.Run` calls
+  `Cluster.Query` with `WithReadRetry` because the query completes
+  before the sink runs and nothing has been sent yet. A handler that has
+  started streaming never retries.
 - The error mapping is by who failed, which is ADR-0010's table, and it
   lives in one place, `writeClusterError`. A `*qdb.BreakerOpenError`, a
   `*qdb.InstanceLimitError` or `qdb.IsClusterUnavailable` is 503, with
@@ -64,10 +65,9 @@ This file, Handlers, holds the table reader's.
 - The query endpoint runs its body through `query.Run`, which calls
   `Cluster.Query` with `WithReadRetry` for a native body and
   `Cluster.Duck` for a `#sql` body, and streams the result inside the
-  sink as the reader does. `query.Run` releases the native batch after
-  the sink returns, and a statement without a result set is one step of
-  no fields, which encodes as an empty result. The JSON body of every
-  result route is the array of results (ADR-0010).
+  sink as the reader does. A statement without a result set is one
+  empty batch with no columns, which encodes as an empty result. The
+  JSON body of every result route is the array of results (ADR-0010).
 - The table reader is `GET /api/v2/tables/{name}/rows`. `?columns=a,b`
   answers those fields in that order, with `$table` and `$timestamp`
   only when named. Without `?columns` it answers every column, the two

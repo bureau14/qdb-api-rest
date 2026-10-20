@@ -159,14 +159,21 @@ func TestReadDropsTrailingNUL(t *testing.T) {
 		defer tbl.Batch.Release()
 		table.CreateAs(t, c, u, tbl)
 		// A string value aliases the batch's buffer, which a lent batch frees
-		// when the step returns, so the read copies it out.
+		// when yield returns, so both paths copy the cell out.
 		cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
-		queried, err := c.Query(context.Background(), u, "SELECT c0 FROM "+tbl.Name)
+		var queried, read string
+		err := c.Query(context.Background(), u, "SELECT c0 FROM "+tbl.Name, func(seq qdb.Batches) error {
+			for rec, err := range seq {
+				if err != nil {
+					return err
+				}
+				queried = cell(rec)
+			}
+			return nil
+		})
 		if err != nil {
 			t.Fatalf("query: %v", err)
 		}
-		defer queried.Release()
-		var read string
 		err = c.Read(context.Background(), u, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
 			for rec, err := range seq {
 				if err != nil {
@@ -179,8 +186,8 @@ func TestReadDropsTrailingNUL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read: %v", err)
 		}
-		if cell(queried) != "x\x00" || read != "x" {
-			t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", cell(queried), read)
+		if queried != "x\x00" || read != "x" {
+			t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", queried, read)
 		}
 	})
 }

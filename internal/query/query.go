@@ -8,9 +8,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/apache/arrow-go/v18/arrow"
-
-	"github.com/bureau14/qdb-api-rest/internal/model"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
@@ -58,56 +55,21 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
-// one is rec as Batches of one step. The caller owns rec and releases it
-// after the step.
-func one(rec arrow.RecordBatch) qdb.Batches {
-	return func(yield func(arrow.RecordBatch, error) bool) {
-		yield(rec, nil)
-	}
-}
-
-// Run runs q as u on the engine its text names and hands the result to
-// sink. The cluster is the one ctx carries. A #sql query runs on u's
-// DuckDB instance with the prefix stripped, and a native query runs
-// unchanged. Every error that is not sink's comes before sink runs, so a
-// caller decides its answer before it writes. The error of sink is
-// returned unchanged. A native statement without a result set is one step
-// of a batch with no fields and no rows.
+// Run runs q as u and streams the result into sink. A query that starts
+// with #sql runs on u's DuckDB instance without the prefix; any other
+// query runs on the native engine as written. The cluster comes from
+// ctx. Every error other than sink's own is returned before sink is
+// called, so a caller can pick a status before writing. Sink's error is
+// returned as is.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
-	// Two engines with different retry and ownership rules meet in one
-	// result shape, the lent Batches, so a caller has one way to read a
-	// result:
-	//
-	//  1. split q into its text and its engine;
-	//  2. a DuckDB query is Cluster.Duck, which streams its own lent
-	//     batches;
-	//  3. a native query is Cluster.Query with one read retry;
-	//  4. the native batch is owned here and released after sink returns;
-	//  5. hand sink the batch as one step.
-
-	// 1. split q into its text and its engine
+	// Both engines hand sink the same lent Batches, so a caller reads a
+	// result one way. The native engine gets one read retry, because the
+	// query completes before sink runs and nothing has been sent. A DuckDB
+	// query is never retried.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
-	// 2. a DuckDB query is never retried and streams its own lent batches,
-	//    which Cluster.Duck releases
 	if duck {
 		return c.Duck(ctx, u, text, sink)
 	}
-	// 3. a native query with one read retry, safe because the query runs
-	//    before sink and nothing has been sent
-	rec, err := c.Query(ctx, u, text, qdb.WithReadRetry())
-	if err != nil {
-		return err
-	}
-	// 4. the batch is released after sink returns rather than inside the
-	//    step, so a sink that never pulls the step leaks nothing. A nil
-	//    batch, a statement without a result set, becomes a batch of an
-	//    empty schema, because Arrow's EncodeStream reads the first step's
-	//    schema and Batches promises at least one step.
-	if rec == nil {
-		rec = model.EmptyBatch(arrow.NewSchema(nil, nil))
-	}
-	defer rec.Release()
-	// 5. hand sink the batch as one step
-	return sink(one(rec))
+	return c.Query(ctx, u, text, sink, qdb.WithReadRetry())
 }
