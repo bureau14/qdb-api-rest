@@ -60,3 +60,13 @@ fixtures are in `internal/AGENTS.md`. ADR-0018 holds the wire contract.
   `UNAUTHENTICATED`, an open breaker or an unreachable cluster is
   `UNAVAILABLE` with no retry-after in the detail, a caller that went
   away is `CANCELED`, and a mint failure is `INTERNAL`.
+
+## Tests
+
+- One test file, `flightsql_test.go`, drives arrow-go's Flight SQL
+  client against the server on a port of its own with the ephemeral
+  certificate and verification off, as the driver smoke tests connect.
+  `TestHandshake` runs on both clusters through `cluster.Each`, and
+  `TestBearerRows` on the insecure cluster alone with a fixed clock,
+  because none of its rows reaches the cluster. Tokens are minted
+  directly, as the HTTP handler tests mint them.
