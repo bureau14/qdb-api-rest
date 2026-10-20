@@ -61,7 +61,9 @@ const shutdownGrace = 8 * time.Second
 
 // listener is one of the binary's servers as the serve loop and shutdown
 // see it: Serve answers nil after a clean stop, and Shutdown drains under
-// the caller's deadline.
+// the caller's deadline. One shape for servers of two types keeps the
+// serve loop and the drain to one loop each, where a Flight branch next
+// to a slice of HTTP servers would be two loops to keep in step.
 type listener interface {
 	Serve() error
 	Shutdown(context.Context)
@@ -170,10 +172,11 @@ func serveUntilDone(ctx context.Context, listeners []listener) error {
 
 // shutdown drains the listeners first and the cluster second, both under
 // the shutdownGrace deadline. The listeners drain in parallel, the Flight
-// server next to the HTTP ones, and the order matters, because in-flight
-// calls on either plane hold sessions, so every drain returning means the
-// cluster has no callers left and its close only has idle sessions to
-// wait for.
+// server next to the HTTP ones rather than stopped hard, because the
+// graceful drain covers Flight streams (docs/brief.md, Resilience). The
+// order matters, because in-flight calls on either plane hold sessions,
+// so every drain returning means the cluster has no callers left and its
+// close only has idle sessions to wait for.
 func shutdown(ctx context.Context, listeners []listener, cluster *qdb.Cluster) {
 	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
