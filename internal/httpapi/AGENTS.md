@@ -174,10 +174,10 @@ This file, Handlers, holds the table reader's.
   lands as a step of the round trip and not as a property of its own.
   Every read of the round trip, over HTTP and in the direct oracle,
   passes the span of the rows the test wrote, through the fixture's
-  `Range`, because a bulk reader opened on a table with no rows under
-  no range probes every shard of a forever range, and the round trip
-  reads its first table empty in every format. The empty read runs on
-  one table only, because the tables share one schema.
+  `Range`, because the round trip reads its first table empty in every
+  format and an unbounded read of a table with no rows is slow
+  (`internal/AGENTS.md`, Tests, says why). The empty read runs on one
+  table only, because the tables share one schema.
 - The DuckDB scalars have one test, `TestDuckDBScalars`
   (`duckdb_test.go`). It posts one row of every scalar the text encoders
   write behind `#sql` to `/api/v2/query` and checks each column's type

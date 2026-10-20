@@ -135,8 +135,7 @@ func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 // checkReadFormats reads tbl over HTTP in every format under the span of
 // its rows, once whole and, when picked is non-nil, once more restricted
 // to those columns, and compares each body with the stream encoder run
-// directly. The reads are bounded because an unbounded read of a table
-// with no rows probes every shard of a forever range.
+// directly. The reads are bounded as checkRead's is.
 func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	t.Helper()
 	start, end := tbl.Range()
