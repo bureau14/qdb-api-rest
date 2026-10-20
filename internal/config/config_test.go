@@ -220,6 +220,15 @@ func TestMalformedValueIsNamed(t *testing.T) {
 	}
 }
 
+// The Flight SQL listener is always on, so an empty address refuses the
+// start and names the key.
+func TestEmptyFlightAddressRefused(t *testing.T) {
+	_, err := load([]string{"--listen-flight="}, nil)
+	if err == nil || !strings.Contains(err.Error(), "listen.flight") {
+		t.Fatalf("want an error naming listen.flight, got %v", err)
+	}
+}
+
 func TestUnknownKeyRejected(t *testing.T) {
 	path := writeConfig(t, "listne:\n  http: \":1111\"\n")
 	if _, err := load([]string{"--config", path}, nil); err == nil {

@@ -13,6 +13,9 @@ listen:
   http: ":40080"
   # HTTPS listener address. Empty disables the listener.
   https: ":40443"
+  # Flight SQL listener address (gRPC over TLS, the HTTPS certificates).
+  # Always on; an empty value refuses the start.
+  flight: ":40493"
 
 tls:
   # PEM certificate and private key for the HTTPS listener, set together.

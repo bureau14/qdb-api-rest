@@ -20,3 +20,7 @@ Scope: the binary's entry point. Packages it wires together live under
 - `--version` prints the linked C API version and the linked DuckDB
   release as the library reports it, which makes it CI's link smoke test
   for both (`scripts/cicd/20.build.sh`).
+- The binary serves three listeners: HTTP, HTTPS and Flight SQL. The
+  first two are off when their address is empty, and the third is
+  always on (ADR-0018), so `--listen-flight` has no empty form and an
+  empty value refuses the start.

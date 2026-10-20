@@ -35,11 +35,14 @@ import (
 // flag surfaces as a sentinel instead of being handled here.
 var ErrVersionRequested = errors.New("version requested")
 
-// Listen holds the listener addresses. An empty address disables that
-// listener.
+// Listen holds the listener addresses. An empty HTTP or HTTPS address
+// disables that listener. The Flight address is never empty, because the
+// Flight SQL listener is on every install and the port is the
+// configurable part (ADR-0018).
 type Listen struct {
-	HTTP  string `yaml:"http" help:"HTTP listener address; empty disables the listener"`
-	HTTPS string `yaml:"https" help:"HTTPS listener address; empty disables the listener"`
+	HTTP   string `yaml:"http" help:"HTTP listener address; empty disables the listener"`
+	HTTPS  string `yaml:"https" help:"HTTPS listener address; empty disables the listener"`
+	Flight string `yaml:"flight" help:"Flight SQL (gRPC over TLS) listener address; always on"`
 }
 
 // TLS points the HTTPS listener at a PEM certificate/key pair. Both empty
@@ -171,7 +174,7 @@ type Config struct {
 // threads, with no spilling and sixteen instances at once.
 func Default() Config {
 	return Config{
-		Listen: Listen{HTTP: ":40080", HTTPS: ":40443"},
+		Listen: Listen{HTTP: ":40080", HTTPS: ":40443", Flight: ":40493"},
 		Log:    Log{Level: "info", Format: "json"},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",
@@ -621,6 +624,12 @@ func validateDuckDB(d DuckDB) error {
 func validate(cfg Config) error {
 	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
 		return errors.New("both listeners disabled: set listen.http or listen.https")
+	}
+	// An empty Flight address is refused by key, because the listener is
+	// on every install (ADR-0018) and an operator who wants it off has no
+	// knob.
+	if cfg.Listen.Flight == "" {
+		return errors.New("listen.flight must be set: the Flight SQL listener is always on")
 	}
 	if err := oneOf("log.level", cfg.Log.Level); err != nil {
 		return err
