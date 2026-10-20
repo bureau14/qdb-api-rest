@@ -2,6 +2,7 @@ package flightsql
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"strings"
 
@@ -99,6 +100,97 @@ func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
 	return observe.WithAttrs(ctx, observe.KeyUser, c.Username, observe.KeySession, c.SessionID), nil
 }
 
+// login proves a Basic credential by one dial and answers the access
+// token. An empty username is the anonymous login, as the HTTP login
+// treats it (ADR-0018, Decision 6).
+func (s *Server) login(ctx context.Context, username, secret string) (string, error) {
+	// One dial with four outcomes mapped to gRPC codes:
+	//
+	//  1. the user, anonymous when the username is empty;
+	//  2. Authenticate, and classify what it answered;
+	//  3. Issue, the access token alone.
+
+	// 1. An anonymous user carries no secret, whatever was sent.
+	u := qdb.User{}
+	if username != "" {
+		u = qdb.User{Username: username, SecretKey: secret}
+	}
+	// 2. A refusal is the caller's, UNAUTHENTICATED with the binding's
+	//    message. An open breaker and an unreachable cluster are
+	//    UNAVAILABLE; the breaker's retry-after is not carried, because
+	//    gRPC has no Retry-After header and the statement query decides
+	//    the detail text when it maps a running query's errors. A caller
+	//    that went away is CANCELED.
+	var open *qdb.BreakerOpenError
+	err := qdb.ClusterFrom(ctx).Authenticate(ctx, u)
+	switch {
+	case err == nil:
+	case ctx.Err() != nil:
+		return "", status.Error(codes.Canceled, ctx.Err().Error())
+	case errors.Is(err, qdb.ErrCredentialsRefused):
+		return "", unauthenticated(err.Error())
+	case errors.As(err, &open), qdb.IsClusterUnavailable(err):
+		return "", status.Error(codes.Unavailable, err.Error())
+	default:
+		return "", status.Error(codes.Internal, err.Error())
+	}
+	// 3. The access token alone, because Flight has no refresh path: a
+	//    client whose token expired reconnects, as the stock drivers do
+	//    (ADR-0018, Decision 6). A mint failure is this process's fault.
+	g, err := auth.TokensFrom(ctx).Issue(u.Username, u.SecretKey)
+	if err != nil {
+		observe.Logger(ctx).ErrorContext(ctx, "minting the access token failed", observe.Err(err))
+		return "", status.Error(codes.Internal, "minting the access token failed")
+	}
+	return g.Access, nil
+}
+
+// handshake answers a Handshake call: it decodes the Basic credential,
+// logs in, and sends the access token as a Bearer in the reply's headers
+// before the base RPC runs. The client reads the token from the
+// authorization header, as arrow-go's client and Arrow's ADBC and JDBC
+// drivers do.
+func (s *Server) handshake(ctx context.Context, stream grpc.ServerStream) error {
+	// Three decodes and one send whose timing matters:
+	//
+	//  1. a Handshake without a credential is refused, because the call
+	//     exists to log in;
+	//  2. decode the Basic credential as the drivers encode it;
+	//  3. login;
+	//  4. send the token as a header, now.
+
+	// 1. no credential, nothing to log in with
+	scheme, value, present := credential(ctx)
+	if !present || !strings.EqualFold(scheme, "Basic") || value == "" {
+		return unauthenticated("handshake needs a Basic credential")
+	}
+	// 2. The value is base64 of user:secret, raw or padded, because
+	//    arrow-go's client writes it raw and the Java driver pads it.
+	raw, err := base64.RawStdEncoding.DecodeString(value)
+	if err != nil {
+		raw, err = base64.StdEncoding.DecodeString(value)
+	}
+	if err != nil {
+		return unauthenticated("invalid basic auth encoding")
+	}
+	username, secret, found := strings.Cut(string(raw), ":")
+	if !found {
+		return unauthenticated("invalid basic auth credentials")
+	}
+	// 3. login
+	token, err := s.login(ctx, username, secret)
+	if err != nil {
+		return err
+	}
+	// 4. SendHeader and not SetHeader, because a header that is set and
+	//    never flushed goes out together with the status as a
+	//    trailers-only reply, and the JDBC driver reads headers only.
+	if err := stream.SendHeader(metadata.Pairs(authorizationKey, "Bearer "+token)); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	return nil
+}
+
 // authUnary is the auth edge of a unary call: the call runs under
 // authenticate's ctx or not at all.
 func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
@@ -111,12 +203,22 @@ func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo
 	return next(ctx, req)
 }
 
-// authStream is the auth edge of a stream: the stream runs under
-// authenticate's ctx or not at all.
-func (s *Server) authStream(srv any, stream grpc.ServerStream, _ *grpc.StreamServerInfo, next grpc.StreamHandler) error {
-	// The call ctx is callContext first, so authenticate can read the
-	// cluster and the keychain.
-	ctx, err := s.authenticate(s.callContext(stream.Context()))
+// authStream is the auth edge of a stream: a Handshake goes to handshake,
+// and every other stream runs under authenticate's ctx or not at all.
+func (s *Server) authStream(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
+	// The call ctx is callContext first, so handshake and authenticate
+	// can read the cluster and the keychain.
+	ctx := s.callContext(stream.Context())
+	// A Handshake is matched by the method's suffix, as arrow-go matches
+	// it. The base RPC body is a no-op, so the headers handshake sent are
+	// the whole reply.
+	if strings.HasSuffix(info.FullMethod, "/Handshake") {
+		if err := s.handshake(ctx, stream); err != nil {
+			return err
+		}
+		return next(srv, &wrappedStream{ServerStream: stream, ctx: ctx})
+	}
+	ctx, err := s.authenticate(ctx)
 	if err != nil {
 		return err
 	}

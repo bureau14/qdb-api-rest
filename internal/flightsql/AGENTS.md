@@ -35,3 +35,17 @@ fixtures are in `internal/AGENTS.md`. ADR-0018 holds the wire contract.
 - The edge enriches and handlers do not: the claims ride the ctx, zero
   claims for the anonymous user so `auth.ClaimsFrom` never panics, and
   the logger carries `observe.KeyUser` and `observe.KeySession`.
+- The Handshake takes `authorization: Basic base64(user:secret)` and
+  answers `authorization: Bearer <access token>` in the reply's headers,
+  the form arrow-go's client and the ADBC and JDBC drivers send and
+  read. The token goes out through `SendHeader` and not `SetHeader`,
+  because a header that is set and never flushed leaves with the status
+  as a trailers-only reply, which the JDBC driver does not read. An
+  empty username is the anonymous login, as the HTTP login treats it.
+- A Handshake answers the access token only. Flight has no refresh
+  path, and a client whose token expired reconnects (ADR-0018,
+  Decision 6).
+- A login's codes (ADR-0018, Decision 13): a refused credential is
+  `UNAUTHENTICATED`, an open breaker or an unreachable cluster is
+  `UNAVAILABLE` with no retry-after in the detail, a caller that went
+  away is `CANCELED`, and a mint failure is `INTERNAL`.
