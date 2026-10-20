@@ -1,6 +1,7 @@
 // The qdb_rest binary is QuasarDB's HTTP front door. It serves the routes
-// internal/httpapi assembles on an HTTP and an HTTPS listener, both
-// configured by internal/config.
+// internal/httpapi assembles on an HTTP and an HTTPS listener, and the
+// Flight SQL server of internal/flightsql on a third, all configured by
+// internal/config.
 package main
 
 import (
@@ -16,12 +17,14 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/build"
 	"github.com/bureau14/qdb-api-rest/internal/config"
+	"github.com/bureau14/qdb-api-rest/internal/flightsql"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
@@ -56,87 +59,128 @@ func versionText() string {
 // window (tests/e2e/common.sh::stop_server).
 const shutdownGrace = 8 * time.Second
 
-// newServer assembles one listener's server. The HTTPS listener carries
-// a tls.Config, and plain HTTP passes nil. BaseContext hands the process
-// context (and so the logger) to every request, and ErrorLog routes
-// net/http's own complaints through the same handler. There is no global
-// write timeout, because responses are streamed, so write deadlines are
-// a per-request concern.
-func newServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) *http.Server {
-	return &http.Server{
+// listener is one of the binary's servers as the serve loop and shutdown
+// see it: Serve answers nil after a clean stop, and Shutdown drains under
+// the caller's deadline.
+type listener interface {
+	Serve() error
+	Shutdown(context.Context)
+}
+
+// httpListener adapts *http.Server: ListenAndServe or ListenAndServeTLS
+// by TLSConfig, ErrServerClosed as a clean stop, and Shutdown's error
+// dropped, because the deadline it would report is the shared grace.
+type httpListener struct{ *http.Server }
+
+func (l httpListener) Serve() error {
+	var err error
+	if l.TLSConfig != nil {
+		err = l.ListenAndServeTLS("", "")
+	} else {
+		err = l.ListenAndServe()
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (l httpListener) Shutdown(ctx context.Context) { _ = l.Server.Shutdown(ctx) }
+
+// newHTTPServer assembles one HTTP listener's server. The HTTPS listener
+// carries a tls.Config, and plain HTTP passes nil. BaseContext hands the
+// process context (and so the logger) to every request, and ErrorLog
+// routes net/http's own complaints through the same handler. There is no
+// global write timeout, because responses are streamed, so write
+// deadlines are a per-request concern.
+func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) httpListener {
+	return httpListener{&http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ErrorLog:          slog.NewLogLogger(observe.Logger(ctx).Handler(), slog.LevelError),
-	}
+	}}
 }
 
-// newServers builds the enabled listeners from config and logs what each
-// one serves.
-func newServers(ctx context.Context, cfg config.Config, handler http.Handler) ([]*http.Server, error) {
+// newListeners builds the listeners from config and logs what each one
+// serves. The HTTP and HTTPS listeners are off when their address is
+// empty, and the Flight SQL listener is always on (ADR-0018).
+func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
+	// The steps:
+	//
+	//  1. HTTP, when configured;
+	//  2. the TLS material, loaded once for HTTPS and Flight, because both
+	//     serve the same certificate and an ephemeral certificate must be
+	//     one identity per start, with its warning logged once;
+	//  3. HTTPS, when configured;
+	//  4. Flight, always, which fails the start here on a port in use.
 	log := observe.Logger(ctx)
-	var servers []*http.Server
+	var listeners []listener
+	// 1. HTTP
 	if cfg.Listen.HTTP != "" {
-		servers = append(servers, newServer(ctx, cfg.Listen.HTTP, handler, nil))
+		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
 	}
+	// 2. one TLS load and one warning for both TLS listeners
+	tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if info.Source == tlsconf.SourceEphemeral {
+		log.WarnContext(ctx, "no tls certificate configured; generated an ephemeral self-signed certificate",
+			"fingerprint_sha256", info.Fingerprint,
+			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
+	}
+	// 3. HTTPS
 	if cfg.Listen.HTTPS != "" {
-		tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
-		if err != nil {
-			return nil, err
-		}
-		if info.Source == tlsconf.SourceEphemeral {
-			log.WarnContext(ctx, "no tls certificate configured; generated an ephemeral self-signed certificate",
-				"fingerprint_sha256", info.Fingerprint,
-				"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
-		}
-		servers = append(servers, newServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
+		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
 		log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 			"certificate", string(info.Source), "not_after", info.NotAfter)
 	}
-	return servers, nil
-}
-
-// serve runs one server to its terminal error.
-func serve(server *http.Server) error {
-	if server.TLSConfig != nil {
-		return server.ListenAndServeTLS("", "")
+	// 4. Flight, always on
+	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
+	if err != nil {
+		return nil, err
 	}
-	return server.ListenAndServe()
+	listeners = append(listeners, fs)
+	log.InfoContext(ctx, "listening", "proto", "flight", "addr", fs.Addr().String(),
+		"certificate", string(info.Source), "not_after", info.NotAfter)
+	return listeners, nil
 }
 
 // serveUntilDone serves all listeners until ctx is cancelled (SIGINT or
 // SIGTERM) or one of them fails, and returns the first terminal error
 // (nil on a clean cancel). It does not shut anything down. shutdown does,
 // under the single shutdownGrace deadline.
-func serveUntilDone(ctx context.Context, servers []*http.Server) error {
-	errs := make(chan error, len(servers))
-	for _, server := range servers {
-		go func() { errs <- serve(server) }()
+func serveUntilDone(ctx context.Context, listeners []listener) error {
+	errs := make(chan error, len(listeners))
+	for _, l := range listeners {
+		go func() { errs <- l.Serve() }()
 	}
 	select {
 	case failure := <-errs:
-		if errors.Is(failure, http.ErrServerClosed) {
-			return nil
-		}
 		return failure
 	case <-ctx.Done():
 		return nil
 	}
 }
 
-// shutdown drains the HTTP servers first and the cluster second, both
-// under the shutdownGrace deadline. The order matters, because in-flight
-// requests hold sessions, so server.Shutdown returning means the cluster
-// has no callers left and its close only has idle sessions to wait for.
-func shutdown(ctx context.Context, servers []*http.Server, cluster *qdb.Cluster) {
+// shutdown drains the listeners first and the cluster second, both under
+// the shutdownGrace deadline. The listeners drain in parallel, the Flight
+// server next to the HTTP ones, and the order matters, because in-flight
+// calls on either plane hold sessions, so every drain returning means the
+// cluster has no callers left and its close only has idle sessions to
+// wait for.
+func shutdown(ctx context.Context, listeners []listener, cluster *qdb.Cluster) {
 	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
-	for _, server := range servers {
-		_ = server.Shutdown(drain)
+	var wg sync.WaitGroup
+	for _, l := range listeners {
+		wg.Go(func() { l.Shutdown(drain) })
 	}
+	wg.Wait()
 	if err := cluster.Close(drain); err != nil {
 		observe.Logger(ctx).WarnContext(ctx, "cluster did not drain within the shutdown grace", observe.Err(err))
 	}
@@ -191,17 +235,18 @@ func main() {
 
 	// 5. The listeners, over the root context so every request inherits
 	//    the logger, the cluster and the keychain. Loading the TLS
-	//    material is the only step here that can fail.
-	servers, err := newServers(ctx, cfg, httpapi.NewHandler())
+	//    material and binding the Flight port are the steps here that
+	//    can fail.
+	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 
-	// 6. Serve until a signal or a listener failure, then drain: HTTP
-	//    first, the cluster second, one shutdownGrace for both.
-	runErr := serveUntilDone(ctx, servers)
-	shutdown(ctx, servers, cluster)
+	// 6. Serve until a signal or a listener failure, then drain: the
+	//    listeners first, the cluster second, one shutdownGrace for all.
+	runErr := serveUntilDone(ctx, listeners)
+	shutdown(ctx, listeners, cluster)
 	if runErr != nil {
 		logger.ErrorContext(ctx, "server failed", observe.Err(runErr))
 		os.Exit(1)
