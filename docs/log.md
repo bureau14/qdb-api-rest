@@ -67,6 +67,13 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-20 -- roundtrip-read-range-plan.md deleted; the round trip reads under its rows' span
+
+- The bounded read and its reason went to `internal/httpapi/AGENTS.md`,
+  Tests, and `internal/AGENTS.md`, Tests; the span itself is the
+  fixture's `Range`. The owner keeps the pending reproduce for R&D out
+  of the tree (owner, 2026-10-20).
+
 ## 2026-10-20 -- query-dispatch-plan.md deleted; one query route over both engines
 
 - Owner decisions moved to ADR-0010, ADR-0017 and ADR-0018 (edited in
