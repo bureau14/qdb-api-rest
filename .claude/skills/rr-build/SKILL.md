@@ -1,6 +1,6 @@
 ---
 name: rr-build
-description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, build the branch in Buildkite, and post the build-stage message. Takes the plan's path. Invoked by the owner after the plan-stage message; the invocation is the gate.
+description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code in plannotator, and post the build-stage message. Takes the plan's path. Invoked by the owner after the plan-stage message; the invocation is the gate.
 disable-model-invocation: true
 argument-hint: docs/<slug>-plan.md
 ---
@@ -81,33 +81,71 @@ Incorrect: the plan's Rationale says the schema cache was rejected, no
 comment or document says so, and the plan is deleted with that reason
 in it.
 
-## The Buildkite build
+## The Buildkite build and the code review
 
 Local lint and tests cover one platform; the pipeline covers the whole
-matrix. So the stage ends with the plan's Verify step: push
-`sc-19567/rr-<slug>`, build its head in Buildkite, wait for the result.
-The mechanics (API-created build, branch-filter bypass, full
-40-character SHA, reprioritizing the scheduled jobs) live in
-`.buildkite/AGENTS.md`; follow them rather than a copy kept here.
+matrix, and the owner reviews the code while the pipeline runs rather
+than after it. So once the checks above are clean, in this order:
 
-- Green: the build-stage message names the build by its real number.
-- A red build caused by the branch is fixed with further small commits
-  on the branch, pushed, and built again.
-- A red build caused by something else (an agent, an outage, a failure
-  the base shows as well) is reported with the evidence, and the owner
-  decides.
+1. Push `sc-19567/rr-<slug>` and create the Buildkite build for its
+   head. The mechanics (API-created build, branch-filter bypass, full
+   40-character SHA, reprioritizing the scheduled jobs) live in
+   `.buildkite/AGENTS.md`; follow them rather than a copy kept here.
+   Wait for the build in the background; do not block on it.
+2. Open the code review, in the background as well, with a long
+   timeout:
 
-The stage is over only when the build is green. Local tests passing is
+   ```
+   plannotator review --base sc-19567/rest-rewrite --json
+   ```
+
+   It blocks until the owner decides in the browser, and the harness
+   wakes you when it exits. Do nothing else while both run. Its stdout
+   is one JSON record; classify it by `decision` alone:
+   - `approved`: the owner's yes on the code. Notes in `message` are
+     guidance, quoted in the build-stage message, not a change request.
+   - `annotated`: the owner's change requests. Address every annotation
+     with further small commits on this branch, push, create a new
+     build for the new head, and open the review again from step 2.
+     The build of the superseded head is reported as superseded, not
+     waited for.
+   - `dismissed`, or a non-zero exit without a decision: stop and
+     report; the owner decides in the conversation.
+
+3. Wait for the build of the reviewed head:
+   - Green: the build-stage message names the build by its real
+     number.
+   - A red build caused by the branch is fixed with further small
+     commits on the branch, pushed, built again, and reviewed again
+     from step 2, because the owner has not seen the fix.
+   - A red build caused by something else (an agent, an outage, a
+     failure the base shows as well) is reported with the evidence,
+     and the owner decides.
+
+The stage is over only when the reviewed head is the built head, the
+review is `approved` and the build is green. Local tests passing is
 not the end of the stage, however small the change.
+
+Correct: the checks are clean; you push, create build 412, open the
+review; the owner annotates two comments; you fix them in two commits,
+push, create build 413, open the review again; it returns `approved`;
+build 413 goes green; the build-stage message names 413 and says 412
+was superseded.
+
+Incorrect: the review returns `approved` and the build-stage message is
+posted while the build is still running. Or: the build goes red, you
+fix it and wait for green without reopening the review, so the owner
+merges a commit they never saw.
 
 ## The build-stage message
 
 Exactly: the branch name; a summary of the change in plain words; each
 deviation from the plan with the reason the code forced it; the
-doc-discipline check's report, or "clean"; the Buildkite build number
-and its state; the command
+doc-discipline check's report, or "clean"; the review's decision with
+its notes quoted, if any; the Buildkite build number and its state,
+and any superseded build numbers; the command
 `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`; one line saying
 the merge waits for `/rr-merge`.
 
-Then wait. Do not ask whether to merge; the owner reviews the diff and
-invokes `/rr-merge` when the code is approved.
+Then wait. Do not ask whether to merge; the owner invokes `/rr-merge`
+when they are ready.
