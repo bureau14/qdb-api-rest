@@ -941,8 +941,7 @@ starts.
   format-equivalence property test extended with a Flight SQL client,
   and smoke tests through Arrow's Flight SQL ADBC and JDBC drivers
   (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
-  query and the DuckDB query layer of M4. The stale `tls_port` sample
-  configs in `qdb-documentation` are fixed here.
+  query and the DuckDB query layer of M4.
 - **M6 -- Resilience**: `/metrics`, the graceful-drain and
   concurrency stress as behaviour assertions in Buildkite.
 - **M7 -- Exploration**: tables list and schema, tags (whose tag-find

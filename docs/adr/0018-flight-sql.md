@@ -126,8 +126,6 @@ client. The owner made the decisions below on 2026-10-13.
   The Python API as the primary client reconnects itself.
 - `vendor/` grows by grpc-go, protobuf, arrow-go's flight packages and
   arrow-adbc's Go Flight SQL driver.
-- The old documentation's `tls_port: 40493` samples are corrected in
-  `qdb-documentation` during this milestone.
 - `docs/e2e.md` no longer defers a Flight question to this milestone's
   entry.
 

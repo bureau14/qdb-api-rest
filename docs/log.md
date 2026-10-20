@@ -23,19 +23,20 @@ Last updated: 2026-10-20
 In flight:
 
 - M5. The `#sql` dispatcher (`query.Run`, `internal/query`) behind
-  `POST /api/v2/query`, the one query route, is landed. The rest of the
-  milestone is the Next list.
+  `POST /api/v2/query` and the Flight listener (`listen.flight`,
+  `internal/flightsql`) with Handshake, bearer and anonymous auth are
+  landed. The rest of the milestone is the Next list.
 
 Next:
 
-- The Flight listener (`listen.flight`), Handshake, bearer and anonymous
-  auth, the status codes, and `CommandStatementQuery` to `DoGet` through
-  `query.Run` (ADR-0018, Decisions 1, 2, 6 to 9, 13).
+- The statement query on the Flight listener: `GetFlightInfoStatement`
+  answering a ticket that carries the query text, `DoGetStatement`
+  through `query.Run`, and the `INVALID_ARGUMENT`, `UNAVAILABLE` and
+  `INTERNAL` rows for a running query (ADR-0018, Decisions 9 and 13).
 - `GetSqlInfo` and the catalog commands on a table list core in
   `internal/qdb` (ADR-0018, Decisions 10 to 12).
 - The format-equivalence property with a Flight SQL client, and the ADBC
   and JDBC smoke tests (ADR-0018, Decision 14, `docs/e2e.md`).
-- The `tls_port` sample configs corrected in `qdb-documentation`.
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
   DuckDB as its first node (`Cluster.credentialsOf`).
@@ -50,8 +51,7 @@ surface answering `UNIMPLEMENTED`, the format-equivalence property
 extended with a Flight SQL client for both engines and a dispatch
 property over generated prefixes, the smoke tests through Arrow's Flight
 SQL ADBC and JDBC drivers (`docs/e2e.md`), green in Buildkite on all
-eight platforms (FreeBSD may drop out of the JDBC smoke test), and the `tls_port` sample configs corrected in
-`qdb-documentation`.
+eight platforms (FreeBSD may drop out of the JDBC smoke test).
 
 Handoff to M6 and M7:
 
@@ -60,12 +60,26 @@ Handoff to M6 and M7:
   says.
 - The table list core M5 writes for `GetTables` is the one
   `GET /api/v2/tables` wraps.
+- Query capture and monitoring on both planes, every executed query and
+  its duration, possibly sampled, is M6's (owner, 2026-10-20). Nothing
+  logs query text today; the HTTP and Flight access lines carry no
+  query.
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-20 -- flight-listener-plan.md deleted; the Flight listener with Handshake and bearer auth landed
+
+- Owner decisions moved to `internal/flightsql/AGENTS.md`,
+  `internal/AGENTS.md` (Code, Building), `cmd/qdb_rest/AGENTS.md` and
+  the comments of `internal/flightsql` and `cmd/qdb_rest`. Query
+  capture is M6's (Handoff). The `qdb-documentation` work is outside
+  this project and follows the official release (owner, 2026-10-20),
+  so the `tls_port` item left M5 here, in `docs/brief.md` and in
+  ADR-0018.
 
 ## 2026-10-20 -- roundtrip-read-range-plan.md deleted; the round trip reads under its rows' span
 
