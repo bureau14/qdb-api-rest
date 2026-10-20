@@ -8,7 +8,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"pgregory.net/rapid"
 
@@ -21,6 +23,14 @@ import (
 // readTable gets the rows of name under the URL parameters with headers.
 func (s server) readTable(name, params string, headers map[string]string) *httptest.ResponseRecorder {
 	return s.send(http.MethodGet, tablesPath+"/"+name+"/rows?"+params, "", headers)
+}
+
+// rangeParams renders the span of tbl's rows as the start and end URL
+// parameters the read takes, in RFC 3339 with nanoseconds as parseTime
+// reads it.
+func rangeParams(tbl table.Table) string {
+	start, end := tbl.Range()
+	return "start=" + url.QueryEscape(start.Format(time.RFC3339Nano)) + "&end=" + url.QueryEscape(end.Format(time.RFC3339Nano))
 }
 
 // directRead reads name over the cluster and encodes it through e's

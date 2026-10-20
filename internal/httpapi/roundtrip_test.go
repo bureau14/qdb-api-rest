@@ -91,11 +91,14 @@ func (s server) drawnIngest(t *rapid.T, tables []table.Table, mode string) *http
 	return s.ingest(body, "push-mode="+mode, headers)
 }
 
-// checkRead reads tbl over the cluster and compares what comes back with
-// the rows generated. The fixture's tables fit one batch.
+// checkRead reads tbl over the cluster under the span of its rows and
+// compares what comes back with the rows generated. The read is bounded
+// because an unbounded read of a table with no rows probes every shard
+// of a forever range. The fixture's tables fit one batch.
 func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	t.Helper()
-	err := s.c.Read(context.Background(), s.user, tbl.Name, qdb.ReadOptions{}, func(batches qdb.Batches) error {
+	start, end := tbl.Range()
+	err := s.c.Read(context.Background(), s.user, tbl.Name, qdb.ReadOptions{Start: start, End: end}, func(batches qdb.Batches) error {
 		for rec, err := range batches {
 			if err != nil {
 				return err
@@ -129,20 +132,23 @@ func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// checkReadFormats reads tbl over HTTP in every format, once whole and,
-// when picked is non-nil, once more restricted to those columns, and
-// compares each body with the stream encoder run directly.
+// checkReadFormats reads tbl over HTTP in every format under the span of
+// its rows, once whole and, when picked is non-nil, once more restricted
+// to those columns, and compares each body with the stream encoder run
+// directly. The reads are bounded because an unbounded read of a table
+// with no rows probes every shard of a forever range.
 func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	t.Helper()
+	start, end := tbl.Range()
 	cases := []struct {
 		params string
 		o      qdb.ReadOptions
-	}{{"", qdb.ReadOptions{}}}
+	}{{rangeParams(tbl), qdb.ReadOptions{Start: start, End: end}}}
 	if picked != nil {
 		cases = append(cases, struct {
 			params string
 			o      qdb.ReadOptions
-		}{"columns=" + url.QueryEscape(strings.Join(picked, ",")), qdb.ReadOptions{Columns: picked}})
+		}{rangeParams(tbl) + "&columns=" + url.QueryEscape(strings.Join(picked, ",")), qdb.ReadOptions{Columns: picked, Start: start, End: end}})
 	}
 	for _, tc := range cases {
 		for accept, e := range encoders {
@@ -376,10 +382,10 @@ func TestRoundtrip(t *testing.T) {
 			}
 
 			// 4. read the first table empty, which answers the schema alone in
-			// every format, and the schema is the one generated. The others share it, and an
-			// empty read through the bulk reader is slow (about a tenth of a
-			// second where a filled read is milliseconds), so one table stands
-			// for all
+			// every format, and the schema is the one generated. The others
+			// share the schema, so one table stands for all. The read is
+			// bounded like every read here, and a table with no rows spans
+			// one nanosecond at the index start
 			empty := first
 			empty.Batch = nil
 			s.checkRead(rt, empty)
