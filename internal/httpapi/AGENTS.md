@@ -172,9 +172,12 @@ This file, Handlers, holds the table reader's.
   decoded, because DuckDB leaves the value bytes under a null slot
   undefined. The encoders' own tests prove the bytes decode. A new route
   lands as a step of the round trip and not as a property of its own.
-  The empty read runs on one table only, because an empty read through
-  the bulk reader costs about a tenth of a second where a filled one
-  costs milliseconds.
+  Every read of the round trip, over HTTP and in the direct oracle,
+  passes the span of the rows the test wrote, through the fixture's
+  `Range`, because a bulk reader opened on a table with no rows under
+  no range probes every shard of a forever range, and the round trip
+  reads its first table empty in every format. The empty read runs on
+  one table only, because the tables share one schema.
 - The DuckDB scalars have one test, `TestDuckDBScalars`
   (`duckdb_test.go`). It posts one row of every scalar the text encoders
   write behind `#sql` to `/api/v2/query` and checks each column's type
