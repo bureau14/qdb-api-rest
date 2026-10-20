@@ -14,11 +14,9 @@ import (
 // accessContext tags ctx with a request id minted for this call, so the
 // lines logged below join on it as the HTTP lines join on theirs.
 func (s *Server) accessContext(ctx context.Context) context.Context {
-	// The id is minted on every call and never read from the metadata,
-	// because none of arrow-go's client, ADBC or JDBC sends one by default
-	// and the inbound-id validation lives in httpapi. Honoring an inbound
-	// id would move that validation into observe, which this plane does
-	// not need yet.
+	// The id is minted on every call and never read from the metadata.
+	// Honoring an inbound id would move httpapi's validation of one into
+	// observe, a refactor this plane has no need for yet.
 	return observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String())
 }
 
