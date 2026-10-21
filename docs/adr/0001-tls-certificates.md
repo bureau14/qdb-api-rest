@@ -38,13 +38,15 @@ The initial scope has two certificate sources:
    load balancer, which is the trade the ephemeral token key already
    makes.
 
-The listeners are on by default (`:40080` HTTP, `:40443` HTTPS,
-`:40493` Flight SQL, matching the deployed shape). Only the HTTP
-listener can be turned off, by an empty address (`--listen-http=` /
-`listen.http: ""`), because plain HTTP is the one that can be a
-security liability, and a TLS listener costs nothing to leave on
-(owner, 2026-10-21). An empty HTTPS or Flight address refuses the
-start. The minimum TLS version is 1.2, set explicitly. Certificates are loaded once at startup, and
+The TLS listeners are on by default (`:40443` HTTPS, `:40493` Flight
+SQL, matching the deployed shape) and cannot be turned off: an empty
+address refuses the start. The HTTP listener has no default address
+and is off unless `listen.http` is set, because plain HTTP is the one
+listener that can be a security liability, a TLS listener costs nothing
+to leave on, and the reference deployment runs HTTPS only behind a load
+balancer (owner, 2026-10-21). An operator who needs the old server's
+port sets `listen.http: ":40080"`. The minimum TLS version is 1.2, set
+explicitly. Certificates are loaded once at startup, and
 rotation is restart-based.
 
 ## Consequences

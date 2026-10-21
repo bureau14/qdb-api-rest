@@ -220,11 +220,13 @@ func TestMalformedValueIsNamed(t *testing.T) {
 	}
 }
 
-// Only the HTTP listener can be turned off (ADR-0001). An empty HTTPS or
-// Flight address refuses the start and names the key.
+// The HTTP listener is off unless set and is the only one that can be
+// off (ADR-0001). An empty HTTPS or Flight address refuses the start and
+// names the key.
 func TestOnlyHTTPCanBeOff(t *testing.T) {
-	if _, err := load([]string{"--listen-http="}, nil); err != nil {
-		t.Fatalf("--listen-http=: want no error, got %v", err)
+	cfg, err := load(nil, nil)
+	if err != nil || cfg.Listen.HTTP != "" {
+		t.Fatalf("defaults: want no HTTP address and no error, got %q, %v", cfg.Listen.HTTP, err)
 	}
 	for _, key := range []string{"listen.https", "listen.flight"} {
 		flag := "--" + strings.ReplaceAll(key, ".", "-") + "="

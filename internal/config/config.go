@@ -35,10 +35,10 @@ import (
 // flag surfaces as a sentinel instead of being handled here.
 var ErrVersionRequested = errors.New("version requested")
 
-// Listen holds the listener addresses. Only the HTTP listener can be
-// turned off, by an empty address (ADR-0001).
+// Listen holds the listener addresses. The HTTP listener is off unless
+// an address is set, and it is the only one that can be off (ADR-0001).
 type Listen struct {
-	HTTP   string `yaml:"http" help:"HTTP listener address; empty disables the listener"`
+	HTTP   string `yaml:"http" help:"HTTP listener address; off unless set"`
 	HTTPS  string `yaml:"https" help:"HTTPS listener address"`
 	Flight string `yaml:"flight" help:"Flight SQL listener address (gRPC over TLS)"`
 }
@@ -172,7 +172,7 @@ type Config struct {
 // threads, with no spilling and sixteen instances at once.
 func Default() Config {
 	return Config{
-		Listen: Listen{HTTP: ":40080", HTTPS: ":40443", Flight: ":40493"},
+		Listen: Listen{HTTPS: ":40443", Flight: ":40493"},
 		Log:    Log{Level: "info", Format: "json"},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",

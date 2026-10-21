@@ -107,7 +107,8 @@ func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsCo
 }
 
 // newListeners builds the listeners from config and logs what each one
-// serves. Only the HTTP listener can be off (ADR-0001).
+// serves. HTTP is off unless configured, and the other two always start
+// (ADR-0001).
 func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
 	// The steps:
 	//
