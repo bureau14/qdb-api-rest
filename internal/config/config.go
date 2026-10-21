@@ -35,14 +35,12 @@ import (
 // flag surfaces as a sentinel instead of being handled here.
 var ErrVersionRequested = errors.New("version requested")
 
-// Listen holds the listener addresses. An empty HTTP or HTTPS address
-// disables that listener. The Flight address is never empty, because the
-// Flight SQL listener is on every install and the port is the
-// configurable part (ADR-0018).
+// Listen holds the listener addresses. Only the HTTP listener can be
+// turned off, by an empty address (ADR-0001).
 type Listen struct {
 	HTTP   string `yaml:"http" help:"HTTP listener address; empty disables the listener"`
-	HTTPS  string `yaml:"https" help:"HTTPS listener address; empty disables the listener"`
-	Flight string `yaml:"flight" help:"Flight SQL (gRPC over TLS) listener address; always on"`
+	HTTPS  string `yaml:"https" help:"HTTPS listener address"`
+	Flight string `yaml:"flight" help:"Flight SQL listener address (gRPC over TLS)"`
 }
 
 // TLS points the HTTPS listener at a PEM certificate/key pair. Both empty
@@ -346,7 +344,7 @@ func interpolateEnv(text string, lookup func(string) (string, bool)) (string, er
 // flagValues holds one parsed command line: the meta flags, and the
 // value of every key flag that was actually passed, by key path, so only
 // those override the file and the environment (an explicitly empty flag
-// value, e.g. --listen-https=, is an override too).
+// value, e.g. --listen-http=, is an override too).
 type flagValues struct {
 	configPath  string
 	showVersion bool
@@ -622,14 +620,11 @@ func validateDuckDB(d DuckDB) error {
 
 // validate rejects impossible configurations before the server starts.
 func validate(cfg Config) error {
-	if cfg.Listen.HTTP == "" && cfg.Listen.HTTPS == "" {
-		return errors.New("both listeners disabled: set listen.http or listen.https")
+	if cfg.Listen.HTTPS == "" {
+		return errors.New("listen.https must be set")
 	}
-	// An empty Flight address is refused by key, because the listener is
-	// on every install (ADR-0018) and an operator who wants it off has no
-	// knob.
 	if cfg.Listen.Flight == "" {
-		return errors.New("listen.flight must be set: the Flight SQL listener is always on")
+		return errors.New("listen.flight must be set")
 	}
 	if err := oneOf("log.level", cfg.Log.Level); err != nil {
 		return err

@@ -220,12 +220,18 @@ func TestMalformedValueIsNamed(t *testing.T) {
 	}
 }
 
-// The Flight SQL listener is always on, so an empty address refuses the
-// start and names the key.
-func TestEmptyFlightAddressRefused(t *testing.T) {
-	_, err := load([]string{"--listen-flight="}, nil)
-	if err == nil || !strings.Contains(err.Error(), "listen.flight") {
-		t.Fatalf("want an error naming listen.flight, got %v", err)
+// Only the HTTP listener can be turned off (ADR-0001). An empty HTTPS or
+// Flight address refuses the start and names the key.
+func TestOnlyHTTPCanBeOff(t *testing.T) {
+	if _, err := load([]string{"--listen-http="}, nil); err != nil {
+		t.Fatalf("--listen-http=: want no error, got %v", err)
+	}
+	for _, key := range []string{"listen.https", "listen.flight"} {
+		flag := "--" + strings.ReplaceAll(key, ".", "-") + "="
+		_, err := load([]string{flag}, nil)
+		if err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%s: want an error naming %s, got %v", flag, key, err)
+		}
 	}
 }
 

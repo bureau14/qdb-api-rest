@@ -9,12 +9,12 @@
 # unset variable refuses the start.
 
 listen:
-  # HTTP listener address. Empty disables the listener.
+  # HTTP listener address. Empty disables the listener, the only one
+  # that can be turned off.
   http: ":40080"
-  # HTTPS listener address. Empty disables the listener.
+  # HTTPS listener address.
   https: ":40443"
   # Flight SQL listener address (gRPC over TLS, the HTTPS certificates).
-  # Always on; an empty value refuses the start.
   flight: ":40493"
 
 tls:
