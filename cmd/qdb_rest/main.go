@@ -107,15 +107,14 @@ func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsCo
 }
 
 // newListeners builds the listeners from config and logs what each one
-// serves. The HTTP and HTTPS listeners are off when their address is
-// empty, and the Flight SQL listener is always on (ADR-0018).
+// serves. Only the HTTP listener can be off (ADR-0001).
 func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
 	// The steps:
 	//
 	//  1. HTTP, when configured;
 	//  2. the TLS material, once;
-	//  3. HTTPS, when configured;
-	//  4. Flight, always.
+	//  3. HTTPS;
+	//  4. Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
 	// 1. HTTP
@@ -136,13 +135,11 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
 	}
 	// 3. HTTPS
-	if cfg.Listen.HTTPS != "" {
-		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
-		log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
-			"certificate", string(info.Source), "not_after", info.NotAfter)
-	}
-	// 4. Flight, always on (ADR-0018). Binding the port happens here, so
-	//    a port in use fails the start as the TLS material does.
+	listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
+	log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
+		"certificate", string(info.Source), "not_after", info.NotAfter)
+	// 4. Flight. Binding the port happens here, so a port in use fails
+	//    the start as the TLS material does.
 	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
 	if err != nil {
 		return nil, err
