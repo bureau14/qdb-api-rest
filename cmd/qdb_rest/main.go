@@ -54,9 +54,9 @@ func versionText() string {
 }
 
 // shutdownGrace is the deadline shutdown works under on SIGTERM. The
-// HTTP drain (in-flight requests finishing) and the pool drain (sessions
-// closing) share it. It must stay below the harness's SIGTERM-to-SIGKILL
-// window (tests/e2e/common.sh::stop_server).
+// listener drains (in-flight calls finishing) and the pool drain
+// (sessions closing) share it. Eight seconds is not measured. Anything
+// that stops the binary and then kills it sizes its window above this.
 const shutdownGrace = 8 * time.Second
 
 // listener is one of the binary's servers as the serve loop and shutdown
@@ -112,18 +112,13 @@ func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsCo
 func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
 	// The steps:
 	//
-	//  1. HTTP, when configured;
-	//  2. the TLS material, once;
+	//  1. the TLS material, once;
+	//  2. HTTP, when configured;
 	//  3. HTTPS;
 	//  4. Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
-	// 1. HTTP
-	if cfg.Listen.HTTP != "" {
-		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
-		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
-	}
-	// 2. The TLS material is loaded once for HTTPS and Flight, because
+	// 1. The TLS material is loaded once for HTTPS and Flight, because
 	//    both serve the same certificate and an ephemeral certificate
 	//    must be one identity per start, and its warning is logged once.
 	tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
@@ -134,6 +129,11 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 		log.WarnContext(ctx, "no tls certificate configured; generated an ephemeral self-signed certificate",
 			"fingerprint_sha256", info.Fingerprint,
 			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
+	}
+	// 2. HTTP
+	if cfg.Listen.HTTP != "" {
+		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
+		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
 	}
 	// 3. HTTPS
 	listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))

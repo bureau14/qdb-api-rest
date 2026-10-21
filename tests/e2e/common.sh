@@ -143,7 +143,9 @@ start_server() {
     fi
 }
 
-# Send SIGTERM, wait up to 10s, then send SIGKILL. Usage: stop_server <pidfile>
+# Send SIGTERM, wait up to 10s, then send SIGKILL. The wait is sized above
+# the binary's shutdown grace (cmd/qdb_rest/main.go::shutdownGrace), so a
+# clean drain is never cut short. Usage: stop_server <pidfile>
 stop_server() {
     local pid_file="$1" pid i
     [[ -f "$pid_file" ]] || return 0
