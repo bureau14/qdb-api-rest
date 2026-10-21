@@ -25,14 +25,19 @@ const authorizationKey = "authorization"
 // answers an empty scheme, and the caller matches the scheme
 // case-insensitively, as the HTTP bearer edge does.
 func credential(ctx context.Context) (scheme, value string, present bool) {
+	// The call's incoming metadata is where gRPC puts the client's
+	// headers; a call may carry none at all.
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return "", "", false
 	}
+	// A header key may repeat, and the first value is the credential.
 	vals := md.Get(authorizationKey)
 	if len(vals) == 0 {
 		return "", "", false
 	}
+	// "Bearer <token>" or "Basic <base64>": the scheme is the word before
+	// the first space and the value is the rest, trimmed.
 	scheme, value, _ = strings.Cut(strings.TrimSpace(vals[0]), " ")
 	return scheme, strings.TrimSpace(value), true
 }
@@ -43,16 +48,15 @@ func unauthenticated(detail string) error {
 	return status.Error(codes.Unauthenticated, detail)
 }
 
-// authenticate decides who a call runs as, from its authorization
-// metadata, and answers the ctx the handler runs under: the claims placed,
-// the user and the session tagged. No header is the anonymous user on an
-// insecure cluster and UNAUTHENTICATED on a secure one. A present header
-// must be a Bearer with a verifiable access token (ADR-0018).
+// authenticate is the rule the two auth interceptors apply. It reads the
+// call's authorization header and answers the context the call runs
+// under, with the claims placed and the user and the session tagged, or
+// the status that refuses the call (ADR-0018).
 func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
-	// Four outcomes in a precedence, each a rule of ADR-0018:
+	// The outcomes, in order of precedence:
 	//
-	//  1. no header: anonymous on an insecure cluster, refused on a
-	//     secure one;
+	//  1. no header: the anonymous user where the cluster admits it,
+	//     refused otherwise;
 	//  2. a header that is empty, not Bearer or has no value: refused;
 	//  3. verify: an expired token and an invalid one are both refused,
 	//     with the detail naming which;
@@ -62,14 +66,11 @@ func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
 	scheme, token, present := credential(ctx)
 	var c auth.Claims
 	switch {
-	// 1. no header. The stock drivers send no header unless a username or
-	//    a token is configured, so a zero-config client on an insecure
-	//    cluster runs as the anonymous user. On a secure cluster the dial
-	//    would refuse the anonymous user anyway, so the client is told to
-	//    log in first. arrow-go's own basic-auth middleware was rejected
-	//    because it refuses every call without a header.
+	// 1. No header is the anonymous user on an insecure cluster. A secure
+	//    cluster would refuse the anonymous dial, so the call is refused
+	//    here and the client logs in first.
 	case !present:
-		if qdb.ClusterFrom(ctx).Secured() {
+		if !s.anonymousAllowed {
 			return nil, unauthenticated("missing bearer token")
 		}
 	// 2. a client that sent a header meant to authenticate, so a header
