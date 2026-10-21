@@ -25,8 +25,13 @@ type Server struct {
 	// root is the process context: the logger, the cluster and the
 	// keychain every call reads.
 	root context.Context
-	grpc *grpc.Server
-	lis  net.Listener
+	// anonymousAllowed says whether a call with no authorization header
+	// runs as the anonymous user. It is the cluster's mode, read once: an
+	// insecure cluster admits the anonymous user and a secure one refuses
+	// it, so the rule needs no cluster lookup per call.
+	anonymousAllowed bool
+	grpc             *grpc.Server
+	lis              net.Listener
 }
 
 // New builds the server over the process context ctx, bound to addr with
@@ -42,7 +47,7 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	//  2. the TLS credentials;
 	//  3. register the Flight SQL service;
 	//  4. listen on addr.
-	s := &Server{root: ctx}
+	s := &Server{root: ctx, anonymousAllowed: !qdb.ClusterFrom(ctx).Secured()}
 	// 1. The access line is outermost and the auth edge inside it, so a
 	//    refused call is logged too. The access line therefore carries
 	//    no user tag, as the HTTP access line does not, because on both

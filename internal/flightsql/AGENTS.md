@@ -32,9 +32,13 @@ Each rule below names the function whose comments carry its reason.
   metadata is the anonymous user on an insecure cluster and
   `UNAUTHENTICATED` on a secure one, and a present header must be a
   Bearer carrying a verifiable access token, with `typ != access`
-  refused as the HTTP edge refuses it. The rule is this package's own
-  interceptor and not arrow-go's basic-auth middleware (ADR-0018,
-  Decision 8; owner, 2026-10-20), and `authenticate` says why.
+  refused as the HTTP edge refuses it. Whether the anonymous user is
+  admitted is the cluster's mode, read once in `New` and not per call.
+  The rule is this package's own interceptor and not arrow-go's
+  basic-auth middleware, because that middleware refuses every call
+  without a header (ADR-0018, Decision 8; owner, 2026-10-20). The
+  interceptor runs in both modes, because a presented token names the
+  user whose pool, DuckDB instance and log lines the call uses.
 - The edge enriches and handlers do not: the claims ride the ctx, zero
   claims for the anonymous user so `auth.ClaimsFrom` never panics, and
   the logger carries `observe.KeyUser` and `observe.KeySession`.
