@@ -35,12 +35,19 @@ When the unit lands:
   retried once the stream has started.
 - The login and the statement map a cluster error to a gRPC status
   through one function.
+- An open breaker and a full instance cap carry their retry-after as a
+  `RetryInfo` detail on the `UNAVAILABLE` status, the gRPC twin of the
+  HTTP `Retry-After` header, next to the message.
 - `Cluster.Query` hands its result to the sink as slices of
   `model.BatchRows` rows, 65536, the one batch-size constant of the
   binary. The bulk reader fetches that many rows per batch through the
-  same constant. The Arrow encoder writes each batch of a stream as it
-  comes, with no slicing loop of its own, and the text encoders keep
-  checking the ctx every `model.BatchRows` rows.
+  same constant. Every result in the binary is a sequence of bounded
+  batches, and the encoders are written for that alone: `Encoder` has
+  one method, `EncodeStream`, each encoder checks the ctx once per
+  batch, and the Arrow encoder writes each batch as it comes. The e2e
+  tool writes a generated body as a sequence of one batch. The JSON body
+  of a native result larger than one batch is an array of several
+  results, one per slice, as the reader's and DuckDB's bodies are.
 - One property test in `internal/flightsql` reads a generated table
   back over Flight on both engines and both clusters, and one error-row
   table pins the codes.
@@ -204,6 +211,47 @@ Left for later units, each named:
     carries the one-batch rule in its query bullet [`internal/AGENTS.md:40-52`],
     and `internal/encoding/AGENTS.md` names `chunkRows` three times
     [`internal/encoding/AGENTS.md:64-66,82-89`].
+19. `Encoder` has two methods, `Encode` for one batch and `EncodeStream`
+    for a sequence. Outside tests, `Encode` has two callers, both in the
+    e2e tool writing a generated body [`tests/e2e/tools/e2etool/main.go:196,319`];
+    the server's routes call `EncodeStream` alone
+    [`internal/httpapi/query.go:142`, `internal/httpapi/read.go:78`]. The
+    four `Encode` methods, the nil-batch rule of the `Encoder` doc, the
+    nil-safe `numRows` and the Arrow encoder's `emptyBatch` exist for
+    that path [`internal/encoding/encoding.go:24-34,58-64`,
+    `internal/encoding/arrow.go:27-32,69-71`, `internal/encoding/csv.go:198-216`,
+    `internal/encoding/json.go:244-254,321-331`]. The text encoders check
+    the ctx inside their row loops through `checkChunk` at six sites
+    [`internal/encoding/csv.go:172,425`, `internal/encoding/json.go:282,405,663,928`].
+    The test helpers over `Encode` are `encode` in the encoding tests and
+    `direct` in the round trip [`internal/encoding/encoding_test.go:49-56`,
+    `internal/httpapi/roundtrip_test.go:52-58`].
+20. The JSON stream is a top-level array with one columnar result per
+    batch [`internal/encoding/json.go:334-340`, ADR-0010, Decision on the
+    JSON body, `docs/adr/0010-v2-query-request-negotiation-errors.md:45`].
+    A native result is one batch today, so its array has one element
+    whatever its size [fact 7].
+21. gRPC's structured retry-after is a `RetryInfo` message attached to a
+    status as a detail: `status.WithDetails` takes it, and the message
+    type lives in `google.golang.org/genproto/googleapis/rpc/errdetails`,
+    a package of a module `go.mod` already requires indirectly at
+    `v0.0.0-20260526163538-3dc84a4a5aaa` and whose `status` package is
+    vendored; `errdetails` is in the module cache at that version and
+    enters `vendor/` with the first import through `go mod vendor`
+    [`vendor/google.golang.org/grpc/internal/status/status.go:134`,
+    `vendor/modules.txt:166-168`, `go.mod:46`,
+    `$GOMODCACHE/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa/errdetails/error_details.pb.go:159-165`].
+    Whether the ADBC and JDBC drivers surface a status detail is not
+    verified; arrow-go's client answers the status as grpc-go does.
+22. Audit of the one-batch assumption across the tree (owner's request,
+    plan review of 2026-10-21): the places that assumed one batch or a
+    nil batch are the `Encode` path and its helpers (fact 19), the Arrow
+    encoder's slicing (fact 10), the per-row ctx stride (fact 19) and
+    `Cluster.Query`'s `one` (fact 7). The three empty-result stand-ins
+    (`Query`'s empty batch, `qdb.lent`'s and `olap.lent`'s) each shape
+    the batch from a different schema source and stay as they are. The
+    decoders read bodies of any batch count and are untouched. The HTTP
+    handlers already stream a sequence and are untouched.
 
 ## 3. Design
 
@@ -273,25 +321,42 @@ func (c *Cluster) Query(...) error {
 
 ### `internal/encoding/encoding.go`
 
-`chunkRows` goes; `checkChunk` and the three text encoders use
-`model.BatchRows`, and `checkChunk`'s doc says the stride is the
-binary's batch size, so a client that left is noticed within one batch
-[fact 10]. `numRows` stays.
+`chunkRows`, `checkChunk` and `numRows` go. The `Encoder` interface
+keeps one method:
+
+```go
+// Encoder writes a sequence of record batches to w in one wire format. It
+// does not release a batch. It returns the first error it meets: a write
+// error, the error of an error element, or the ctx ending between batches. [fact 19; Rationale: one method]
+type Encoder interface {
+	// ContentType is the media type the handler answers with.
+	ContentType() string
+	// EncodeStream writes a sequence of batches as one body. Every batch shares
+	// the first batch's schema. A batch is valid only until yield returns. The
+	// sequence is never empty, because every producer stands in an empty batch
+	// of its schema for a result of no rows. [fact 7, fact 8, read.go:94-98]
+	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
+}
+```
+
+The CSV, NDJSON and JSON `EncodeStream` bodies each gain one ctx check
+at the top of the per-batch loop and lose their `checkChunk` calls,
+with a step comment: a client that left is noticed at the next batch,
+and a batch is at most `model.BatchRows` rows [fact 19; Rationale: one
+batch size]. Their `Encode` methods go. The `Encode` helper of the
+encoding tests and `direct` in the round trip call `EncodeStream` over
+a one-element sequence, built by a three-line `one` helper in each test
+file [fact 19].
+
+`tests/e2e/tools/e2etool/main.go`: `writeBody` and the CSV write of
+`tocsv` call `EncodeStream` over a one-element sequence, through one
+`one` helper in that file, with a comment: the tool writes one batch,
+and the encoders write sequences alone [fact 19].
 
 ### `internal/encoding/arrow.go`
 
-`writeSlices` and `writeArrow` go. `Encode` and `EncodeStream` become:
-
-```go
-// Encode implements Encoder. A nil rec encodes as a schema with no fields and
-// no batch. [Encoder doc]
-func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	// style: doc comment alone
-	// because: EncodeStream over one batch, so the two paths cannot differ
-	//
-	// at the nil case: emptyBatch stands in, released here [arrow.go:27-32]
-}
-```
+`writeSlices`, `writeArrow`, `emptyBatch` and `Encode` go.
+`EncodeStream` becomes:
 
 ```go
 // EncodeStream implements Encoder. The stream opens on the first batch's
@@ -307,17 +372,24 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 	//    producer already bounds a batch at model.BatchRows [facts 7, 8, 10]
 	//    - rejected: slicing here, because the slice is the query core's now
 	//      and the text encoders never sliced [Rationale: one batch size]
-	// 3. a sequence of no batch is the nil-batch encoding, a schema with no
-	//    fields and the marker, so the body is a complete stream [arrow.go:90-96]
+	// 3. Close writes the end-of-stream marker; a sequence of no batch cannot
+	//    occur, because every producer yields at least one [Encoder doc]
 }
 ```
 
-`internal/encoding/AGENTS.md`: the ctx bullet says "once per
-`model.BatchRows` rows, the binary's batch size", and the Arrow bullet
+`internal/encoding/AGENTS.md`: the first bullet's "`Encode` writes one
+batch: the bodies the e2e tool and the fixture write. `EncodeStream`
+writes every response the server sends" becomes "`EncodeStream` is the
+one entry point; the e2e tool writes a generated body as a sequence of
+one batch"; the ctx bullet says "once per batch, and a batch is at
+most `model.BatchRows` rows, the binary's batch size"; the Arrow bullet
 says "in the record batches the producer hands it, which `Cluster.Query`
 and the bulk reader bound at `model.BatchRows` rows and DuckDB at one
-vector, without in-format buffer compression"; the "writes every batch
-in `chunkRows` slices" sentence goes [fact 18].
+vector, without in-format buffer compression", and the "nil batch
+encodes as" and "writes every batch in `chunkRows` slices" sentences
+go; the JSON bullet's "A nil batch encodes as `{"columns":[]}`" goes,
+and its "one per batch" sentence gains "a native result larger than one
+batch is several results" [facts 18, 19, 20].
 
 ### `internal/flightsql/status.go`, new file
 
@@ -328,21 +400,30 @@ in `chunkRows` slices" sentence goes [fact 18].
 // INVALID_ARGUMENT for a query. A nil err is nil. [ADR-0018, Decision 13; fact 12; Rationale: one mapping]
 func statusOf(ctx context.Context, err error, answered codes.Code) error {
 	// style: doc comment + numbered overview + step comments
-	// because: a precedence of six outcomes, each a row of ADR-0018, Decision 13
+	// because: a precedence of seven outcomes, each a row of ADR-0018, Decision 13
 	//
 	// 1. the caller's ctx ended: the context's own code, CANCELED or
 	//    DEADLINE_EXCEEDED, because the failure is the caller's and nothing of
 	//    the cluster's is reported [fact 13, fact 15]
 	// 2. a refused credential: UNAUTHENTICATED, before the unreachable case,
 	//    because a refused attach would otherwise count as unreachable [fact 12]
-	// 3. an open breaker, a full instance cap, an unreachable cluster, a failed
-	//    attach: UNAVAILABLE with the error's message, which already names the
-	//    retry-after where there is one, because gRPC has no Retry-After header
-	//    [fact 13, fact 14; Rationale: the UNAVAILABLE detail]
-	// 4. anything else: answered, with the error's message, because the engine
+	// 3. an open breaker and a full instance cap: UNAVAILABLE with the error's
+	//    message and a RetryInfo detail carrying RetryAfter, the gRPC twin of the
+	//    Retry-After header the HTTP route sets [fact 14, fact 21; Rationale:
+	//    the retry-after]
+	//    - a WithDetails failure cannot happen for a well-formed duration; if it
+	//      does, the status goes out without the detail [fact 21]
+	// 4. an unreachable cluster and a failed attach: UNAVAILABLE with the error's
+	//    message and no detail, as the HTTP route sets no header for them
+	//    [fact 12, fact 14]
+	// 5. anything else: answered, with the error's message, because the engine
 	//    or the cluster spoke and the message is theirs [ADR-0018, Decision 13]
 }
 ```
+
+`statusOf` imports `google.golang.org/genproto/googleapis/rpc/errdetails`,
+and the commit that adds it runs `go mod vendor`, which adds that one
+package under the already vendored module [fact 21].
 
 `login` (auth.go) keeps its overview and replaces its switch at step 2
 by `statusOf(ctx, err, codes.Unauthenticated)`; its step comment says
@@ -439,13 +520,14 @@ implement answers UNIMPLEMENTED" stays true.
   Rationale: one batch size]
 - The codes of a running query (ADR-0018, Decision 13) are `statusOf`'s,
   which the login shares: the engine's error is INVALID_ARGUMENT with
-  its message, an open breaker, a full instance cap, an unreachable
-  cluster and a failed attach are UNAVAILABLE with the error's message
-  and no separate retry-after, a refused credential is UNAUTHENTICATED,
-  the caller's own ctx ending is its code. A failure after the first
-  message closes the stream with INTERNAL, or the ctx's code when the
-  caller left, and one warning line. [Rationale: one mapping; owner,
-  2026-10-21]
+  its message, an open breaker and a full instance cap are UNAVAILABLE
+  with the error's message and a `RetryInfo` detail carrying the
+  retry-after, an unreachable cluster and a failed attach are
+  UNAVAILABLE with the message alone, a refused credential is
+  UNAUTHENTICATED, the caller's own ctx ending is its code. A failure
+  after the first message closes the stream with INTERNAL, or the ctx's
+  code when the caller left, and one warning line. [Rationale: one
+  mapping, the retry-after; owner, 2026-10-21]
 ```
 
 The Tests section's first bullet gains: "`TestStatement` draws a table
@@ -473,9 +555,10 @@ func TestSlices(t *testing.T) {
 ```
 
 It dials nothing. `checkArrow` in `internal/encoding/encode_test.go`
-drops its `batchRows` argument and batch-count assertion, because the
-Arrow encoder writes a batch whole, and `TestRoundTrip`'s doc drops "across
-Arrow batch boundaries" [fact 10].
+drops its `batchRows` argument and batch-count assertion and runs
+`EncodeStream` over one batch, because the Arrow encoder writes a batch
+whole, and `TestRoundTrip`'s doc drops "across Arrow batch boundaries"
+[fact 10].
 
 ### `internal/flightsql/flightsql_test.go`
 
@@ -520,8 +603,9 @@ func TestStatementRows(t *testing.T) {
 	//   INVALID_ARGUMENT; a DoGet on a hand-built ticket of a bad query is the
 	//   same, because the ticket is the text [owner, 2026-10-21]
 	// at the unreachable row: a server over qdb://127.0.0.1:1 answers
-	//   UNAVAILABLE, and once the breaker opens, UNAVAILABLE whose message names
-	//   the retry-after [fact 16; Rationale: the UNAVAILABLE detail]
+	//   UNAVAILABLE with no detail, and once the breaker opens, UNAVAILABLE with
+	//   a RetryInfo detail whose delay is the breaker's [fact 16, fact 21;
+	//   Rationale: the retry-after]
 	// the rows run on the insecure cluster, because none reaches a secured
 	//   check [internal/flightsql/AGENTS.md, Tests]
 }
@@ -550,18 +634,19 @@ Flight server will" becomes "and the Flight server's `DoGet` does".
 
 ## 4. Rationale
 
-| decision                                                                                                                                                                                                               | why                                                                                                                                                                                             | rejected, and why                                                                                                                                                                                                                                                                                                                            | gained                                                                                                       | given up                                                                                                                                                                     | settled by                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| The DoGet override: `DoGet` is this package's method for a statement ticket, and the sink writes to the stream while each batch is lent                                                                                | the plain mechanism: one function, no goroutine, no channel, the HTTP handler's shape; both engines lend batches and the override honors the lending as it is                                   | arrow-go's `DoGetStatement` hook, which answers a schema and a channel the router drains: correct without a copy, because batches are refcounted and a Retain keeps one alive, but it needs a producer goroutine, a schema handoff before the first chunk, ctx-aware sends, and the error-before-first-byte split carried across the channel | one function a cold reader checks against the HTTP handler                                                   | a depth-one overlap between DuckDB's chunk conversion and gRPC serialization that the hook's goroutine would give; the ticket decode is called here as well as in the router | owner, 2026-10-21            |
-| The ticket is the query text verbatim, dispatched at `DoGet`                                                                                                                                                           | the prefix rule has one home, `query.Run`, and a readable ticket                                                                                                                                | splitting the prefix at `GetFlightInfo` and encoding engine plus text: a ticket format of this server's own, and the split exported                                                                                                                                                                                                          | one rule, one home                                                                                           | a client may craft a ticket without `GetFlightInfo`, which is harmless because the user is the `DoGet` call's token                                                          | owner, 2026-10-21            |
-| One mapping, `statusOf`, for the login and the statement                                                                                                                                                               | the rows are ADR-0018, Decision 13's, stated once; the login's comment already deferred the detail text to the statement                                                                        | two switches side by side: the rows stated twice, a new row landing in both                                                                                                                                                                                                                                                                  | one place a new code lands                                                                                   | nothing                                                                                                                                                                      | owner, 2026-10-21            |
-| The UNAVAILABLE detail is the error's own message                                                                                                                                                                      | the breaker's and the cap's messages already name the retry-after, and gRPC has no Retry-After header                                                                                           | a detail format of this server's own: a second rendering of one fact                                                                                                                                                                                                                                                                         | nothing to keep in step with HTTP                                                                            | a client parses the retry-after out of prose, if it wants it                                                                                                                 | proposal                     |
-| INTERNAL for a failure after the first message, of either kind, and the ctx's code when the caller left                                                                                                                | the client has already received data, so the closing status says the server failed, and Decision 13 names INTERNAL for an encoding failure                                                      | INVALID_ARGUMENT for a DuckDB reader error mid-stream: the engine spoke, but the client cannot act on it after data arrived                                                                                                                                                                                                                  | one rule for a cut stream                                                                                    | the engine's mid-stream message reaches the client as INTERNAL's detail, not as its own code                                                                                 | owner, 2026-10-21            |
-| One batch size, `model.BatchRows`, 65536: `Cluster.Query` slices the native result, the bulk reader fetches it, the text encoders pace by it, and the Arrow encoder and the Flight writer write each batch as it comes | the owner wants every consumer of a result to read batches of one shape, and the Flight message must stay under gRPC's limit; `readBatchRows` and `chunkRows` already declared themselves equal | leaving the native result as one batch with the slicing in the encoder, shared with the Flight writer through one generalization: two producers of batch size and a loop the Flight path has to borrow; 2048 to match DuckDB: 32 times the messages per native result                                                                        | one constant, no slicing loop in any consumer, the IPC stream of a sliced batch is byte-identical to today's | no memory saved on the native path, because the C API materializes the result whole before the first byte; a slice of a batch of no rows is the batch itself                 | owner, 2026-10-21            |
-| The constant lives in `internal/model`                                                                                                                                                                                 | `internal/encoding` and `internal/qdb` import `model` and not each other, and `model` holds what two packages share                                                                             | `internal/qdb`, the owner's first thought: `encoding` would have to import `qdb`                                                                                                                                                                                                                                                             | the import graph unchanged                                                                                   | nothing                                                                                                                                                                      | owner, 2026-10-21            |
-| The tests are the package's own: one property over a generated table on both engines and both clusters, and one error-row table                                                                                        | the project's way: one generative test plus one row table, and the Flight client in the HTTP equivalence property is the later unit's                                                           | pulling the HTTP equivalence extension forward: httpapi tests starting a Flight server per round trip, and the third Next item folded in                                                                                                                                                                                                     | the statement pinned now, the later unit untouched                                                           | the native and `#sql` results are compared with two oracles, the table and `Cluster.Duck`, not with each other                                                               | owner, 2026-10-21            |
-| `GetFlightInfo` echoes the descriptor, answers no location and totals of -1                                                                                                                                            | the server stores nothing and runs nothing there, and an empty location means this server to the stock drivers                                                                                  | running the query for the totals: the query twice                                                                                                                                                                                                                                                                                            | a cheap `GetFlightInfo`                                                                                      | drivers see no row count before `DoGet`                                                                                                                                      | ADR-0018, Decision 9; fact 5 |
-| `Encode` is `EncodeStream` over one batch                                                                                                                                                                              | the two Arrow paths cannot differ once neither slices                                                                                                                                           | keeping `writeArrow` for the one-shot path: a second IPC writer open                                                                                                                                                                                                                                                                         | one Arrow writer                                                                                             | the one-shot body of a large batch is one record batch, which the e2e tool's generated bodies never are                                                                      | proposal                     |
+| decision                                                                                                                                                                                                               | why                                                                                                                                                                                             | rejected, and why                                                                                                                                                                                                                                                                                                                            | gained                                                                                                       | given up                                                                                                                                                                                                                                                                                                                                                                                                                           | settled by                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| The DoGet override: `DoGet` is this package's method for a statement ticket, and the sink writes to the stream while each batch is lent                                                                                | the plain mechanism: one function, no goroutine, no channel, the HTTP handler's shape; both engines lend batches and the override honors the lending as it is                                   | arrow-go's `DoGetStatement` hook, which answers a schema and a channel the router drains: correct without a copy, because batches are refcounted and a Retain keeps one alive, but it needs a producer goroutine, a schema handoff before the first chunk, ctx-aware sends, and the error-before-first-byte split carried across the channel | one function a cold reader checks against the HTTP handler                                                   | a depth-one overlap between DuckDB's chunk conversion and gRPC serialization that the hook's goroutine would give; the ticket decode is called here as well as in the router                                                                                                                                                                                                                                                       | owner, 2026-10-21            |
+| The ticket is the query text verbatim, dispatched at `DoGet`                                                                                                                                                           | the prefix rule has one home, `query.Run`, and a readable ticket                                                                                                                                | splitting the prefix at `GetFlightInfo` and encoding engine plus text: a ticket format of this server's own, and the split exported                                                                                                                                                                                                          | one rule, one home                                                                                           | a client may craft a ticket without `GetFlightInfo`, which is harmless because the user is the `DoGet` call's token                                                                                                                                                                                                                                                                                                                | owner, 2026-10-21            |
+| One mapping, `statusOf`, for the login and the statement                                                                                                                                                               | the rows are ADR-0018, Decision 13's, stated once; the login's comment already deferred the detail text to the statement                                                                        | two switches side by side: the rows stated twice, a new row landing in both                                                                                                                                                                                                                                                                  | one place a new code lands                                                                                   | nothing                                                                                                                                                                                                                                                                                                                                                                                                                            | owner, 2026-10-21            |
+| The retry-after of an open breaker and a full instance cap travels as a `RetryInfo` status detail next to the message                                                                                                  | the owner does not want the retry-after lost on the Flight plane, and `RetryInfo` is gRPC's standard carrier, the twin of the HTTP header                                                       | the message alone: a client parses the value out of prose, and the Flight plane carries less than HTTP                                                                                                                                                                                                                                       | the same information on both planes, in each plane's own form                                                | one vendored package from an already required module, and whether the ADBC and JDBC drivers surface the detail is unverified                                                                                                                                                                                                                                                                                                       | owner, 2026-10-21            |
+| `Encoder` has one method, `EncodeStream`                                                                                                                                                                               | every result is a bounded sequence, so a one-batch entry point is a second way to write the same bytes, with a nil-batch rule and two helpers of its own                                        | keeping `Encode` as a convenience for the e2e tool: four methods and their rules kept for two callers that can wrap a batch in a one-element sequence                                                                                                                                                                                        | about a hundred lines gone, one path per encoder, the nil-batch rule gone                                    | the e2e tool and two test helpers wrap a batch themselves                                                                                                                                                                                                                                                                                                                                                                          | owner, 2026-10-21            |
+| Each encoder checks the ctx once per batch                                                                                                                                                                             | a batch is at most `model.BatchRows` rows, which was the stride of the per-row check, so a check per batch notices a departed client as soon                                                    | the per-row stride kept: a second expression of the batch size inside six row loops                                                                                                                                                                                                                                                          | `checkChunk` and six call sites gone                                                                         | a DuckDB batch of one vector is checked more often than before, which costs one `ctx.Err` per vector                                                                                                                                                                                                                                                                                                                               | proposal                     |
+| INTERNAL for a failure after the first message, of either kind, and the ctx's code when the caller left                                                                                                                | the client has already received data, so the closing status says the server failed, and Decision 13 names INTERNAL for an encoding failure                                                      | INVALID_ARGUMENT for a DuckDB reader error mid-stream: the engine spoke, but the client cannot act on it after data arrived                                                                                                                                                                                                                  | one rule for a cut stream                                                                                    | the engine's mid-stream message reaches the client as INTERNAL's detail, not as its own code                                                                                                                                                                                                                                                                                                                                       | owner, 2026-10-21            |
+| One batch size, `model.BatchRows`, 65536: `Cluster.Query` slices the native result, the bulk reader fetches it, the text encoders pace by it, and the Arrow encoder and the Flight writer write each batch as it comes | the owner wants every consumer of a result to read batches of one shape, and the Flight message must stay under gRPC's limit; `readBatchRows` and `chunkRows` already declared themselves equal | leaving the native result as one batch with the slicing in the encoder, shared with the Flight writer through one generalization: two producers of batch size and a loop the Flight path has to borrow; 2048 to match DuckDB: 32 times the messages per native result                                                                        | one constant, no slicing loop in any consumer, the IPC stream of a sliced batch is byte-identical to today's | no memory saved on the native path, because the C API materializes the result whole before the first byte; a slice of a batch of no rows is the batch itself; the JSON body of a native result over one batch becomes an array of several results, one per slice, as ADR-0010's "one per batch" already says, and a client that read only the first element of a large native result would miss rows (accepted, owner, 2026-10-21) | owner, 2026-10-21            |
+| The constant lives in `internal/model`                                                                                                                                                                                 | `internal/encoding` and `internal/qdb` import `model` and not each other, and `model` holds what two packages share                                                                             | `internal/qdb`, the owner's first thought: `encoding` would have to import `qdb`                                                                                                                                                                                                                                                             | the import graph unchanged                                                                                   | nothing                                                                                                                                                                                                                                                                                                                                                                                                                            | owner, 2026-10-21            |
+| The tests are the package's own: one property over a generated table on both engines and both clusters, and one error-row table                                                                                        | the project's way: one generative test plus one row table, and the Flight client in the HTTP equivalence property is the later unit's                                                           | pulling the HTTP equivalence extension forward: httpapi tests starting a Flight server per round trip, and the third Next item folded in                                                                                                                                                                                                     | the statement pinned now, the later unit untouched                                                           | the native and `#sql` results are compared with two oracles, the table and `Cluster.Duck`, not with each other                                                                                                                                                                                                                                                                                                                     | owner, 2026-10-21            |
+| `GetFlightInfo` echoes the descriptor, answers no location and totals of -1                                                                                                                                            | the server stores nothing and runs nothing there, and an empty location means this server to the stock drivers                                                                                  | running the query for the totals: the query twice                                                                                                                                                                                                                                                                                            | a cheap `GetFlightInfo`                                                                                      | drivers see no row count before `DoGet`                                                                                                                                                                                                                                                                                                                                                                                            | ADR-0018, Decision 9; fact 5 |
 
 ## 5. Knowledge
 
@@ -576,39 +661,47 @@ Flight server will" becomes "and the Flight server's `DoGet` does".
   dispatcher bullets; ADR-0018, Decision 5, edited in place;
   `TestSlices` pins the property.
 - Commit 4 (the Arrow encoder): `EncodeStream`'s overview carries the
-  lazy open, the per-batch write and the rejected slice; `Encode`'s
-  doc carries the one-path choice; `checkArrow` and `TestRoundTrip`'s
-  doc lose the batch-boundary claim.
-- Commit 5 (`statusOf`): its overview carries the six outcomes and the
-  UNAVAILABLE detail; `login`'s step 2 points at it; the `AGENTS.md`
-  Auth bullet on the login's codes points at `statusOf`.
-- Commit 6 (`GetFlightInfoStatement`): its notes carry the verbatim
+  lazy open, the per-batch write and the rejected slice; `checkArrow`
+  and `TestRoundTrip`'s doc lose the batch-boundary claim.
+- Commit 5 (one method): the `Encoder` doc carries the one entry point
+  and the never-empty sequence; each text encoder's per-batch ctx check
+  carries its step comment; the e2e tool's `one` helper carries why the
+  tool wraps; `internal/encoding/AGENTS.md`'s first, ctx and JSON
+  bullets are rewritten, the JSON bullet carrying the several-results
+  consequence.
+- Commit 6 (`statusOf`): its overview carries the seven outcomes and
+  the `RetryInfo` detail; `login`'s step 2 points at it; the `AGENTS.md`
+  Auth bullet on the login's codes points at `statusOf`; `vendor/` gains
+  `errdetails`.
+- Commit 7 (`GetFlightInfoStatement`): its notes carry the verbatim
   ticket, the totals and the descriptor; the `AGENTS.md` Statement
   section's first bullet.
-- Commit 7 (`DoGet`): `service`'s doc and `DoGet`'s overview carry the
+- Commit 8 (`DoGet`): `service`'s doc and `DoGet`'s overview carry the
   override, the rejected hook, the per-batch write and Close, the
   two failure kinds; `New`'s step 3 says what is registered; the
   `AGENTS.md` Statement section's second, third and fourth bullets;
   the two test rows that flip.
-- Commit 8 (`TestStatement`): the test's overview carries the two
+- Commit 9 (`TestStatement`): the test's overview carries the two
   oracles and the empty result; the `AGENTS.md` Tests bullet.
-- Commit 9 (`TestStatementRows`): the rows and the unreachable note;
+- Commit 10 (`TestStatementRows`): the rows and the unreachable note;
   the `AGENTS.md` Tests bullet.
-- Commit 12 (the plan's deletion): `docs/log.md` Current state: the
+- Commit 13 (the plan's deletion): `docs/log.md` Current state: the
   statement query leaves Next and In flight names it in one line, and
   the older entries that mention the statement query are untouched,
   because entries are append-only.
 - Every Rationale row lands in: the DoGet override in `DoGet` and the
   Statement section; the verbatim ticket in `GetFlightInfoStatement`
   and the Statement section; one mapping in `statusOf` and the Auth
-  bullet; the UNAVAILABLE detail in `statusOf` step 3 and the Statement
+  bullet; the retry-after in `statusOf` step 3 and the Statement
   section; INTERNAL after the first message in `DoGet` step 4 and the
-  Statement section; one batch size in `BatchRows`, `Query` step 3,
-  `EncodeStream` step 2, ADR-0018 and both `AGENTS.md` files; the
+  Statement section; one batch size and the JSON consequence in
+  `BatchRows`, `Query` step 3, `EncodeStream` step 2, ADR-0018,
+  `internal/AGENTS.md` and `internal/encoding/AGENTS.md`; the
   constant's home in `internal/model/AGENTS.md`; the package's own
   tests in `TestStatement`'s doc and the Tests bullet; the
-  `GetFlightInfo` shape in its notes; `Encode` over one batch in its
-  doc.
+  `GetFlightInfo` shape in its notes; one method in the `Encoder` doc
+  and the encoding `AGENTS.md`'s first bullet; the per-batch ctx check
+  in each text encoder's step comment and the ctx bullet.
 
 ## 6. How the knowledge lands
 
@@ -622,7 +715,13 @@ Specific to this unit:
 - Commit 3 lands before commit 4, because the Arrow encoder may drop
   its slicing only once the query core slices; between the two the
   encoder slices an already-sliced batch, which is harmless.
-- Commit 7 flips the two existing test rows in the same commit, because
+- Commit 5 changes the e2e tool, the encoding tests and the round trip's
+  oracle in the same commit as the interface, because the tool and the
+  tests must build at every commit.
+- Commit 6 runs `go mod vendor` after the `errdetails` import and
+  commits the vendored package with the code, because the build is
+  `-mod=vendor`.
+- Commit 8 flips the two existing test rows in the same commit, because
   `select 1` answers `OK` from that commit on and the tests must pass at
   every commit.
 - If `GetStatementQueryTicket` turns out to accept a ticket of another
@@ -639,21 +738,17 @@ Specific to this unit:
 2. `refactor(model): BatchRows is the one batch size of the binary, moved from internal/encoding and internal/qdb`
 3. `feat(qdb): Cluster.Query hands its result to the sink as slices of model.BatchRows rows`
 4. `refactor(encoding): the Arrow encoder writes each batch as it comes, with no slicing loop of its own`
-5. `refactor(flightsql): statusOf maps a cluster error to a gRPC status, and login calls it`
-6. `feat(flightsql): GetFlightInfoStatement answers one endpoint whose ticket is the query text`
-7. `feat(flightsql): DoGet runs a statement ticket through query.Run and writes each batch to the stream`
-8. `test(flightsql): a generated table reads back over Flight on both engines and both clusters`
-9. `test(flightsql): the statement's error rows answer their codes`
-10. `/doc-discipline all internal/model internal/qdb internal/encoding internal/flightsql docs/flight-statement-plan.md`, fixes as further small commits
-11. `/doc-discipline check docs/flight-statement-plan.md`, findings fixed before the next commit
-12. `docs(log): flight-statement-plan.md deleted, facts moved to internal/flightsql/AGENTS.md, internal/AGENTS.md, internal/encoding/AGENTS.md, internal/model/AGENTS.md, ADR-0018 and the comments`
-13. Verify: push `sc-19567/rr-flight-statement`, build its head in Buildkite, wait for the result. Green: report the build number. Red: fix with further small commits on this branch, push, build again.
+5. `refactor(encoding): Encoder has one method, EncodeStream, each encoder checks the ctx once per batch, and the e2e tool writes a body as a sequence of one batch`
+6. `refactor(flightsql): statusOf maps a cluster error to a gRPC status with a RetryInfo detail, and login calls it`
+7. `feat(flightsql): GetFlightInfoStatement answers one endpoint whose ticket is the query text`
+8. `feat(flightsql): DoGet runs a statement ticket through query.Run and writes each batch to the stream`
+9. `test(flightsql): a generated table reads back over Flight on both engines and both clusters`
+10. `test(flightsql): the statement's error rows answer their codes`
+11. `/doc-discipline all internal/model internal/qdb internal/encoding internal/flightsql tests/e2e/tools/e2etool docs/flight-statement-plan.md`, fixes as further small commits
+12. `/doc-discipline check docs/flight-statement-plan.md`, findings fixed before the next commit
+13. `docs(log): flight-statement-plan.md deleted, facts moved to internal/flightsql/AGENTS.md, internal/AGENTS.md, internal/encoding/AGENTS.md, internal/model/AGENTS.md, ADR-0018 and the comments`
+14. Verify: push `sc-19567/rr-flight-statement`, build its head in Buildkite, wait for the result. Green: report the build number. Red: fix with further small commits on this branch, push, build again.
 
 ## 8. Open questions and recommendations
 
-1. The UNAVAILABLE detail is the error's own message, retry-after
-   included in prose. Recommendation: keep it, until a driver is seen
-   to want a structured retry-after.
-2. `Encode` becomes `EncodeStream` over one batch, so the e2e tool's
-   generated bodies are one record batch each. Recommendation: accept;
-   the decoders take a batch of any size and the bodies are small.
+none
