@@ -105,10 +105,10 @@ scalable design.
 | `qdb-documentation`             | Public docs; `user-guide/tools/qdb_rest.rst` and `user-guide/api/rest.rst` must be rewritten at the end of the project.                                                                                                                   |
 
 Deployment reality: customers run `qdb_rest` as a systemd service from
-deb/rpm packages, with HTTPS on 40443 and the old server's HTTP on
-40080 where a site enabled it, often behind a load balancer whose
-health checks hit the status endpoints. The rewrite serves HTTP only
-where it is configured (ADR-0001). Docker images
+deb/rpm packages, with HTTPS on 40443 and HTTP on 40080 where a site
+enabled it, often behind a load balancer whose health checks hit the
+status endpoints. The rewrite serves HTTP only where it is configured
+(ADR-0001). Docker images
 exist, but package-based deployment dominates today. The rewrite should
 make container deployment first-class without breaking the package path.
 

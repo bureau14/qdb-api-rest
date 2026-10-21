@@ -10,8 +10,8 @@
 
 listen:
   # HTTP listener address. Off unless set, and the only listener that
-  # can be off. The old server's port was 40080.
-  http: ""
+  # can be off.
+  # http: ":40080"
   # HTTPS listener address.
   https: ":40443"
   # Flight SQL listener address (gRPC over TLS, the HTTPS certificates).

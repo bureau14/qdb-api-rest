@@ -44,8 +44,8 @@ address refuses the start. The HTTP listener has no default address
 and is off unless `listen.http` is set, because plain HTTP is the one
 listener that can be a security liability, a TLS listener costs nothing
 to leave on, and the reference deployment runs HTTPS only behind a load
-balancer (owner, 2026-10-21). An operator who needs the old server's
-port sets `listen.http: ":40080"`. The minimum TLS version is 1.2, set
+balancer (owner, 2026-10-21). An operator who needs plain HTTP sets
+`listen.http`, `":40080"` being the port sites know. The minimum TLS version is 1.2, set
 explicitly. Certificates are loaded once at startup, and
 rotation is restart-based.
 
