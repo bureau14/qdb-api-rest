@@ -1,8 +1,8 @@
 // This file holds the integration tests of Cluster against the live qdbd
 // fixture (internal/qdbtest): breaker, per-user cap, retry-once, a
 // rejected query's session and breaker, user-pool eviction, and the
-// probe as the REST API's own user, and the slicing of a query result,
-// which dials nothing. Every test that dials the fixture
+// probe as the REST API's own user, the table list, and the slicing of a
+// query result, which dials nothing. Every test that dials the fixture
 // runs once per cluster, as the user the fixture names there, except
 // TestAuthenticate, which checks each cluster's own verdict. The tests
 // against an unreachable URI dial no fixture cluster. The pool's own
@@ -12,6 +12,7 @@ package qdb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -370,5 +371,55 @@ func TestSlices(t *testing.T) {
 		// 4. every slice released
 		rec.Release()
 		mem.AssertSize(t, 0)
+	})
+}
+
+// contains reports whether names holds name. The standard library's
+// slices package is shadowed by this package's slices function.
+func contains(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTables: a table created as the user appears in Tables on both
+// clusters and is gone from it once removed.
+func TestTables(t *testing.T) {
+	eachCluster(t, func(t *testing.T, spec qdbtest.Cluster) {
+		c := New(spec.Config(t), nil)
+		defer closeCluster(t, c)
+		u := userOf(spec)
+		ctx := context.Background()
+
+		// The name is qdbtest_ plus a fresh suffix, so a killed run is found
+		// by the qdbsh sweep internal/AGENTS.md, Tests, names.
+		name := fmt.Sprintf("qdbtest_tables_%d", time.Now().UnixNano())
+		// One double column and a remove on cleanup, so the test needs no
+		// fixture, which package qdb cannot import.
+		if err := c.CreateTable(ctx, u, name, time.Hour, []Column{{Name: "v", Type: "double"}}); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { _ = c.RemoveTable(context.Background(), u, name) })
+
+		names, err := c.Tables(ctx, u)
+		if err != nil {
+			t.Fatalf("tables: %v", err)
+		}
+		if !contains(names, name) {
+			t.Fatalf("want %s in %v", name, names)
+		}
+		if err := c.RemoveTable(ctx, u, name); err != nil {
+			t.Fatalf("remove: %v", err)
+		}
+		names, err = c.Tables(ctx, u)
+		if err != nil {
+			t.Fatalf("tables after remove: %v", err)
+		}
+		if contains(names, name) {
+			t.Fatalf("want %s gone from %v", name, names)
+		}
 	})
 }
