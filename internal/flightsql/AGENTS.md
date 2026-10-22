@@ -93,6 +93,15 @@ Each rule below names the function whose comments carry its reason.
   the names a `#sql` query takes, so a driver's tree view and the query
   agree (owner, 2026-10-22). The constants of `catalog.go` carry it,
   the schema name checked against qdb-duck's `information_schema`.
+- GetTables answers `Cluster.Tables` under the request's table name
+  pattern, applied in Go because the server has no filtered form.
+  qdbd's own `$qdb.` tables are listed (owner, 2026-10-22). A request
+  with include_schema is UNIMPLEMENTED on GetFlightInfo and on DoGet
+  until the schema column lands; `GetFlightInfoTables` says why the
+  flag is refused and not ignored (owner, 2026-10-22).
+- A failed listing goes through `statusOf` with INTERNAL as its
+  answered code, because nothing in the request reaches the engine as
+  text. `DoGetTables` says so at the call.
 - Each catalog GetFlightInfo answers one endpoint whose ticket is the
   command and runs nothing, and the catalog DoGets are the base
   server's channel methods, because the results are small and the

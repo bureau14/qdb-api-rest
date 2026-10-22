@@ -3,6 +3,7 @@ package flightsql
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -11,6 +12,11 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql/schema_ref"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/bureau14/qdb-api-rest/internal/auth"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
 // The one cluster's place in Flight SQL's catalog tree: a driver shows a
@@ -125,6 +131,88 @@ func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas)
 	if holdsCluster(cmd.GetCatalog(), cmd.GetDBSchemaFilterPattern()) {
 		b.Field(0).(*array.StringBuilder).Append(catalogName)
 		b.Field(1).(*array.StringBuilder).Append(schemaName)
+	}
+	rec := b.NewRecordBatch()
+	defer rec.Release()
+	return oneChunk(ctx, rec)
+}
+
+// errIncludeSchema is the refusal of a GetTables request that asks for each
+// table's schema, which this server does not fill yet.
+var errIncludeSchema = status.Error(codes.Unimplemented, "GetTables with include_schema is not implemented")
+
+// GetFlightInfoTables answers the info of the table listing, and
+// UNIMPLEMENTED when cmd asks for each table's schema.
+func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
+	// include_schema is refused here and not only at DoGet, so the driver
+	// learns it before a ticket exists. The refusal is UNIMPLEMENTED,
+	// because the router's GetSchema promises the five-column shape for the
+	// flag and this server cannot fill its fifth column, the reader schema
+	// of each table as IPC bytes. Ignoring the flag and answering four
+	// columns was rejected, because the driver would read a result that
+	// differs from the schema GetSchema promised, and how each driver copes
+	// is unverified; an empty schema per table was rejected, because it
+	// looks like a server answer and shows tables with no columns.
+	if cmd.GetIncludeSchema() {
+		return nil, errIncludeSchema
+	}
+	return infoFor(desc, schema_ref.Tables), nil
+}
+
+// DoGetTables answers one row per table name the cluster reports as the
+// caller's user, under catalog qdb, schema main and type TABLE, filtered by
+// cmd's table name pattern, and empty when cmd's catalog, schema pattern or
+// table types exclude the cluster. A cmd with include_schema is
+// UNIMPLEMENTED.
+func (s *Server) DoGetTables(ctx context.Context, cmd flightsql.GetTables) (*arrow.Schema, <-chan flight.StreamChunk, error) {
+	// The listing is the cluster's, filtered here, because `show tables`
+	// has no filtered form, so the whole list crosses the wire per call and
+	// the pattern is applied in Go:
+	//
+	//  1. refuse include_schema;
+	//  2. answer the empty result when the request excludes the cluster;
+	//  3. the user from the claims;
+	//  4. Cluster.Tables, mapped through statusOf;
+	//  5. one row per name the pattern admits.
+
+	// 1. refused again, because a ticket is bytes a client can mint without
+	//    GetFlightInfo, and GetFlightInfoTables says why it is refused
+	if cmd.GetIncludeSchema() {
+		return nil, nil, errIncludeSchema
+	}
+	// 2. a catalog other than qdb, a schema pattern main does not match, or
+	//    table types without TABLE answer the empty result before the
+	//    cluster is called, because the answer needs no listing
+	b := array.NewRecordBuilder(memory.DefaultAllocator, schema_ref.Tables)
+	defer b.Release()
+	types := cmd.GetTableTypes()
+	if !holdsCluster(cmd.GetCatalog(), cmd.GetDBSchemaFilterPattern()) || (len(types) > 0 && !slices.Contains(types, tableType)) {
+		rec := b.NewRecordBatch()
+		defer rec.Release()
+		return oneChunk(ctx, rec)
+	}
+	// 3. the auth edge placed the claims, zero claims for the anonymous
+	//    user, as DoGet derives it
+	c := auth.ClaimsFrom(ctx)
+	u := qdb.User{Username: c.Username, SecretKey: c.SecretKey}
+	// 4. INTERNAL is the answered code, because nothing in the request
+	//    reaches the engine as text, so a message from the engine is the
+	//    server's failure and not the caller's. INVALID_ARGUMENT, as the
+	//    statement uses, was rejected: it blames the caller for a request
+	//    that has no text
+	names, err := qdb.ClusterFrom(ctx).Tables(ctx, u)
+	if err != nil {
+		return nil, nil, statusOf(ctx, err, codes.Internal)
+	}
+	// 5. in the cluster's order, under the fixed catalog, schema and type
+	for _, name := range names {
+		if !likePattern(cmd.GetTableNameFilterPattern(), name) {
+			continue
+		}
+		b.Field(0).(*array.StringBuilder).Append(catalogName)
+		b.Field(1).(*array.StringBuilder).Append(schemaName)
+		b.Field(2).(*array.StringBuilder).Append(name)
+		b.Field(3).(*array.StringBuilder).Append(tableType)
 	}
 	rec := b.NewRecordBatch()
 	defer rec.Release()
