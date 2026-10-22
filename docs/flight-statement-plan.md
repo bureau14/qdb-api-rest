@@ -1,6 +1,6 @@
 # Plan: flight statement -- the statement query on the Flight listener
 
-Status: draft
+Status: approved
 
 This plan answers the first Next item of `docs/log.md`, Current state,
 whole: `GetFlightInfo` for a statement, `DoGet` through `query.Run`,
@@ -224,7 +224,7 @@ Left for later units, each named:
     the ctx inside their row loops through `checkChunk` at six sites
     [`internal/encoding/csv.go:172,425`, `internal/encoding/json.go:282,405,663,928`].
     The test helpers over `Encode` are `encode` in the encoding tests and
-    `direct` in the round trip [`internal/encoding/encoding_test.go:49-56`,
+    `ingestBodyOf` in the round trip [`internal/encoding/encoding_test.go:49-56`,
     `internal/httpapi/roundtrip_test.go:52-58`].
 20. The JSON stream is a top-level array with one columnar result per
     batch [`internal/encoding/json.go:334-340`, ADR-0010, Decision on the
@@ -344,7 +344,7 @@ at the top of the per-batch loop and lose their `checkChunk` calls,
 with a step comment: a client that left is noticed at the next batch,
 and a batch is at most `model.BatchRows` rows [fact 19; Rationale: one
 batch size]. Their `Encode` methods go. The `Encode` helper of the
-encoding tests and `direct` in the round trip call `EncodeStream` over
+encoding tests and `ingestBodyOf` in the round trip call `EncodeStream` over
 a one-element sequence, built by a three-line `one` helper in each test
 file [fact 19].
 
