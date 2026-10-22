@@ -82,7 +82,7 @@ these sections in this order. A section with nothing to say says
    it. Every Rationale row has at least one landing place here, or it
    dies with the plan.
 6. **How the knowledge lands.** One line: the build stage is
-   `/rr-build docs/<slug>-plan.md`, which writes every comment and
+   `/rr-build`, which writes every comment and
    document row from sections 3 and 5 in the same commit as the code
    and reconciles the code against this plan before the build-stage
    message. Below it, only what is specific to this unit: a commit

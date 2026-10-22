@@ -1,13 +1,13 @@
 ---
 name: rr-build
-description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code in plannotator, and post the build-stage message. Takes the plan's path. Invoked by the owner after the plan-stage message; the invocation is the gate.
+description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code in plannotator, and post the build-stage message. The plan is derived from the branch; an argument overrides it. Invoked by the owner after the plan-stage message; the invocation is the gate.
 disable-model-invocation: true
-argument-hint: docs/<slug>-plan.md
+argument-hint: "[docs/<slug>-plan.md, only when the branch does not name it]"
 ---
 
 # /rr-build -- the build stage
 
-Run `/rr-workflow` first. The plan is:
+Run `/rr-workflow` first. An argument, when the owner gave one, is:
 
 <plan-path>
 $ARGUMENTS
@@ -15,8 +15,27 @@ $ARGUMENTS
 
 This stage may run in a session that has none of the seed or plan
 conversation. The plan is the whole input: read it whole before the
-first commit, and when the path is empty or the file is missing, stop
-and ask for it.
+first commit.
+
+## The plan
+
+The branch names the plan. On `sc-19567/rr-<slug>` the plan is
+`docs/<slug>-plan.md`, and it is the one `docs/*-plan.md` the branch
+adds over the base:
+
+!`git diff --name-only --diff-filter=A sc-19567/rest-rewrite...HEAD -- 'docs/*-plan.md'`
+
+When that list is one file, it is the plan, and an empty argument is
+the normal case. When the argument names a file, it is the plan and
+the list is checked against it: a disagreement is said and the owner
+decides. When the list is empty or holds more than one file and the
+argument is empty, stop and ask for the path.
+
+Correct: the branch is `sc-19567/rr-flight-catalog`, the list is
+`docs/flight-catalog-plan.md`, the argument is empty; that is the plan.
+
+Incorrect: the argument is empty and you ask for the path while the
+list names one file.
 
 ## Entry check
 

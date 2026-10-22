@@ -79,7 +79,7 @@ sha of the approval commit; the owner's
 `feedback` quoted, if any, with how the build will honor it; the open
 questions the plan recorded, each with the recommendation the approval
 has now settled; one line saying the build waits for
-`/rr-build docs/<slug>-plan.md`.
+`/rr-build`.
 
 Correct: you branch, read the skill, write the plan, commit it, run the
 explainer and wait for its session to close, run the gate, wait; the

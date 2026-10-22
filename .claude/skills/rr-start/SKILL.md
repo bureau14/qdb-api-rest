@@ -93,7 +93,7 @@ input and is not re-read here.
 | the branch shows                                                    | stage                   | next                                                |
 | ------------------------------------------------------------------- | ----------------------- | --------------------------------------------------- |
 | one `docs(plan)` commit, `Status: draft`                            | plan, gate not approved | `/rr-plan`, which resumes at the gate               |
-| the `docs(plan) ... is approved` commit last, no code commit after  | build waits             | `/rr-build docs/<slug>-plan.md`                     |
+| the `docs(plan) ... is approved` commit last, no code commit after  | build waits             | `/rr-build`                                         |
 | code commits after the approval commit, plan still in the tree      | build, partly landed    | owner decides: `/rr-build` stops on its entry check |
 | the plan's deletion commit, build-stage message not in this session | build done, merge waits | `/rr-merge`, after the owner reads the diff         |
 | the plan on the base, or no `sc-19567/rr-<slug>` branch             | leftover                | owner decides                                       |
@@ -112,7 +112,7 @@ Then wait. Nothing in this turn opens a stage.
 Correct: the argument is `docs/flight-catalog-plan.md`, the branch
 `sc-19567/rr-flight-catalog` carries the plan commit and the approval
 commit, the tree is clean; you report the build stage waiting and name
-`/rr-build docs/flight-catalog-plan.md`.
+`/rr-build`.
 
 Incorrect: the same state, and you run `/rr-seed`, put the plan's
 settled choices back to the owner, and wait for `/rr-plan`. Or: you
