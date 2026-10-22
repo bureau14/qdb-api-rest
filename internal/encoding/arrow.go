@@ -67,14 +67,14 @@ func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRo
 
 // Encode implements Encoder.
 func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	return writeArrow(ctx, w, rec, chunkRows)
+	return writeArrow(ctx, w, rec, model.BatchRows)
 }
 
 // EncodeStream implements Encoder.
 func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
 	// An IPC stream carries one schema, and the schema is only known once
 	// the first batch arrives, so the writer opens lazily. Every batch is
-	// then written in chunkRows slices like the one-shot path.
+	// then written in model.BatchRows slices like the one-shot path.
 	var ipcw *ipc.Writer
 	for rec, err := range batches {
 		if err != nil {
@@ -83,7 +83,7 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 		if ipcw == nil {
 			ipcw = ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
 		}
-		if err := writeSlices(ctx, ipcw, rec, chunkRows); err != nil {
+		if err := writeSlices(ctx, ipcw, rec, model.BatchRows); err != nil {
 			return err
 		}
 	}
@@ -91,7 +91,7 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 	// is written as the nil-batch encoding: a schema with no fields and
 	// the marker.
 	if ipcw == nil {
-		return writeArrow(ctx, w, nil, chunkRows)
+		return writeArrow(ctx, w, nil, model.BatchRows)
 	}
 	return ipcw.Close()
 }

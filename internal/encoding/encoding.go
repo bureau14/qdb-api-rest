@@ -41,15 +41,10 @@ type Decoder interface {
 	Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error)
 }
 
-// chunkRows is the number of rows an encoder handles between two checks
-// of the ctx. On the Arrow wire it is also the size of one record batch.
-// On the text wires it is only the stride between ctx checks.
-const chunkRows = 65536
-
-// checkChunk looks at the ctx at every chunk boundary, so a client that
-// left is noticed within chunkRows rows.
+// checkChunk looks at the ctx every model.BatchRows rows, so a client
+// that left is noticed within one batch of rows.
 func checkChunk(ctx context.Context, row int64) error {
-	if row%chunkRows == 0 {
+	if row%model.BatchRows == 0 {
 		return ctx.Err()
 	}
 	return nil

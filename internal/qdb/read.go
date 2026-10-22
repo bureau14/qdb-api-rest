@@ -14,16 +14,11 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
-// readBatchRows is the rows per fetch when ReadOptions names none. It
-// equals the encoders' chunk, so one fetch is one record batch on the
-// Arrow wire.
-const readBatchRows = 65536
-
 // ReadOptions narrows a table read. A nil Columns reads every column,
 // $table and $timestamp first. A named list reads those columns in that
 // order, with the specials only when named. Start and End are both set
 // or both zero. The binding judges the pair when the reader opens,
-// before any fetch. A zero BatchRows means readBatchRows.
+// before any fetch. A zero BatchRows means model.BatchRows.
 type ReadOptions struct {
 	Columns    []string
 	Start, End time.Time
@@ -37,7 +32,7 @@ func (o ReadOptions) readerOptions(name string) qdbapi.ReaderOptions {
 		WithTables([]string{name}).
 		WithColumns(o.Columns).
 		WithTimeRange(o.Start, o.End).
-		WithBatchSize(cmp.Or(o.BatchRows, readBatchRows))
+		WithBatchSize(cmp.Or(o.BatchRows, model.BatchRows))
 }
 
 // ErrUnknownColumn is the read error for a column the table does not

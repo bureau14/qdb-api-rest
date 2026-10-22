@@ -922,7 +922,7 @@ func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([
 		}
 
 		for i := range rows {
-			// The ctx is checked once per chunkRows rows, and the rows are
+			// The ctx is checked once per model.BatchRows rows, and the rows are
 			// counted from 1 across the body, as NDJSON counts them
 			row++
 			if err := checkChunk(ctx, row); err != nil {

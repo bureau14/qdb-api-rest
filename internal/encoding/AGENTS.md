@@ -61,8 +61,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   reader's type for that name. There is no cast, because the binding
   refuses what a cast would take. A dictionary-encoded or null `$table`
   is `ErrInvalidRows`.
-- Every encoder checks the ctx once per `chunkRows` rows. The constant
-  is shared: it is the record batch size on the Arrow wire and the
+- Every encoder checks the ctx once per `model.BatchRows` rows, the
+  binary's batch size: the record batch size on the Arrow wire and the
   stride between ctx checks on the text wires.
 - The query and the table reader answer the binding's five types:
   `int64` (a count included), `float64`, `timestamp[ns]` without a zone,
@@ -81,11 +81,11 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 
 - The Arrow encoder transmits the batch's schema as it is, field
   metadata included, and interprets no column type. The wire is the IPC
-  streaming format in record batches of `chunkRows` rows, without
+  streaming format in record batches of `model.BatchRows` rows, without
   in-format buffer compression (HTTP `Accept-Encoding` compression is
   independent of it). A nil batch encodes as a schema with no fields
   and no batches, which is a complete stream. A stream of batches opens
-  on the first batch's schema and writes every batch in `chunkRows`
+  on the first batch's schema and writes every batch in `model.BatchRows`
   slices.
 
 ## The text formats

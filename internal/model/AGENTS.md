@@ -16,3 +16,6 @@ Scope: the neutral table representation. Package-wide Go rules:
   neither. A type that needs the binding stays in `internal/qdb`, and a
   type that needs a format stays in `internal/encoding`.
 - The type states its ownership: who releases a batch, and when.
+- `BatchRows` is the one batch size of the binary. It lives here because
+  `internal/qdb` produces batches of it and `internal/encoding` paces
+  itself by it, and neither imports the other.
