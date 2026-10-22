@@ -10,8 +10,11 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   knows only its media type and its bytes. It does not flush, log or
   negotiate, and it does not release a batch. `EncodeStream` is the one
   entry point; the e2e tool and the round trip's oracle write a
-  generated body as a sequence of one batch. It encodes each batch of
-  the sequence before it pulls the next. It assumes every batch shares
+  generated body as a sequence of one batch. A one-batch entry point
+  was rejected: a second way to write the same bytes, with a nil-batch
+  rule and two helpers of its own, for two callers that can wrap a batch
+  in a sequence. It encodes each batch of the sequence before it pulls
+  the next. It assumes every batch shares
   the first batch's schema and does not check it, and it assumes the
   sequence is never empty, because every producer stands in an empty
   batch of its schema for a result of no rows. An error element ends
@@ -63,9 +66,11 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   refuses what a cast would take. A dictionary-encoded or null `$table`
   is `ErrInvalidRows`.
 - Every encoder checks the ctx once per batch, and a batch is at most
-  `model.BatchRows` rows, the binary's batch size. The decoders check it
-  once per `model.BatchRows` rows of the body they read, because a body
-  arrives in no batches.
+  `model.BatchRows` rows, the binary's batch size. A per-row stride
+  inside the row loops was rejected as a second expression of the batch
+  size, and the cost accepted is one `ctx.Err` per DuckDB vector. The
+  decoders check it once per `model.BatchRows` rows of the body they
+  read, because a body arrives in no batches.
 - The query and the table reader answer the binding's five types:
   `int64` (a count included), `float64`, `timestamp[ns]` without a zone,
   and `utf8` and `binary` carrying `max_width` field metadata. The sql
@@ -130,8 +135,9 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   that order and no `tables` wrapper. The table a row came from is a
   column, `$table`. There is no trailing newline. A stream of batches is
   a top-level array of such results, one per batch, comma separated, so
-  a native result larger than one batch is several results. The body is column-oriented
-  within a batch and memory stays bounded across batches. A cut stream
+  a native result larger than one batch is several results. The body is
+  column-oriented within a batch and memory stays bounded across
+  batches. A cut stream
   is invalid JSON, so a truncated read cannot pass for a complete one.
 - NDJSON (`application/x-ndjson`) is one object per row, with the keys
   in column order and LF-terminated lines. No rows encode as an empty
@@ -145,8 +151,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   in their texts. `utf8` is written as its own bytes and `binary` as
   standard base64. The empty field stands for null, for NaN and the
   infinities, and for the empty string alike. No rows encode as the
-  header alone. A stream of batches is
-  the first batch's header, then the rows of every batch. Byte identity
+  header alone. A stream of batches is the first batch's header, then
+  the rows of every batch. Byte identity
   with the CSV of `qdb_export` is not a goal.
 
 ## Tests
