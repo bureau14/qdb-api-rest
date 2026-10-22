@@ -82,6 +82,14 @@ Each rule below names the function whose comments carry its reason.
   after the first message closes the stream with INTERNAL, or the ctx's
   code when the caller left, and one warning line (owner, 2026-10-21).
 
+## Catalog
+
+- GetSqlInfo is arrow-go's: `New` registers the values through
+  `registerSqlInfo`, and the base server serves them. The list is the
+  server, its versions, what it does not do, and DuckDB's identifier
+  rules, with no keyword list. `registerSqlInfo` says why DuckDB is the
+  engine described (ADR-0018, Decision 10; owner, 2026-10-22).
+
 ## Tests
 
 - One test file, `flightsql_test.go`, drives arrow-go's Flight SQL

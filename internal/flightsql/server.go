@@ -46,7 +46,8 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	//     path;
 	//  2. the TLS credentials;
 	//  3. register the Flight SQL service;
-	//  4. listen on addr.
+	//  4. register what GetSqlInfo answers;
+	//  5. listen on addr.
 	s := &Server{root: ctx, anonymousAllowed: !qdb.ClusterFrom(ctx).Secured()}
 	// 1. The access line is outermost and the auth edge inside it, so a
 	//    refused call is logged too. The access line therefore carries
@@ -63,7 +64,14 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	//    DoGet writes inside the sink and every other RPC stays the
 	//    router's.
 	flight.RegisterFlightServiceServer(s.grpc, &service{FlightServer: flightsql.NewFlightServer(s), s: s})
-	// 4. Listen now, so a port in use fails the start here, as it does
+	// 4. arrow-go's base server serves GetSqlInfo from its registered map
+	//    and answers NOT_FOUND while the map is empty. The map is per
+	//    instance and has no lock, so it is filled here, before the first
+	//    call, and not by a package-level init on a global.
+	if err := registerSqlInfo(&s.BaseServer); err != nil {
+		return nil, err
+	}
+	// 5. Listen now, so a port in use fails the start here, as it does
 	//    for the HTTP listeners.
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
