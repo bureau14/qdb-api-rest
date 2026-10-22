@@ -24,15 +24,18 @@ In flight:
 
 - M5. The `#sql` dispatcher (`query.Run`, `internal/query`) behind
   `POST /api/v2/query`, the Flight listener (`listen.flight`,
-  `internal/flightsql`) with Handshake, bearer and anonymous auth, and
-  the statement query on it (`GetFlightInfoStatement` and `DoGet`
-  through `query.Run`, with `statusOf`'s codes) are landed. The rest of
+  `internal/flightsql`) with Handshake, bearer and anonymous auth, the
+  statement query on it (`GetFlightInfoStatement` and `DoGet` through
+  `query.Run`, with `statusOf`'s codes), `GetSqlInfo` and the catalog
+  commands over `Cluster.Tables` (names only) are landed. The rest of
   the milestone is the Next list.
 
 Next:
 
-- `GetSqlInfo` and the catalog commands on a table list core in
-  `internal/qdb` (ADR-0018, Decisions 10 to 12).
+- `GetTables` with `include_schema`: the fifth column holding each
+  table's reader schema as IPC bytes, through one leased session. Until
+  it lands the flag answers `UNIMPLEMENTED` on `GetFlightInfo` and on
+  `DoGet` (`internal/flightsql/AGENTS.md`, Catalog).
 - The format-equivalence property with a Flight SQL client, and the ADBC
   and JDBC smoke tests (ADR-0018, Decision 14, `docs/e2e.md`).
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
@@ -56,7 +59,7 @@ Handoff to M6 and M7:
 - The stress definition has no Flight case (owner, 2026-10-13). The
   graceful drain covers Flight streams as `docs/brief.md`, Resilience,
   says.
-- The table list core M5 writes for `GetTables` is the one
+- `Cluster.Tables` (`internal/AGENTS.md`, Code) is the table list core
   `GET /api/v2/tables` wraps.
 - Query capture and monitoring on both planes, every executed query and
   its duration, possibly sampled, is M6's (owner, 2026-10-20). Nothing
@@ -68,6 +71,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-22 -- flight-catalog-plan.md deleted; GetSqlInfo and the catalog commands landed
+
+- Owner decisions moved to `internal/flightsql/AGENTS.md` (Catalog),
+  `internal/AGENTS.md` (the table list) and the comments of
+  `internal/qdb/table.go` and `internal/flightsql`.
 
 ## 2026-10-22 -- flight-statement-plan.md deleted; the statement query on the Flight listener landed
 
