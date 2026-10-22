@@ -92,6 +92,6 @@ Each rule below names the function whose comments carry its reason.
   because none of its rows reaches the cluster. Tokens are minted
   directly, as the HTTP handler tests mint them. `TestStatement` draws a
   table and reads it back over Flight on both engines, on both clusters.
-  `TestStatementRows` is the error table and `TestStatementUnreachable`
-  the breaker's two answers; the statement's rows that reach no cluster
-  run on the insecure cluster.
+  `TestStatementRows` is the error table, the unreachable cluster and
+  the open breaker included; its rows reach no secured check, so it runs
+  on the insecure cluster.

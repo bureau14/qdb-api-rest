@@ -136,17 +136,28 @@ type failer interface {
 	Fatalf(string, ...any)
 }
 
-// readBatches reads the one endpoint of info to the end through DoGet and
-// answers the stream's schema and its batches, retained, which the caller
-// releases. It fails on any error of the stream.
-func readBatches(t failer, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) (*arrow.Schema, []arrow.RecordBatch) {
+// ticketOf runs Execute for q and answers the one endpoint's ticket.
+// GetFlightInfo runs nothing, so a statement's failure surfaces on DoGet.
+func ticketOf(t failer, cl *flightsql.Client, ctx context.Context, q string) *flight.Ticket {
 	t.Helper()
+	info, err := cl.Execute(ctx, q)
+	if err != nil {
+		t.Fatalf("Execute %s: %v", q, err)
+	}
 	if len(info.Endpoint) != 1 {
 		t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
 	}
-	rdr, err := cl.DoGet(ctx, info.Endpoint[0].Ticket)
+	return info.Endpoint[0].Ticket
+}
+
+// readAll presents ticket on DoGet and reads the stream to the end: its
+// schema, its batches retained for the caller to release, and the error
+// that ended it.
+func readAll(t failer, cl *flightsql.Client, ctx context.Context, ticket *flight.Ticket) (*arrow.Schema, []arrow.RecordBatch, error) {
+	t.Helper()
+	rdr, err := cl.DoGet(ctx, ticket)
 	if err != nil {
-		t.Fatalf("DoGet: %v", err)
+		return nil, nil, err
 	}
 	defer rdr.Release()
 	var recs []arrow.RecordBatch
@@ -155,18 +166,7 @@ func readBatches(t failer, cl *flightsql.Client, ctx context.Context, info *flig
 		rec.Retain()
 		recs = append(recs, rec)
 	}
-	if err := rdr.Err(); err != nil {
-		t.Fatalf("DoGet stream: %v", err)
-	}
-	return rdr.Schema(), recs
-}
-
-// readAll reads the one endpoint of info to the end through DoGet and
-// fails on any error.
-func readAll(t *testing.T, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) {
-	t.Helper()
-	_, recs := readBatches(t, cl, ctx, info)
-	release(recs)
+	return rdr.Schema(), recs, rdr.Err()
 }
 
 // release releases every batch of recs.
@@ -205,15 +205,14 @@ func concat(t failer, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Reco
 	return rec
 }
 
-// execute runs q over Flight as a whole: Execute, then DoGet on the one
-// endpoint, joined into one batch the caller releases.
+// execute runs q over Flight as a whole, Execute then DoGet, and answers
+// the result joined into one batch the caller releases.
 func execute(t failer, cl *flightsql.Client, ctx context.Context, q string) arrow.RecordBatch {
 	t.Helper()
-	info, err := cl.Execute(ctx, q)
+	schema, recs, err := readAll(t, cl, ctx, ticketOf(t, cl, ctx, q))
 	if err != nil {
-		t.Fatalf("Execute %s: %v", q, err)
+		t.Fatalf("DoGet %s: %v", q, err)
 	}
-	schema, recs := readBatches(t, cl, ctx, info)
 	defer release(recs)
 	return concat(t, schema, recs)
 }
@@ -286,13 +285,11 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("want an access token for %q, got %+v, %v", s.user.Username, c, err)
 		}
 
-		// 2. The bearer passes the edge: Execute answers an info, and DoGet
-		//    on its ticket reads to the end with no error.
-		info, err := cl.Execute(authCtx, "select 1")
-		if code(err) != codes.OK {
+		// 2. The bearer passes the edge, so Execute answers an info. The
+		//    statement itself is TestStatement's.
+		if _, err := cl.Execute(authCtx, "select 1"); code(err) != codes.OK {
 			t.Fatalf("with bearer: want OK, got %v", err)
 		}
-		readAll(t, cl, authCtx, info)
 
 		// 3. No header: anonymous on the insecure cluster, refused on the
 		//    secure one (ADR-0018, Decision 8).
@@ -344,11 +341,9 @@ func TestBearerRows(t *testing.T) {
 	}
 	// The same valid token passes, which proves the rows fail for their
 	// own reason and not for the keychain's.
-	info, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1")
-	if code(err) != codes.OK {
+	if _, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1"); code(err) != codes.OK {
 		t.Fatalf("valid token: want OK, got %v", err)
 	}
-	readAll(t, cl, withHeader(s.ctx, "Bearer "+valid), info)
 }
 
 // epoch is the fixed clock the bearer rows are judged against.
@@ -403,42 +398,12 @@ func TestStatement(t *testing.T) {
 			want.Release()
 
 			// 5. no result set: the schema has no fields and no batch follows
-			info, err := cl.Execute(ctx, "DROP TABLE "+tbl.Name)
-			if err != nil {
-				rt.Fatalf("drop: %v", err)
-			}
-			schema, recs := readBatches(rt, cl, ctx, info)
-			if schema.NumFields() != 0 || len(recs) != 0 {
-				rt.Fatalf("drop: want a schema of no fields and no batch, got %v and %d batches", schema, len(recs))
+			schema, recs, err := readAll(rt, cl, ctx, ticketOf(rt, cl, ctx, "DROP TABLE "+tbl.Name))
+			if err != nil || schema.NumFields() != 0 || len(recs) != 0 {
+				rt.Fatalf("drop: want a schema of no fields and no batch, got %v, %d batches, %v", schema, len(recs), err)
 			}
 		})
 	})
-}
-
-// doGet runs q as the one endpoint's ticket of an Execute, and answers
-// DoGet's error, which is where a statement's failure surfaces, because
-// GetFlightInfo runs nothing.
-func doGet(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
-	t.Helper()
-	info, err := cl.Execute(ctx, q)
-	if err != nil {
-		t.Fatalf("Execute %s: %v", q, err)
-	}
-	return doGetTicket(t, cl, ctx, info.Endpoint[0].Ticket)
-}
-
-// doGetTicket presents ticket on DoGet and answers the stream's error,
-// read to the end.
-func doGetTicket(t *testing.T, cl *flightsql.Client, ctx context.Context, ticket *flight.Ticket) error {
-	t.Helper()
-	rdr, err := cl.DoGet(ctx, ticket)
-	if err != nil {
-		return err
-	}
-	defer rdr.Release()
-	for rdr.Next() {
-	}
-	return rdr.Err()
 }
 
 // retryInfo answers the RetryInfo detail of err's status, nil without one.
@@ -451,50 +416,58 @@ func retryInfo(err error) *errdetails.RetryInfo {
 	return nil
 }
 
+// statementErr runs q as a statement, Execute then DoGet, and answers the
+// error that ends the stream.
+func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
+	t.Helper()
+	_, recs, err := readAll(t, cl, ctx, ticketOf(t, cl, ctx, q))
+	release(recs)
+	return err
+}
+
 // TestStatementRows: every way a statement fails before the stream
-// answers its code with the engine's or the cluster's message. The rows
-// run on the insecure cluster, because none reaches a secured check.
+// answers its code with the engine's or the cluster's message, and an
+// unreachable cluster answers UNAVAILABLE, with a RetryInfo detail once
+// the breaker opens. The rows run on the insecure cluster, because none
+// reaches a secured check.
 func TestStatementRows(t *testing.T) {
+	// 1. the engine's rows: a native parse error and a #sql parse error
+	//    are INVALID_ARGUMENT with the engine's message, a query naming an
+	//    unknown table is INVALID_ARGUMENT, and a DoGet on a hand-built
+	//    ticket of a bad query is the same, because the ticket is the text
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	s := newServer(t, f)
 	cl := s.dial(t)
-	// A native parse error and a #sql parse error are INVALID_ARGUMENT with
-	// the engine's message, a query naming an unknown table is
-	// INVALID_ARGUMENT, and a DoGet on a hand-built ticket of a bad query
-	// is the same, because the ticket is the text.
-	for _, row := range []struct{ name, query string }{
-		{"native parse error", "selec 1"},
-		{"#sql parse error", "#sql selec 1"},
-		{"unknown table", "SELECT * FROM qdbtest_no_such_table"},
-	} {
-		t.Run(row.name, func(t *testing.T) {
-			err := doGet(t, cl, s.ctx, row.query)
-			if st := status.Convert(err); st.Code() != codes.InvalidArgument || st.Message() == "" {
-				t.Fatalf("want INVALID_ARGUMENT with a message, got %v", err)
-			}
-		})
+	badTicket, err := flightsql.CreateStatementQueryTicket([]byte("selec 1"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Run("hand-built ticket", func(t *testing.T) {
-		ticket, err := flightsql.CreateStatementQueryTicket([]byte("selec 1"))
-		if err != nil {
-			t.Fatal(err)
+	for _, row := range []struct {
+		name string
+		err  error
+	}{
+		{"native parse error", statementErr(t, cl, s.ctx, "selec 1")},
+		{"#sql parse error", statementErr(t, cl, s.ctx, "#sql selec 1")},
+		{"unknown table", statementErr(t, cl, s.ctx, "SELECT * FROM qdbtest_no_such_table")},
+		{"hand-built ticket", func() error {
+			_, recs, err := readAll(t, cl, s.ctx, &flight.Ticket{Ticket: badTicket})
+			release(recs)
+			return err
+		}()},
+	} {
+		if st := status.Convert(row.err); st.Code() != codes.InvalidArgument || st.Message() == "" {
+			t.Fatalf("%s: want INVALID_ARGUMENT with a message, got %v", row.name, row.err)
 		}
-		err = doGetTicket(t, cl, s.ctx, &flight.Ticket{Ticket: ticket})
-		if st := status.Convert(err); st.Code() != codes.InvalidArgument || st.Message() == "" {
-			t.Fatalf("want INVALID_ARGUMENT with a message, got %v", err)
-		}
-	})
-}
+	}
 
-// TestStatementUnreachable: a server over a cluster that does not answer
-// is UNAVAILABLE with no detail, and once the breaker opens, UNAVAILABLE
-// with a RetryInfo detail whose delay is the breaker's.
-func TestStatementUnreachable(t *testing.T) {
+	// 2. the cluster's rows: a server over a cluster that does not answer
+	//    is UNAVAILABLE with no detail, and once the breaker opens,
+	//    UNAVAILABLE with a RetryInfo detail whose delay is the breaker's.
+	//    Two failures open the breaker, so the first statement answers the
+	//    unreachable cluster itself whether or not the read retry ran, and
+	//    the open breaker shows within two more statements.
 	cfg := config.Default()
 	cfg.Cluster.URI = "qdb://127.0.0.1:1" // the connection is refused at once
-	// Two failures open the breaker, so the first statement answers the
-	// unreachable cluster itself whether or not the read retry ran, and a
-	// later one meets the open breaker.
 	cfg.Pool.Breaker.Failures = 2
 	c := qdb.New(cfg, nil)
 	t.Cleanup(func() {
@@ -502,18 +475,15 @@ func TestStatementUnreachable(t *testing.T) {
 		defer cancel()
 		_ = c.Close(ctx)
 	})
-	s := newServerOn(t, c, qdb.User{}, tokensAt(t, time.Now()))
-	cl := s.dial(t)
-	err := doGet(t, cl, s.ctx, "select 1")
+	down := newServerOn(t, c, qdb.User{}, tokensAt(t, time.Now()))
+	dcl := down.dial(t)
+	err = statementErr(t, dcl, down.ctx, "select 1")
 	if code(err) != codes.Unavailable || retryInfo(err) != nil {
 		t.Fatalf("unreachable: want UNAVAILABLE with no detail, got %v", err)
 	}
-	// The breaker opens on the second failure, which the first statement's
-	// retry may already have been, so the open breaker shows within two
-	// more statements.
 	var ri *errdetails.RetryInfo
 	for range 2 {
-		err = doGet(t, cl, s.ctx, "select 1")
+		err = statementErr(t, dcl, down.ctx, "select 1")
 		if code(err) != codes.Unavailable {
 			t.Fatalf("want UNAVAILABLE, got %v", err)
 		}
