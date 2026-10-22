@@ -19,15 +19,13 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// The one cluster's place in Flight SQL's catalog tree: a driver shows a
-// table under catalog qdb and schema main, the names a #sql query takes
-// (qdb-duck attaches the cluster as catalog qdb, and its one schema is
-// main), so the tree view and the query agree. A null catalog and schema
-// were rejected, because the tree view then shows an unnamed node and the
-// names differ from what #sql needs; the cluster URI as the catalog was
-// rejected, because no query accepts it. The one table type is TABLE,
-// because the native engine has no views and qdb-duck's views live in
-// DuckDB, which the native listing does not see.
+// The one cluster's place in Flight SQL's catalog tree. A driver shows a
+// table under catalog qdb and schema main, the names a #sql query takes,
+// because qdb-duck attaches the cluster as catalog qdb with the one schema
+// main, so the tree view and the query agree. A null catalog and schema
+// were rejected: the tree view shows an unnamed node and the names differ
+// from what #sql needs. The one table type is TABLE, because the native
+// engine has no views and the native listing does not see DuckDB's.
 const (
 	catalogName = "qdb"
 	schemaName  = "main"
@@ -138,21 +136,19 @@ func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas)
 }
 
 // errIncludeSchema is the refusal of a GetTables request that asks for each
-// table's schema, which this server does not fill yet.
+// table's schema.
 var errIncludeSchema = status.Error(codes.Unimplemented, "GetTables with include_schema is not implemented")
 
 // GetFlightInfoTables answers the info of the table listing, and
 // UNIMPLEMENTED when cmd asks for each table's schema.
 func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
-	// include_schema is refused here and not only at DoGet, so the driver
-	// learns it before a ticket exists. The refusal is UNIMPLEMENTED,
-	// because the router's GetSchema promises the five-column shape for the
-	// flag and this server cannot fill its fifth column, the reader schema
-	// of each table as IPC bytes. Ignoring the flag and answering four
-	// columns was rejected, because the driver would read a result that
-	// differs from the schema GetSchema promised, and how each driver copes
-	// is unverified; an empty schema per table was rejected, because it
-	// looks like a server answer and shows tables with no columns.
+	// include_schema is refused here as well as at DoGet, so the driver
+	// learns it before a ticket exists. The code is UNIMPLEMENTED, because
+	// the router's GetSchema promises the five-column shape for the flag
+	// and this server does not fill the fifth column, each table's reader
+	// schema as IPC bytes. Ignoring the flag and answering four columns was
+	// rejected: the driver would read a result that differs from the schema
+	// GetSchema promised.
 	if cmd.GetIncludeSchema() {
 		return nil, errIncludeSchema
 	}

@@ -96,9 +96,9 @@ Each rule below names the function whose comments carry its reason.
 - GetTables answers `Cluster.Tables` under the request's table name
   pattern, applied in Go because the server has no filtered form.
   qdbd's own `$qdb.` tables are listed (owner, 2026-10-22). A request
-  with include_schema is UNIMPLEMENTED on GetFlightInfo and on DoGet
-  until the schema column lands; `GetFlightInfoTables` says why the
-  flag is refused and not ignored (owner, 2026-10-22).
+  with include_schema is UNIMPLEMENTED on GetFlightInfo and on DoGet;
+  `GetFlightInfoTables` says why the flag is refused and not ignored
+  (owner, 2026-10-22).
 - A failed listing goes through `statusOf` with INTERNAL as its
   answered code, because nothing in the request reaches the engine as
   text. `DoGetTables` says so at the call.

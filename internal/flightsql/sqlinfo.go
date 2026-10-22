@@ -37,11 +37,11 @@ func registerSqlInfo(b *flightsql.BaseServer) error {
 		{flightsql.SqlInfoDDLSchema, false},
 		{flightsql.SqlInfoDDLTable, false},
 		// The identifiers: case-insensitive quoted or not, and the double
-		// quote as the quote character, which are DuckDB's rules per its
-		// documentation (Identifiers), because the owner chose DuckDB as the
-		// SQL engine the drivers are told about (ADR-0018, Decision 10). A
-		// keyword and function list was rejected: no document asks for one,
-		// and a static copy of DuckDB's would go stale with every bump.
+		// quote as the quote character. These are DuckDB's rules (its
+		// documentation, Identifiers), because DuckDB is the SQL engine the
+		// drivers are told about (ADR-0018, Decision 10). A keyword and
+		// function list was rejected: a static copy of DuckDB's goes stale
+		// with every bump.
 		{flightsql.SqlInfoIdentifierCase, int32(flightsql.SqlCaseSensitivityCaseInsensitive)},
 		{flightsql.SqlInfoQuotedIdentifierCase, int32(flightsql.SqlCaseSensitivityCaseInsensitive)},
 		{flightsql.SqlInfoIdentifierQuoteChar, `"`},

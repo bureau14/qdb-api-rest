@@ -93,11 +93,10 @@ func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 	// The list is the native query `show tables`, because the C API has no
 	// enumeration call and that query is the server's own notion of a
 	// table, answered in one round trip. A prefix scan over the empty
-	// prefix with a metadata call per alias was rejected: it is N+1 round
-	// trips over every entry type, and a new Session method for PrefixGet.
-	// The $qdb. tables are listed as the server lists them, because hiding
-	// them needs a prefix rule this project would own, and a client that
-	// queries $qdb.firehose finds it in the list.
+	// prefix with a metadata call per alias was rejected: N+1 round trips
+	// over every entry type. The $qdb. tables are listed as the server
+	// lists them, because hiding them needs a prefix rule this project
+	// would own, and a client that queries $qdb.firehose finds it here.
 	//
 	//  1. run the query under the read retry;
 	//  2. inside the sink, copy each value of the one string column out.
