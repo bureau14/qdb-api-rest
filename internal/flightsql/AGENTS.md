@@ -120,3 +120,7 @@ Each rule below names the function whose comments carry its reason.
   `TestStatementRows` is the error table, the unreachable cluster and
   the open breaker included; its rows reach no secured check, so it runs
   on the insecure cluster.
+- `TestSqlInfo` and `TestCatalogRows` run on the insecure cluster,
+  because no row reaches a secured check. `TestCatalog` creates one
+  table through the fixture and reads every catalog command back on
+  both clusters.

@@ -1,7 +1,7 @@
 // This file holds the Flight listener's tests: the Handshake, the bearer
-// edge, the anonymous rule and the statement query, driven through
-// arrow-go's Flight SQL client on both clusters. The catalog commands get
-// their tests when they land.
+// edge, the anonymous rule, the statement query, GetSqlInfo and the
+// catalog commands, driven through arrow-go's Flight SQL client on both
+// clusters.
 package flightsql
 
 import (
@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
+	pb "github.com/apache/arrow-go/v18/arrow/flight/gen/flight"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -24,6 +26,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
@@ -496,5 +500,246 @@ func TestStatementRows(t *testing.T) {
 	}
 	if d := ri.RetryDelay.AsDuration(); d <= 0 || d > cfg.Pool.Breaker.OpenFor {
 		t.Fatalf("retry delay %s, want within (0, %s]", d, cfg.Pool.Breaker.OpenFor)
+	}
+}
+
+// catalogRows answers a reader of catalog commands: given a GetFlightInfo
+// call's two results, it presents the one ticket on DoGet and answers the
+// stream concatenated into one batch the caller releases. It takes the
+// call's results as its only parameters, so the call sits inside its
+// parentheses.
+func catalogRows(t *testing.T, cl *flightsql.Client, ctx context.Context) func(*flight.FlightInfo, error) arrow.RecordBatch {
+	return func(info *flight.FlightInfo, err error) arrow.RecordBatch {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("GetFlightInfo: %v", err)
+		}
+		if len(info.Endpoint) != 1 {
+			t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
+		}
+		schema, recs, err := readAll(t, cl, ctx, info.Endpoint[0].Ticket)
+		if err != nil {
+			t.Fatalf("DoGet: %v", err)
+		}
+		defer release(recs)
+		return concat(t, schema, recs)
+	}
+}
+
+// column answers the string column named name of rec as a slice.
+func column(t *testing.T, rec arrow.RecordBatch, name string) []string {
+	t.Helper()
+	idx := rec.Schema().FieldIndices(name)
+	if len(idx) != 1 {
+		t.Fatalf("want one column %q in %v", name, rec.Schema())
+	}
+	col := rec.Column(idx[0]).(*array.String)
+	out := make([]string, col.Len())
+	for i := range out {
+		out[i] = col.Value(i)
+	}
+	return out
+}
+
+// TestSqlInfo: the registered ids read back with their values on the
+// insecure cluster, and an id the server does not register is NOT_FOUND.
+func TestSqlInfo(t *testing.T) {
+	// The insecure cluster alone, because no row reaches the cluster, as
+	// TestBearerRows runs.
+	f := cluster.Bind(t, qdbtest.Insecure(), nil)
+	s := newServer(t, f)
+	cl := s.dial(t)
+	// The batch is read whole and not through catalogRows, because Arrow
+	// does not concatenate a dense union and the base server answers one
+	// batch.
+	info, err := cl.GetSqlInfo(s.ctx, nil)
+	if err != nil {
+		t.Fatalf("GetSqlInfo: %v", err)
+	}
+	_, recs, err := readAll(t, cl, s.ctx, info.Endpoint[0].Ticket)
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("want one batch, got %d, %v", len(recs), err)
+	}
+	defer release(recs)
+	rec := recs[0]
+
+	// The value column is a dense union, so each row is read through its
+	// type code and child, and rows are looked up by id and not by
+	// position, because DoGetSqlInfo iterates a map when no id is
+	// requested.
+	ids := rec.Column(0).(*array.Uint32)
+	vals := rec.Column(1).(*array.DenseUnion)
+	valueOf := func(id flightsql.SqlInfo) (arrow.Array, int) {
+		for i := range ids.Len() {
+			if ids.Value(i) == uint32(id) {
+				return vals.Field(vals.ChildID(i)), int(vals.ValueOffset(i))
+			}
+		}
+		t.Fatalf("id %d is not in %v", id, ids)
+		return nil, 0
+	}
+	// One asserted row per value type: the server name, read-only,
+	// transaction NONE and the quote char.
+	if a, i := valueOf(flightsql.SqlInfoFlightSqlServerName); a.(*array.String).Value(i) != "QuasarDB REST (native engine, DuckDB through #sql)" {
+		t.Fatalf("server name: got %q", a.(*array.String).Value(i))
+	}
+	if a, i := valueOf(flightsql.SqlInfoFlightSqlServerReadOnly); !a.(*array.Boolean).Value(i) {
+		t.Fatal("read-only: want true")
+	}
+	if a, i := valueOf(flightsql.SqlInfoFlightSqlServerTransaction); a.(*array.Int32).Value(i) != int32(flightsql.SqlTransactionNone) {
+		t.Fatalf("transaction: got %d", a.(*array.Int32).Value(i))
+	}
+	if a, i := valueOf(flightsql.SqlInfoIdentifierQuoteChar); a.(*array.String).Value(i) != `"` {
+		t.Fatalf("quote char: got %q", a.(*array.String).Value(i))
+	}
+
+	// An unregistered id: GetFlightInfo answers, because the base server
+	// checks ids at DoGet, where the stream is NOT_FOUND.
+	info, err = cl.GetSqlInfo(s.ctx, []flightsql.SqlInfo{flightsql.SqlInfoKeywords})
+	if err != nil {
+		t.Fatalf("GetSqlInfo keywords: %v", err)
+	}
+	_, missing, err := readAll(t, cl, s.ctx, info.Endpoint[0].Ticket)
+	release(missing)
+	if code(err) != codes.NotFound {
+		t.Fatalf("unregistered id: want NOT_FOUND, got %v", err)
+	}
+}
+
+// TestCatalog: on both clusters, GetCatalogs, GetDbSchemas and
+// GetTableTypes answer their one row, GetTables lists a created table
+// under qdb, main and TABLE, the table name pattern narrows the list to
+// it, an excluding catalog answers no row, and include_schema is
+// UNIMPLEMENTED on GetFlightInfo and on DoGet.
+func TestCatalog(t *testing.T) {
+	// One server and one table serve six assertions whose order is the
+	// driver's connect sequence:
+	//
+	//  1. one table created as the fixture's user;
+	//  2. the three fixed commands, each one row;
+	//  3. GetTables without a pattern contains the table's name;
+	//  4. GetTables with the table's name as the pattern is that one row,
+	//     and a % pattern over its qdbtest_ prefix contains it;
+	//  5. GetTables with catalog "other" is no row;
+	//  6. include_schema fails UNIMPLEMENTED on GetTables and on a ticket
+	//     built by hand from CommandGetTables with the flag.
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		s := newServer(t, f)
+		cl := s.dial(t)
+		ctx, err := cl.Client.AuthenticateBasicToken(s.ctx, s.user.Username, s.user.SecretKey)
+		if err != nil {
+			t.Fatalf("handshake: %v", err)
+		}
+
+		// 1. the table is built by hand and created through the fixture, so
+		//    it is removed on cleanup; it is not drawn, because the listing
+		//    is not data-shaped and one table with no rows is enough
+		tbl := table.Table{Name: "qdbtest_catalog_" + f.Spec.Name, Columns: []table.Column{{Name: "v", Type: qdbapi.TsColumnDouble}}}
+		table.CreateAs(t, f.Cluster, f.User, tbl)
+
+		// 2. the fixed shape of one cluster
+		rows := catalogRows(t, cl, ctx)
+		rec := rows(cl.GetCatalogs(ctx))
+		if got := column(t, rec, "catalog_name"); len(got) != 1 || got[0] != catalogName {
+			t.Fatalf("catalogs: got %v", got)
+		}
+		rec.Release()
+		rec = rows(cl.GetDBSchemas(ctx, &flightsql.GetDBSchemasOpts{}))
+		if got := column(t, rec, "db_schema_name"); len(got) != 1 || got[0] != schemaName || column(t, rec, "catalog_name")[0] != catalogName {
+			t.Fatalf("schemas: got %v", rec)
+		}
+		rec.Release()
+		rec = rows(cl.GetTableTypes(ctx))
+		if got := column(t, rec, "table_type"); len(got) != 1 || got[0] != tableType {
+			t.Fatalf("table types: got %v", got)
+		}
+		rec.Release()
+
+		// 3. the whole list holds the table under the fixed names
+		rec = rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{}))
+		names := column(t, rec, "table_name")
+		at := slices.Index(names, tbl.Name)
+		if at < 0 {
+			t.Fatalf("tables: want %s in %v", tbl.Name, names)
+		}
+		if c, sc, ty := column(t, rec, "catalog_name")[at], column(t, rec, "db_schema_name")[at], column(t, rec, "table_type")[at]; c != catalogName || sc != schemaName || ty != tableType {
+			t.Fatalf("tables: row %d is %s.%s %s", at, c, sc, ty)
+		}
+		rec.Release()
+
+		// 4. the exact name is one row, and the prefix pattern contains it
+		rec = rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{TableNameFilterPattern: &tbl.Name}))
+		if got := column(t, rec, "table_name"); len(got) != 1 || got[0] != tbl.Name {
+			t.Fatalf("tables by name: got %v", got)
+		}
+		rec.Release()
+		prefix := "qdbtest_catalog_%"
+		rec = rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{TableNameFilterPattern: &prefix}))
+		if got := column(t, rec, "table_name"); !slices.Contains(got, tbl.Name) {
+			t.Fatalf("tables by prefix: want %s among %v", tbl.Name, got)
+		}
+		rec.Release()
+
+		// 5. another catalog is no row and no error
+		other := "other"
+		rec = rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{Catalog: &other}))
+		if rec.NumRows() != 0 {
+			t.Fatalf("tables of catalog other: got %v", rec)
+		}
+		rec.Release()
+
+		// 6. include_schema, before a ticket exists and on a minted ticket
+		if _, err := cl.GetTables(ctx, &flightsql.GetTablesOpts{IncludeSchema: true}); code(err) != codes.Unimplemented {
+			t.Fatalf("GetTables include_schema: want UNIMPLEMENTED, got %v", err)
+		}
+		cmd, err := anypb.New(&pb.CommandGetTables{IncludeSchema: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ticket, err := proto.Marshal(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, recs, err := readAll(t, cl, ctx, &flight.Ticket{Ticket: ticket})
+		release(recs)
+		if code(err) != codes.Unimplemented {
+			t.Fatalf("DoGet include_schema: want UNIMPLEMENTED, got %v", err)
+		}
+	})
+}
+
+// TestCatalogRows: the listing's codes on the insecure cluster: an
+// unreachable cluster is UNAVAILABLE and a bad token UNAUTHENTICATED.
+func TestCatalogRows(t *testing.T) {
+	// The unreachable cluster is qdb://127.0.0.1:1 with a breaker of one
+	// failure, as TestStatementRows builds it, so the first listing answers
+	// the refused connection itself.
+	cfg := config.Default()
+	cfg.Cluster.URI = "qdb://127.0.0.1:1"
+	cfg.Pool.Breaker.Failures = 1
+	c := qdb.New(cfg, nil)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = c.Close(ctx)
+	})
+	down := newServerOn(t, c, qdb.User{}, tokensAt(t, time.Now()))
+	dcl := down.dial(t)
+	info, err := dcl.GetTables(down.ctx, &flightsql.GetTablesOpts{})
+	if err != nil {
+		t.Fatalf("GetTables: %v", err)
+	}
+	_, recs, err := readAll(t, dcl, down.ctx, info.Endpoint[0].Ticket)
+	release(recs)
+	if code(err) != codes.Unavailable {
+		t.Fatalf("unreachable: want UNAVAILABLE, got %v", err)
+	}
+
+	// A bad token fails at the edge, before the command is read.
+	f := cluster.Bind(t, qdbtest.Insecure(), nil)
+	s := newServer(t, f)
+	cl := s.dial(t)
+	if _, err := cl.GetTables(withHeader(s.ctx, "Bearer not-a-token"), &flightsql.GetTablesOpts{}); code(err) != codes.Unauthenticated {
+		t.Fatalf("bad token: want UNAUTHENTICATED, got %v", err)
 	}
 }
