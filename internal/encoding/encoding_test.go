@@ -7,6 +7,7 @@ package encoding
 import (
 	"bytes"
 	"context"
+	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
@@ -43,6 +44,11 @@ func run(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 		t.Fatalf("%s: %v", q, err)
 	}
 	return out
+}
+
+// one is rec as a sequence of that one batch.
+func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
+	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
 }
 
 // encode runs e over rec and returns the body.

@@ -81,12 +81,14 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 
 - The Arrow encoder transmits the batch's schema as it is, field
   metadata included, and interprets no column type. The wire is the IPC
-  streaming format in record batches of `model.BatchRows` rows, without
-  in-format buffer compression (HTTP `Accept-Encoding` compression is
-  independent of it). A nil batch encodes as a schema with no fields
-  and no batches, which is a complete stream. A stream of batches opens
-  on the first batch's schema and writes every batch in `model.BatchRows`
-  slices.
+  streaming format in the record batches the producer hands it, which
+  `Cluster.Query` and the bulk reader bound at `model.BatchRows` rows and
+  DuckDB at one vector, without in-format buffer compression (HTTP
+  `Accept-Encoding` compression is independent of it). A batch of no
+  rows is not written, so a result of no rows is the schema and the
+  marker alone, and a nil batch encodes as a schema with no fields and
+  no batches, which is a complete stream. A stream of batches opens on
+  the first batch's schema.
 
 ## The text formats
 

@@ -18,7 +18,7 @@ import (
 const ArrowContentType = "application/vnd.apache.arrow.stream"
 
 // Arrow encodes record batches as an Arrow IPC stream: the schema, each
-// batch in slices, the end-of-stream marker.
+// batch as one record batch, the end-of-stream marker.
 type Arrow struct{}
 
 // ContentType implements Encoder.
@@ -31,67 +31,61 @@ func emptyBatch() arrow.RecordBatch {
 	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
 }
 
-// writeSlices writes rec to ipcw as one record batch per batchRows rows.
-// A slice shares rec's buffers.
-func writeSlices(ctx context.Context, ipcw *ipc.Writer, rec arrow.RecordBatch, batchRows int64) error {
-	for start := int64(0); start < rec.NumRows(); start += batchRows {
-		// A client that left is noticed at the batch boundary.
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		batch := rec.NewSlice(start, min(start+batchRows, rec.NumRows()))
-		err := ipcw.Write(batch)
-		batch.Release()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeArrow writes rec to w: the schema as rec carries it, one slice of
-// batchRows rows per record batch, the end-of-stream marker.
-func writeArrow(ctx context.Context, w io.Writer, rec arrow.RecordBatch, batchRows int64) error {
+// Encode implements Encoder. A nil rec is written as a sequence of one
+// empty batch with no fields.
+func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
 	if rec == nil {
 		rec = emptyBatch()
 		defer rec.Release()
 	}
-	ipcw := ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
-	if err := writeSlices(ctx, ipcw, rec, batchRows); err != nil {
-		return err
-	}
-	// Close writes the end-of-stream marker, which completes the stream
-	// even with no batches.
-	return ipcw.Close()
+	return Arrow{}.EncodeStream(ctx, w, func(yield func(arrow.RecordBatch, error) bool) {
+		yield(rec, nil)
+	})
 }
 
-// Encode implements Encoder.
-func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	return writeArrow(ctx, w, rec, model.BatchRows)
-}
-
-// EncodeStream implements Encoder.
+// EncodeStream implements Encoder. The stream opens on the first batch's
+// schema and carries every batch as one record batch, so the producer's
+// batch size is the wire's.
 func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
-	// An IPC stream carries one schema, and the schema is only known once
-	// the first batch arrives, so the writer opens lazily. Every batch is
-	// then written in model.BatchRows slices like the one-shot path.
+	// A lazy open and two ways to end:
+	//
+	//  1. open the writer on the first batch;
+	//  2. write each batch whole, with a ctx check per batch;
+	//  3. Close writes the end-of-stream marker.
 	var ipcw *ipc.Writer
 	for rec, err := range batches {
 		if err != nil {
 			return err
 		}
+		// 1. an IPC stream carries one schema, and it is known only when
+		//    the first batch arrives, so the writer opens here
 		if ipcw == nil {
 			ipcw = ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
 		}
-		if err := writeSlices(ctx, ipcw, rec, model.BatchRows); err != nil {
+		// 2. a client that left is noticed at the batch boundary, and the
+		//    batch goes out whole, because the producer already bounds a
+		//    batch at model.BatchRows rows (Cluster.Query and the bulk
+		//    reader) or one vector (DuckDB). Slicing here was rejected: the
+		//    slice is the query core's now, and the text encoders never
+		//    sliced. A batch of no rows is not written, because the schema
+		//    message already carries everything it would, so a result of no
+		//    rows is the schema and the marker alone.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if rec.NumRows() == 0 {
+			continue
+		}
+		if err := ipcw.Write(rec); err != nil {
 			return err
 		}
 	}
-	// A sequence without any batch must still be a complete stream, so it
-	// is written as the nil-batch encoding: a schema with no fields and
-	// the marker.
+	// 3. Close writes the end-of-stream marker. A sequence of no batch
+	//    cannot occur, because every producer yields at least one; it
+	//    would leave an unopened writer, so it is written as a schema with
+	//    no fields and the marker rather than as nothing.
 	if ipcw == nil {
-		return writeArrow(ctx, w, nil, model.BatchRows)
+		return Arrow{}.Encode(ctx, w, nil)
 	}
 	return ipcw.Close()
 }

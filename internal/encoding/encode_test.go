@@ -433,20 +433,18 @@ func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
 	return out
 }
 
-// checkArrow writes rec through the Arrow encoder in batches of
-// batchRows rows and compares the stream it parses back with rec: the
-// schema, the number of batches, and every column.
-func checkArrow(t *rapid.T, rec arrow.RecordBatch, batchRows int64) {
+// checkArrow writes rec through the Arrow encoder as a stream of one
+// batch and compares the stream it parses back with rec: the schema and
+// every column. The encoder writes a batch whole, so the batch count is
+// the producer's and not checked here.
+func checkArrow(t *rapid.T, rec arrow.RecordBatch) {
 	var buf bytes.Buffer
-	if err := writeArrow(context.Background(), &buf, rec, batchRows); err != nil {
+	if err := (Arrow{}).EncodeStream(context.Background(), &buf, one(rec)); err != nil {
 		t.Fatalf("encode: %v", err)
 	}
 	schema, cols, batches := readIPC(t, buf.Bytes())
 	if !schema.Equal(rec.Schema()) {
 		t.Fatalf("schema on the wire %s != %s", schema, rec.Schema())
-	}
-	if wantBatches := int((rec.NumRows() + batchRows - 1) / batchRows); batches != wantBatches {
-		t.Fatalf("%d batches on the wire, want %d for %d rows of %d", batches, wantBatches, rec.NumRows(), batchRows)
 	}
 	if batches == 0 {
 		return // no rows: the schema and the marker are the whole stream
@@ -465,7 +463,7 @@ func checkArrow(t *rapid.T, rec arrow.RecordBatch, batchRows int64) {
 
 // TestRoundTrip checks that the output of every encoder parses back to
 // the batch it was given, for every type the text encoders write, any
-// nulls and any row count, and across Arrow batch boundaries.
+// nulls and any row count.
 func TestRoundTrip(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		rapid.Check(t, func(rt *rapid.T) {
@@ -492,10 +490,8 @@ func TestRoundTrip(t *testing.T) {
 			checkText(rt, rec, readNDJSON(rt, encode(rt, NDJSON{}, rec), names))
 			checkText(rt, rec, readCSV(rt, encode(rt, CSV{}, rec)))
 
-			// 4. The Arrow stream parses back to the batch. A batch size below
-			// the row count is what exercises slicing and the offset rebasing
-			// of string and blob columns.
-			checkArrow(rt, rec, int64(rapid.IntRange(1, 16).Draw(rt, "batch rows")))
+			// 4. The Arrow stream parses back to the batch.
+			checkArrow(rt, rec)
 		})
 	})
 }
