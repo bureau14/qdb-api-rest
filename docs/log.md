@@ -65,6 +65,17 @@ Handoff to M6 and M7:
   its duration, possibly sampled, is M6's (owner, 2026-10-20). Nothing
   logs query text today; the HTTP and Flight access lines carry no
   query.
+- Two flaky failures on the `#sql` path are observed in CI and not
+  understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
+  sessions, on a table created seconds earlier through this server's
+  sessions, and a retry of the same commit passes: `Catalog Error:
+Cannot get shards for table ...: The handle is invalid.` (the Go
+  tests on macOS, builds 158 and 165) and `Catalog Error: Failed to
+fetch data from Quasar: The timeseries does not contain this
+column.` (the e2e round trip on Windows, builds 164 and 165). The
+  REST pool discards a bad session and retries a read once; whether
+  qdb-duck does either is unknown. Investigate before M6 adds any retry
+  around `Cluster.Duck`, and file the findings with R&D.
 
 Blocked on:
 
