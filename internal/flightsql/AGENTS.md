@@ -51,11 +51,10 @@ Each rule below names the function whose comments carry its reason.
 - A Handshake answers the access token only. Flight has no refresh
   path, and a client whose token expired reconnects (ADR-0018,
   Decision 6).
-- A login's codes (ADR-0018, Decision 13) are mapped in `login`: a
-  refused credential is `UNAUTHENTICATED`, an open breaker or an
-  unreachable cluster is `UNAVAILABLE` with no retry-after in the
-  detail, a caller that went away is `CANCELED`, and a mint failure is
-  `INTERNAL`.
+- A login's codes (ADR-0018, Decision 13) are `statusOf`'s, the one
+  mapping the login and the statement share, with a refused credential
+  as its answered code, `UNAUTHENTICATED`. A mint failure is `INTERNAL`,
+  mapped in `login`.
 
 ## Tests
 

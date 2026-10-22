@@ -105,7 +105,7 @@ func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
 // token. An empty username is the anonymous login, as the HTTP login
 // treats it (ADR-0018, Decision 6).
 func (s *Server) login(ctx context.Context, username, secret string) (string, error) {
-	// One dial with four outcomes mapped to gRPC codes:
+	// One dial, its outcome mapped to a gRPC code, then one mint:
 	//
 	//  1. the user, anonymous when the username is empty;
 	//  2. Authenticate, and classify what it answered;
@@ -117,23 +117,10 @@ func (s *Server) login(ctx context.Context, username, secret string) (string, er
 		u = qdb.User{Username: username, SecretKey: secret}
 	}
 	// 2. A refusal is the caller's, UNAUTHENTICATED with the binding's
-	//    message. An open breaker and an unreachable cluster are
-	//    UNAVAILABLE; the breaker's retry-after is not carried, because
-	//    gRPC has no Retry-After header and the statement query decides
-	//    the detail text when it maps a running query's errors. A caller
-	//    that went away is CANCELED.
-	var open *qdb.BreakerOpenError
-	err := qdb.ClusterFrom(ctx).Authenticate(ctx, u)
-	switch {
-	case err == nil:
-	case ctx.Err() != nil:
-		return "", status.Error(codes.Canceled, ctx.Err().Error())
-	case errors.Is(err, qdb.ErrCredentialsRefused):
-		return "", unauthenticated(err.Error())
-	case errors.As(err, &open), qdb.IsClusterUnavailable(err):
-		return "", status.Error(codes.Unavailable, err.Error())
-	default:
-		return "", status.Error(codes.Internal, err.Error())
+	//    message, and the rest is statusOf's rule, shared with the
+	//    statement query.
+	if err := statusOf(ctx, qdb.ClusterFrom(ctx).Authenticate(ctx, u), codes.Unauthenticated); err != nil {
+		return "", err
 	}
 	// 3. The access token alone, because Flight has no refresh path: a
 	//    client whose token expired reconnects, as the stock drivers do
