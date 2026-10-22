@@ -25,14 +25,10 @@ type TableBatch struct {
 // through as is.
 type SchemaOf func(table string) (*arrow.Schema, error)
 
-// BatchRows is the row count of one record batch between the layers: the
-// slice Cluster.Query hands out, the bulk reader's fetch, and the stride
-// between two ctx checks of a decoder. One size, so every consumer of a
-// result reads batches of one shape and a batch on the Flight wire stays
-// under gRPC's receive limit. DuckDB's batches are smaller, one vector
-// each, and pass through at their own size; 2048 to match that vector was
-// rejected, because it is 32 times the messages per native result. Not
-// measured.
+// BatchRows is the batch size whenever a result is split into record
+// batches, so every consumer reads batches of one shape: the slices
+// Cluster.Query hands out, the bulk reader's fetch, and the stride between
+// two ctx checks of a decoder. Not measured.
 const BatchRows = 65536
 
 // EmptyBatch is a batch of schema and no rows. A reader that yields no

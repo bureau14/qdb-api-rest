@@ -154,10 +154,13 @@ func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) err
 }
 
 // lent turns the reader's batches into a sequence, each batch lent until
-// yield returns. The reader owns each batch until it reads the next, so
-// the receiver releases none. An error the reader reports after its last
-// batch is the last element. A reader of no batches yields one empty
-// batch of its schema.
+// yield returns. A batch is one DuckDB vector, the reader's own size,
+// which is smaller than model.BatchRows and passes through as it is;
+// model.BatchRows at the vector's size was rejected, because it is 32
+// times the messages per native result. The reader owns each batch until
+// it reads the next, so the receiver releases none. An error the reader
+// reports after its last batch is the last element. A reader of no
+// batches yields one empty batch of its schema.
 func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		yielded := false
