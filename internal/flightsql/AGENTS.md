@@ -62,6 +62,25 @@ Each rule below names the function whose comments carry its reason.
   query text verbatim, with no schema, no location and unknown totals;
   it runs nothing and keeps nothing. `GetFlightInfoStatement` says why
   the text travels unchanged (ADR-0018, Decision 9; owner, 2026-10-21).
+- DoGet for a statement ticket is this package's own method on the
+  registered service, and every other ticket goes to arrow-go's router.
+  The query runs through `query.Run` inside the sink, and the sink writes
+  each lent batch to the stream through arrow-go's Flight writer, as the
+  HTTP handler encodes inside its sink. `DoGet` says why the hook with a
+  channel was rejected. A statement is never retried once the stream has
+  started.
+- A batch on the Flight wire is the producer's batch: `model.BatchRows`
+  rows from the native engine and the bulk reader, one vector from
+  DuckDB, so one message stays under gRPC's receive limit.
+- The codes of a running query (ADR-0018, Decision 13) are `statusOf`'s,
+  which the login shares: the engine's error is INVALID_ARGUMENT with
+  its message, an open breaker and a full instance cap are UNAVAILABLE
+  with the error's message and a `RetryInfo` detail carrying the
+  retry-after, an unreachable cluster and a failed attach are
+  UNAVAILABLE with the message alone, a refused credential is
+  UNAUTHENTICATED, the caller's own ctx ending is its code. A failure
+  after the first message closes the stream with INTERNAL, or the ctx's
+  code when the caller left, and one warning line (owner, 2026-10-21).
 
 ## Tests
 

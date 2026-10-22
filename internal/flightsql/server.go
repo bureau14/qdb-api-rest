@@ -58,9 +58,11 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 		grpc.ChainUnaryInterceptor(s.accessUnary, s.authUnary),
 		grpc.ChainStreamInterceptor(s.accessStream, s.authStream),
 		grpc.Creds(credentials.NewTLS(tlsConfig)))
-	// 3. The service, wrapped by arrow-go's router from Flight RPCs to
-	//    Flight SQL commands.
-	flight.RegisterFlightServiceServer(s.grpc, flightsql.NewFlightServer(s))
+	// 3. The service: arrow-go's router from Flight RPCs to Flight SQL
+	//    commands, with DoGet this package's own, because the statement's
+	//    DoGet writes inside the sink and every other RPC stays the
+	//    router's.
+	flight.RegisterFlightServiceServer(s.grpc, &service{FlightServer: flightsql.NewFlightServer(s), s: s})
 	// 4. Listen now, so a port in use fails the start here, as it does
 	//    for the HTTP listeners.
 	lis, err := net.Listen("tcp", addr)

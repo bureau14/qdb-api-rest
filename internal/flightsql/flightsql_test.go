@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"google.golang.org/grpc"
@@ -122,6 +123,25 @@ func bearerOf(t *testing.T, ctx context.Context) string {
 	return vals[0][len("Bearer "):]
 }
 
+// readAll reads the one endpoint of info to the end through DoGet and
+// fails on any error.
+func readAll(t *testing.T, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) {
+	t.Helper()
+	if len(info.Endpoint) != 1 {
+		t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
+	}
+	rdr, err := cl.DoGet(ctx, info.Endpoint[0].Ticket)
+	if err != nil {
+		t.Fatalf("DoGet: %v", err)
+	}
+	defer rdr.Release()
+	for rdr.Next() {
+	}
+	if err := rdr.Err(); err != nil {
+		t.Fatalf("DoGet stream: %v", err)
+	}
+}
+
 // code answers the gRPC code of err, OK for nil.
 func code(err error) codes.Code { return status.Code(err) }
 
@@ -151,11 +171,13 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("want an access token for %q, got %+v, %v", s.user.Username, c, err)
 		}
 
-		// 2. The bearer passes the edge, and Execute answers an info.
-		_, err = cl.Execute(authCtx, "select 1")
+		// 2. The bearer passes the edge: Execute answers an info, and DoGet
+		//    on its ticket reads to the end with no error.
+		info, err := cl.Execute(authCtx, "select 1")
 		if code(err) != codes.OK {
 			t.Fatalf("with bearer: want OK, got %v", err)
 		}
+		readAll(t, cl, authCtx, info)
 
 		// 3. No header: anonymous on the insecure cluster, refused on the
 		//    secure one (ADR-0018, Decision 8).
@@ -207,9 +229,11 @@ func TestBearerRows(t *testing.T) {
 	}
 	// The same valid token passes, which proves the rows fail for their
 	// own reason and not for the keychain's.
-	if _, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1"); code(err) != codes.OK {
+	info, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1")
+	if code(err) != codes.OK {
 		t.Fatalf("valid token: want OK, got %v", err)
 	}
+	readAll(t, cl, withHeader(s.ctx, "Bearer "+valid), info)
 }
 
 // epoch is the fixed clock the bearer rows are judged against.
