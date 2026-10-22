@@ -89,6 +89,14 @@ Each rule below names the function whose comments carry its reason.
   server, its versions, what it does not do, and DuckDB's identifier
   rules, with no keyword list. `registerSqlInfo` says why DuckDB is the
   engine described (ADR-0018, Decision 10; owner, 2026-10-22).
+- The one cluster is catalog `qdb`, schema `main`, table type `TABLE`,
+  the names a `#sql` query takes, so a driver's tree view and the query
+  agree (owner, 2026-10-22). The constants of `catalog.go` carry it,
+  the schema name checked against qdb-duck's `information_schema`.
+- Each catalog GetFlightInfo answers one endpoint whose ticket is the
+  command and runs nothing, and the catalog DoGets are the base
+  server's channel methods, because the results are small and the
+  router already dispatches them. `infoFor` and `oneChunk` carry it.
 
 ## Tests
 
