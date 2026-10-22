@@ -90,4 +90,5 @@ Each rule below names the function whose comments carry its reason.
   `TestHandshake` runs on both clusters through `cluster.Each`, and
   `TestBearerRows` on the insecure cluster alone with a fixed clock,
   because none of its rows reaches the cluster. Tokens are minted
-  directly, as the HTTP handler tests mint them.
+  directly, as the HTTP handler tests mint them. `TestStatement` draws a
+  table and reads it back over Flight on both engines, on both clusters.

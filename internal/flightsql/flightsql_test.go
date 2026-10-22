@@ -1,7 +1,7 @@
 // This file holds the Flight listener's tests: the Handshake, the bearer
-// edge and the anonymous rule, driven through arrow-go's Flight SQL client
-// on both clusters. The statement query and the catalog commands get their
-// tests when they land.
+// edge, the anonymous rule and the statement query, driven through
+// arrow-go's Flight SQL client on both clusters. The catalog commands get
+// their tests when they land.
 package flightsql
 
 import (
@@ -12,14 +12,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/config"
@@ -27,6 +31,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
@@ -123,9 +128,17 @@ func bearerOf(t *testing.T, ctx context.Context) string {
 	return vals[0][len("Bearer "):]
 }
 
-// readAll reads the one endpoint of info to the end through DoGet and
-// fails on any error.
-func readAll(t *testing.T, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) {
+// failer is the slice of testing.TB the helpers below need, so *testing.T
+// and *rapid.T both serve.
+type failer interface {
+	Helper()
+	Fatalf(string, ...any)
+}
+
+// readBatches reads the one endpoint of info to the end through DoGet and
+// answers the stream's schema and its batches, retained, which the caller
+// releases. It fails on any error of the stream.
+func readBatches(t failer, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) (*arrow.Schema, []arrow.RecordBatch) {
 	t.Helper()
 	if len(info.Endpoint) != 1 {
 		t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
@@ -135,11 +148,112 @@ func readAll(t *testing.T, cl *flightsql.Client, ctx context.Context, info *flig
 		t.Fatalf("DoGet: %v", err)
 	}
 	defer rdr.Release()
+	var recs []arrow.RecordBatch
 	for rdr.Next() {
+		rec := rdr.RecordBatch()
+		rec.Retain()
+		recs = append(recs, rec)
 	}
 	if err := rdr.Err(); err != nil {
 		t.Fatalf("DoGet stream: %v", err)
 	}
+	return rdr.Schema(), recs
+}
+
+// readAll reads the one endpoint of info to the end through DoGet and
+// fails on any error.
+func readAll(t *testing.T, cl *flightsql.Client, ctx context.Context, info *flight.FlightInfo) {
+	t.Helper()
+	_, recs := readBatches(t, cl, ctx, info)
+	release(recs)
+}
+
+// release releases every batch of recs.
+func release(recs []arrow.RecordBatch) {
+	for _, r := range recs {
+		r.Release()
+	}
+}
+
+// concat joins recs, which share schema, into one batch the caller
+// releases. No batch is an empty batch of schema.
+func concat(t failer, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.RecordBatch {
+	t.Helper()
+	cols := make([]arrow.Array, schema.NumFields())
+	rows := int64(0)
+	for i := range cols {
+		parts := make([]arrow.Array, len(recs))
+		for n, r := range recs {
+			parts[n] = r.Column(i)
+		}
+		if len(parts) == 0 {
+			cols[i] = array.MakeArrayOfNull(memory.DefaultAllocator, schema.Field(i).Type, 0)
+			continue
+		}
+		col, err := array.Concatenate(parts, memory.DefaultAllocator)
+		if err != nil {
+			t.Fatalf("concat: %v", err)
+		}
+		cols[i] = col
+		rows = int64(col.Len())
+	}
+	rec := array.NewRecordBatch(schema, cols, rows)
+	for _, c := range cols {
+		c.Release()
+	}
+	return rec
+}
+
+// execute runs q over Flight as a whole: Execute, then DoGet on the one
+// endpoint, joined into one batch the caller releases.
+func execute(t failer, cl *flightsql.Client, ctx context.Context, q string) arrow.RecordBatch {
+	t.Helper()
+	info, err := cl.Execute(ctx, q)
+	if err != nil {
+		t.Fatalf("Execute %s: %v", q, err)
+	}
+	schema, recs := readBatches(t, cl, ctx, info)
+	defer release(recs)
+	return concat(t, schema, recs)
+}
+
+// duck runs q on DuckDB over the cluster directly, as u, and answers its
+// batches joined into one batch the caller releases.
+func duck(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
+	t.Helper()
+	var schema *arrow.Schema
+	var recs []arrow.RecordBatch
+	err := c.Duck(context.Background(), u, q, func(batches qdb.Batches) error {
+		for rec, err := range batches {
+			if err != nil {
+				return err
+			}
+			// The batch owns its buffers, so a Retain keeps it past yield.
+			rec.Retain()
+			recs = append(recs, rec)
+			schema = rec.Schema()
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("duckdb %s: %v", q, err)
+	}
+	defer release(recs)
+	return concat(t, schema, recs)
+}
+
+// sameBatch reports whether got and want carry equal schemas and equal
+// columns, by array equality, which reads no byte under a null slot.
+func sameBatch(got, want arrow.RecordBatch) bool {
+	if !got.Schema().Equal(want.Schema()) || got.NumRows() != want.NumRows() {
+		return false
+	}
+	for i := range int(got.NumCols()) {
+		if !array.Equal(got.Column(i), want.Column(i)) {
+			return false
+		}
+	}
+	return true
 }
 
 // code answers the gRPC code of err, OK for nil.
@@ -238,3 +352,62 @@ func TestBearerRows(t *testing.T) {
 
 // epoch is the fixed clock the bearer rows are judged against.
 var epoch = time.Unix(1_700_000_000, 0)
+
+// TestStatement: for a generated table on each cluster, the native query
+// read back over Flight equals the rows generated, column by column, and
+// the #sql query read back over Flight equals the batches Cluster.Duck
+// answers directly, decoded. A statement without a result set streams
+// one schema and no batch.
+func TestStatement(t *testing.T) {
+	// Two engines, one oracle each, both clusters:
+	//
+	//  1. one server and client per cluster, a bearer from a Handshake,
+	//     because the statement runs as the token's user;
+	//  2. draw and create a table as the fixture's user;
+	//  3. native: Execute(tbl.Select()), the batches joined, Check against
+	//     the table;
+	//  4. #sql: Execute("#sql " + tbl.SelectSQL()), compared decoded with
+	//     Cluster.Duck's batches over the same SQL, because the bytes under
+	//     a null slot are undefined;
+	//  5. an empty result: a DROP TABLE streams one schema and no batch,
+	//     and the reader reaches the end with no error.
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		// 1. the server and the bearer
+		s := newServer(t, f)
+		cl := s.dial(t)
+		ctx, err := cl.Client.AuthenticateBasicToken(s.ctx, s.user.Username, s.user.SecretKey)
+		if err != nil {
+			t.Fatalf("handshake: %v", err)
+		}
+		rapid.Check(t, func(rt *rapid.T) {
+			// 2. the table. The ranged Select is not needed, because a query
+			//    opens no bulk reader.
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+
+			// 3. native, against the rows generated
+			got := execute(rt, cl, ctx, tbl.Select())
+			table.Check(rt, tbl, got)
+			got.Release()
+
+			// 4. #sql, against DuckDB directly
+			got = execute(rt, cl, ctx, "#sql "+tbl.SelectSQL())
+			want := duck(rt, f.Cluster, f.User, tbl.SelectSQL())
+			if !sameBatch(got, want) {
+				rt.Fatalf("#sql over Flight differs from Cluster.Duck:\n%v\n%v", got, want)
+			}
+			got.Release()
+			want.Release()
+
+			// 5. no result set: the schema has no fields and no batch follows
+			info, err := cl.Execute(ctx, "DROP TABLE "+tbl.Name)
+			if err != nil {
+				rt.Fatalf("drop: %v", err)
+			}
+			schema, recs := readBatches(rt, cl, ctx, info)
+			if schema.NumFields() != 0 || len(recs) != 0 {
+				rt.Fatalf("drop: want a schema of no fields and no batch, got %v and %d batches", schema, len(recs))
+			}
+		})
+	})
+}
