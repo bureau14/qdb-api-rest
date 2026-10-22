@@ -23,9 +23,16 @@ covered:
    cite or constrain.
 2. The `AGENTS.md` of every folder in the scoped set, and of each
    parent folder on the way there.
-3. The code in the scoped set and what it depends on: the packages,
-   their tests, and the call sites, top to bottom. For vendored
-   dependencies, the parts the unit will call.
+3. The code in the scoped set and what it depends on, through the
+   `codebase-analysis` skill, invoked with the Skill tool once the
+   scope is written down. Its goals are the unit in one sentence and
+   the scoped set: the packages, their tests, the call sites, and for
+   vendored dependencies the parts the unit will call. Its summary is
+   the map of the code, not evidence: a claim from it enters the
+   report only after you have read it back in the tree at a
+   `path:line`, and until then it is `agent` by provenance like any
+   other written account. Read the functions the unit will touch
+   whole, top to bottom, whatever the summary says about them.
 4. The history of the scoped paths: `git log --oneline -- <paths>`, and
    the diffs of the commits that introduced or last changed the
    functions the unit will touch, so the unit continues the existing
