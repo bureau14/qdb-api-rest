@@ -30,6 +30,12 @@ Open questions and Proposed commits are the inputs here. Without one,
 stop and say so. A dirty tree, a base behind origin, or a leftover
 feature branch is the owner's decision before anything else.
 
+When the current branch is already the unit's `sc-19567/rr-<slug>`,
+its last commit is the plan's `docs(plan)` commit and the plan says
+`Status: draft`, the branch and the plan exist and the gate has not
+approved: skip to step 5 and gate the committed plan. A seed report is
+not required in that case; the plan is the input.
+
 ## Step by step
 
 1. Create `sc-19567/rr-<slug>` from the up-to-date base, clean tree.

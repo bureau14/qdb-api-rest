@@ -46,6 +46,11 @@ nothing in the tree, the plan included. Plannotator runs one session
 at a time, so the explainer's session and the gate never overlap: the
 explainer closes first, then the gate opens.
 
+A session may begin at any stage from the tree. `/rr-start` with a
+plan path reads the unit's stage and names the next gate; it opens
+nothing and seeds nothing. `/rr-build` and `/rr-merge` take the tree
+as their whole input and need no seed or plan conversation.
+
 Open questions the owner left unanswered are not answered by a stage
 opening either; the plan records your recommendation for each, and the
 plan's approval in the plannotator gate is what settles them.
