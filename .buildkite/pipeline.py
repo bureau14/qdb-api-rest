@@ -85,15 +85,13 @@ GLOBAL_ENV: dict[str, str] = {
 
 STEP_ENV: dict[str, dict[str, str]] = {}
 
-# Linux builds pin CC/CXX to gcc15 on both arches (the compiler every
-# QuasarDB artifact is built with): the rhel7 builder's gcc 7 lacks the
-# aarch64 outline-atomic libgcc helpers (__aarch64_*_sync) that Go's
-# prebuilt -race runtime links. Doubled $$: see AGENTS.md; same idiom as
-# _go_env_for_agent() below.
+# Linux builds pin CC/CXX to the gcc quasardb builds with, kept in sync
+# with quasardb's scripts/cicd/CMakePresets.json. Doubled $$: see
+# AGENTS.md; same idiom as _go_env_for_agent() below.
 OS_ENV: dict[str, dict[str, str]] = {
     "linux": {
-        "CC": "$$QDB_CICD_AGENT_GCC15_CC",
-        "CXX": "$$QDB_CICD_AGENT_GCC15_CXX",
+        "CC": "$$QDB_CICD_AGENT_GCC16_CC",
+        "CXX": "$$QDB_CICD_AGENT_GCC16_CXX",
     },
 }
 
