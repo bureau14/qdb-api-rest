@@ -33,7 +33,8 @@ func unavailableAfter(err error, after time.Duration) error {
 // INVALID_ARGUMENT for a query. A nil err is nil.
 func statusOf(ctx context.Context, err error, answered codes.Code) error {
 	// A precedence of outcomes, each a row of ADR-0018, Decision 13, stated
-	// once for the login and the statement:
+	// once for the login and the statement. Two switches side by side were
+	// rejected: the rows stated twice, and a new row landing in both.
 	//
 	//  1. the caller's ctx ended: the context's own code;
 	//  2. a refused credential: UNAUTHENTICATED;
@@ -58,7 +59,10 @@ func statusOf(ctx context.Context, err error, answered codes.Code) error {
 		return status.Error(codes.Unauthenticated, err.Error())
 	// 3. the retry-after travels as a RetryInfo detail next to the message,
 	//    the gRPC twin of the Retry-After header the HTTP route sets, so the
-	//    Flight plane carries what HTTP carries
+	//    Flight plane carries what HTTP carries. The message alone was
+	//    rejected, because a client would parse the value out of prose.
+	//    Whether the ADBC and JDBC drivers surface the detail is not
+	//    verified; arrow-go's client answers it as grpc-go does
 	case errors.As(err, &open):
 		return unavailableAfter(err, open.RetryAfter)
 	case errors.As(err, &full):

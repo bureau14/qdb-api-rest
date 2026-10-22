@@ -358,7 +358,9 @@ var epoch = time.Unix(1_700_000_000, 0)
 // read back over Flight equals the rows generated, column by column, and
 // the #sql query read back over Flight equals the batches Cluster.Duck
 // answers directly, decoded. A statement without a result set streams
-// one schema and no batch.
+// one schema and no batch. The two engines are compared with their own
+// oracles and not with each other; the HTTP format-equivalence property
+// extended with a Flight client is a later unit's.
 func TestStatement(t *testing.T) {
 	// Two engines, one oracle each, both clusters:
 	//

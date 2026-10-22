@@ -34,7 +34,8 @@ func (s *Server) GetFlightInfoStatement(_ context.Context, q flightsql.Statement
 		FlightDescriptor: desc,
 		Endpoint:         []*flight.FlightEndpoint{{Ticket: &flight.Ticket{Ticket: ticket}}},
 		// -1 for records and bytes means unknown, because the server stores
-		// nothing and runs nothing here.
+		// nothing and runs nothing here. Running the query for the totals
+		// was rejected: the query twice.
 		TotalRecords: -1,
 		TotalBytes:   -1,
 	}, nil
@@ -127,7 +128,10 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 	switch {
 	// 4. the client sees only the closing status, so the error goes to the
 	//    log in one warning line, and the status says the server failed:
-	//    INTERNAL, or the ctx's own code when the caller left
+	//    INTERNAL, or the ctx's own code when the caller left. INVALID_
+	//    ARGUMENT for a DuckDB reader error mid-stream was rejected: the
+	//    engine spoke, but the client cannot act on it after data arrived,
+	//    so its message reaches the client as INTERNAL's detail
 	case streamErr != nil:
 		if ctx.Err() != nil {
 			observe.Logger(ctx).DebugContext(ctx, "stream abandoned by the caller", observe.Err(streamErr))
