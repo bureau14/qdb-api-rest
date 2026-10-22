@@ -166,12 +166,9 @@ func csvColumns(rec arrow.RecordBatch) ([]string, []func(int) string, error) {
 
 // writeCSVRows writes one CSV record per row, reusing a single record
 // slice for all of them.
-func writeCSVRows(ctx context.Context, cw *csv.Writer, cells []func(int) string, rows int64) error {
+func writeCSVRows(cw *csv.Writer, cells []func(int) string, rows int64) error {
 	record := make([]string, len(cells))
 	for row := int64(0); row < rows; row++ {
-		if err := checkChunk(ctx, row); err != nil {
-			return err
-		}
 		for i, cell := range cells {
 			record[i] = cell(int(row))
 		}
@@ -185,44 +182,28 @@ func writeCSVRows(ctx context.Context, cw *csv.Writer, cells []func(int) string,
 // CSV encodes record batches as RFC 4180 through encoding/csv: a header
 // row of the column names, LF line endings, a field quoted only when the
 // standard writer's rule says so (a comma, a quote, a CR, an LF, a
-// leading space), the empty field for null. A nil batch has no columns
-// and therefore no header, so its body is empty. A batch with no rows is
-// the header alone. The writer buffers on its own and reports the first
+// leading space), the empty field for null. A batch with no rows is the
+// header alone. The writer buffers on its own and reports the first
 // write error at the end.
 type CSV struct{}
 
 // ContentType implements Encoder.
 func (CSV) ContentType() string { return CSVContentType }
 
-// Encode implements Encoder.
-func (CSV) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	if rec == nil {
-		return nil
-	}
-	names, cells, err := csvColumns(rec)
-	if err != nil {
-		return err
-	}
-	cw := csv.NewWriter(w)
-	if err := cw.Write(names); err != nil {
-		return err
-	}
-	if err := writeCSVRows(ctx, cw, cells, rec.NumRows()); err != nil {
-		return err
-	}
-	cw.Flush()
-	return cw.Error()
-}
-
 // EncodeStream implements Encoder.
 func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
 	// The body has one header, taken from the first batch, since every
-	// batch shares its schema. The rows of every batch follow. A sequence
-	// without any batch writes nothing, as the nil-batch rule says.
+	// batch shares its schema. The rows of every batch follow.
 	cw := csv.NewWriter(w)
 	first := true
 	for rec, err := range batches {
 		if err != nil {
+			return err
+		}
+		// A client that left is noticed at the next batch, and a batch is at
+		// most model.BatchRows rows, so the check per batch is as prompt as
+		// the per-row stride it replaced.
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		names, cells, err := csvColumns(rec)
@@ -235,7 +216,7 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 			}
 			first = false
 		}
-		if err := writeCSVRows(ctx, cw, cells, rec.NumRows()); err != nil {
+		if err := writeCSVRows(cw, cells, rec.NumRows()); err != nil {
 			return err
 		}
 	}

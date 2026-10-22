@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"pgregory.net/rapid"
@@ -46,13 +48,18 @@ func (s server) ingest(body []byte, params string, headers map[string]string) *h
 	return s.post(rowsPath+"?"+params, string(body), headers)
 }
 
+// one is rec as a sequence of that one batch.
+func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
+	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
+}
+
 // ingestBodyOf is the body in e's format that carries every table. The
 // fixture joins the tables into one batch, and the encoder writes it
-// out.
+// out as a sequence of that one batch.
 func ingestBodyOf(t table.T, e encoding.Encoder, tables []table.Table) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := e.Encode(context.Background(), &buf, table.Body(t, tables...)); err != nil {
+	if err := e.EncodeStream(context.Background(), &buf, one(table.Body(t, tables...))); err != nil {
 		t.Fatalf("encode: %v", err)
 	}
 	return buf.Bytes()

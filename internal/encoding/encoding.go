@@ -18,18 +18,17 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
-// Encoder writes record batches to w in one wire format. It does not
-// release a batch. It returns the first error it meets: a write error,
-// the error of an error element, or the ctx ending between chunks.
+// Encoder writes a sequence of record batches to w in one wire format. It
+// does not release a batch. It returns the first error it meets: a write
+// error, the error of an error element, or the ctx ending between
+// batches.
 type Encoder interface {
 	// ContentType is the media type the handler answers with.
 	ContentType() string
-	// Encode writes one batch. A nil rec is a statement without a result
-	// set and encodes as zero columns and zero rows.
-	Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error
 	// EncodeStream writes a sequence of batches as one body. Every batch
 	// shares the first batch's schema. A batch is valid only until yield
-	// returns.
+	// returns. The sequence is never empty, because every producer stands
+	// in an empty batch of its schema for a result of no rows.
 	EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error
 }
 
@@ -41,21 +40,15 @@ type Decoder interface {
 	Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error)
 }
 
-// checkChunk looks at the ctx every model.BatchRows rows, so a client
-// that left is noticed within one batch of rows.
+// checkChunk looks at the ctx every model.BatchRows rows of a body a
+// decoder reads, so a client that left is noticed within one batch of
+// rows. The encoders check the ctx per batch instead, because a batch
+// they are handed is already at most that many rows.
 func checkChunk(ctx context.Context, row int64) error {
 	if row%model.BatchRows == 0 {
 		return ctx.Err()
 	}
 	return nil
-}
-
-// numRows returns the row count of rec. A nil rec has none.
-func numRows(rec arrow.RecordBatch) int64 {
-	if rec == nil {
-		return 0
-	}
-	return rec.NumRows()
 }
 
 // timestampLayout is how every text format writes a timestamp: RFC 3339

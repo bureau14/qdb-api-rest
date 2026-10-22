@@ -51,11 +51,12 @@ func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
 }
 
-// encode runs e over rec and returns the body.
+// encode runs e over rec as a sequence of that one batch and returns the
+// body.
 func encode(t failer, e Encoder, rec arrow.RecordBatch) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := e.Encode(context.Background(), &buf, rec); err != nil {
+	if err := e.EncodeStream(context.Background(), &buf, one(rec)); err != nil {
 		t.Fatalf("%s: %v", e.ContentType(), err)
 	}
 	return buf.Bytes()

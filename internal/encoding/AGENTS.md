@@ -8,15 +8,16 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 - Every encoder implements `Encoder` over the Arrow record batches the
   core returns (`internal/AGENTS.md`, Code, the result rule). An encoder
   knows only its media type and its bytes. It does not flush, log or
-  negotiate, and it does not release a batch. `Encode` writes one
-  batch: the bodies the e2e tool and the fixture write. `EncodeStream`
-  writes every response the server sends, and encodes each batch of the
-  sequence before it pulls the next. It
-  assumes every batch shares the first batch's schema and does not
-  check it. An error element ends the encoding with that error. A buffered
-  writer inside either method is flushed once at the end. The HTTP
-  flush belongs to the handler, so an error before the first flush
-  leaves nothing on the wire.
+  negotiate, and it does not release a batch. `EncodeStream` is the one
+  entry point; the e2e tool and the round trip's oracle write a
+  generated body as a sequence of one batch. It encodes each batch of
+  the sequence before it pulls the next. It assumes every batch shares
+  the first batch's schema and does not check it, and it assumes the
+  sequence is never empty, because every producer stands in an empty
+  batch of its schema for a result of no rows. An error element ends
+  the encoding with that error. A buffered writer inside it is flushed
+  once at the end. The HTTP flush belongs to the handler, so an error
+  before the first flush leaves nothing on the wire.
 - A format that is ingested also implements `Decoder`, the inverse of
   its encoder, in the same file. The decoder reads a body into one
   `model.TableBatch` per table, with `$timestamp` first and then the
@@ -45,8 +46,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   order. A later object's absent key is null, and
   a key outside the list is `ErrInvalidRows`. A number in an `int64`
   column must be an integer literal.
-- The JSON decoder reads one result (what `Encode` writes) or the array
-  of results (what every route answers). It reads one result at a time,
+- The JSON decoder reads one bare result or the array of results (what
+  every route answers). It reads one result at a time,
   whole, through the standard library, and then routes it row by row,
   because `$table` is a column at any position. The first result fixes
   the column list, `$table` and `$timestamp` among them, and a later
@@ -61,9 +62,10 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   reader's type for that name. There is no cast, because the binding
   refuses what a cast would take. A dictionary-encoded or null `$table`
   is `ErrInvalidRows`.
-- Every encoder checks the ctx once per `model.BatchRows` rows, the
-  binary's batch size: the record batch size on the Arrow wire and the
-  stride between ctx checks on the text wires.
+- Every encoder checks the ctx once per batch, and a batch is at most
+  `model.BatchRows` rows, the binary's batch size. The decoders check it
+  once per `model.BatchRows` rows of the body they read, because a body
+  arrives in no batches.
 - The query and the table reader answer the binding's five types:
   `int64` (a count included), `float64`, `timestamp[ns]` without a zone,
   and `utf8` and `binary` carrying `max_width` field metadata. The sql
@@ -86,8 +88,7 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   DuckDB at one vector, without in-format buffer compression (HTTP
   `Accept-Encoding` compression is independent of it). A batch of no
   rows is not written, so a result of no rows is the schema and the
-  marker alone, and a nil batch encodes as a schema with no fields and
-  no batches, which is a complete stream. A stream of batches opens on
+  marker alone, which is a complete stream. A stream of batches opens on
   the first batch's schema.
 
 ## The text formats
@@ -127,9 +128,9 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
-  column, `$table`. A nil batch encodes as `{"columns":[]}`. There is no
-  trailing newline. A stream of batches is a top-level array of such
-  results, one per batch, comma separated. The body is column-oriented
+  column, `$table`. There is no trailing newline. A stream of batches is
+  a top-level array of such results, one per batch, comma separated, so
+  a native result larger than one batch is several results. The body is column-oriented
   within a batch and memory stays bounded across batches. A cut stream
   is invalid JSON, so a truncated read cannot pass for a complete one.
 - NDJSON (`application/x-ndjson`) is one object per row, with the keys
@@ -143,8 +144,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   written as `true` or `false`. The date and the time of day are written
   in their texts. `utf8` is written as its own bytes and `binary` as
   standard base64. The empty field stands for null, for NaN and the
-  infinities, and for the empty string alike. A nil batch encodes as an
-  empty body, and no rows as the header alone. A stream of batches is
+  infinities, and for the empty string alike. No rows encode as the
+  header alone. A stream of batches is
   the first batch's header, then the rows of every batch. Byte identity
   with the CSV of `qdb_export` is not a goal.
 
@@ -158,10 +159,11 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   format, parses the output with the standard library and compares every
   cell with the batch it encoded. The fixture's `Check` has proven the
   queried part to be the table written. Values the fixture does not
-  generate are pinned byte for byte on one hand-built batch, and so is a
-  nil batch in every format. One test, `TestStream`, pins the stream
-  path on that batch: two batches stream as the two one-shot bodies
-  joined, and an error element ends the stream with its error. Neither pin
+  generate are pinned byte for byte on one hand-built batch, and so is
+  the empty batch with no columns in every format. One test,
+  `TestStream`, pins the stream path on that batch: two batches stream
+  as the two one-batch bodies joined, and an error element ends the
+  stream with its error. Neither pin
   needs a cluster.
 - The decoders' tests are in `decode_test.go`. One generative round
   trip over every codec draws tables through the fixture, encodes them

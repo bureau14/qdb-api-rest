@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"os"
 	"path/filepath"
@@ -186,6 +187,12 @@ var bodyFiles = []struct {
 	{"json", encoding.JSON{}},
 }
 
+// one is rec as a sequence of that one batch. The tool writes one batch,
+// and the encoders write sequences alone.
+func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
+	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
+}
+
 // writeBody writes rec to dir/<file> through enc, so the file is the
 // encoder's dialect and the tool formats no cell of its own.
 func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) error {
@@ -193,7 +200,7 @@ func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) er
 	if err != nil {
 		return err
 	}
-	if err := enc.Encode(context.Background(), f, rec); err != nil {
+	if err := enc.EncodeStream(context.Background(), f, one(rec)); err != nil {
 		_ = f.Close()
 		return err
 	}
@@ -316,7 +323,7 @@ func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
 	body := table.WithTable(rel, tbl)
 
 	// 4. the CSV
-	return (encoding.CSV{}).Encode(context.Background(), w, body)
+	return (encoding.CSV{}).EncodeStream(context.Background(), w, one(body))
 }
 
 // tocsv is the tocsv subcommand: stdin to CSV on stdout.

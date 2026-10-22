@@ -25,10 +25,9 @@ import (
 )
 
 // codecs pairs every format that decodes with its encoder. A new decoder
-// joins the slice and thereby the round trip. JSON's Encode writes one
-// result and its EncodeStream an array of results, so the round trip and
-// the fault property exercise the JSON decoder's object and the
-// interleaved property its array.
+// joins the slice and thereby the round trip. JSON's EncodeStream writes
+// an array of results, so every property exercises the JSON decoder's
+// array, and the short table of hand-built bodies its bare result.
 var codecs = []struct {
 	Encoder
 	Decoder
@@ -479,7 +478,7 @@ func TestDecodeFormatFaults(t *testing.T) {
 		"json: duplicate column": {JSON{}, []byte(`{"columns":[` + tableCol + `,` + timestampCol + `,` + iCol + `,` + iCol + `]}`)},
 		// the first result fixes the column list for the results after it
 		"json: columns differ": {JSON{}, []byte(`[` + result + `,{"columns":[` + tableCol + `,` + timestampCol + `]}]`)},
-		// the result of a nil batch names no $table
+		// a result of no columns names no $table
 		"json: nil result": {JSON{}, []byte(`{"columns":[]}`)},
 	} {
 		got, err := tc.dec.Decode(context.Background(), bytes.NewReader(tc.body), ints)

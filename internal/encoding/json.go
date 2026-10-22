@@ -209,12 +209,8 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	return c, nil
 }
 
-// jsonColumns returns the jsonColumn of every column of rec. A nil rec
-// has none.
+// jsonColumns returns the jsonColumn of every column of rec.
 func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
-	if rec == nil {
-		return nil, nil
-	}
 	cols := make([]jsonColumn, rec.NumCols())
 	for i, f := range rec.Schema().Fields() {
 		c, err := jsonCell(f, rec.Column(i))
@@ -229,29 +225,16 @@ func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 // The two JSON encoders append every cell straight into the buffered
 // writer's spare capacity (AvailableBuffer) and hand the bytes back, so
 // the hot loop allocates nothing. The buffered writer is flushed once at
-// the end of Encode. That flush is internal buffering; the HTTP flush
-// belongs to the handler.
+// the end of EncodeStream. That flush is internal buffering; the HTTP
+// flush belongs to the handler.
 
 // NDJSON encodes record batches as one JSON object per row, keys in
-// column order, one LF-terminated line per row. A batch with no rows,
-// including a nil batch, encodes as an empty body.
+// column order, one LF-terminated line per row. A batch with no rows
+// encodes as an empty body.
 type NDJSON struct{}
 
 // ContentType implements Encoder.
 func (NDJSON) ContentType() string { return NDJSONContentType }
-
-// Encode implements Encoder.
-func (NDJSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	cols, err := jsonColumns(rec)
-	if err != nil {
-		return err
-	}
-	bw := bufio.NewWriter(w)
-	if err := writeNDJSON(ctx, bw, cols, numRows(rec)); err != nil {
-		return err
-	}
-	return bw.Flush()
-}
 
 // EncodeStream implements Encoder.
 func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
@@ -260,11 +243,17 @@ func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[a
 		if err != nil {
 			return err
 		}
+		// A client that left is noticed at the next batch, and a batch is at
+		// most model.BatchRows rows, so the check per batch is as prompt as
+		// the per-row stride it replaced.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		cols, err := jsonColumns(rec)
 		if err != nil {
 			return err
 		}
-		if err := writeNDJSON(ctx, bw, cols, rec.NumRows()); err != nil {
+		if err := writeNDJSON(bw, cols, rec.NumRows()); err != nil {
 			return err
 		}
 	}
@@ -273,15 +262,12 @@ func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[a
 
 // writeNDJSON writes the rows. Each key is escaped once and reused with
 // its colon for every row.
-func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int64) error {
+func writeNDJSON(w *bufio.Writer, cols []jsonColumn, rows int64) error {
 	keys := make([][]byte, len(cols))
 	for i, c := range cols {
 		keys[i] = append(appendQuoted(nil, c.name), ':')
 	}
 	for row := int64(0); row < rows; row++ {
-		if err := checkChunk(ctx, row); err != nil {
-			return err
-		}
 		b := append(w.AvailableBuffer(), '{')
 		for i, c := range cols {
 			if i > 0 {
@@ -305,11 +291,11 @@ func writeNDJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows i
 // There is one object per column, with the keys in that order so a
 // streaming reader knows the type before the data. There is no tables
 // wrapper, because one batch is one result and the table a row came
-// from is a column like any other. A nil batch encodes as
-// {"columns":[]}. There is no trailing newline.
+// from is a column like any other. There is no trailing newline.
 //
 // A stream of batches encodes as a top-level array of such results, one
-// per batch. The body is column-oriented within a batch and memory stays
+// per batch, so a native result larger than one batch is several
+// results. The body is column-oriented within a batch and memory stays
 // bounded across batches. A stream cut mid-way is invalid JSON, so a
 // client cannot mistake a truncated read for a complete one.
 type JSON struct{}
@@ -317,27 +303,13 @@ type JSON struct{}
 // ContentType implements Encoder.
 func (JSON) ContentType() string { return JSONContentType }
 
-// Encode implements Encoder.
-func (JSON) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	cols, err := jsonColumns(rec)
-	if err != nil {
-		return err
-	}
-	bw := bufio.NewWriter(w)
-	if err := writeJSON(ctx, bw, cols, numRows(rec)); err != nil {
-		return err
-	}
-	return bw.Flush()
-}
-
 // EncodeStream implements Encoder.
 func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
-	// The body is a top-level array with one columnar result per batch.
-	// Each batch is encoded exactly as Encode encodes it, between "[" and
-	// "]", with a comma before every result but the first. The array
-	// closes only after the last batch, so a stream cut mid-way is invalid
-	// JSON and a client cannot take a truncated read for a complete one. A
-	// sequence without any batch encodes as "[]".
+	// The body is a top-level array with one columnar result per batch,
+	// between "[" and "]", with a comma before every result but the first.
+	// The array closes only after the last batch, so a stream cut mid-way
+	// is invalid JSON and a client cannot take a truncated read for a
+	// complete one.
 	bw := bufio.NewWriter(w)
 	if err := bw.WriteByte('['); err != nil {
 		return err
@@ -350,6 +322,12 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 		if err != nil {
 			return err
 		}
+		// A client that left is noticed at the next batch, and a batch is at
+		// most model.BatchRows rows, so the check per batch is as prompt as
+		// the per-row stride it replaced.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		cols, err := jsonColumns(rec)
 		if err != nil {
 			return err
@@ -360,7 +338,7 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 			}
 		}
 		first = false
-		if err := writeJSON(ctx, bw, cols, rec.NumRows()); err != nil {
+		if err := writeJSON(bw, cols, rec.NumRows()); err != nil {
 			return err
 		}
 	}
@@ -372,7 +350,7 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 
 // writeJSON writes the columns. Each array is walked once, so the body
 // streams column-major over the batch.
-func writeJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int64) error {
+func writeJSON(w *bufio.Writer, cols []jsonColumn, rows int64) error {
 	if _, err := w.WriteString(`{"columns":[`); err != nil {
 		return err
 	}
@@ -382,7 +360,7 @@ func writeJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int
 				return err
 			}
 		}
-		if err := writeJSONColumn(ctx, w, c, rows); err != nil {
+		if err := writeJSONColumn(w, c, rows); err != nil {
 			return err
 		}
 	}
@@ -392,7 +370,7 @@ func writeJSON(ctx context.Context, w *bufio.Writer, cols []jsonColumn, rows int
 
 // writeJSONColumn writes one column object: name, type, then the data
 // array of every row.
-func writeJSONColumn(ctx context.Context, w *bufio.Writer, c jsonColumn, rows int64) error {
+func writeJSONColumn(w *bufio.Writer, c jsonColumn, rows int64) error {
 	b := append(w.AvailableBuffer(), `{"name":`...)
 	b = appendQuoted(b, c.name)
 	b = append(b, `,"type":"`...)
@@ -402,9 +380,6 @@ func writeJSONColumn(ctx context.Context, w *bufio.Writer, c jsonColumn, rows in
 		return err
 	}
 	for row := int64(0); row < rows; row++ {
-		if err := checkChunk(ctx, row); err != nil {
-			return err
-		}
 		b := w.AvailableBuffer()
 		if row > 0 {
 			b = append(b, ',')
@@ -754,8 +729,8 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 	return res, nil
 }
 
-// jsonResults yields the results of a body: the one result Encode
-// writes, or each result of the array every route answers. An
+// jsonResults yields the results of a body: one bare result, or each
+// result of the array every route answers. An
 // empty array yields nothing. A body that is neither, a result the
 // standard library cannot read, a member a result does not declare, and
 // a value after the body are ErrInvalidRows, which names the result,
@@ -847,8 +822,8 @@ func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
 		}
 	}
 	switch {
-	// {"columns":[]}, the result of a nil batch, names no $table either,
-	// and is refused like a CSV header without $table
+	// {"columns":[]}, a result of no columns, names no $table either, and
+	// is refused like a CSV header without $table
 	case !names["$table"]:
 		return nil, 0, errors.New("names no $table")
 	case !names["$timestamp"]:
@@ -859,8 +834,8 @@ func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
 	return names, rows, nil
 }
 
-// Decode implements Decoder. The body is the columnar JSON Encode
-// writes, one result, or the array of results every route answers. The first result fixes the column list, $table and
+// Decode implements Decoder. The body is one bare columnar result, or
+// the array of results every route answers. The first result fixes the column list, $table and
 // $timestamp among them, in any order, and every later result names the
 // same columns. The type member of a column is not read.
 func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {

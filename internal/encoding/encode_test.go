@@ -108,19 +108,23 @@ func cellOf(t failer, raw json.RawMessage) cell {
 	}
 }
 
-// readJSON parses the columnar JSON body.
+// readJSON parses the columnar JSON body of one batch: an array of one
+// result.
 func readJSON(t failer, body []byte) []wireColumn {
 	t.Helper()
-	var doc struct {
+	var docs []struct {
 		Columns []struct {
 			Name string
 			Type string
 			Data []json.RawMessage
 		}
 	}
-	unmarshal(t, body, &doc)
-	cols := make([]wireColumn, len(doc.Columns))
-	for i, c := range doc.Columns {
+	unmarshal(t, body, &docs)
+	if len(docs) != 1 {
+		t.Fatalf("%d results, want 1", len(docs))
+	}
+	cols := make([]wireColumn, len(docs[0].Columns))
+	for i, c := range docs[0].Columns {
 		cols[i] = wireColumn{name: c.Name, kind: c.Type}
 		for _, raw := range c.Data {
 			cols[i].cells = append(cols[i].cells, cellOf(t, raw))
@@ -542,26 +546,29 @@ func emptyIPCStream(t *testing.T) []byte {
 }
 
 // TestEdgeCells pins the exact bytes of the edge batch in every text
-// format, and of a nil batch in every format. NaN and the infinity
+// format, and of the empty batch with no columns, which a statement
+// without a result set answers, in every format. NaN and the infinity
 // become null. Invalid UTF-8 becomes U+FFFD in JSON and stays a raw byte
 // in CSV. CSV quotes the leading space and the field that holds a comma,
-// a quote and a newline. The empty string becomes the empty field. A nil
-// batch, which a statement without a result set answers, is a complete
-// body: an empty result in JSON, no bytes in NDJSON and CSV, and in
-// Arrow a stream of a schema with no fields and no batches.
+// a quote and a newline. The empty string becomes the empty field. The
+// empty batch is a complete body: an empty result in JSON, no bytes in
+// NDJSON, the empty header line in CSV, and in Arrow a stream of a schema
+// with no fields and no batches.
 func TestEdgeCells(t *testing.T) {
 	rec := edgeBatch(t)
+	empty := array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
+	defer empty.Release()
 	for _, tc := range []struct {
 		e    Encoder
 		rec  arrow.RecordBatch
 		want string
 	}{
-		{JSON{}, rec, `{"columns":[` +
+		{JSON{}, rec, `[{"columns":[` +
 			`{"name":"i","type":"int64","data":[9223372036854775807,-9223372036854775808,0,42,null]},` +
 			`{"name":"d","type":"float64","data":[null,null,1e+21,0.1,null]},` +
 			`{"name":"t","type":"timestamp","data":["1970-01-01T00:00:00.000000000Z","1970-01-01T00:00:00.000000001Z","2026-06-11T00:00:00.000683000Z","1969-12-31T23:59:59.999999999Z",null]},` +
 			`{"name":"s","type":"utf8","data":["","a,b \"q\"\n"," lead","` + "\xef\xbf\xbd" + `",null]},` +
-			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]}]}`},
+			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]}]}]`},
 		{NDJSON{}, rec, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":""}` + "\n" +
 			`{"i":-9223372036854775808,"d":null,"t":"1970-01-01T00:00:00.000000001Z","s":"a,b \"q\"\n","b":"AP8="}` + "\n" +
 			`{"i":0,"d":1e+21,"t":"2026-06-11T00:00:00.000683000Z","s":" lead","b":"aGk="}` + "\n" +
@@ -573,13 +580,13 @@ func TestEdgeCells(t *testing.T) {
 			"0,1e+21,2026-06-11T00:00:00.000683000Z,\" lead\",aGk=\n" +
 			"42,0.1,1969-12-31T23:59:59.999999999Z,\xff,eA==\n" +
 			",,,,\n"},
-		{JSON{}, nil, `{"columns":[]}`},
-		{NDJSON{}, nil, ""},
-		{CSV{}, nil, ""},
-		{Arrow{}, nil, string(emptyIPCStream(t))},
+		{JSON{}, empty, `[{"columns":[]}]`},
+		{NDJSON{}, empty, ""},
+		{CSV{}, empty, "\n"},
+		{Arrow{}, empty, string(emptyIPCStream(t))},
 	} {
 		if got := string(encode(t, tc.e, tc.rec)); got != tc.want {
-			t.Errorf("%s, %d rows:\n got %q\nwant %q", tc.e.ContentType(), numRows(tc.rec), got, tc.want)
+			t.Errorf("%s, %d rows:\n got %q\nwant %q", tc.e.ContentType(), tc.rec.NumRows(), got, tc.want)
 		}
 	}
 }
@@ -628,7 +635,8 @@ func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 
 // TestStream checks the stream path of every encoder. Two batches
 // stream as the IPC stream with two record batches, the CSV with one
-// header, the NDJSON lines appended, and a JSON array of two results. An
+// header, the NDJSON lines appended, and a JSON array of two results,
+// the two one-batch arrays joined. An
 // error element after a batch ends the stream with that error.
 func TestStream(t *testing.T) {
 	rec := edgeBatch(t)
@@ -644,7 +652,7 @@ func TestStream(t *testing.T) {
 		{Arrow{}, ipcStream(t, rec, rec)},
 		{CSV{}, append(csv[:len(csv):len(csv)], csv[len(header):]...)},
 		{NDJSON{}, append(ndjson[:len(ndjson):len(ndjson)], ndjson...)},
-		{JSON{}, []byte("[" + string(json) + "," + string(json) + "]")},
+		{JSON{}, []byte(string(json[:len(json)-1]) + "," + string(json[1:]))},
 	} {
 		if got := encodeStream(t, tc.e, sequence([]arrow.RecordBatch{rec, rec}, nil)); !bytes.Equal(got, tc.want) {
 			t.Errorf("%s:\n got %q\nwant %q", tc.e.ContentType(), got, tc.want)

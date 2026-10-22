@@ -24,25 +24,6 @@ type Arrow struct{}
 // ContentType implements Encoder.
 func (Arrow) ContentType() string { return ArrowContentType }
 
-// emptyBatch returns the batch of a statement without a result set. It
-// has no fields and no rows, so its stream is a schema and the
-// end-of-stream marker.
-func emptyBatch() arrow.RecordBatch {
-	return array.NewRecordBatch(arrow.NewSchema(nil, nil), nil, 0)
-}
-
-// Encode implements Encoder. A nil rec is written as a sequence of one
-// empty batch with no fields.
-func (Arrow) Encode(ctx context.Context, w io.Writer, rec arrow.RecordBatch) error {
-	if rec == nil {
-		rec = emptyBatch()
-		defer rec.Release()
-	}
-	return Arrow{}.EncodeStream(ctx, w, func(yield func(arrow.RecordBatch, error) bool) {
-		yield(rec, nil)
-	})
-}
-
 // EncodeStream implements Encoder. The stream opens on the first batch's
 // schema and carries every batch as one record batch, so the producer's
 // batch size is the wire's.
@@ -81,11 +62,11 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 		}
 	}
 	// 3. Close writes the end-of-stream marker. A sequence of no batch
-	//    cannot occur, because every producer yields at least one; it
-	//    would leave an unopened writer, so it is written as a schema with
-	//    no fields and the marker rather than as nothing.
+	//    cannot occur, because every producer yields at least one (the
+	//    Encoder contract); if one did, the writer would be unopened, so
+	//    it is opened on a schema with no fields rather than left nil.
 	if ipcw == nil {
-		return Arrow{}.Encode(ctx, w, nil)
+		ipcw = ipc.NewWriter(w, ipc.WithSchema(arrow.NewSchema(nil, nil)))
 	}
 	return ipcw.Close()
 }
