@@ -47,8 +47,12 @@ feature branch is the owner's decision before anything else.
    browser, and the harness wakes you when it exits. Do nothing while it
    runs. Its stdout is one JSON decision:
    - `approved` (with optional `feedback`): the owner's yes on the plan,
-     and on the plan alone. Post the plan-stage message and wait; the
-     build stage opens when the owner invokes `/rr-build`.
+     and on the plan alone. Change the plan's `Status:` line from
+     `draft` to `approved` and commit that alone as
+     `docs(plan): <slug>-plan.md is approved`, so a session seeded
+     fresh from the tree reads the plan as approved instead of a
+     draft still under review. Then post the plan-stage message and
+     wait; the build stage opens when the owner invokes `/rr-build`.
    - annotations: the owner's redirect. Fold every annotation into the
      plan, commit the revision as a further `docs(plan)` commit, and
      gate again from step 5. Never start code on an annotated plan.
@@ -56,18 +60,22 @@ feature branch is the owner's decision before anything else.
      report; the owner decides in the conversation.
 
 The plan-stage message, posted on approval, is exactly: the branch name
-and the plan's path; `git show <sha>` for the plan commit; the owner's
+and the plan's path; `git show <sha>` for the plan commit and the
+sha of the approval commit; the owner's
 `feedback` quoted, if any, with how the build will honor it; the open
 questions the plan recorded, each with the recommendation the approval
 has now settled; one line saying the build waits for
 `/rr-build docs/<slug>-plan.md`.
 
 Correct: you branch, read the skill, write the plan, commit it, run the
-gate, wait; the decision is `approved`; you post the message and wait;
+gate, wait; the decision is `approved`; you set the status, commit it,
+post the message and wait;
 the owner invokes `/rr-build`; commit 2 starts there.
 
 Incorrect: the gate returns `approved` and you start commit 2 because
-the plan is approved. Or: you commit the plan and ask "Approve the plan,
+the plan is approved. Or: the gate returns `approved`, you post the
+message, and the plan in the tree still says `Status: draft`, so the
+next seed reads it as unreviewed. Or: you commit the plan and ask "Approve the plan,
 redirect it, or stop?" in the conversation instead of running the gate.
 Or: the gate returns annotations and you start code while addressing
 them.

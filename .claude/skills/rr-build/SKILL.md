@@ -31,11 +31,12 @@ Last commits on this branch:
 !`git log --oneline -5`
 
 The current branch is the plan's `sc-19567/rr-<slug>`, the tree is
-clean, and the plan's last commit is a `docs(plan)` commit. Anything
-else is the owner's decision before anything else. A plan whose status
-is still `draft` after the plannotator gate is fine; the gate's
-decision lives in the conversation or in the owner's invocation of this
-stage, not in the file.
+clean, the plan's last commit is a `docs(plan)` commit, and the plan's
+`Status:` line says `approved`, which the plan stage sets in its own
+commit when the gate approves. Anything else is the owner's decision
+before anything else. A plan still at `draft` means the gate has not
+approved it, or the plan stage skipped the status commit; say which
+you cannot tell, and the owner decides.
 
 ## The commits
 

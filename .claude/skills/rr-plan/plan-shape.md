@@ -21,7 +21,8 @@ plain words.
 
 ## Sections
 
-The document is `docs/<slug>-plan.md`, `Status: draft`, and carries
+The document is `docs/<slug>-plan.md`, `Status: draft` until the gate
+approves it and the plan stage commits `Status: approved`, and carries
 these sections in this order. A section with nothing to say says
 "none"; it is never dropped.
 
