@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -23,16 +23,14 @@ Last updated: 2026-10-20
 In flight:
 
 - M5. The `#sql` dispatcher (`query.Run`, `internal/query`) behind
-  `POST /api/v2/query` and the Flight listener (`listen.flight`,
-  `internal/flightsql`) with Handshake, bearer and anonymous auth are
-  landed. The rest of the milestone is the Next list.
+  `POST /api/v2/query`, the Flight listener (`listen.flight`,
+  `internal/flightsql`) with Handshake, bearer and anonymous auth, and
+  the statement query on it (`GetFlightInfoStatement` and `DoGet`
+  through `query.Run`, with `statusOf`'s codes) are landed. The rest of
+  the milestone is the Next list.
 
 Next:
 
-- The statement query on the Flight listener: `GetFlightInfoStatement`
-  answering a ticket that carries the query text, `DoGetStatement`
-  through `query.Run`, and the `INVALID_ARGUMENT`, `UNAVAILABLE` and
-  `INTERNAL` rows for a running query (ADR-0018, Decisions 9 and 13).
 - `GetSqlInfo` and the catalog commands on a table list core in
   `internal/qdb` (ADR-0018, Decisions 10 to 12).
 - The format-equivalence property with a Flight SQL client, and the ADBC
@@ -70,6 +68,13 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-22 -- flight-statement-plan.md deleted; the statement query on the Flight listener landed
+
+- Owner decisions moved to `internal/flightsql/AGENTS.md`,
+  `internal/AGENTS.md`, `internal/encoding/AGENTS.md`,
+  `internal/model/AGENTS.md`, ADR-0018 (Decision 5) and the comments of
+  `internal/flightsql`, `internal/qdb` and `internal/encoding`.
 
 ## 2026-10-20 -- flight-listener-plan.md deleted; the Flight listener with Handshake and bearer auth landed
 
