@@ -1,6 +1,6 @@
 ---
 name: rr-explain-plan
-description: Explain the current unit's plan to the owner as a figure-first page -- the landscape the change lands in, drawn from the tree, the change drawn on it, and every constraint the plan rests on marked with its origin, so the owner sees what the plan implies and what existing code forces, and can overrule. Invoked by the owner at any time after the plan commit; it is not a stage, opens no gate and changes nothing in the tree.
+description: Explain the current unit's plan to the owner as a figure-first page -- the landscape the change lands in, drawn from the tree, the change drawn on it, and every constraint the plan rests on marked with its origin, so the owner sees what the plan implies and what existing code forces, and can overrule. The plan stage runs it once, after the plan commit and before the gate; the owner invokes it at any time after that. It is not a stage, opens no gate and changes nothing in the tree.
 disable-model-invocation: true
 argument-hint: [docs/<slug>-plan.md]
 ---
@@ -9,10 +9,11 @@ argument-hint: [docs/<slug>-plan.md]
 
 Run `/rr-workflow` first. This skill is not one of its stages. It
 opens no gate, writes nothing under the repository, commits nothing
-and never edits the plan. The owner invokes it to understand a plan,
-before, during or after the plannotator gate on it, and what the
-owner learns travels into the gate as an annotation; it never travels
-through this skill.
+and never edits the plan. The plan stage runs it once, between the
+plan commit and the gate, so the owner reads the page before deciding
+on the plan. The owner invokes it again at any time, before, during or
+after the plannotator gate on it. What the owner learns travels into
+the gate as an annotation; it never travels through this skill.
 
 ## Entry check
 

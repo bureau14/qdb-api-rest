@@ -1,6 +1,6 @@
 ---
 name: rr-plan
-description: Open the plan stage of the current unit -- create the feature branch, write and commit the plan document as the unit's first commit, and yield it to the owner through the plannotator gate. Invoked by the owner after the seed report; the invocation is the gate.
+description: Open the plan stage of the current unit -- create the feature branch, write and commit the plan document as the unit's first commit, explain it to the owner as a page, and when that session has closed yield the plan through the plannotator gate. Invoked by the owner after the seed report; the invocation is the gate.
 disable-model-invocation: true
 ---
 
@@ -37,7 +37,14 @@ feature branch is the owner's decision before anything else.
 3. Read `plan-shape.md` and write `docs/<slug>-plan.md` in that shape.
 4. Commit it alone: `docs(plan): <slug>-plan.md, <one-line subject>`.
    This is commit 1 of the unit, the one the seed report promised.
-5. Yield through the review tool, never through a typed question:
+5. Explain the committed plan: read `../rr-explain-plan/SKILL.md` and
+   run its steps, scoping round included, with this plan as the
+   argument, as if the owner had invoked it. Its annotation session
+   must have exited before step 6 starts. Plannotator runs one session
+   at a time, and a gate opened while the explainer's session is up
+   comes back `dismissed`, so the two never overlap: the explainer
+   runs to its close, then the gate opens.
+6. Yield through the review tool, never through a typed question:
 
    ```
    plannotator annotate docs/<slug>-plan.md --gate --json
@@ -55,7 +62,8 @@ feature branch is the owner's decision before anything else.
      wait; the build stage opens when the owner invokes `/rr-build`.
    - annotations: the owner's redirect. Fold every annotation into the
      plan, commit the revision as a further `docs(plan)` commit, and
-     gate again from step 5. Never start code on an annotated plan.
+     gate again from step 6; the explainer does not run again unless
+     the owner invokes it. Never start code on an annotated plan.
    - `dismissed`, or a non-zero exit without a decision: stop and
      report; the owner decides in the conversation.
 
@@ -68,9 +76,9 @@ has now settled; one line saying the build waits for
 `/rr-build docs/<slug>-plan.md`.
 
 Correct: you branch, read the skill, write the plan, commit it, run the
-gate, wait; the decision is `approved`; you set the status, commit it,
-post the message and wait;
-the owner invokes `/rr-build`; commit 2 starts there.
+explainer and wait for its session to close, run the gate, wait; the
+decision is `approved`; you set the status, commit it, post the message
+and wait; the owner invokes `/rr-build`; commit 2 starts there.
 
 Incorrect: the gate returns `approved` and you start commit 2 because
 the plan is approved. Or: the gate returns `approved`, you post the
@@ -78,7 +86,8 @@ message, and the plan in the tree still says `Status: draft`, so the
 next seed reads it as unreviewed. Or: you commit the plan and ask "Approve the plan,
 redirect it, or stop?" in the conversation instead of running the gate.
 Or: the gate returns annotations and you start code while addressing
-them.
+them. Or: you start the gate while the explainer's session is still
+open, and the gate comes back `dismissed`.
 
 ## Before committing the plan
 
