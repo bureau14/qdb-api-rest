@@ -385,21 +385,40 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 	return err
 }
 
-// one is rec as a sequence of that one batch. The caller owns rec and
-// releases it after sink returns.
-func one(rec arrow.RecordBatch) Batches {
+// slices is rec as a sequence of slices of at most n rows, in order. Each
+// slice retains rec and is released after yield returns, so the receiver
+// releases none. The caller owns rec and releases it after the sequence.
+// A rec of no rows is one empty slice, so the sequence is never empty.
+func slices(rec arrow.RecordBatch, n int64) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
-		yield(rec, nil)
+		// A rec of no rows yields rec itself once, because every receiver
+		// expects a batch and the Arrow encoder reads the first batch's
+		// schema.
+		if rec.NumRows() == 0 {
+			yield(rec, nil)
+			return
+		}
+		for start := int64(0); start < rec.NumRows(); start += n {
+			s := rec.NewSlice(start, min(start+n, rec.NumRows()))
+			// The slice is released after yield returns whether the receiver
+			// broke out or not, as lent releases the reader's batches.
+			more := yield(s, nil)
+			s.Release()
+			if !more {
+				return
+			}
+		}
 	}
 }
 
-// Query runs q as u and hands its result to sink as a sequence of one
-// batch. The session is back in its pool before sink runs, so a slow
-// receiver holds no session. Every error other than sink's own is
-// returned before sink is called, and sink's error is returned as is. A
-// statement with no result set yields one empty batch with no columns.
-// Under WithReadRetry the query is retried once on a fresh session, which
-// is safe because the query completes before sink runs.
+// Query runs q as u and hands its result to sink as a sequence of slices
+// of at most model.BatchRows rows. The session is back in its pool before
+// sink runs, so a slow receiver holds no session. Every error other than
+// sink's own is returned before sink is called, and sink's error is
+// returned as is. A statement with no result set yields one empty batch
+// with no columns. Under WithReadRetry the query is retried once on a
+// fresh session, which is safe because the query completes before sink
+// runs.
 func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches) error, opts ...CallOption) error {
 	// The binding materializes the whole result in one fetch, so the
 	// session is needed only for that fetch and sink runs after the call
@@ -407,7 +426,7 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 	//
 	//  1. fetch the result on a leased session, retried as opts say;
 	//  2. stand in an empty batch for a statement with no result set;
-	//  3. run sink over the one batch and release it afterwards.
+	//  3. run sink over the slices and release the batch afterwards.
 
 	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
@@ -427,9 +446,13 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 	}
 	// 3. the batch is released after sink returns rather than when yield
 	//    returns, so a sink that never ranges over the sequence leaks
-	//    nothing.
+	//    nothing. The slices share the batch's buffers, and each retains
+	//    it, so a sink that keeps a slice keeps the buffers. The batch is
+	//    sliced here and not in the encoder, so every consumer, HTTP and
+	//    Flight, reads batches of one size and a Flight message stays
+	//    under gRPC's receive limit.
 	defer rec.Release()
-	return sink(one(rec))
+	return sink(slices(rec, model.BatchRows))
 }
 
 // Authenticate proves u's credentials by one direct dial, outside the

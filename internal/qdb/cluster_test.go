@@ -1,7 +1,8 @@
 // This file holds the integration tests of Cluster against the live qdbd
 // fixture (internal/qdbtest): breaker, per-user cap, retry-once, a
 // rejected query's session and breaker, user-pool eviction, and the
-// probe as the REST API's own user. Every test that dials the fixture
+// probe as the REST API's own user, and the slicing of a query result,
+// which dials nothing. Every test that dials the fixture
 // runs once per cluster, as the user the fixture names there, except
 // TestAuthenticate, which checks each cluster's own verdict. The tests
 // against an unreachable URI dial no fixture cluster. The pool's own
@@ -15,7 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
+	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
@@ -299,5 +304,71 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		if s := c.Stats(); s.Users != 0 {
 			t.Fatalf("idle user pool was not evicted: %d users remain", s.Users)
 		}
+	})
+}
+
+// TestSlices: for a batch of any row count and any n, slices yields
+// ceil(rows/n) slices of at most n rows, at least one, in order, each
+// equal to the parent's rows at that offset, and releases each after
+// yield. It dials nothing.
+func TestSlices(t *testing.T) {
+	// One property with a release check:
+	//
+	//  1. draw rows and n, and build a one-column int64 batch of rows on
+	//     a checked allocator;
+	//  2. collect the slices' row counts and values through the sequence;
+	//  3. compare counts and values; a batch of no rows yields one empty
+	//     slice;
+	//  4. the allocator holds nothing once the parent is released, which
+	//     proves every slice was released, because a slice retains the
+	//     parent.
+	rapid.Check(t, func(t *rapid.T) {
+		// 1. the batch
+		rows := rapid.IntRange(0, 1000).Draw(t, "rows")
+		n := rapid.Int64Range(1, 300).Draw(t, "n")
+		mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		b := array.NewInt64Builder(mem)
+		for i := range rows {
+			b.Append(int64(i))
+		}
+		col := b.NewArray()
+		b.Release()
+		schema := arrow.NewSchema([]arrow.Field{{Name: "v", Type: arrow.PrimitiveTypes.Int64}}, nil)
+		rec := array.NewRecordBatch(schema, []arrow.Array{col}, int64(rows))
+		col.Release()
+
+		// 2. the slices
+		var counts []int64
+		var values []int64
+		for s, err := range slices(rec, n) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			counts = append(counts, s.NumRows())
+			values = append(values, s.Column(0).(*array.Int64).Int64Values()...)
+		}
+
+		// 3. ceil(rows/n) slices of at most n rows, and one for no rows
+		want := (int64(rows) + n - 1) / n
+		if rows == 0 {
+			want = 1
+		}
+		if int64(len(counts)) != want {
+			t.Fatalf("rows %d, n %d: want %d slices, got %v", rows, n, want, counts)
+		}
+		for i, c := range counts {
+			if c > n || (c == 0 && rows != 0) {
+				t.Fatalf("slice %d has %d rows, n is %d", i, c, n)
+			}
+		}
+		for i, v := range values {
+			if v != int64(i) {
+				t.Fatalf("value %d is %d", i, v)
+			}
+		}
+
+		// 4. every slice released
+		rec.Release()
+		mem.AssertSize(t, 0)
 	})
 }

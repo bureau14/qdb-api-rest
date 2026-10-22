@@ -39,19 +39,21 @@ decisions are in `docs/adr/`.
   `writeJSON`). Outside the package, no code knows a wart exists.
 - A query result outside `internal/qdb` is the Arrow record batch the
   binding builds through `qdb_query_arrow`, and nothing else.
-  `Cluster.Query` hands it to a sink as a sequence of that one batch
-  (`qdb.Batches`), as `Cluster.Read` and `Cluster.Duck` do, so every
-  result in the binary is read one way. The session is back in its pool
+  `Cluster.Query` hands it to a sink as slices of `model.BatchRows` rows
+  (`qdb.Batches`), each retaining the batch, as `Cluster.Read` and
+  `Cluster.Duck` hand out batches, so every result in the binary is read
+  one way. The session is back in its pool
   before the sink runs, and the batch outlives the session. The sink
   borrows the batch, and `Query` releases it after the sink returns, so
   a sink that never ranges over the sequence leaks nothing and a sink
-  that keeps the batch retains it. Its buffers are C-allocated and that
+  that keeps a slice keeps the buffers. Its buffers are C-allocated and that
   release frees them. On any error the sink does not run. A partial
   batch is released inside `internal/qdb`. A statement without a result
   set is one empty batch with no columns. The binding's row-major and
   columnar result paths are not called.
 - A table read is a sequence of such batches (`qdb.Batches`), one per
-  fetch of the bulk reader, handed to a sink while the session is held.
+  fetch of `model.BatchRows` rows of the bulk reader, handed to a sink
+  while the session is held.
   `Cluster.Read` leases one session of the caller's pool for as long as
   the sink runs, and it is not retried. The sink borrows each batch
   until yield returns, and the sequence releases it then, so a value
@@ -110,7 +112,7 @@ decisions are in `docs/adr/`.
   `Batches`, as a table read's is.
 - A query string reaches an engine through `query.Run` (`internal/query`),
   which alone recognizes the `#sql` prefix (ADR-0018). The HTTP query
-  route calls it, and the Flight server will. It calls `Cluster.Query`
+  route calls it, and the Flight server's `DoGet` does. It calls `Cluster.Query`
   with `WithReadRetry` or `Cluster.Duck`, which take the same sink.
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
