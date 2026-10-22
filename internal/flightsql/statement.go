@@ -16,15 +16,20 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
-// GetFlightInfoStatement answers one endpoint whose ticket is the query
-// text, unchanged. The info carries no schema, because the native engine
-// does not know a result's columns before running the query, and no
-// location, which means this server (ADR-0018, Decision 9).
+// GetFlightInfoStatement is the first half of a Flight SQL query. Flight
+// fetches a result in two calls: the client sends its query text here and
+// gets a FlightInfo back, which lists the endpoints holding the result and
+// a ticket per endpoint, and then presents each ticket on DoGet, which
+// streams that endpoint's batches. A server that partitions a result or
+// runs the query ahead of time does its work here. This server has one
+// endpoint, keeps nothing between calls and runs the query at DoGet
+// (ADR-0018, Decision 9), so the info is one endpoint whose ticket is
+// the query text, with no schema, because the native engine does not
+// know a result's columns before running the query, no location, which
+// means this server, and unknown totals.
 func (s *Server) GetFlightInfoStatement(_ context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
 	// The text travels verbatim and DoGet dispatches it, so the #sql rule
-	// has one home, in query.Run. Splitting the prefix here and encoding
-	// engine plus text was rejected: a ticket format of this server's own,
-	// and the split exported. A mint failure is INTERNAL.
+	// has one home, in query.Run. A mint failure is INTERNAL.
 	ticket, err := flightsql.CreateStatementQueryTicket([]byte(q.GetQuery()))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -33,9 +38,7 @@ func (s *Server) GetFlightInfoStatement(_ context.Context, q flightsql.Statement
 		// The descriptor is echoed, as arrow-go's examples do.
 		FlightDescriptor: desc,
 		Endpoint:         []*flight.FlightEndpoint{{Ticket: &flight.Ticket{Ticket: ticket}}},
-		// -1 for records and bytes means unknown, because the server stores
-		// nothing and runs nothing here. Running the query for the totals
-		// was rejected: the query twice.
+		// -1 means unknown, because nothing has run yet.
 		TotalRecords: -1,
 		TotalBytes:   -1,
 	}, nil
@@ -52,17 +55,12 @@ type service struct {
 // DoGet streams the result of a statement ticket, and hands every other
 // ticket to arrow-go's router.
 func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServer) error {
-	// One decode, one run inside a sink, and two kinds of failure that
-	// answer differently, the HTTP handler's shape. The query runs inside
-	// the sink and writes to the stream while each batch is lent, so no
-	// batch is copied, retained or crossed to another goroutine. arrow-go's
-	// DoGetStatement hook, which answers a schema and a channel the router
-	// drains, was rejected: correct without a copy, because a Retain keeps
-	// a batch alive, but it needs a producer goroutine, a schema handoff
-	// before the first chunk, ctx-aware sends, and the error-before-first-
-	// byte split carried across the channel. Given up with it: a depth-one
-	// overlap between DuckDB's chunk conversion and gRPC serialization, and
-	// the ticket decode runs here as well as in the router.
+	// The query runs inside the sink and each lent batch is written to the
+	// stream as it comes, in one function and no goroutine, the HTTP
+	// handler's shape. arrow-go's DoGetStatement hook, which answers a
+	// channel the router drains, was rejected: it needs a producer
+	// goroutine, a schema handoff before the first chunk, and the
+	// error-before-first-byte split carried across the channel.
 	//
 	//  1. decode the ticket;
 	//  2. the user from the claims;
