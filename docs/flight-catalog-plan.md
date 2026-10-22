@@ -1,6 +1,6 @@
 # Plan: flight catalog -- GetSqlInfo and the catalog commands, names only
 
-Status: draft
+Status: approved
 
 This plan answers the first Next item of `docs/log.md`, Current state,
 cut to its medium scope by the owner on 2026-10-22: `GetSqlInfo` on
