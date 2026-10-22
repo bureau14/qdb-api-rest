@@ -118,9 +118,7 @@ Each rule below names the function whose comments carry its reason.
   directly, as the HTTP handler tests mint them. `TestStatement` draws a
   table and reads it back over Flight on both engines, on both clusters.
   `TestStatementRows` is the error table, the unreachable cluster and
-  the open breaker included; its rows reach no secured check, so it runs
-  on the insecure cluster.
-- `TestSqlInfo` and `TestCatalogRows` run on the insecure cluster,
-  because no row reaches a secured check. `TestCatalog` creates one
-  table through the fixture and reads every catalog command back on
-  both clusters.
+  the open breaker included, for a statement and for `GetTables`; its
+  rows reach no secured check, so it runs on the insecure cluster.
+  `TestCatalog` reads GetSqlInfo and every catalog command back on both
+  clusters, over one table created through the fixture.
