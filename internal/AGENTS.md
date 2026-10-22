@@ -114,6 +114,12 @@ decisions are in `docs/adr/`.
   route calls it, and the Flight server's `DoGet` does. It calls
   `Cluster.Query` with `WithReadRetry` or `Cluster.Duck`, which take the
   same sink.
+- The table list is `Cluster.Tables`, the native `show tables` query
+  under the read retry, answering names in the cluster's order with
+  qdbd's own `$qdb.` tables included. The C API has no enumeration
+  call, and `Tables` says why the query is the core and what was
+  rejected. The Flight catalog reads it, and `GET /api/v2/tables`
+  wraps it (ADR-0018, Decision 11).
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
   or the classification of a failed DuckDB attach dialed. The

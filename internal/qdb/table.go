@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
 
@@ -81,6 +84,51 @@ func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard ti
 // other tables may share it.
 func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
+}
+
+// Tables lists the names of the cluster's tables as user u, in the order
+// the cluster reports them, qdbd's own $qdb. tables included. The listing
+// is retried once on a retryable failure, as a read is.
+func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
+	// The list is the native query `show tables`, because the C API has no
+	// enumeration call and that query is the server's own notion of a
+	// table, answered in one round trip. A prefix scan over the empty
+	// prefix with a metadata call per alias was rejected: it is N+1 round
+	// trips over every entry type, and a new Session method for PrefixGet.
+	// The $qdb. tables are listed as the server lists them, because hiding
+	// them needs a prefix rule this project would own, and a client that
+	// queries $qdb.firehose finds it in the list.
+	//
+	//  1. run the query under the read retry;
+	//  2. inside the sink, copy each value of the one string column out.
+	var names []string
+	// 1. the read retry, because a listing is a read
+	err := c.Query(ctx, u, "show tables", func(batches Batches) error {
+		for rec, err := range batches {
+			if err != nil {
+				return err
+			}
+			// 2. the result is one string column named $table (qdbd
+			//    3.15.0.dev0). It is read by position, and a result of
+			//    another shape is an error naming it, because a server change
+			//    would otherwise read as an empty cluster. Each value is
+			//    cloned, because a Go string of an Arrow array aliases the
+			//    batch's buffer and Query releases the batch when the sink
+			//    returns.
+			if rec.NumCols() != 1 || rec.Column(0).DataType().ID() != arrow.STRING {
+				return fmt.Errorf("qdb: show tables answered %s, want one string column", rec.Schema())
+			}
+			col := rec.Column(0).(*array.String)
+			for i := range col.Len() {
+				names = append(names, strings.Clone(col.Value(i)))
+			}
+		}
+		return nil
+	}, WithReadRetry())
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
 }
 
 // IsTableExists reports whether err means the cluster refused a create
