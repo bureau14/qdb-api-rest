@@ -18,6 +18,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -410,4 +411,118 @@ func TestStatement(t *testing.T) {
 			}
 		})
 	})
+}
+
+// doGet runs q as the one endpoint's ticket of an Execute, and answers
+// DoGet's error, which is where a statement's failure surfaces, because
+// GetFlightInfo runs nothing.
+func doGet(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
+	t.Helper()
+	info, err := cl.Execute(ctx, q)
+	if err != nil {
+		t.Fatalf("Execute %s: %v", q, err)
+	}
+	return doGetTicket(t, cl, ctx, info.Endpoint[0].Ticket)
+}
+
+// doGetTicket presents ticket on DoGet and answers the stream's error,
+// read to the end.
+func doGetTicket(t *testing.T, cl *flightsql.Client, ctx context.Context, ticket *flight.Ticket) error {
+	t.Helper()
+	rdr, err := cl.DoGet(ctx, ticket)
+	if err != nil {
+		return err
+	}
+	defer rdr.Release()
+	for rdr.Next() {
+	}
+	return rdr.Err()
+}
+
+// retryInfo answers the RetryInfo detail of err's status, nil without one.
+func retryInfo(err error) *errdetails.RetryInfo {
+	for _, d := range status.Convert(err).Details() {
+		if ri, ok := d.(*errdetails.RetryInfo); ok {
+			return ri
+		}
+	}
+	return nil
+}
+
+// TestStatementRows: every way a statement fails before the stream
+// answers its code with the engine's or the cluster's message. The rows
+// run on the insecure cluster, because none reaches a secured check.
+func TestStatementRows(t *testing.T) {
+	f := cluster.Bind(t, qdbtest.Insecure(), nil)
+	s := newServer(t, f)
+	cl := s.dial(t)
+	// A native parse error and a #sql parse error are INVALID_ARGUMENT with
+	// the engine's message, a query naming an unknown table is
+	// INVALID_ARGUMENT, and a DoGet on a hand-built ticket of a bad query
+	// is the same, because the ticket is the text.
+	for _, row := range []struct{ name, query string }{
+		{"native parse error", "selec 1"},
+		{"#sql parse error", "#sql selec 1"},
+		{"unknown table", "SELECT * FROM qdbtest_no_such_table"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			err := doGet(t, cl, s.ctx, row.query)
+			if st := status.Convert(err); st.Code() != codes.InvalidArgument || st.Message() == "" {
+				t.Fatalf("want INVALID_ARGUMENT with a message, got %v", err)
+			}
+		})
+	}
+	t.Run("hand-built ticket", func(t *testing.T) {
+		ticket, err := flightsql.CreateStatementQueryTicket([]byte("selec 1"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = doGetTicket(t, cl, s.ctx, &flight.Ticket{Ticket: ticket})
+		if st := status.Convert(err); st.Code() != codes.InvalidArgument || st.Message() == "" {
+			t.Fatalf("want INVALID_ARGUMENT with a message, got %v", err)
+		}
+	})
+}
+
+// TestStatementUnreachable: a server over a cluster that does not answer
+// is UNAVAILABLE with no detail, and once the breaker opens, UNAVAILABLE
+// with a RetryInfo detail whose delay is the breaker's.
+func TestStatementUnreachable(t *testing.T) {
+	cfg := config.Default()
+	cfg.Cluster.URI = "qdb://127.0.0.1:1" // the connection is refused at once
+	// Two failures open the breaker, so the first statement answers the
+	// unreachable cluster itself whether or not the read retry ran, and a
+	// later one meets the open breaker.
+	cfg.Pool.Breaker.Failures = 2
+	c := qdb.New(cfg, nil)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = c.Close(ctx)
+	})
+	s := newServerOn(t, c, qdb.User{}, tokensAt(t, time.Now()))
+	cl := s.dial(t)
+	err := doGet(t, cl, s.ctx, "select 1")
+	if code(err) != codes.Unavailable || retryInfo(err) != nil {
+		t.Fatalf("unreachable: want UNAVAILABLE with no detail, got %v", err)
+	}
+	// The breaker opens on the second failure, which the first statement's
+	// retry may already have been, so the open breaker shows within two
+	// more statements.
+	var ri *errdetails.RetryInfo
+	for range 2 {
+		err = doGet(t, cl, s.ctx, "select 1")
+		if code(err) != codes.Unavailable {
+			t.Fatalf("want UNAVAILABLE, got %v", err)
+		}
+		if ri = retryInfo(err); ri != nil {
+			break
+		}
+	}
+	if ri == nil {
+		t.Fatalf("open breaker: want a RetryInfo detail, got %v", err)
+	}
+	if d := ri.RetryDelay.AsDuration(); d <= 0 || d > cfg.Pool.Breaker.OpenFor {
+		t.Fatalf("retry delay %s, want within (0, %s]", d, cfg.Pool.Breaker.OpenFor)
+	}
 }
