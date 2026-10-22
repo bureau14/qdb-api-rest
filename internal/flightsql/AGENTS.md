@@ -56,6 +56,13 @@ Each rule below names the function whose comments carry its reason.
   as its answered code, `UNAUTHENTICATED`. A mint failure is `INTERNAL`,
   mapped in `login`.
 
+## Statement
+
+- GetFlightInfo for a statement answers one endpoint whose ticket is the
+  query text verbatim, with no schema, no location and unknown totals;
+  it runs nothing and keeps nothing. `GetFlightInfoStatement` says why
+  the text travels unchanged (ADR-0018, Decision 9; owner, 2026-10-21).
+
 ## Tests
 
 - One test file, `flightsql_test.go`, drives arrow-go's Flight SQL

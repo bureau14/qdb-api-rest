@@ -151,17 +151,16 @@ func TestHandshake(t *testing.T) {
 			t.Fatalf("want an access token for %q, got %+v, %v", s.user.Username, c, err)
 		}
 
-		// 2. The bearer passes the edge, and the statement query is not
-		//    there yet, so the base server answers UNIMPLEMENTED.
+		// 2. The bearer passes the edge, and Execute answers an info.
 		_, err = cl.Execute(authCtx, "select 1")
-		if code(err) != codes.Unimplemented {
-			t.Fatalf("with bearer: want UNIMPLEMENTED, got %v", err)
+		if code(err) != codes.OK {
+			t.Fatalf("with bearer: want OK, got %v", err)
 		}
 
 		// 3. No header: anonymous on the insecure cluster, refused on the
 		//    secure one (ADR-0018, Decision 8).
 		_, err = cl.Execute(ctx, "select 1")
-		want := codes.Unimplemented
+		want := codes.OK
 		if f.Cluster.Secured() {
 			want = codes.Unauthenticated
 		}
@@ -208,8 +207,8 @@ func TestBearerRows(t *testing.T) {
 	}
 	// The same valid token passes, which proves the rows fail for their
 	// own reason and not for the keychain's.
-	if _, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1"); code(err) != codes.Unimplemented {
-		t.Fatalf("valid token: want UNIMPLEMENTED, got %v", err)
+	if _, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1"); code(err) != codes.OK {
+		t.Fatalf("valid token: want OK, got %v", err)
 	}
 }
 
