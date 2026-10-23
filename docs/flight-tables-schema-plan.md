@@ -90,14 +90,19 @@ one-table sibling of it; any field metadata beyond the symtable.
 - The binding is pinned at `v3.9.1-0.20261014065943-5b88cb766ef3`
   (`go.mod:9`); the last two bumps were one commit at a PR head and one
   at master after the squash (`ef988ff`, `4d156e0`).
-- The sibling session's planned method, subject to the owner's decision
-  there (cross-session message, 2026-10-23):
-  `TimeseriesEntry.Metadata() (TableMetadata, error)`, one
-  `qdb_ts_get_metadata` call, `TableMetadata{Columns []TsColumnInfo,
-ShardSize time.Duration, TTL time.Duration}`, TTL `0` disabled, an
-  unknown table satisfying `errors.Is(err, ErrAliasNotFound)`,
-  `ColumnsInfo()` unchanged, a `CachedMetadata()` sibling this unit does
-  not call.
+- The binding method is qdb-api-go PR #128, branch
+  `sc-20034/unified-table-metadata-retrieval`, head
+  `5b6b71bee0516de288d19b198dc5373d4332fbef`, open and not merged
+  (sibling session, 2026-10-23): `TimeseriesEntry.Metadata()
+(TableMetadata, error)` makes one `qdb_ts_get_metadata` call;
+  `TableMetadata{Name string, Columns []TsColumnInfo, ShardSize
+time.Duration, TTL time.Duration}` with TTL `0` meaning disabled, and
+  `Column(name) (TsColumnInfo, bool)`; an unknown table satisfies
+  `errors.Is(err, ErrAliasNotFound)`; `ColumnsInfo()` and `Columns()`
+  keep their signatures as views over `Metadata()`; `CachedMetadata()`,
+  `SetTTL` and `HandleOptions.WithTableCacheTTL` exist and this unit
+  calls none of them. `Columns` does not include the implicit
+  `$timestamp`, as `ColumnsInfo` does not, so the builder prepends it.
 
 ## Design
 
@@ -439,18 +444,18 @@ M6/M7 handoff bullet on `Cluster.Tables` becomes:
 
 ## Rationale
 
-| decision                                                                                                             | why                                                                                                                                                        | rejected, and why                                                                                                             | gained                                                  | given up                                                                      | settled by                                                                     |
-| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| shape: `$timestamp` then the columns, from the metadata call                                                         | the metadata call is the canonical way to describe a table; a query answers a result set, which has a schema of its own                                    | the reader's shape with `$table`, a result-set artefact no table has; the columns alone, hiding the index every query returns | one schema per table that matches what `CREATE` took    | the Flight schema differs from a native result stream's                       | owner, 2026-10-23                                                              |
-| listing: `show tables` stays the name source                                                                         | the C API has no table enumeration; the query answers names in one round trip                                                                              | prefix scan plus metadata per entry: every entry type under a limit, N+1 calls                                                | no change to the listing that landed 2026-10-22         | the names come from a query while the schemas come from the metadata call     | owner, 2026-10-23                                                              |
-| lease: one `Call` for the names and every lookup                                                                     | one checkout per request is what the pool and the budget are built around                                                                                  | `Tables` then one `Call` per name: N+1 checkouts per request, each counted by the budget                                      | one session per listing                                 | the listing moves onto `Session.tables`, a small refactor of `Cluster.Tables` | owner, 2026-10-23                                                              |
-| vanished: any failed lookup fails the listing as INTERNAL                                                            | the request was inconsistent, and the case is extreme                                                                                                      | skipping the row: an `errors.Is` per lookup for a case that does not happen in practice                                       | one error path                                          | a drop racing a listing fails that listing once                               | owner, 2026-10-23                                                              |
-| keys: `qdb:symtable` on symbol fields, `qdb:shard_size` and `qdb:ttl` on the schema, integer milliseconds, `0` = off | the symtable is the one attribute the Arrow type loses; shard size and TTL are table metadata Arrow can carry; milliseconds are the create body's unit     | the reserved `ARROW:FLIGHT:SQL:*` keys, nothing asks for them yet; Go duration strings, a second duration spelling            | a driver sees the symtable and the table's retention    | three keys this server owns and must keep                                     | owner, 2026-10-23                                                              |
-| binding: upstream `Metadata()` first, re-vendored at the PR head then at master                                      | the binding is vendored and changed upstream first; the schema bytes are a wire shape and change once                                                      | columns and symtable now, shard and TTL later: the bytes would change when the two keys arrive                                | all three keys from the first commit                    | the first build commit waits on the sibling PR; two vendor commits            | owner, 2026-10-23                                                              |
-| binding shape: `TimeseriesEntry.Metadata() (TableMetadata, error)`, fetching call, `ColumnsInfo` unchanged           | the consumer needs the three fields from one call; the ingest and the reader keep calling `ColumnsInfo`                                                    | a cached variant for the listing, because a listing describes the cluster as it is                                            | no change in `ingest.go` or `read.go`                   | the exact name follows the sibling repository's decision                      | proposal, confirmed by the sibling session 2026-10-23, pending the owner there |
-| two paths: `Tables` without the flag, `TableSchemas` with it                                                         | the schemas cost one metadata call per table, and a plain listing should not pay it                                                                        | one path always calling `TableSchemas`: N metadata calls for a request that asked for names                                   | the plain listing stays one round trip                  | one branch in `DoGetTables`                                                   | proposal                                                                       |
-| the builder and the keys live in `internal/qdb`; `flightsql` only serializes                                         | the shape is the table's and M7's HTTP endpoint answers the same table; the Flight layer owns the bytes, not the shape                                     | a builder in `flightsql`: the HTTP endpoint would copy it                                                                     | one shape for both planes                               | `internal/qdb` exports three key constants                                    | proposal                                                                       |
-| tests: a fixed table in `package qdb`, a generated one over Flight, expected schema by construction in the fixture   | `package qdb` cannot import the fixture; the Flight test draws symbol columns and their symtables; the fixture states the expected shape, as its rules ask | a unit test of `schemaOfMetadata` alone: a low-value test of a pure builder the two live tests cover                          | the keys are checked on a live cluster on both clusters | one more fixture function, `SchemaWithMeta`                                   | proposal                                                                       |
+| decision                                                                                                             | why                                                                                                                                                        | rejected, and why                                                                                                             | gained                                                  | given up                                                                      | settled by                                               |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| shape: `$timestamp` then the columns, from the metadata call                                                         | the metadata call is the canonical way to describe a table; a query answers a result set, which has a schema of its own                                    | the reader's shape with `$table`, a result-set artefact no table has; the columns alone, hiding the index every query returns | one schema per table that matches what `CREATE` took    | the Flight schema differs from a native result stream's                       | owner, 2026-10-23                                        |
+| listing: `show tables` stays the name source                                                                         | the C API has no table enumeration; the query answers names in one round trip                                                                              | prefix scan plus metadata per entry: every entry type under a limit, N+1 calls                                                | no change to the listing that landed 2026-10-22         | the names come from a query while the schemas come from the metadata call     | owner, 2026-10-23                                        |
+| lease: one `Call` for the names and every lookup                                                                     | one checkout per request is what the pool and the budget are built around                                                                                  | `Tables` then one `Call` per name: N+1 checkouts per request, each counted by the budget                                      | one session per listing                                 | the listing moves onto `Session.tables`, a small refactor of `Cluster.Tables` | owner, 2026-10-23                                        |
+| vanished: any failed lookup fails the listing as INTERNAL                                                            | the request was inconsistent, and the case is extreme                                                                                                      | skipping the row: an `errors.Is` per lookup for a case that does not happen in practice                                       | one error path                                          | a drop racing a listing fails that listing once                               | owner, 2026-10-23                                        |
+| keys: `qdb:symtable` on symbol fields, `qdb:shard_size` and `qdb:ttl` on the schema, integer milliseconds, `0` = off | the symtable is the one attribute the Arrow type loses; shard size and TTL are table metadata Arrow can carry; milliseconds are the create body's unit     | the reserved `ARROW:FLIGHT:SQL:*` keys, nothing asks for them yet; Go duration strings, a second duration spelling            | a driver sees the symtable and the table's retention    | three keys this server owns and must keep                                     | owner, 2026-10-23                                        |
+| binding: upstream `Metadata()` first, re-vendored at the PR head then at master                                      | the binding is vendored and changed upstream first; the schema bytes are a wire shape and change once                                                      | columns and symtable now, shard and TTL later: the bytes would change when the two keys arrive                                | all three keys from the first commit                    | the first build commit waits on the sibling PR; two vendor commits            | owner, 2026-10-23                                        |
+| binding shape: `TimeseriesEntry.Metadata() (TableMetadata, error)`, fetching call, `ColumnsInfo` unchanged           | the consumer needs the three fields from one call; the ingest and the reader keep calling `ColumnsInfo`                                                    | a cached variant for the listing, because a listing describes the cluster as it is                                            | no change in `ingest.go` or `read.go`                   | the exact name follows the sibling repository's decision                      | PR #128 as landed at its head, 2026-10-23; merge pending |
+| two paths: `Tables` without the flag, `TableSchemas` with it                                                         | the schemas cost one metadata call per table, and a plain listing should not pay it                                                                        | one path always calling `TableSchemas`: N metadata calls for a request that asked for names                                   | the plain listing stays one round trip                  | one branch in `DoGetTables`                                                   | proposal                                                 |
+| the builder and the keys live in `internal/qdb`; `flightsql` only serializes                                         | the shape is the table's and M7's HTTP endpoint answers the same table; the Flight layer owns the bytes, not the shape                                     | a builder in `flightsql`: the HTTP endpoint would copy it                                                                     | one shape for both planes                               | `internal/qdb` exports three key constants                                    | proposal                                                 |
+| tests: a fixed table in `package qdb`, a generated one over Flight, expected schema by construction in the fixture   | `package qdb` cannot import the fixture; the Flight test draws symbol columns and their symtables; the fixture states the expected shape, as its rules ask | a unit test of `schemaOfMetadata` alone: a low-value test of a pure builder the two live tests cover                          | the keys are checked on a live cluster on both clusters | one more fixture function, `SchemaWithMeta`                                   | proposal                                                 |
 
 ## Knowledge
 
@@ -497,11 +502,11 @@ message. Specific to this unit:
 - Commit 2 waits on the sibling pull request. The executor pins the PR
   head's pseudo-version with `go get github.com/bureau14/qdb-api-go/v3@<sha>`,
   `go mod tidy`, `go mod vendor`, and reads the method as it landed. If
-  its name or fields differ from the Verified facts, the Design's
-  `Session.tableSchema` follows the landed shape and the Rationale's
-  binding-shape row is updated in the same commit, with no question
-  needed; if the method is missing a field (the TTL, the shard size),
-  the executor stops and asks the owner.
+  the head moved and its name or fields differ from the Verified facts,
+  the Design's `Session.tableSchema` follows the landed shape and the
+  Rationale's binding-shape row is updated in the same commit, with no
+  question needed; if the method is missing a field (the TTL, the shard
+  size), the executor stops and asks the owner.
 - Commit 5 is the first run of the metadata call over the `$qdb.` tables.
   If it fails on one of them, the vanished row's rule makes every
   include_schema listing fail; the executor stops and asks the owner
@@ -513,7 +518,7 @@ message. Specific to this unit:
 ## Commits
 
 1. `docs(plan): flight-tables-schema-plan.md, GetTables include_schema from the native metadata through one leased session`
-2. `build(vendor): qdb-api-go at the head of PR #<n>, TimeseriesEntry.Metadata answers columns, shard size and ttl`
+2. `build(vendor): qdb-api-go at the head of PR #128, TimeseriesEntry.Metadata answers columns, shard size and ttl`
 3. `refactor(qdb): Session.tables lists the names on the held session, and Cluster.Tables runs it under the read retry`
 4. `feat(qdb): Cluster.TableSchemas answers every table's schema through one leased session, $timestamp then the columns with the symtable, shard size and ttl keys`
 5. `test(qdb): a created table answers its schema and keys in TableSchemas on both clusters`
@@ -522,7 +527,7 @@ message. Specific to this unit:
 8. `test(flightsql): TestCatalog reads include_schema back, a generated table's schema deserializing to the fixture's with its keys`
 9. `docs(flightsql): the Catalog and Tests bullets, the table list line and the log carry the schema listing`
 10. `/doc-discipline all internal/qdb internal/flightsql internal/qdbtest/table docs/flight-tables-schema-plan.md`, its fixes as further small commits
-11. `build(vendor): qdb-api-go at master, the squash commit of PR #<n>`
+11. `build(vendor): qdb-api-go at master, the squash commit of PR #128`
 12. `/doc-discipline check docs/flight-tables-schema-plan.md`, its findings fixed before the next commit
 13. `docs(log): flight-tables-schema-plan.md deleted, facts moved to ADR-0018, internal/AGENTS.md, internal/flightsql/AGENTS.md and the comments of internal/qdb and internal/flightsql`
 14. Verify: push `sc-19567/rr-flight-tables-schema`, build its head in Buildkite, wait for the result. Green: report the build number. Red: fix with further small commits on this branch, push, build again.
@@ -533,7 +538,7 @@ message. Specific to this unit:
    timeseries entry, so the call should answer. Recommendation: keep the
    rule that any failed lookup fails the listing, and if commit 5 shows
    a `$qdb.` table refusing the call, ask before excluding them.
-2. The binding method's final name and fields: the sibling session
-   proposes `Metadata()` and `TableMetadata{Columns, ShardSize, TTL}`.
-   Recommendation: the plan follows what the PR lands, as the How the
+2. PR #128 is open and not merged; its head may move before commit 2
+   pins it. Recommendation: commit 2 pins the head at the time of the
+   build and commit 11 pins master's squash commit, as the How the
    knowledge lands section says.
