@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,6 +144,135 @@ func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 		return nil, err
 	}
 	return names, nil
+}
+
+// The metadata keys of the schema TableSchemas answers. They are this
+// server's own, outside the ARROW:FLIGHT:SQL: prefix Flight SQL reserves
+// for its keys. MetaSymtable is a field key on a symbol column whose value
+// is the symtable name. MetaShardSize and MetaTTL are schema keys whose
+// values are an integer count of milliseconds, and a TTL of 0 means
+// disabled.
+const (
+	MetaSymtable  = "qdb:symtable"
+	MetaShardSize = "qdb:shard_size"
+	MetaTTL       = "qdb:ttl"
+)
+
+// TableSchema is one table of a listing: its name and the schema
+// TableSchemas builds for it.
+type TableSchema struct {
+	Name   string
+	Schema *arrow.Schema
+}
+
+// millis is d as the metadata keys carry it: an integer count of
+// milliseconds.
+func millis(d time.Duration) string {
+	return strconv.FormatInt(d.Milliseconds(), 10)
+}
+
+// schemaOfMetadata is the schema TableSchemas answers for a table whose
+// metadata is md: $timestamp, non-nullable, then the columns in order,
+// nullable, in the binding's Arrow types, a symbol column's field carrying
+// MetaSymtable, and the schema carrying MetaShardSize and MetaTTL in
+// milliseconds.
+func schemaOfMetadata(md qdbapi.TableMetadata) *arrow.Schema {
+	// The shape is the table as it was created and not the reader's or a
+	// query's result set, because the metadata call is the canonical
+	// description of a table and a result set has a schema of its own.
+	// The reader's shape with $table in front was rejected, because
+	// $table is a result-set artefact no table has, and the columns alone
+	// were rejected, because $timestamp is a column of every table that
+	// every query returns.
+	//
+	//  1. $timestamp first;
+	//  2. each column, nullable, in the binding's Arrow type, a symbol
+	//     column's field carrying its symtable;
+	//  3. the shard size and the TTL on the schema.
+
+	// 1. the reader's special field, non-nullable, because the metadata
+	//    does not list the implicit index and every row has one
+	fields := make([]arrow.Field, 0, len(md.Columns)+1)
+	fields = append(fields, specialFields["$timestamp"])
+	// 2. dataFields builds the column fields, because the server declares
+	//    no type map of its own. The symtable joins a symbol field as
+	//    metadata, because it is the one column attribute the Arrow type
+	//    loses: a symbol reads as a string.
+	cols, _ := dataFields(md.Columns)
+	for i, f := range cols {
+		if c := md.Columns[i]; c.Type() == qdbapi.TsColumnSymbol {
+			f.Metadata = arrow.NewMetadata([]string{MetaSymtable}, []string{c.Symtable()})
+		}
+		fields = append(fields, f)
+	}
+	// 3. integer milliseconds, the C API's unit and the unit the create
+	//    body takes, with 0 meaning disabled as qdb_ttl_disabled does. Go
+	//    duration strings were rejected as a second spelling of a duration
+	//    next to the create body's milliseconds. The reserved
+	//    ARROW:FLIGHT:SQL keys, TYPE_NAME and the rest, were rejected
+	//    because nothing asks for them yet and they can be added later.
+	meta := arrow.NewMetadata([]string{MetaShardSize, MetaTTL}, []string{millis(md.ShardSize), millis(md.TTL)})
+	return arrow.NewSchema(fields, &meta)
+}
+
+// tableSchema answers the schema of the table called name through one
+// metadata call on the held session. The binding's error for an unknown
+// table passes through unchanged, so IsTableNotFound classifies it.
+func (s *Session) tableSchema(name string) (*arrow.Schema, error) {
+	// Metadata is the fetching call and not CachedMetadata, because a
+	// listing describes the cluster as it is at the call.
+	md, err := s.session.Table(name).Metadata()
+	if err != nil {
+		return nil, err
+	}
+	return schemaOfMetadata(md), nil
+}
+
+// TableSchemas lists the cluster's tables as user u with the schema of
+// each, in the order the cluster reports them, qdbd's own $qdb. tables
+// included, through one leased session. Any failed lookup fails the
+// listing. The listing is retried once on a retryable failure, as a read
+// is.
+func (c *Cluster) TableSchemas(ctx context.Context, u User) ([]TableSchema, error) {
+	// One Call holds the session across the listing and every lookup,
+	// because one checkout per request is what the pool and the budget
+	// are built around, and Query hands the session back before the names
+	// are read. Tables, then one Call per name, was rejected: N+1
+	// checkouts per request, each counted by the budget.
+	//
+	//  1. the names on the held session;
+	//  2. one metadata call per name on the same session, in the names'
+	//     order;
+	//  3. any failure fails the listing.
+	var out []TableSchema
+	// A listing is a read, and a retry re-runs the whole closure on a
+	// fresh session after a bad one.
+	err := c.Call(ctx, u, func(s *Session) error {
+		// 1. the listing Tables answers
+		names, err := s.tables()
+		if err != nil {
+			return err
+		}
+		out = make([]TableSchema, 0, len(names))
+		for _, name := range names {
+			// 2. one round trip per name
+			schema, err := s.tableSchema(name)
+			// 3. a not-found included, because a table that vanishes between
+			//    the two calls makes the request inconsistent, and the case
+			//    is extreme. Skipping the vanished row was rejected: an
+			//    errors.Is per lookup for a case that does not happen in
+			//    practice.
+			if err != nil {
+				return err
+			}
+			out = append(out, TableSchema{Name: name, Schema: schema})
+		}
+		return nil
+	}, WithReadRetry())
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // IsTableExists reports whether err means the cluster refused a create
