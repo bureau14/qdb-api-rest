@@ -1,6 +1,6 @@
 # Plan: GetTables with include_schema from the native metadata through one leased session
 
-Status: draft
+Status: approved
 
 ## Outcome
 
