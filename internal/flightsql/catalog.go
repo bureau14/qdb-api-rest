@@ -135,24 +135,20 @@ func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas)
 	return oneChunk(ctx, rec)
 }
 
-// errIncludeSchema is the refusal of a GetTables request that asks for each
+// errIncludeSchema is the refusal of a GetTables ticket that asks for each
 // table's schema.
 var errIncludeSchema = status.Error(codes.Unimplemented, "GetTables with include_schema is not implemented")
 
-// GetFlightInfoTables answers the info of the table listing, and
-// UNIMPLEMENTED when cmd asks for each table's schema.
+// GetFlightInfoTables answers the info of the table listing: four columns,
+// or five with each table's schema when cmd asks for it.
 func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
-	// include_schema is refused here as well as at DoGet, so the driver
-	// learns it before a ticket exists. The code is UNIMPLEMENTED, because
-	// the router's GetSchema promises the five-column shape for the flag
-	// and this server does not fill the fifth column, each table's reader
-	// schema as IPC bytes. Ignoring the flag and answering four columns was
-	// rejected: the driver would read a result that differs from the schema
-	// GetSchema promised.
+	// The schema is the one the router's GetSchema promises for the flag,
+	// so the info and the schema call agree.
+	schema := schema_ref.Tables
 	if cmd.GetIncludeSchema() {
-		return nil, errIncludeSchema
+		schema = schema_ref.TablesWithIncludedSchema
 	}
-	return infoFor(desc, schema_ref.Tables), nil
+	return infoFor(desc, schema), nil
 }
 
 // DoGetTables answers one row per table name the cluster reports as the
