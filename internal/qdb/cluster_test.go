@@ -423,3 +423,88 @@ func TestTables(t *testing.T) {
 		}
 	})
 }
+
+// TestTableSchemas: a table created as the user with one column of every
+// type appears in TableSchemas on both clusters with $timestamp then its
+// columns in the binding's Arrow types, the symtable on its symbol
+// column, and the shard size and TTL it was created with, and every
+// listed schema starts with $timestamp.
+func TestTableSchemas(t *testing.T) {
+	// Create, list, find and compare:
+	//
+	//  1. one table with every type word, a symtable on the symbol column,
+	//     a one-hour shard, removed on cleanup;
+	//  2. TableSchemas, then the entry with the table's name;
+	//  3. the fields against a schema built here from the columns;
+	//  4. the shard size and the TTL;
+	//  5. every entry's first field.
+	eachCluster(t, func(t *testing.T, spec qdbtest.Cluster) {
+		c := New(spec.Config(t), nil)
+		defer closeCluster(t, c)
+		u := userOf(spec)
+		ctx := context.Background()
+
+		// 1. named qdbtest_ for the sweep, as TestTables names its table
+		name := fmt.Sprintf("qdbtest_schemas_%d", time.Now().UnixNano())
+		symtable := name + "_sym"
+		cols := []Column{
+			{Name: "b", Type: "blob"},
+			{Name: "d", Type: "double"},
+			{Name: "i", Type: "int64"},
+			{Name: "s", Type: "string"},
+			{Name: "y", Type: "symbol", Symtable: symtable},
+			{Name: "t", Type: "timestamp"},
+		}
+		if err := c.CreateTable(ctx, u, name, time.Hour, cols); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { _ = c.RemoveTable(context.Background(), u, name) })
+
+		// 2. the listing, and the table's entry in it
+		got, err := c.TableSchemas(ctx, u)
+		if err != nil {
+			t.Fatalf("table schemas: %v", err)
+		}
+		var schema *arrow.Schema
+		for _, ts := range got {
+			if ts.Name == name {
+				schema = ts.Schema
+			}
+		}
+		if schema == nil {
+			t.Fatalf("want %s among %d schemas", name, len(got))
+		}
+
+		// 3. Schema.Equal compares the fields with their metadata, so the
+		//    symtable key is checked here, and ignores the schema's own
+		//    metadata, which step 4 reads
+		fields := []arrow.Field{{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()}}
+		for _, col := range cols {
+			f := arrow.Field{Name: col.Name, Type: columnTypes[col.Type].ArrowType(), Nullable: true}
+			if col.Type == "symbol" {
+				f.Metadata = arrow.NewMetadata([]string{MetaSymtable}, []string{symtable})
+			}
+			fields = append(fields, f)
+		}
+		if want := arrow.NewSchema(fields, nil); !schema.Equal(want) {
+			t.Fatalf("schema:\n got %v\nwant %v", schema, want)
+		}
+
+		// 4. the hour in milliseconds, and no TTL
+		md := schema.Metadata()
+		if v, ok := md.GetValue(MetaShardSize); !ok || v != "3600000" {
+			t.Fatalf("%s: got %q, %v", MetaShardSize, v, ok)
+		}
+		if v, ok := md.GetValue(MetaTTL); !ok || v != "0" {
+			t.Fatalf("%s: got %q, %v", MetaTTL, v, ok)
+		}
+
+		// 5. the $qdb. tables are described too, so every entry is a table
+		//    the builder shaped
+		for _, ts := range got {
+			if ts.Schema.NumFields() == 0 || ts.Schema.Field(0).Name != "$timestamp" {
+				t.Fatalf("%s: want $timestamp first, got %v", ts.Name, ts.Schema)
+			}
+		}
+	})
+}
