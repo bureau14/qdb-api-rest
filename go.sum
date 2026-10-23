@@ -4,8 +4,8 @@ github.com/apache/arrow-go/v18 v18.8.0 h1:BLOzbPv7bxMPgXPacAg6HQjnxupYsZzC4tf+Fk
 github.com/apache/arrow-go/v18 v18.8.0/go.mod h1:uJCFfCwq0KsxCmsCfQg4ft+LsW+iHYzAXiSDh5ug/8U=
 github.com/apache/thrift v0.24.0 h1:zy31L1a49QTNB2bG1BBfMXol3yJrTH975G3pPubQVLQ=
 github.com/apache/thrift v0.24.0/go.mod h1:zPt6WxgvTOM6hF92y8C+MkEM5LMxZuk4JcQOiU4Esvs=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261014065943-5b88cb766ef3 h1:q/At7FHs0EuKSjd/hUO4y7fV6BO0STjTGLMeIzy2GOg=
-github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261014065943-5b88cb766ef3/go.mod h1:Uk+cs+NsaMQO6maXGuwVf+SVxYcGijTchFZK87s7PwI=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023053300-5b6b71bee051 h1:DFfzQHGlmHaxw6jYV0phc4lQCxQ6V+kVy69E0gEo0Do=
+github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023053300-5b6b71bee051/go.mod h1:Uk+cs+NsaMQO6maXGuwVf+SVxYcGijTchFZK87s7PwI=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/duckdb/duckdb-go-bindings v0.10504.0 h1:XKOXNRetaJnMvMIDqi6etZOmh/nlEHM7saaC5UxU17I=

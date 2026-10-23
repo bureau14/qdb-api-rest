@@ -28,7 +28,7 @@ github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
 github.com/apache/arrow-go/v18/internal/utils/maphash
-# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261014065943-5b88cb766ef3
+# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023053300-5b6b71bee051
 ## explicit; go 1.26.0
 github.com/bureau14/qdb-api-go/v3
 # github.com/duckdb/duckdb-go-bindings v0.10504.0
