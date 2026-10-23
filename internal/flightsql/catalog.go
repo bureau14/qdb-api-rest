@@ -13,7 +13,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql/schema_ref"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
@@ -135,10 +134,6 @@ func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas)
 	return oneChunk(ctx, rec)
 }
 
-// errIncludeSchema is the refusal of a GetTables ticket that asks for each
-// table's schema.
-var errIncludeSchema = status.Error(codes.Unimplemented, "GetTables with include_schema is not implemented")
-
 // GetFlightInfoTables answers the info of the table listing: four columns,
 // or five with each table's schema when cmd asks for it.
 func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
@@ -154,28 +149,31 @@ func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables,
 // DoGetTables answers one row per table name the cluster reports as the
 // caller's user, under catalog qdb, schema main and type TABLE, filtered by
 // cmd's table name pattern, and empty when cmd's catalog, schema pattern or
-// table types exclude the cluster. A cmd with include_schema is
-// UNIMPLEMENTED.
+// table types exclude the cluster. With include_schema each row carries
+// the table's schema as IPC bytes in table_schema.
 func (s *Server) DoGetTables(ctx context.Context, cmd flightsql.GetTables) (*arrow.Schema, <-chan flight.StreamChunk, error) {
 	// The listing is the cluster's, filtered here, because `show tables`
 	// has no filtered form, so the whole list crosses the wire per call and
 	// the pattern is applied in Go:
 	//
-	//  1. refuse include_schema;
-	//  2. answer the empty result when the request excludes the cluster;
-	//  3. the user from the claims;
-	//  4. Cluster.Tables, mapped through statusOf;
-	//  5. one row per name the pattern admits.
+	//  1. answer the empty result when the request excludes the cluster;
+	//  2. the user from the claims;
+	//  3. the names, or the names with their schemas, mapped through
+	//     statusOf;
+	//  4. one row per name the pattern admits, the schema serialized when
+	//     asked.
 
-	// 1. refused again, because a ticket is bytes a client can mint without
-	//    GetFlightInfo, and GetFlightInfoTables says why it is refused
-	if cmd.GetIncludeSchema() {
-		return nil, nil, errIncludeSchema
-	}
-	// 2. a catalog other than qdb, a schema pattern main does not match, or
+	// 1. a catalog other than qdb, a schema pattern main does not match, or
 	//    table types without TABLE answer the empty result before the
-	//    cluster is called, because the answer needs no listing
-	b := array.NewRecordBuilder(memory.DefaultAllocator, schema_ref.Tables)
+	//    cluster is called, because the answer needs no listing. The
+	//    result's shape is the one GetFlightInfoTables promised for the
+	//    flag.
+	withSchema := cmd.GetIncludeSchema()
+	ref := schema_ref.Tables
+	if withSchema {
+		ref = schema_ref.TablesWithIncludedSchema
+	}
+	b := array.NewRecordBuilder(memory.DefaultAllocator, ref)
 	defer b.Release()
 	types := cmd.GetTableTypes()
 	if !holdsCluster(cmd.GetCatalog(), cmd.GetDBSchemaFilterPattern()) || (len(types) > 0 && !slices.Contains(types, tableType)) {
@@ -183,28 +181,49 @@ func (s *Server) DoGetTables(ctx context.Context, cmd flightsql.GetTables) (*arr
 		defer rec.Release()
 		return oneChunk(ctx, rec)
 	}
-	// 3. the auth edge placed the claims, zero claims for the anonymous
+	// 2. the auth edge placed the claims, zero claims for the anonymous
 	//    user, as DoGet derives it
 	c := auth.ClaimsFrom(ctx)
 	u := qdb.User{Username: c.Username, SecretKey: c.SecretKey}
-	// 4. INTERNAL is the answered code, because nothing in the request
-	//    reaches the engine as text, so a message from the engine is the
-	//    server's failure and not the caller's. INVALID_ARGUMENT, as the
-	//    statement uses, was rejected: it blames the caller for a request
-	//    that has no text
-	names, err := qdb.ClusterFrom(ctx).Tables(ctx, u)
-	if err != nil {
-		return nil, nil, statusOf(ctx, err, codes.Internal)
+	// 3. without the flag Cluster.Tables, with it Cluster.TableSchemas,
+	//    because the schemas cost one metadata call per table and a plain
+	//    listing should not pay it. INTERNAL is the answered code, because
+	//    nothing in the request reaches the engine as text, so a message
+	//    from the engine is the server's failure and not the caller's.
+	//    INVALID_ARGUMENT, as the statement uses, was rejected: it blames
+	//    the caller for a request that has no text.
+	var tables []qdb.TableSchema
+	if withSchema {
+		var err error
+		if tables, err = qdb.ClusterFrom(ctx).TableSchemas(ctx, u); err != nil {
+			return nil, nil, statusOf(ctx, err, codes.Internal)
+		}
+	} else {
+		names, err := qdb.ClusterFrom(ctx).Tables(ctx, u)
+		if err != nil {
+			return nil, nil, statusOf(ctx, err, codes.Internal)
+		}
+		for _, name := range names {
+			tables = append(tables, qdb.TableSchema{Name: name})
+		}
 	}
-	// 5. in the cluster's order, under the fixed catalog, schema and type
-	for _, name := range names {
-		if !likePattern(cmd.GetTableNameFilterPattern(), name) {
+	// 4. in the cluster's order, under the fixed catalog, schema and type.
+	//    The schema goes out as flight.SerializeSchema writes it, a
+	//    schema-only IPC stream, because that is the form every Flight
+	//    implementation reads back. Ignoring the flag and answering four
+	//    columns was rejected: the driver would read a result that differs
+	//    from the schema GetSchema promised.
+	for _, t := range tables {
+		if !likePattern(cmd.GetTableNameFilterPattern(), t.Name) {
 			continue
 		}
 		b.Field(0).(*array.StringBuilder).Append(catalogName)
 		b.Field(1).(*array.StringBuilder).Append(schemaName)
-		b.Field(2).(*array.StringBuilder).Append(name)
+		b.Field(2).(*array.StringBuilder).Append(t.Name)
 		b.Field(3).(*array.StringBuilder).Append(tableType)
+		if withSchema {
+			b.Field(4).(*array.BinaryBuilder).Append(flight.SerializeSchema(t.Schema, memory.DefaultAllocator))
+		}
 	}
 	rec := b.NewRecordBatch()
 	defer rec.Release()
