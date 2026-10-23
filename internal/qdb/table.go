@@ -86,10 +86,9 @@ func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.RemoveTable(name) })
 }
 
-// Tables lists the names of the cluster's tables as user u, in the order
-// the cluster reports them, qdbd's own $qdb. tables included. The listing
-// is retried once on a retryable failure, as a read is.
-func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
+// tables lists the names of the cluster's tables on the held session, in
+// the order the cluster reports them, qdbd's own $qdb. tables included.
+func (s *Session) tables() ([]string, error) {
 	// The list is the native query `show tables`, because the C API has no
 	// enumeration call and that query is the server's own notion of a
 	// table, answered in one round trip. A prefix scan over the empty
@@ -98,31 +97,47 @@ func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 	// lists them, because hiding them needs a prefix rule this project
 	// would own, and a client that queries $qdb.firehose finds it here.
 	//
-	//  1. run the query under the read retry;
-	//  2. inside the sink, copy each value of the one string column out.
+	//  1. fetch the result on the held session;
+	//  2. check the result's shape;
+	//  3. copy each name out before the batch goes.
+
+	// 1. one fetch, whose batch this function owns and releases. fetch
+	//    answers a nil batch for a statement without a result set, which
+	//    is read as no table rather than dereferenced.
+	rec, err := s.fetch("show tables")
+	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
+		return nil, nil
+	}
+	defer rec.Release()
+	// 2. the result is one string column named $table (qdbd 3.15.0.dev0),
+	//    read by position, and a result of another shape is an error
+	//    naming it, because a server change would otherwise read as an
+	//    empty cluster
+	if rec.NumCols() != 1 || rec.Column(0).DataType().ID() != arrow.STRING {
+		return nil, fmt.Errorf("qdb: show tables answered %s, want one string column", rec.Schema())
+	}
+	// 3. each value is cloned, because a Go string of an Arrow array
+	//    aliases the batch's buffer and the batch is released on return
+	col := rec.Column(0).(*array.String)
+	names := make([]string, col.Len())
+	for i := range names {
+		names[i] = strings.Clone(col.Value(i))
+	}
+	return names, nil
+}
+
+// Tables lists the names of the cluster's tables as user u, in the order
+// the cluster reports them, qdbd's own $qdb. tables included. The listing
+// is retried once on a retryable failure, as a read is.
+func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 	var names []string
-	// 1. the read retry, because a listing is a read
-	err := c.Query(ctx, u, "show tables", func(batches Batches) error {
-		for rec, err := range batches {
-			if err != nil {
-				return err
-			}
-			// 2. the result is one string column named $table (qdbd
-			//    3.15.0.dev0). It is read by position, and a result of
-			//    another shape is an error naming it, because a server change
-			//    would otherwise read as an empty cluster. Each value is
-			//    cloned, because a Go string of an Arrow array aliases the
-			//    batch's buffer and Query releases the batch when the sink
-			//    returns.
-			if rec.NumCols() != 1 || rec.Column(0).DataType().ID() != arrow.STRING {
-				return fmt.Errorf("qdb: show tables answered %s, want one string column", rec.Schema())
-			}
-			col := rec.Column(0).(*array.String)
-			for i := range col.Len() {
-				names = append(names, strings.Clone(col.Value(i)))
-			}
-		}
-		return nil
+	err := c.Call(ctx, u, func(s *Session) error {
+		var err error
+		names, err = s.tables()
+		return err
 	}, WithReadRetry())
 	if err != nil {
 		return nil, err
