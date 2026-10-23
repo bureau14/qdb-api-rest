@@ -81,6 +81,13 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-23 -- flight-tables-schema-plan.md deleted; GetTables with include_schema landed
+
+- Owner decisions moved to ADR-0018 (Decision 11), `internal/AGENTS.md`
+  (Code, Tests), `internal/flightsql/AGENTS.md` (Catalog, Tests) and
+  the comments of `internal/qdb/table.go` and
+  `internal/flightsql/catalog.go`.
+
 ## 2026-10-22 -- flight-catalog-plan.md deleted; GetSqlInfo and the catalog commands landed
 
 - Owner decisions moved to `internal/flightsql/AGENTS.md` (Catalog),
