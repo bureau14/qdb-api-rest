@@ -114,12 +114,18 @@ decisions are in `docs/adr/`.
   route calls it, and the Flight server's `DoGet` does. It calls
   `Cluster.Query` with `WithReadRetry` or `Cluster.Duck`, which take the
   same sink.
-- The table list is `Cluster.Tables`, the native `show tables` query
-  under the read retry, answering names in the cluster's order with
-  qdbd's own `$qdb.` tables included. The C API has no enumeration
-  call, and `Tables` says why the query is the core and what was
-  rejected. The Flight catalog reads it, and `GET /api/v2/tables`
-  wraps it (ADR-0018, Decision 11).
+- The table list is `Cluster.Tables`, the native `show tables` query on
+  a held session under the read retry, answering names in the cluster's
+  order with qdbd's own `$qdb.` tables included. The C API has no
+  enumeration call, and `Session.tables` says why the query is the core
+  and what was rejected. `Cluster.TableSchemas` is the list with each
+  table's schema from the C API's table metadata call: `$timestamp`
+  then the columns, the symtable on a symbol field and the shard size
+  and TTL on the schema, under the `Meta*` keys of `table.go`, through
+  one leased session, any failed lookup failing the listing;
+  `TableSchemas` and `schemaOfMetadata` say why. The Flight catalog
+  reads both, and `GET /api/v2/tables` and `GET /api/v2/tables/{name}`
+  wrap them (ADR-0018, Decision 11).
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
   or the classification of a failed DuckDB attach dialed. The
@@ -244,7 +250,10 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   or pushes through its own door (an HTTP route) takes the blocks
   `Create` stacks on, which are `GenerateSchema`, `GenerateLike`
   (another table of the same columns) and `RemoveOnCleanup`. It does
-  not copy them. A body of rows is the format's encoder run over
+  not copy them. `Schema` is the schema of a table's batch, and
+  `SchemaWithMeta` the schema the Flight catalog answers for it under
+  include_schema, keys included, so a test compares against the
+  fixture and not against the server's builder. A body of rows is the format's encoder run over
   `table.Body` (several tables as one batch, `$table` per row) or
   `table.WithTable` (one table). The fixture cannot import
   `internal/encoding`, because the encoding tests are white-box and

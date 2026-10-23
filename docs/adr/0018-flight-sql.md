@@ -82,10 +82,14 @@ client. The owner made the decisions below on 2026-10-13.
     the native engine named in the server name. The field list is the
     handler's.
 11. **Catalog commands are in this milestone.** `GetTables` answers the
-    cluster's table list, and `GetCatalogs`, `GetDbSchemas` and
-    `GetTableTypes` answer the fixed shape of one cluster. The table
-    list core in `internal/qdb` is written here and the exploration
-    milestone reuses it.
+    cluster's table list, and with `include_schema` each table's schema
+    from the C API's table metadata call: `$timestamp` then the columns
+    in the binding's Arrow types, `qdb:symtable` on a symbol column's
+    field, and `qdb:shard_size` and `qdb:ttl` on the schema as integer
+    milliseconds, `0` meaning no TTL (owner, 2026-10-23). `GetCatalogs`,
+    `GetDbSchemas` and `GetTableTypes` answer the fixed shape of one
+    cluster. The table list core in `internal/qdb` is written here and
+    the exploration milestone reuses it.
 12. **Everything else is `UNIMPLEMENTED`.** Prepared statements,
     transactions, savepoints, `DoPut` in every form, substrait, session
     options and the poll and renew RPCs.

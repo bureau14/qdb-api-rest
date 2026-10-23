@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -27,15 +27,12 @@ In flight:
   `internal/flightsql`) with Handshake, bearer and anonymous auth, the
   statement query on it (`GetFlightInfoStatement` and `DoGet` through
   `query.Run`, with `statusOf`'s codes), `GetSqlInfo` and the catalog
-  commands over `Cluster.Tables` (names only) are landed. The rest of
-  the milestone is the Next list.
+  commands over `Cluster.Tables` and `Cluster.TableSchemas` (`GetTables`
+  with `include_schema`) are landed. The rest of the milestone is the
+  Next list.
 
 Next:
 
-- `GetTables` with `include_schema`: the fifth column holding each
-  table's reader schema as IPC bytes, through one leased session. Until
-  it lands the flag answers `UNIMPLEMENTED` on `GetFlightInfo` and on
-  `DoGet` (`internal/flightsql/AGENTS.md`, Catalog).
 - The format-equivalence property with a Flight SQL client, and the ADBC
   and JDBC smoke tests (ADR-0018, Decision 14, `docs/e2e.md`).
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
@@ -59,8 +56,9 @@ Handoff to M6 and M7:
 - The stress definition has no Flight case (owner, 2026-10-13). The
   graceful drain covers Flight streams as `docs/brief.md`, Resilience,
   says.
-- `Cluster.Tables` (`internal/AGENTS.md`, Code) is the table list core
-  `GET /api/v2/tables` wraps.
+- `Cluster.Tables` and `Cluster.TableSchemas` (`internal/AGENTS.md`,
+  Code) are the cores `GET /api/v2/tables` and
+  `GET /api/v2/tables/{name}` wrap.
 - Query capture and monitoring on both planes, every executed query and
   its duration, possibly sampled, is M6's (owner, 2026-10-20). Nothing
   logs query text today; the HTTP and Flight access lines carry no

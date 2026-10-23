@@ -95,10 +95,12 @@ Each rule below names the function whose comments carry its reason.
   the schema name checked against qdb-duck's `information_schema`.
 - GetTables answers `Cluster.Tables` under the request's table name
   pattern, applied in Go because the server has no filtered form.
-  qdbd's own `$qdb.` tables are listed (owner, 2026-10-22). A request
-  with include_schema is UNIMPLEMENTED on GetFlightInfo and on DoGet;
-  `GetFlightInfoTables` says why the flag is refused and not ignored
-  (owner, 2026-10-22).
+  qdbd's own `$qdb.` tables are listed (owner, 2026-10-22). With
+  include_schema it answers `Cluster.TableSchemas`, each table's schema
+  serialized into table_schema as arrow-go's `SerializeSchema` writes
+  it, under the five-column shape `GetFlightInfoTables` promises;
+  `DoGetTables` says why the plain listing does not pay for the schemas
+  and why ignoring the flag was rejected (owner, 2026-10-23).
 - A failed listing goes through `statusOf` with INTERNAL as its
   answered code, because nothing in the request reaches the engine as
   text. `DoGetTables` says so at the call.
@@ -121,4 +123,6 @@ Each rule below names the function whose comments carry its reason.
   the open breaker included, for a statement and for `GetTables`; its
   rows reach no secured check, so it runs on the insecure cluster.
   `TestCatalog` reads GetSqlInfo and every catalog command back on both
-  clusters, over one table created through the fixture.
+  clusters, over one table created through the fixture, and under
+  include_schema deserializes a generated table's table_schema and
+  compares it with the fixture's `SchemaWithMeta`.
