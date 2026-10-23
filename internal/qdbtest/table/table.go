@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,6 +155,26 @@ func Schema(tbl Table) *arrow.Schema {
 		fields = append(fields, arrow.Field{Name: c.Name, Type: c.Type.ArrowType(), Nullable: true})
 	}
 	return arrow.NewSchema(fields, nil)
+}
+
+// SchemaWithMeta is the schema the Flight catalog answers for tbl under
+// include_schema: Schema's fields, a symbol column's field carrying
+// qdb.MetaSymtable, and shard and ttl as qdb.MetaShardSize and qdb.MetaTTL
+// in milliseconds. The fixture states the shape by construction, so a test
+// compares against it and not against the server's own builder.
+func SchemaWithMeta(tbl Table, shard, ttl time.Duration) *arrow.Schema {
+	fields := make([]arrow.Field, 0, len(tbl.Columns)+1)
+	fields = append(fields, arrow.Field{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()})
+	for _, c := range tbl.Columns {
+		f := arrow.Field{Name: c.Name, Type: c.Type.ArrowType(), Nullable: true}
+		if c.Type == qdbapi.TsColumnSymbol {
+			f.Metadata = arrow.NewMetadata([]string{qdb.MetaSymtable}, []string{c.Symtable})
+		}
+		fields = append(fields, f)
+	}
+	ms := func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) }
+	meta := arrow.NewMetadata([]string{qdb.MetaShardSize, qdb.MetaTTL}, []string{ms(shard), ms(ttl)})
+	return arrow.NewSchema(fields, &meta)
 }
 
 // GenerateRows draws rows rows into tbl's batch at one drawn null density

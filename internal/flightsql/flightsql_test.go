@@ -553,6 +553,22 @@ func column(t *testing.T, rec arrow.RecordBatch, name string) []string {
 	return out
 }
 
+// binaryColumn answers the binary column named name of rec as a slice,
+// the sibling of column for the table_schema column.
+func binaryColumn(t *testing.T, rec arrow.RecordBatch, name string) [][]byte {
+	t.Helper()
+	idx := rec.Schema().FieldIndices(name)
+	if len(idx) != 1 {
+		t.Fatalf("want one column %q in %v", name, rec.Schema())
+	}
+	col := rec.Column(idx[0]).(*array.Binary)
+	out := make([][]byte, col.Len())
+	for i := range out {
+		out[i] = col.Value(i)
+	}
+	return out
+}
+
 // checkSqlInfo reads every registered SqlInfo id back through cl and
 // asserts one row per value type: the server name, read-only, transaction
 // NONE and the quote char. An id the server does not register is NOT_FOUND.
@@ -616,7 +632,8 @@ func checkSqlInfo(t *testing.T, cl *flightsql.Client, ctx context.Context) {
 // GetCatalogs, GetDbSchemas and GetTableTypes answer their one row,
 // GetTables lists a created table under qdb, main and TABLE, the table
 // name pattern narrows the list to it, an excluding catalog answers no
-// row, and include_schema is UNIMPLEMENTED on GetFlightInfo and on DoGet.
+// row, and under include_schema a generated table's table_schema
+// deserializes to the fixture's schema with its keys.
 func TestCatalog(t *testing.T) {
 	// One server and one table serve the assertions, in the order of a
 	// driver's connect sequence:
@@ -628,8 +645,10 @@ func TestCatalog(t *testing.T) {
 	//  5. GetTables with the table's name as the pattern is that one row,
 	//     and a % pattern over its qdbtest_ prefix contains it;
 	//  6. GetTables with catalog "other" is no row;
-	//  7. include_schema fails UNIMPLEMENTED on GetTables and on a ticket
-	//     built by hand from CommandGetTables with the flag.
+	//  7. include_schema: a generated table's row carries five columns and
+	//     its bytes deserialize to the fixture's schema, and a ticket built
+	//     by hand from CommandGetTables with the flag answers the five
+	//     columns too.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
 		cl := s.dial(t)
@@ -697,10 +716,37 @@ func TestCatalog(t *testing.T) {
 		}
 		rec.Release()
 
-		// 7. include_schema, before a ticket exists and on a minted ticket
-		if _, err := cl.GetTables(ctx, &flightsql.GetTablesOpts{IncludeSchema: true}); code(err) != codes.Unimplemented {
-			t.Fatalf("GetTables include_schema: want UNIMPLEMENTED, got %v", err)
-		}
+		// 7. include_schema. rapid draws the table, so symbol columns and
+		//    their symtables are covered, and the fixture creates every table
+		//    with a one-day shard and no TTL. Schema.Equal compares the
+		//    fields with their metadata and ignores the schema's own, so the
+		//    two schema keys are read by name.
+		rapid.Check(t, func(rt *rapid.T) {
+			gen := table.GenerateSchema(rt)
+			table.CreateAs(rt, f.Cluster, f.User, gen)
+			rec := rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{TableNameFilterPattern: &gen.Name, IncludeSchema: true}))
+			defer rec.Release()
+			if rec.NumCols() != 5 || rec.NumRows() != 1 {
+				rt.Fatalf("include_schema: want one row of five columns, got %v", rec)
+			}
+			got, err := flight.DeserializeSchema(binaryColumn(t, rec, "table_schema")[0], memory.DefaultAllocator)
+			if err != nil {
+				rt.Fatalf("table_schema: %v", err)
+			}
+			want := table.SchemaWithMeta(gen, 24*time.Hour, 0)
+			if !got.Equal(want) {
+				rt.Fatalf("table_schema:\n got %v\nwant %v", got, want)
+			}
+			for _, k := range []string{qdb.MetaShardSize, qdb.MetaTTL} {
+				g, _ := got.Metadata().GetValue(k)
+				if w, _ := want.Metadata().GetValue(k); g != w {
+					rt.Fatalf("%s: got %q, want %q", k, g, w)
+				}
+			}
+		})
+		// A ticket minted by hand with the flag answers the five columns
+		// too, because a ticket is bytes a client can mint without
+		// GetFlightInfo.
 		cmd, err := anypb.New(&pb.CommandGetTables{IncludeSchema: true})
 		if err != nil {
 			t.Fatal(err)
@@ -709,10 +755,10 @@ func TestCatalog(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, recs, err := readAll(t, cl, ctx, &flight.Ticket{Ticket: ticket})
+		schema, recs, err := readAll(t, cl, ctx, &flight.Ticket{Ticket: ticket})
 		release(recs)
-		if code(err) != codes.Unimplemented {
-			t.Fatalf("DoGet include_schema: want UNIMPLEMENTED, got %v", err)
+		if err != nil || schema.NumFields() != 5 {
+			t.Fatalf("DoGet include_schema: want five columns, got %v, %v", schema, err)
 		}
 	})
 }
