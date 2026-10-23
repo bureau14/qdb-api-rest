@@ -163,15 +163,21 @@ func Schema(tbl Table) *arrow.Schema {
 // in milliseconds. The fixture states the shape by construction, so a test
 // compares against it and not against the server's own builder.
 func SchemaWithMeta(tbl Table, shard, ttl time.Duration) *arrow.Schema {
+	// The implicit index first, non-nullable, as Schema places it.
 	fields := make([]arrow.Field, 0, len(tbl.Columns)+1)
 	fields = append(fields, arrow.Field{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()})
 	for _, c := range tbl.Columns {
+		// Each column nullable in the binding's Arrow type, as Schema
+		// builds it. A symbol column names its symtable in the field's
+		// metadata, because the Arrow type alone reads as a string.
 		f := arrow.Field{Name: c.Name, Type: c.Type.ArrowType(), Nullable: true}
 		if c.Type == qdbapi.TsColumnSymbol {
 			f.Metadata = arrow.NewMetadata([]string{qdb.MetaSymtable}, []string{c.Symtable})
 		}
 		fields = append(fields, f)
 	}
+	// Both durations as an integer count of milliseconds, the C API's
+	// unit, with a zero ttl meaning disabled.
 	ms := func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) }
 	meta := arrow.NewMetadata([]string{qdb.MetaShardSize, qdb.MetaTTL}, []string{ms(shard), ms(ttl)})
 	return arrow.NewSchema(fields, &meta)
