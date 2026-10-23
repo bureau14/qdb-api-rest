@@ -135,6 +135,7 @@ func (s *Session) tables() ([]string, error) {
 // is retried once on a retryable failure, as a read is.
 func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 	var names []string
+	// The read retry, because a listing is a read.
 	err := c.Call(ctx, u, func(s *Session) error {
 		var err error
 		names, err = s.tables()
