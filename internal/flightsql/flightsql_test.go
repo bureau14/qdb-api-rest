@@ -722,21 +722,32 @@ func TestCatalog(t *testing.T) {
 		//    fields with their metadata and ignores the schema's own, so the
 		//    two schema keys are read by name.
 		rapid.Check(t, func(rt *rapid.T) {
+			// A table without rows, because the schema is all the listing
+			// reads, created as the fixture's user so a secure cluster admits
+			// it, and removed on cleanup.
 			gen := table.GenerateSchema(rt)
 			table.CreateAs(rt, f.Cluster, f.User, gen)
+			// The name as the pattern narrows the listing to this table, so
+			// the one row is its row whatever else the cluster holds.
 			rec := rows(cl.GetTables(ctx, &flightsql.GetTablesOpts{TableNameFilterPattern: &gen.Name, IncludeSchema: true}))
 			defer rec.Release()
 			if rec.NumCols() != 5 || rec.NumRows() != 1 {
 				rt.Fatalf("include_schema: want one row of five columns, got %v", rec)
 			}
+			// The fifth column holds the bytes the server wrote with
+			// SerializeSchema, and the client hands them through undecoded,
+			// so the test deserializes them as a driver would.
 			got, err := flight.DeserializeSchema(binaryColumn(t, rec, "table_schema")[0], memory.DefaultAllocator)
 			if err != nil {
 				rt.Fatalf("table_schema: %v", err)
 			}
+			// The fields, their types and nullability, and the symtable key on
+			// a symbol field; the shard and TTL are the fixture's create call.
 			want := table.SchemaWithMeta(gen, 24*time.Hour, 0)
 			if !got.Equal(want) {
 				rt.Fatalf("table_schema:\n got %v\nwant %v", got, want)
 			}
+			// The two schema keys, which Equal does not compare.
 			for _, k := range []string{qdb.MetaShardSize, qdb.MetaTTL} {
 				g, _ := got.Metadata().GetValue(k)
 				if w, _ := want.Metadata().GetValue(k); g != w {
