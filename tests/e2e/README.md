@@ -28,7 +28,9 @@ make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=ht
 ingests the generated rows into each as its body format, and reads and
 queries (`SELECT *`) every table back as CSV, NDJSON, Arrow IPC and
 JSON under identity and gzip, each response decoded to CSV and compared
-byte for byte with the generated file, on the insecure and the secure
+byte for byte with the generated file, then reads every table back
+through arrow-adbc's Flight SQL driver and runs a `#sql` query of
+DuckDB-only types through it, on the insecure and the secure
 cluster. Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>`
 select the generated data, and the round trip prints both so a failure
 reproduces. `tools/e2etool gen` draws the rows and writes `rows.csv`,

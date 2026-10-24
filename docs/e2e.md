@@ -170,6 +170,12 @@ through a decoder of the same package.
   name back in front, and encodes through the package's CSV encoder.
   The JSON it reads is the array of results every route answers or the
   one result `Encode` writes.
+- `e2etool adbc --addr HOST:PORT --query Q [--username U --secret S]
+[--format arrow|csv]`: one statement through arrow-adbc's Go Flight
+  SQL driver, its result on stdout through the server's Arrow IPC
+  encoder, which `tocsv` decodes, or the CSV encoder for a result the
+  round trip's schema does not type. With a username the driver
+  handshakes, and without one it presents no token.
 
 ### The driver
 
@@ -309,8 +315,9 @@ tests/e2e/
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper
   round-trip.sh           the v2 round trip driver
-  tools/e2etool/          Go: gen and tocsv;
-                          gen writes the four body files, tocsv decodes a response to CSV
+  tools/e2etool/          Go: gen, tocsv and adbc;
+                          gen writes the four body files, tocsv decodes a response to CSV,
+                          adbc runs a statement through arrow-adbc's Flight SQL driver
   AGENTS.md, README.md    conventions, usage
 ```
 
