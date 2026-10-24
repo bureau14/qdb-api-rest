@@ -8,10 +8,14 @@
 # and nothing is audited (ADR-0014). Error rows are Go tests, never
 # steps here.
 #
-#   round-trip.sh run --insecure-url <url> --secure-url <url> --insecure-flight <host:port> --secure-flight <host:port> --tool <e2etool> [--rows N] [--seed S]
+#   round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> [--rows N] [--seed S]
 #
-# The Makefile is the only source of URLs, ports and paths, and passes
-# them as options. common.sh supplies the helpers and TZ=UTC. Working
+# Each server is named by its cluster, insecure or secure, and each of
+# its planes by a URL in the form its client takes: the HTTP listener as
+# http://host:port for curl, and the Flight listener as
+# grpc+tls://host:port for the ADBC driver, which is TLS only. The HTTPS
+# listener has no option, because no step reads it. The Makefile is the
+# only source of URLs, ports and paths, and passes them as options. common.sh supplies the helpers and TZ=UTC. Working
 # files go to actual/round-trip/<cluster>/. The script needs bash, curl,
 # jq, cmp and gunzip.
 
@@ -24,10 +28,10 @@ require_command gunzip
 
 ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
-INSECURE_URL="" SECURE_URL="" INSECURE_FLIGHT="" SECURE_FLIGHT="" TOOL="" ROWS=10000 SEED="$(date +%s)"
+INSECURE_HTTP="" INSECURE_FLIGHT="" SECURE_HTTP="" SECURE_FLIGHT="" TOOL="" ROWS=10000 SEED="$(date +%s)"
 
 usage() {
-    die "usage: round-trip.sh run --insecure-url <url> --secure-url <url> --insecure-flight <host:port> --secure-flight <host:port> --tool <e2etool> [--rows N] [--seed S]"
+    die "usage: round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> [--rows N] [--seed S]"
 }
 
 # Every option is named, because two URLs on a command line need names.
@@ -36,9 +40,9 @@ parse_args() {
     shift
     while (( $# > 0 )); do
         case "$1" in
-            --insecure-url) INSECURE_URL="$2"; shift 2 ;;
-            --secure-url)   SECURE_URL="$2"; shift 2 ;;
+            --insecure-http)   INSECURE_HTTP="$2"; shift 2 ;;
             --insecure-flight) INSECURE_FLIGHT="$2"; shift 2 ;;
+            --secure-http)     SECURE_HTTP="$2"; shift 2 ;;
             --secure-flight)   SECURE_FLIGHT="$2"; shift 2 ;;
             --tool)         TOOL="$2"; shift 2 ;;
             --rows)         ROWS="$2"; shift 2 ;;
@@ -46,7 +50,7 @@ parse_args() {
             *)              usage ;;
         esac
     done
-    [[ -n "$INSECURE_URL" && -n "$SECURE_URL" && -n "$INSECURE_FLIGHT" && -n "$SECURE_FLIGHT" && -x "$TOOL" ]] || usage
+    [[ -n "$INSECURE_HTTP" && -n "$INSECURE_FLIGHT" && -n "$SECURE_HTTP" && -n "$SECURE_FLIGHT" && -x "$TOOL" ]] || usage
 }
 
 # request <out_dir> <name> <curl args...>: one request, its body in
@@ -288,8 +292,8 @@ credentials() {
     [[ -z "$user" ]] || printf '%s\n%s\n%s\n%s\n' --username "$user" --secret "$(jq -r '.secret_key' "$1")"
 }
 
-# adbc_back <out_dir> <flight> <login_body_file> <table> <csv>: the table
-# over ADBC. e2etool adbc runs SELECT * FROM <table> through arrow-adbc's
+# adbc_back <out_dir> <flight_url> <login_body_file> <table> <csv>: the
+# table over ADBC. e2etool adbc runs SELECT * FROM <table> through arrow-adbc's
 # Flight SQL driver and writes Arrow IPC, which compare_csv decodes
 # through tocsv and compares with the generated CSV as the query does, so
 # the stock driver's result is the rows generated, byte for byte.
@@ -298,19 +302,19 @@ adbc_back() {
     local name="$table.adbc"
     local -a creds=()
     while IFS= read -r arg; do creds+=("$arg"); done < <(credentials "$body")
-    "$TOOL" adbc --addr "$flight" "${creds[@]+"${creds[@]}"}" --query "SELECT * FROM $table" > "$out/$name.body" \
+    "$TOOL" adbc --uri "$flight" "${creds[@]+"${creds[@]}"}" --query "SELECT * FROM $table" > "$out/$name.body" \
         || { log_error "[FAIL] $name: e2etool adbc failed"; return 1; }
     compare_csv "$out" "$name" arrow "$table" "$out/$name.body" "$csv" tool
 }
 
-# adbc_types <out_dir> <flight> <login_body_file>: TYPES_QUERY over ADBC,
+# adbc_types <out_dir> <flight_url> <login_body_file>: TYPES_QUERY over ADBC,
 # written as CSV by the server's encoder and compared with TYPES_CSV.
 adbc_types() {
     local out="$1" flight="$2" body="$3"
     local -a creds=()
     while IFS= read -r arg; do creds+=("$arg"); done < <(credentials "$body")
     printf '%s' "$TYPES_CSV" > "$out/adbc.types.want"
-    "$TOOL" adbc --addr "$flight" "${creds[@]+"${creds[@]}"}" --query "$TYPES_QUERY" --format csv > "$out/adbc.types.body" \
+    "$TOOL" adbc --uri "$flight" "${creds[@]+"${creds[@]}"}" --query "$TYPES_QUERY" --format csv > "$out/adbc.types.body" \
         || { log_error "[FAIL] adbc.types: e2etool adbc failed"; return 1; }
     if ! cmp -s "$out/adbc.types.want" "$out/adbc.types.body"; then
         log_error "[FAIL] adbc.types: CSV differs (want vs got)"
@@ -327,7 +331,7 @@ BODY_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vn
 READ_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
 CODINGS=("identity" "gzip")
 
-# run_cluster <name> <url> <flight> <login_body_file>: the round trip
+# run_cluster <name> <http_url> <flight_url> <login_body_file>: the round trip
 # against one server: login once, then per body format create the table,
 # ingest the generated rows in that format, read, query and read them
 # through DuckDB SQL back in every format and coding, and read them back
@@ -365,8 +369,8 @@ main() {
     local failed=0
     mkdir -p "$ACTUAL_DIR"
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
-    run_cluster insecure "$INSECURE_URL" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
-    run_cluster secure "$SECURE_URL" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
+    run_cluster insecure "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
+    run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
     (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }

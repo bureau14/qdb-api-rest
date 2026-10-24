@@ -170,17 +170,21 @@ through a decoder of the same package.
   name back in front, and encodes through the package's CSV encoder.
   The JSON it reads is the array of results every route answers or the
   one result `Encode` writes.
-- `e2etool adbc --addr HOST:PORT --query Q [--username U --secret S]
-[--format arrow|csv]`: one statement through arrow-adbc's Go Flight
-  SQL driver, its result on stdout through the server's Arrow IPC
-  encoder, which `tocsv` decodes, or the CSV encoder for a result the
+- `e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]`:
+  one statement through arrow-adbc's Go Flight SQL driver, the URI
+  passed to the driver as it is, its result on stdout through the
+  server's Arrow IPC encoder, which `tocsv` decodes, or the CSV encoder for a result the
   round trip's schema does not type. With a username the driver
   handshakes, and without one it presents no token.
 
 ### The driver
 
-`tests/e2e/round-trip.sh run --insecure-url <url> --secure-url <url>
---tool <e2etool> [--rows N] [--seed S]` is a small option loop. The
+`tests/e2e/round-trip.sh run --insecure-http <url> --insecure-flight <url>
+--secure-http <url> --secure-flight <url> --tool <e2etool> [--rows N]
+[--seed S]` is a small option loop. Each server is named by its
+cluster and each plane by a URL in the form its client takes, `http://`
+for curl and `grpc+tls://` for the ADBC driver, so the script owns no
+scheme. The HTTPS listener has no option, because no step reads it. The
 Makefile is the only source of URLs, ports and paths.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a
 server started from `QDB_REST_BIN` (`40090` on the insecure node,

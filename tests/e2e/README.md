@@ -18,7 +18,8 @@ are in `AGENTS.md`.
 ```
 make e2etool                 # build the Go tool of the v2 round trip into <repo>/bin/
 make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
-make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091
+make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
+    FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
 ```
 
 ## The v2 round trip

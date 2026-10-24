@@ -6,7 +6,7 @@
 //
 //	e2etool gen --rows N --seed S --out DIR [--table NAME]      write DIR/rows.{csv,ndjson,arrow,json}, print the row count
 //	e2etool tocsv --format csv|json|ndjson|arrow [--table NAME] stdin to CSV on stdout
-//	e2etool adbc --addr HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]
+//	e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]
 //	                                                            the statement's result on stdout
 package main
 
@@ -379,8 +379,9 @@ func adbc(args []string) error {
 	// A driver session has an order, and two of its choices need a why:
 	//
 	//  1. parse the flags;
-	//  2. the database over the grpc+tls URI with verification off, because
-	//     the server runs on the ephemeral certificate;
+	//  2. the database over the URI as given, the driver's own option, with
+	//     verification off, because the server runs on the ephemeral
+	//     certificate;
 	//  3. username and password only when a username is given, because the
 	//     driver handshakes when either is set and the insecure cluster's
 	//     user is anonymous;
@@ -391,7 +392,7 @@ func adbc(args []string) error {
 
 	// 1. the flags
 	fs := flag.NewFlagSet("adbc", flag.ContinueOnError)
-	addr := fs.String("addr", "", "the Flight listener, host:port")
+	uri := fs.String("uri", "", "the Flight listener as the driver takes it, grpc+tls://host:port")
 	username := fs.String("username", "", "the user to handshake as; empty is the anonymous user")
 	secret := fs.String("secret", "", "the user's secret key")
 	q := fs.String("query", "", "the statement")
@@ -399,18 +400,19 @@ func adbc(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *addr == "" || *q == "" {
-		return fmt.Errorf("--addr and --query are required")
+	if *uri == "" || *q == "" {
+		return fmt.Errorf("--uri and --query are required")
 	}
 	enc, ok := outputs[*format]
 	if !ok {
 		return fmt.Errorf("--format must be arrow or csv, got %q", *format)
 	}
 
-	// 2. the database, grpc+tls because the listener is TLS only, with
-	//    verification off because the certificate is ephemeral
+	// 2. the database over the URI, which carries the scheme (grpc+tls,
+	//    because the listener is TLS only), with verification off because
+	//    the certificate is ephemeral
 	opts := map[string]string{
-		adbcapi.OptionKeyURI:           "grpc+tls://" + *addr,
+		adbcapi.OptionKeyURI:           *uri,
 		adbcflight.OptionSSLSkipVerify: adbcapi.OptionValueEnabled,
 	}
 
@@ -455,7 +457,7 @@ func main() {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "usage: e2etool gen --rows N --seed S --out DIR [--table NAME]")
 		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format csv|json|ndjson|arrow [--table NAME]")
-		fmt.Fprintln(os.Stderr, "       e2etool adbc --addr HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]")
+		fmt.Fprintln(os.Stderr, "       e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]")
 		os.Exit(2)
 	}
 	if len(os.Args) < 2 {

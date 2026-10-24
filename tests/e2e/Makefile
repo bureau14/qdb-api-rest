@@ -57,13 +57,16 @@ E2ETOOL := $(BIN_DIR)/e2etool$(EXE_EXT)
 # reproduces. A cluster whose URL is given is used as it is. Otherwise
 # its server is started from QDB_REST_BIN. The secure server takes the
 # key files start-services.sh writes at the repo root, and both run
-# their HTTPS and Flight listeners on test ports. The driver steps reach
-# each server's Flight listener on its test port, and a server given as
-# a URL is expected to serve Flight on that port too.
-ROWS              ?= 10000
-SEED              ?= $(shell date +%s)
-REST_URL_INSECURE ?= $(REST_URL)
-REST_URL_SECURE   ?=
+# their HTTPS and Flight listeners on test ports. Each plane the driver
+# reads is a URL in the form its client takes, http:// for curl and
+# grpc+tls:// for the ADBC driver, and a server given by its URLs is used
+# as it is, Flight included.
+ROWS                ?= 10000
+SEED                ?= $(shell date +%s)
+REST_URL_INSECURE   ?= $(REST_URL)
+REST_URL_SECURE     ?=
+FLIGHT_URL_INSECURE ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT)
+FLIGHT_URL_SECURE   ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_SECURE)
 QDB_URI_SECURE    := qdb://127.0.0.1:2838
 REST_PORT_SECURE   ?= 40091
 HTTPS_PORT_SECURE  ?= 40093
@@ -121,8 +124,8 @@ test-round-trip: services-check e2etool
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
 	    secure=http://127.0.0.1:$(REST_PORT_SECURE); \
 	fi; \
-	$(ROUND_TRIP) run --insecure-url "$$insecure" --secure-url "$$secure" \
-	    --insecure-flight 127.0.0.1:$(FLIGHT_PORT) --secure-flight 127.0.0.1:$(FLIGHT_PORT_SECURE) \
+	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
+	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
 	    --tool $(E2ETOOL) --rows $(ROWS) --seed $(SEED)
 
 # ------------------------------------------------------------------ cleanup
