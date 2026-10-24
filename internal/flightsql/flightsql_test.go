@@ -1,13 +1,14 @@
 // This file holds the Flight listener's tests: the Handshake, the bearer
 // edge, the anonymous rule, the statement query, GetSqlInfo and the
 // catalog commands, driven through arrow-go's Flight SQL client on both
-// clusters.
+// clusters. The client side is the Flight client fixture,
+// internal/qdbtest/flight, which the round trip in internal/httpapi
+// shares.
 package flightsql
 
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"log/slog"
 	"slices"
 	"testing"
@@ -21,9 +22,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -36,6 +35,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
+	qdbflight "github.com/bureau14/qdb-api-rest/internal/qdbtest/flight"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
@@ -107,20 +107,6 @@ func newServer(t *testing.T, f cluster.Fixture) server {
 	return newServerOn(t, f.Cluster, f.User, tokensAt(t, time.Now()))
 }
 
-// dial opens arrow-go's Flight SQL client on the server, with certificate
-// verification off because the certificate is ephemeral, as the driver
-// smoke tests connect.
-func (s server) dial(t *testing.T) *flightsql.Client {
-	t.Helper()
-	creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}) //nolint:gosec // the test certificate is ephemeral
-	cl, err := flightsql.NewClient(s.srv.Addr().String(), nil, nil, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cl.Close() })
-	return cl
-}
-
 // bearerOf reads the Bearer token the client will present from the ctx
 // AuthenticateBasicToken answered.
 func bearerOf(t *testing.T, ctx context.Context) string {
@@ -133,97 +119,9 @@ func bearerOf(t *testing.T, ctx context.Context) string {
 	return vals[0][len("Bearer "):]
 }
 
-// failer is the slice of testing.TB the helpers below need, so *testing.T
-// and *rapid.T both serve.
-type failer interface {
-	Helper()
-	Fatalf(string, ...any)
-}
-
-// ticketOf runs Execute for q and answers the one endpoint's ticket.
-// GetFlightInfo runs nothing, so a statement's failure surfaces on DoGet.
-func ticketOf(t failer, cl *flightsql.Client, ctx context.Context, q string) *flight.Ticket {
-	t.Helper()
-	info, err := cl.Execute(ctx, q)
-	if err != nil {
-		t.Fatalf("Execute %s: %v", q, err)
-	}
-	if len(info.Endpoint) != 1 {
-		t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
-	}
-	return info.Endpoint[0].Ticket
-}
-
-// readAll presents ticket on DoGet and reads the stream to the end: its
-// schema, its batches retained for the caller to release, and the error
-// that ended it.
-func readAll(t failer, cl *flightsql.Client, ctx context.Context, ticket *flight.Ticket) (*arrow.Schema, []arrow.RecordBatch, error) {
-	t.Helper()
-	rdr, err := cl.DoGet(ctx, ticket)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rdr.Release()
-	var recs []arrow.RecordBatch
-	for rdr.Next() {
-		rec := rdr.RecordBatch()
-		rec.Retain()
-		recs = append(recs, rec)
-	}
-	return rdr.Schema(), recs, rdr.Err()
-}
-
-// release releases every batch of recs.
-func release(recs []arrow.RecordBatch) {
-	for _, r := range recs {
-		r.Release()
-	}
-}
-
-// concat joins recs, which share schema, into one batch the caller
-// releases. No batch is an empty batch of schema.
-func concat(t failer, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.RecordBatch {
-	t.Helper()
-	cols := make([]arrow.Array, schema.NumFields())
-	rows := int64(0)
-	for i := range cols {
-		parts := make([]arrow.Array, len(recs))
-		for n, r := range recs {
-			parts[n] = r.Column(i)
-		}
-		if len(parts) == 0 {
-			cols[i] = array.MakeArrayOfNull(memory.DefaultAllocator, schema.Field(i).Type, 0)
-			continue
-		}
-		col, err := array.Concatenate(parts, memory.DefaultAllocator)
-		if err != nil {
-			t.Fatalf("concat: %v", err)
-		}
-		cols[i] = col
-		rows = int64(col.Len())
-	}
-	rec := array.NewRecordBatch(schema, cols, rows)
-	for _, c := range cols {
-		c.Release()
-	}
-	return rec
-}
-
-// execute runs q over Flight as a whole, Execute then DoGet, and answers
-// the result joined into one batch the caller releases.
-func execute(t failer, cl *flightsql.Client, ctx context.Context, q string) arrow.RecordBatch {
-	t.Helper()
-	schema, recs, err := readAll(t, cl, ctx, ticketOf(t, cl, ctx, q))
-	if err != nil {
-		t.Fatalf("DoGet %s: %v", q, err)
-	}
-	defer release(recs)
-	return concat(t, schema, recs)
-}
-
 // duck runs q on DuckDB over the cluster directly, as u, and answers its
 // batches joined into one batch the caller releases.
-func duck(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
+func duck(t table.T, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	t.Helper()
 	var schema *arrow.Schema
 	var recs []arrow.RecordBatch
@@ -242,31 +140,12 @@ func duck(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	if err != nil {
 		t.Fatalf("duckdb %s: %v", q, err)
 	}
-	defer release(recs)
-	return concat(t, schema, recs)
-}
-
-// sameBatch reports whether got and want carry equal schemas and equal
-// columns, by array equality, which reads no byte under a null slot.
-func sameBatch(got, want arrow.RecordBatch) bool {
-	if !got.Schema().Equal(want.Schema()) || got.NumRows() != want.NumRows() {
-		return false
-	}
-	for i := range int(got.NumCols()) {
-		if !array.Equal(got.Column(i), want.Column(i)) {
-			return false
-		}
-	}
-	return true
+	defer qdbflight.Release(recs)
+	return qdbflight.Concat(t, schema, recs)
 }
 
 // code answers the gRPC code of err, OK for nil.
 func code(err error) codes.Code { return status.Code(err) }
-
-// withHeader is ctx with one authorization header.
-func withHeader(ctx context.Context, authorization string) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "authorization", authorization)
-}
 
 // TestHandshake: a Handshake with the fixture's credentials answers an
 // access token for that user, the token opens a call, no token is the
@@ -275,7 +154,7 @@ func withHeader(ctx context.Context, authorization string) context.Context {
 func TestHandshake(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
-		cl := s.dial(t)
+		cl := qdbflight.Dial(t, s.srv.Addr().String())
 		ctx := s.ctx
 
 		// 1. The Handshake answers a Bearer the keychain verifies as an
@@ -324,7 +203,7 @@ func TestBearerRows(t *testing.T) {
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	tk := tokensAt(t, epoch)
 	s := newServerOn(t, f.Cluster, f.User, tk)
-	cl := s.dial(t)
+	cl := qdbflight.Dial(t, s.srv.Addr().String())
 	expired := mint(t, tk, "access", f.User, epoch.Add(-time.Minute))
 	refresh := mint(t, tk, "refresh", f.User, epoch.Add(time.Hour))
 	valid := mint(t, tk, "access", f.User, epoch.Add(time.Hour))
@@ -337,7 +216,7 @@ func TestBearerRows(t *testing.T) {
 		{"empty header", "", "malformed bearer credentials"},
 	} {
 		t.Run(row.name, func(t *testing.T) {
-			_, err := cl.Execute(withHeader(s.ctx, row.header), "select 1")
+			_, err := cl.Execute(metadata.AppendToOutgoingContext(s.ctx, "authorization", row.header), "select 1")
 			if st := status.Convert(err); st.Code() != codes.Unauthenticated || st.Message() != row.want {
 				t.Fatalf("want UNAUTHENTICATED %q, got %v", row.want, err)
 			}
@@ -345,7 +224,7 @@ func TestBearerRows(t *testing.T) {
 	}
 	// The same valid token passes, which proves the rows fail for their
 	// own reason and not for the keychain's.
-	if _, err := cl.Execute(withHeader(s.ctx, "Bearer "+valid), "select 1"); code(err) != codes.OK {
+	if _, err := cl.Execute(qdbflight.Bearer(s.ctx, valid), "select 1"); code(err) != codes.OK {
 		t.Fatalf("valid token: want OK, got %v", err)
 	}
 }
@@ -358,8 +237,7 @@ var epoch = time.Unix(1_700_000_000, 0)
 // the #sql query read back over Flight equals the batches Cluster.Duck
 // answers directly, decoded. A statement without a result set streams
 // one schema and no batch. The two engines are compared with their own
-// oracles and not with each other; the HTTP format-equivalence property
-// extended with a Flight client is a later unit's.
+// oracles and not with each other.
 func TestStatement(t *testing.T) {
 	// Two engines, one oracle each, both clusters:
 	//
@@ -376,7 +254,7 @@ func TestStatement(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		// 1. the server and the bearer
 		s := newServer(t, f)
-		cl := s.dial(t)
+		cl := qdbflight.Dial(t, s.srv.Addr().String())
 		ctx, err := cl.Client.AuthenticateBasicToken(s.ctx, s.user.Username, s.user.SecretKey)
 		if err != nil {
 			t.Fatalf("handshake: %v", err)
@@ -388,21 +266,21 @@ func TestStatement(t *testing.T) {
 			table.CreateAs(rt, f.Cluster, f.User, tbl)
 
 			// 3. native, against the rows generated
-			got := execute(rt, cl, ctx, tbl.Select())
+			got := qdbflight.Execute(rt, cl, ctx, tbl.Select())
 			table.Check(rt, tbl, got)
 			got.Release()
 
 			// 4. #sql, against DuckDB directly
-			got = execute(rt, cl, ctx, "#sql "+tbl.SelectSQL())
+			got = qdbflight.Execute(rt, cl, ctx, "#sql "+tbl.SelectSQL())
 			want := duck(rt, f.Cluster, f.User, tbl.SelectSQL())
-			if !sameBatch(got, want) {
+			if !qdbflight.Same(got, want) {
 				rt.Fatalf("#sql over Flight differs from Cluster.Duck:\n%v\n%v", got, want)
 			}
 			got.Release()
 			want.Release()
 
 			// 5. no result set: the schema has no fields and no batch follows
-			schema, recs, err := readAll(rt, cl, ctx, ticketOf(rt, cl, ctx, "DROP TABLE "+tbl.Name))
+			schema, recs, err := qdbflight.ReadAll(rt, cl, ctx, qdbflight.TicketOf(rt, cl, ctx, "DROP TABLE "+tbl.Name))
 			if err != nil || schema.NumFields() != 0 || len(recs) != 0 {
 				rt.Fatalf("drop: want a schema of no fields and no batch, got %v, %d batches, %v", schema, len(recs), err)
 			}
@@ -424,8 +302,8 @@ func retryInfo(err error) *errdetails.RetryInfo {
 // error that ends the stream.
 func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
 	t.Helper()
-	_, recs, err := readAll(t, cl, ctx, ticketOf(t, cl, ctx, q))
-	release(recs)
+	_, recs, err := qdbflight.ReadAll(t, cl, ctx, qdbflight.TicketOf(t, cl, ctx, q))
+	qdbflight.Release(recs)
 	return err
 }
 
@@ -441,7 +319,7 @@ func TestStatementRows(t *testing.T) {
 	//    ticket of a bad query is the same, because the ticket is the text
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	s := newServer(t, f)
-	cl := s.dial(t)
+	cl := qdbflight.Dial(t, s.srv.Addr().String())
 	badTicket, err := flightsql.CreateStatementQueryTicket([]byte("selec 1"))
 	if err != nil {
 		t.Fatal(err)
@@ -454,8 +332,8 @@ func TestStatementRows(t *testing.T) {
 		{"#sql parse error", statementErr(t, cl, s.ctx, "#sql selec 1")},
 		{"unknown table", statementErr(t, cl, s.ctx, "SELECT * FROM qdbtest_no_such_table")},
 		{"hand-built ticket", func() error {
-			_, recs, err := readAll(t, cl, s.ctx, &flight.Ticket{Ticket: badTicket})
-			release(recs)
+			_, recs, err := qdbflight.ReadAll(t, cl, s.ctx, &flight.Ticket{Ticket: badTicket})
+			qdbflight.Release(recs)
 			return err
 		}()},
 	} {
@@ -480,7 +358,7 @@ func TestStatementRows(t *testing.T) {
 		_ = c.Close(ctx)
 	})
 	down := newServerOn(t, c, qdb.User{}, tokensAt(t, time.Now()))
-	dcl := down.dial(t)
+	dcl := qdbflight.Dial(t, down.srv.Addr().String())
 	err = statementErr(t, dcl, down.ctx, "select 1")
 	if code(err) != codes.Unavailable || retryInfo(err) != nil {
 		t.Fatalf("unreachable: want UNAVAILABLE with no detail, got %v", err)
@@ -508,8 +386,8 @@ func TestStatementRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTables: %v", err)
 	}
-	_, recs, err := readAll(t, dcl, down.ctx, info.Endpoint[0].Ticket)
-	release(recs)
+	_, recs, err := qdbflight.ReadAll(t, dcl, down.ctx, info.Endpoint[0].Ticket)
+	qdbflight.Release(recs)
 	if code(err) != codes.Unavailable {
 		t.Fatalf("GetTables unreachable: want UNAVAILABLE, got %v", err)
 	}
@@ -529,12 +407,12 @@ func catalogRows(t *testing.T, cl *flightsql.Client, ctx context.Context) func(*
 		if len(info.Endpoint) != 1 {
 			t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
 		}
-		schema, recs, err := readAll(t, cl, ctx, info.Endpoint[0].Ticket)
+		schema, recs, err := qdbflight.ReadAll(t, cl, ctx, info.Endpoint[0].Ticket)
 		if err != nil {
 			t.Fatalf("DoGet: %v", err)
 		}
-		defer release(recs)
-		return concat(t, schema, recs)
+		defer qdbflight.Release(recs)
+		return qdbflight.Concat(t, schema, recs)
 	}
 }
 
@@ -581,11 +459,11 @@ func checkSqlInfo(t *testing.T, cl *flightsql.Client, ctx context.Context) {
 	if err != nil {
 		t.Fatalf("GetSqlInfo: %v", err)
 	}
-	_, recs, err := readAll(t, cl, ctx, info.Endpoint[0].Ticket)
+	_, recs, err := qdbflight.ReadAll(t, cl, ctx, info.Endpoint[0].Ticket)
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("want one batch, got %d, %v", len(recs), err)
 	}
-	defer release(recs)
+	defer qdbflight.Release(recs)
 	rec := recs[0]
 
 	// The value column is a dense union, so each row is read through its
@@ -621,8 +499,8 @@ func checkSqlInfo(t *testing.T, cl *flightsql.Client, ctx context.Context) {
 	if err != nil {
 		t.Fatalf("GetSqlInfo keywords: %v", err)
 	}
-	_, missing, err := readAll(t, cl, ctx, info.Endpoint[0].Ticket)
-	release(missing)
+	_, missing, err := qdbflight.ReadAll(t, cl, ctx, info.Endpoint[0].Ticket)
+	qdbflight.Release(missing)
 	if code(err) != codes.NotFound {
 		t.Fatalf("unregistered id: want NOT_FOUND, got %v", err)
 	}
@@ -651,7 +529,7 @@ func TestCatalog(t *testing.T) {
 	//     columns too.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
-		cl := s.dial(t)
+		cl := qdbflight.Dial(t, s.srv.Addr().String())
 		ctx, err := cl.Client.AuthenticateBasicToken(s.ctx, s.user.Username, s.user.SecretKey)
 		if err != nil {
 			t.Fatalf("handshake: %v", err)
@@ -766,8 +644,8 @@ func TestCatalog(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		schema, recs, err := readAll(t, cl, ctx, &flight.Ticket{Ticket: ticket})
-		release(recs)
+		schema, recs, err := qdbflight.ReadAll(t, cl, ctx, &flight.Ticket{Ticket: ticket})
+		qdbflight.Release(recs)
 		if err != nil || schema.NumFields() != 5 {
 			t.Fatalf("DoGet include_schema: want five columns, got %v, %v", schema, err)
 		}

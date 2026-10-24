@@ -112,7 +112,8 @@ Each rule below names the function whose comments carry its reason.
 ## Tests
 
 - One test file, `flightsql_test.go`, drives arrow-go's Flight SQL
-  client against the server on a port of its own with the ephemeral
+  client through the Flight client fixture (`internal/qdbtest/flight`)
+  against the server on a port of its own with the ephemeral
   certificate and verification off, as the driver smoke tests connect.
   `TestHandshake` runs on both clusters through `cluster.Each`, and
   `TestBearerRows` on the insecure cluster alone with a fixed clock,
