@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -28,13 +28,21 @@ In flight:
   statement query on it (`GetFlightInfoStatement` and `DoGet` through
   `query.Run`, with `statusOf`'s codes), `GetSqlInfo` and the catalog
   commands over `Cluster.Tables` and `Cluster.TableSchemas` (`GetTables`
-  with `include_schema`) are landed. The rest of the milestone is the
-  Next list.
+  with `include_schema`), the Flight client fixture
+  (`internal/qdbtest/flight`), the format-equivalence property over
+  Flight in `TestRoundtrip` and the ADBC smoke steps of the shell round
+  trip are landed. The rest of the milestone is the Next list.
 
 Next:
 
-- The format-equivalence property with a Flight SQL client, and the ADBC
-  and JDBC smoke tests (ADR-0018, Decision 14, `docs/e2e.md`).
+- Prepared statements on the Flight server, stateless with the query
+  text as the handle (`CreatePreparedStatement` answering the prepare's
+  dataset schema, `GetFlightInfoPreparedStatement`,
+  `ClosePreparedStatement`), and with them the JDBC smoke step of the
+  round trip (ADR-0018, Decision 14, `docs/e2e.md`, The Flight SQL smoke
+  steps). The native engine has no describe, so the prepare's schema
+  needs a design before the plan.
+- The Buildkite run that closes M5.
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
   DuckDB as its first node (`Cluster.credentialsOf`).
@@ -47,9 +55,11 @@ Flight server, Handshake and bearer auth, a refused credential
 commands on a table list core in `internal/qdb`, the rest of the
 surface answering `UNIMPLEMENTED`, the format-equivalence property
 extended with a Flight SQL client for both engines and a dispatch
-property over generated prefixes, the smoke tests through Arrow's Flight
-SQL ADBC and JDBC drivers (`docs/e2e.md`), green in Buildkite on all
-eight platforms (FreeBSD may drop out of the JDBC smoke test).
+property over generated prefixes (`TestSplit`, `internal/query`), the
+smoke steps through Arrow's Flight SQL ADBC and JDBC drivers
+(`docs/e2e.md`, the JDBC one with prepared statements), green in
+Buildkite on all eight platforms (FreeBSD may drop out of the JDBC
+smoke step).
 
 Handoff to M6 and M7:
 
@@ -80,6 +90,15 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-24 -- flight-tests-plan.md deleted; the Flight client in the equivalence property and the ADBC smoke steps landed
+
+- Facts moved to `docs/e2e.md`, ADR-0018 (Decision 14),
+  `internal/AGENTS.md` (Building, Tests), `internal/flightsql/AGENTS.md`
+  (Tests), `internal/httpapi/AGENTS.md` (Tests), `tests/e2e/AGENTS.md`
+  and the comments of `internal/qdbtest/flight`,
+  `internal/httpapi/roundtrip_test.go`, `tests/e2e/tools/e2etool/main.go`
+  and `tests/e2e/round-trip.sh`.
 
 ## 2026-10-24 -- the JDBC smoke step waits on prepared statements
 
