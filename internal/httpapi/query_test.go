@@ -14,15 +14,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
+	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
+	flightsrv "github.com/bureau14/qdb-api-rest/internal/flightsql"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
+	qdbflight "github.com/bureau14/qdb-api-rest/internal/qdbtest/flight"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 	"github.com/bureau14/qdb-api-rest/internal/query"
+	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
@@ -30,7 +35,11 @@ func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 // server is the root handler plus the request context main would give
 // it: logger, cluster and keychain, and the user every request acts as,
 // with one access token minted for that user. The keychain is kept so a
-// test mints what a row needs, such as an expired refresh token.
+// test mints what a row needs, such as an expired refresh token. Beside
+// the handler runs the Flight listener main would start, on a port of
+// its own under the same context, with a client on it, because the round
+// trip proves the two planes answer the same table (ADR-0018, Decision
+// 14).
 type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
@@ -40,6 +49,8 @@ type server struct {
 	// as, so on the secure cluster they pass the cluster's check.
 	user  qdb.User
 	token string
+	// flight is the fixture's client on the Flight listener.
+	flight *flightsql.Client
 }
 
 // newServer binds the server to f and acts as f's user.
@@ -49,7 +60,8 @@ func newServer(t *testing.T, f cluster.Fixture) server {
 }
 
 // newServerOn is newServer over any cluster and user, for the unreachable
-// cluster.
+// cluster. It starts the Flight listener on 127.0.0.1:0 under the
+// ephemeral certificate and stops it on cleanup.
 func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
@@ -57,7 +69,24 @@ func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	// The token carries the user's secret key, because the data routes
 	// dial the cluster with the token's credentials.
 	token := mint(t, tk, "access", u, time.Now().Add(time.Hour))
-	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), user: u, token: token}
+	// The ephemeral certificate, as a start with no tls block gets.
+	tlsConfig, _, err := tlsconf.Load(config.TLS{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The Flight listener runs under the same ctx as the handler, because
+	// both planes read the cluster and the keychain from it.
+	fs, err := flightsrv.New(ctx, "127.0.0.1:0", tlsConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = fs.Serve() }()
+	t.Cleanup(func() {
+		drain, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		fs.Shutdown(drain)
+	})
+	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), user: u, token: token, flight: qdbflight.Dial(t, fs.Addr().String())}
 }
 
 // post sends body to path with the given headers, nil meaning none.
