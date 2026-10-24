@@ -28,8 +28,8 @@ Every assertion is pass or fail. The harness measures nothing
 harness when that milestone starts (`docs/brief.md`, Milestones).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) plus one Go tool and one Maven project for the JDBC smoke
-step. The Go tool also drives the ADBC smoke step. It runs
+lineage) plus one Go tool, which also drives the ADBC smoke step, and
+one Maven project for the JDBC smoke step when it lands. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -119,8 +119,8 @@ is timed.
    DuckDB-only types, written as CSV by the server's encoder and compared
    with the cells `TestDuckDBScalars` pins. The driver handshakes with the
    cluster's user on the secure cluster and presents no token on the
-   insecure one. "The Flight SQL smoke steps" below says what each driver
-   asserts and why.
+   insecure one. The JDBC read waits on prepared statements, and "The
+   Flight SQL smoke steps" below says why and what each driver asserts.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
@@ -252,20 +252,27 @@ what moves them, and arrow-adbc is bumped only together with arrow-go.
 The step connects over `grpc+tls` with certificate verification
 disabled, because the server runs on its ephemeral certificate.
 
-The JDBC test is one Java source file that `java` runs directly, with
-no build tool, because JDBC is a Java API and a Java program uses the
-driver as Java customers do. The Makefile downloads a pinned version of
-the driver jar (`org.apache.arrow:flight-sql-jdbc-driver`) from Maven
-Central on first use, checks its SHA-256 and caches it outside the
-tree. The server serves the Flight listener on its ephemeral
-self-signed certificate, and the test connects with
-`disableCertificateVerification=true`.
+The JDBC step is not in the round trip yet. Arrow's Flight SQL JDBC
+driver (`org.apache.arrow:flight-sql-jdbc-driver`, 19.0.0 run on JDK 21,
+2026-10-24) sends every `executeQuery` as `CreatePreparedStatement`,
+then `GetFlightInfo` of the prepared statement, `DoGet` and
+`ClosePreparedStatement`, and it classes the statement as an update
+unless the prepare answers a dataset schema with fields. The server
+answers `UNIMPLEMENTED` to the prepared-statement commands (ADR-0018,
+Decision 12), so the driver fails on every query, and the step lands
+with those commands as a unit of its own (owner, 2026-10-24). Its shape
+is settled: a Maven project under `tests/e2e/tools/jdbc/` whose
+`pom.xml` declares the driver, so Maven resolves and caches the jar in
+its local repository and the harness downloads and hashes nothing
+itself, shaded into one runnable jar that `java -jar` runs once per step
+with the `--add-opens=java.base/java.nio=ALL-UNNAMED` flag the driver
+needs on JDK 17+. A missing `java` or `mvn` fails the round trip on
+every platform, and whether the FreeBSD agents run the driver is
+decided on the first build, because a skip written before the failure
+is seen hides where it should not apply.
 
-Both tests run on both clusters and on all eight platforms. The ADBC
-test is Go and runs wherever the server builds. Every agent already
-builds the QuasarDB Java API, which uses JNI, so every agent has a JVM.
-FreeBSD may drop out of the JDBC test if the driver does not run there,
-which is unverified.
+The ADBC step runs on both clusters and on all eight platforms, because
+the tool is Go and runs wherever the server builds.
 
 ## In Buildkite
 
@@ -411,6 +418,15 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The ADBC and JDBC smoke tests are steps of the round trip                | the servers, the tables and the generated rows exist by construction, under one lifecycle (owner) | a separate target reading the round trip's leftovers, which fails alone and hides an ordering; a self-contained target filling a table through qdbsh, a second writer |
 | ADBC compares bytes through the server's encoders, JDBC counts and names | the tool has the encoders, and Java must not format a cell (owner)                                | both counting only, giving up a comparison the tool has for free; Java printing CSV, a second formatter to keep in step                                               |
+| The JDBC smoke is a Maven project whose `pom.xml` declares the driver    | a proper JDBC project, and Maven's local repository is the cache (owner)                          | a Makefile download with a SHA-256 pin; the jar in git or in agent provisioning                                                                                       |
+| The JDBC jar is shaded and run with `java -jar` per step                 | one JVM per step with the flag the driver needs, and no classpath file whose separator differs    | `exec:java`, a Maven start per table and cluster; `dependency:build-classpath`, whose separator differs on the MSYS agents                                            |
+| A missing JVM or Maven fails the round trip everywhere                   | a skip written before the failure is seen hides where it should not apply (owner)                 | a skip with a log line where `java` is absent                                                                                                                         |
+
+## Decision log (2026-10-24)
+
+| Decision                                         | Why                                                                                                                                 | Rejected                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| The JDBC smoke step waits on prepared statements | Arrow's JDBC driver runs every statement through `CreatePreparedStatement`, which ADR-0018 Decision 12 leaves unimplemented (owner) | implementing the prepared-statement commands inside the Flight tests unit |
 
 ## Decision log (2026-10-19)
 

@@ -81,6 +81,12 @@ Blocked on:
 
 ## Entries
 
+## 2026-10-24 -- the JDBC smoke step waits on prepared statements
+
+- Owner decision; ADR-0018 (Decision 14) and `docs/e2e.md`, The Flight
+  SQL smoke steps. Arrow's JDBC driver sends every statement as
+  `CreatePreparedStatement`.
+
 ## 2026-10-23 -- flight-tables-schema-plan.md deleted; GetTables with include_schema landed
 
 - Owner decisions moved to ADR-0018 (Decision 11), `internal/AGENTS.md`

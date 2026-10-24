@@ -112,8 +112,11 @@ client. The owner made the decisions below on 2026-10-13.
     likely to connect through both: ADBC from Go, comparing bytes
     through the tool's encoders, and JDBC from Java, a Maven project
     comparing row counts and column names. `docs/e2e.md`, The Flight
-    SQL smoke steps, specifies them. Flight has no HTTP step in the
-    round trip and no stress case.
+    SQL smoke steps, specifies them. The JDBC step lands with the
+    prepared-statement commands, because Arrow's JDBC driver sends
+    every statement as `CreatePreparedStatement` and needs the
+    prepare's dataset schema to read a result (owner, 2026-10-24).
+    Flight has no HTTP step in the round trip and no stress case.
 
 ## Consequences
 
