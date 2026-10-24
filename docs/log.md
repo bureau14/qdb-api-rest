@@ -63,6 +63,15 @@ smoke step).
 
 Handoff to M6 and M7:
 
+- The server warns at startup when the HTTP listener is enabled and the
+  cluster is secure, because access tokens then travel in plain text.
+  The deployment behind an AWS load balancer is fine with it, because
+  traffic inside the VPC is already encrypted, and v1 did not allow the
+  combination at all (owner, 2026-10-24). Nothing warns today.
+- The round trip drives both servers over plain HTTP, and no step reads
+  the HTTPS listener. Steps over both HTTP and HTTPS may be added
+  (owner, 2026-10-24); `docs/e2e.md`, The driver, says which planes the
+  driver takes today.
 - The stress definition has no Flight case (owner, 2026-10-13). The
   graceful drain covers Flight streams as `docs/brief.md`, Resilience,
   says.
@@ -90,6 +99,11 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-24 -- a plain-text warning for HTTP on a secure cluster, and HTTPS steps as an option
+
+- Owner decision; Current state, Handoff. The warning is a requirement,
+  the HTTPS steps of the round trip a possibility.
 
 ## 2026-10-24 -- flight-tests-plan.md deleted; the Flight client in the equivalence property and the ADBC smoke steps landed
 
