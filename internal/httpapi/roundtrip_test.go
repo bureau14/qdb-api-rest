@@ -36,6 +36,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
+	qdbflight "github.com/bureau14/qdb-api-rest/internal/qdbtest/flight"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
@@ -279,6 +280,51 @@ func (s server) checkDuckDBFormats(t *rapid.T, tbl table.Table) {
 	}
 }
 
+// checkFlight reads tbl over Flight with q under the server's token and
+// compares the result with the rows generated and with the Arrow body
+// the query route answers for q, so the two planes answer one table
+// (ADR-0018, Decision 14).
+func (s server) checkFlight(t *rapid.T, tbl table.Table, q string) {
+	t.Helper()
+	// Two oracles in a fixed order, under the HTTP token:
+	//
+	//  1. the Flight result joined into one batch, because the engines cut
+	//     the stream differently;
+	//  2. the rows generated, column by column by name;
+	//  3. the Arrow body of POST /api/v2/query for q, read into one batch
+	//     and compared by array equality, because every text format is
+	//     already proven equal to the encoder over these batches, so Flight
+	//     equals every HTTP format through this one.
+	//
+	// The token is the refreshed HTTP access token presented as the Flight
+	// bearer, because one token opens both planes (docs/brief.md,
+	// Authentication), and the round trip proves it. A Flight Handshake
+	// per iteration was rejected, because TestHandshake already proves it.
+	ctx := qdbflight.Bearer(context.Background(), s.token)
+
+	// 1. the Flight result joined into one batch, because the native engine
+	//    sends model.BatchRows rows per message and DuckDB one vector
+	got := qdbflight.Execute(t, s.flight, ctx, q)
+	defer got.Release()
+
+	// 2. the rows generated, column by column by name
+	table.Check(t, tbl, got)
+
+	// 3. the query route's Arrow body for q, compared by array equality,
+	//    which reads no byte under a null slot. Decoding every text format
+	//    back was rejected, because the decoders read the ingest dialect
+	//    and drop $table
+	resp := s.query(q, map[string]string{"Authorization": "Bearer " + s.token, "Accept": encoding.ArrowContentType})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("query arrow for flight: status %d: %s", resp.Code, resp.Body.String())
+	}
+	want := qdbflight.FromIPC(t, resp.Body)
+	defer want.Release()
+	if !qdbflight.Same(got, want) {
+		t.Fatalf("flight %s differs from the query route's Arrow body:\n%v\n%v", q, got, want)
+	}
+}
+
 // grantOf decodes a 200 token response.
 func grantOf(t table.T, step string, resp *httptest.ResponseRecorder) tokenResponse {
 	t.Helper()
@@ -410,7 +456,8 @@ func TestRoundtrip(t *testing.T) {
 			// 6. read, query and read through DuckDB behind #sql on the query
 			// route, each in every format. The rows written are the rows
 			// generated, and every format's body carries the encoder's own
-			// bytes. After an async push a query sees
+			// bytes. Both engines are read over Flight too, the #sql one
+			// skipped with the DuckDB checks. After an async push a query sees
 			// the rows at once, but the bulk reader sees them only once the
 			// server has flushed. Before that it answers none of them, or some
 			// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so the
@@ -419,6 +466,7 @@ func TestRoundtrip(t *testing.T) {
 			for _, tbl := range tables {
 				s.checkQuery(rt, tbl)
 				s.checkQueryFormats(rt, tbl)
+				s.checkFlight(rt, tbl, tbl.Select())
 				if mode == "async" {
 					continue
 				}
@@ -426,6 +474,7 @@ func TestRoundtrip(t *testing.T) {
 				s.checkReadFormats(rt, tbl, picked)
 				s.checkDuckDB(rt, tbl)
 				s.checkDuckDBFormats(rt, tbl)
+				s.checkFlight(rt, tbl, "#sql "+tbl.SelectSQL())
 			}
 
 			// 7. delete each (204), which leaves the symtables. The same create

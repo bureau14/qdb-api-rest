@@ -170,7 +170,12 @@ This file, Handlers, holds the table reader's.
   `Cluster.Duck`, byte for byte, and `table.Check` on the direct read
   against the rows generated. The DuckDB step's Arrow body is compared
   decoded, because DuckDB leaves the value bytes under a null slot
-  undefined. The encoders' own tests prove the bytes decode. A new route
+  undefined. Step 6 reads every table over Flight too, native and `#sql`,
+  under the refreshed HTTP access token, against the generated rows and
+  the query route's Arrow body (`checkFlight`), so the format-equivalence
+  property covers the Flight plane (ADR-0018, Decision 14). The server
+  fixture starts the Flight listener beside the handler for it. The
+  encoders' own tests prove the bytes decode. A new route
   lands as a step of the round trip and not as a property of its own.
   Every read of the round trip, over HTTP and in the direct oracle,
   passes the span of the rows the test wrote, through the fixture's
