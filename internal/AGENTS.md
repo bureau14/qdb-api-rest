@@ -262,8 +262,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   import the fixture, which would be a test import cycle. What came
   back is compared with `table.Check` (a record batch, column by column
   by name, `$table` and `$timestamp` included) or `table.CheckColumn`,
-  by array equality. No test carries a comparer of its own. A test
-  that reads a generated table passes the table's span (`table.Range`)
+  by array equality. No test carries a comparer of its own. The Flight
+  client fixture (`internal/qdbtest/flight`: `Dial`, `Execute`,
+  `FromIPC`, `Same`) is a subpackage for the same reason, and it holds
+  no server start, because `internal/flightsql`'s own tests import it.
+  A test that reads a generated table passes the table's span (`table.Range`)
   as the read's range, because a bulk reader opened on a table with no
   rows under no range probes every shard of a forever range, and the
   owner chose the bound over a qdbd story. The draw
