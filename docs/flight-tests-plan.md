@@ -1,6 +1,6 @@
 # Plan: the Flight client in the equivalence property, and the ADBC and JDBC smoke steps of the round trip
 
-Status: draft
+Status: approved
 
 Unit of M5 (`docs/log.md`, Next). Branch `sc-19567/rr-flight-tests`.
 This document is deleted when the unit lands (`docs/AGENTS.md`, Plans).
