@@ -1,10 +1,13 @@
 // Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md,
 // "The tool"). gen writes the rows the round trip ingests, in every body
-// format, and tocsv turns a response into CSV. The tool may import any
+// format, tocsv turns a response into CSV, and adbc runs one statement
+// through arrow-adbc's Flight SQL driver. The tool may import any
 // package of this repository, the cgo binding included (ADR-0014).
 //
 //	e2etool gen --rows N --seed S --out DIR [--table NAME]      write DIR/rows.{csv,ndjson,arrow,json}, print the row count
 //	e2etool tocsv --format csv|json|ndjson|arrow [--table NAME] stdin to CSV on stdout
+//	e2etool adbc --addr HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]
+//	                                                            the statement's result on stdout
 package main
 
 import (
@@ -18,6 +21,8 @@ import (
 	"path/filepath"
 	"time"
 
+	adbcapi "github.com/apache/arrow-adbc/go/adbc"
+	adbcflight "github.com/apache/arrow-adbc/go/adbc/driver/flightsql"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -341,10 +346,116 @@ func tocsv(args []string) error {
 	return toCSV(os.Stdout, os.Stdin, dec, *tableName)
 }
 
+// outputs is the encoder of each format adbc writes: Arrow IPC, which
+// tocsv decodes, and CSV for a result the round trip's schema does not
+// type.
+var outputs = map[string]encoding.Encoder{
+	"arrow": encoding.Arrow{},
+	"csv":   encoding.CSV{},
+}
+
+// batchesOf is the reader's batches as the sequence the encoders write,
+// with the error that ended the stream as its last element.
+func batchesOf(rdr array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
+	return func(yield func(arrow.RecordBatch, error) bool) {
+		for rdr.Next() {
+			if !yield(rdr.RecordBatch(), nil) {
+				return
+			}
+		}
+		if err := rdr.Err(); err != nil {
+			yield(nil, err)
+		}
+	}
+}
+
+// adbc is the adbc subcommand. It runs one statement through arrow-adbc's
+// Flight SQL driver and writes the result to stdout through the encoder
+// of --format, Arrow IPC by default, so the driver pipes it through tocsv
+// as every other response, or CSV for a result the round trip's schema
+// does not type. --username and --secret make the driver handshake;
+// without them it presents no token, the anonymous user.
+func adbc(args []string) error {
+	// A driver session has an order, and two of its choices need a why:
+	//
+	//  1. parse the flags;
+	//  2. the database over the grpc+tls URI with verification off, because
+	//     the server runs on the ephemeral certificate;
+	//  3. username and password only when a username is given, because the
+	//     driver handshakes when either is set and the insecure cluster's
+	//     user is anonymous;
+	//  4. one connection, one statement, ExecuteQuery;
+	//  5. the reader's batches as a sequence into the encoder, the tool's
+	//     rule that it formats no cell. Writing CSV in the tool was
+	//     rejected, because tocsv already decodes Arrow and restores $table.
+
+	// 1. the flags
+	fs := flag.NewFlagSet("adbc", flag.ContinueOnError)
+	addr := fs.String("addr", "", "the Flight listener, host:port")
+	username := fs.String("username", "", "the user to handshake as; empty is the anonymous user")
+	secret := fs.String("secret", "", "the user's secret key")
+	q := fs.String("query", "", "the statement")
+	format := fs.String("format", "arrow", "arrow or csv")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *addr == "" || *q == "" {
+		return fmt.Errorf("--addr and --query are required")
+	}
+	enc, ok := outputs[*format]
+	if !ok {
+		return fmt.Errorf("--format must be arrow or csv, got %q", *format)
+	}
+
+	// 2. the database, grpc+tls because the listener is TLS only, with
+	//    verification off because the certificate is ephemeral
+	opts := map[string]string{
+		adbcapi.OptionKeyURI:           "grpc+tls://" + *addr,
+		adbcflight.OptionSSLSkipVerify: adbcapi.OptionValueEnabled,
+	}
+
+	// 3. credentials only for a named user, because either key makes the
+	//    driver handshake, and the anonymous user presents none
+	if *username != "" {
+		opts[adbcapi.OptionKeyUsername] = *username
+		opts[adbcapi.OptionKeyPassword] = *secret
+	}
+	ctx := context.Background()
+	db, err := adbcflight.NewDriver(memory.DefaultAllocator).NewDatabase(opts)
+	if err != nil {
+		return fmt.Errorf("adbc database: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	// 4. one connection, one statement
+	conn, err := db.Open(ctx)
+	if err != nil {
+		return fmt.Errorf("adbc open: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	stmt, err := conn.NewStatement()
+	if err != nil {
+		return fmt.Errorf("adbc statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+	if err := stmt.SetSqlQuery(*q); err != nil {
+		return fmt.Errorf("adbc set query: %w", err)
+	}
+	rdr, _, err := stmt.ExecuteQuery(ctx)
+	if err != nil {
+		return fmt.Errorf("adbc execute: %w", err)
+	}
+	defer rdr.Release()
+
+	// 5. the result through the server's encoder
+	return enc.EncodeStream(ctx, os.Stdout, batchesOf(rdr))
+}
+
 func main() {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "usage: e2etool gen --rows N --seed S --out DIR [--table NAME]")
 		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format csv|json|ndjson|arrow [--table NAME]")
+		fmt.Fprintln(os.Stderr, "       e2etool adbc --addr HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]")
 		os.Exit(2)
 	}
 	if len(os.Args) < 2 {
@@ -356,6 +467,8 @@ func main() {
 		err = gen(os.Args[2:])
 	case "tocsv":
 		err = tocsv(os.Args[2:])
+	case "adbc":
+		err = adbc(os.Args[2:])
 	default:
 		usage()
 	}

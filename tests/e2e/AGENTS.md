@@ -38,6 +38,11 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   `roundTripSchema` in the tool spell the same column names, and a
   change to one changes the other. A new response format is one entry
   in the driver's matrix and one decoder in the tool.
+- The ADBC steps run `tools/e2etool adbc`, which drives arrow-adbc's
+  Flight SQL driver and writes the result through a server encoder:
+  Arrow IPC, which the driver sends through `tocsv`, or CSV for a result
+  the round trip's schema does not type. The tool writes no text of its
+  own for either.
 - `common.sh` exports `TZ=UTC` for every server the harness starts.
   Keep it that way, so a response that carries a local-time timestamp
   compares equal on every machine.
