@@ -2,7 +2,7 @@
 
 Status: approved. This document specifies the permanent e2e harness
 described in the brief's Testing doctrine (items 2 and 3): the v2 round
-trip, the Flight SQL smoke tests and the stress against a live
+trip, the Flight SQL smoke steps and the stress against a live
 qdbd. It is a permanent
 specification (`docs/AGENTS.md`, Specifications). Verified facts and
 dates are recorded here, not in the brief. Progress is recorded in
@@ -18,8 +18,8 @@ driven over HTTP like a client:
    ingest rows in every body format, read and query them back in every
    format and content coding (the v2 round trip, ADR-0014);
 2. answers the stock Flight SQL clients: Arrow's ADBC and JDBC drivers
-   each log in and query both engines (the Flight SQL smoke tests,
-   ADR-0018);
+   each log in and query both engines, as steps of the round trip (the
+   Flight SQL smoke steps, ADR-0018);
 3. behaves honestly under stress: fast, explicit failure under overload,
    in-flight streams survive graceful shutdown.
 
@@ -28,8 +28,8 @@ Every assertion is pass or fail. The harness measures nothing
 harness when that milestone starts (`docs/brief.md`, Milestones).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
-lineage) plus one Go tool and one Java source file for the JDBC smoke
-test. The Go tool also drives the ADBC smoke test. It runs
+lineage) plus one Go tool and one Maven project for the JDBC smoke
+step. The Go tool also drives the ADBC smoke step. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -111,6 +111,16 @@ is timed.
    in every format under both codings, with the assertions of step 5.
    qdb-duck's scan answers no `$table` column, and the tool routes rows
    by it, so the select names the table as a constant.
+7. Each table is read back through Arrow's stock Flight SQL drivers,
+   after the formats. `e2etool adbc` runs `SELECT * FROM <name>` through
+   arrow-adbc's Go Flight SQL driver and writes Arrow IPC, which the tool
+   decodes to CSV and compares with the generated CSV as in step 5. Then
+   it runs the types query (`TYPES_QUERY` in the driver), one row of
+   DuckDB-only types, written as CSV by the server's encoder and compared
+   with the cells `TestDuckDBScalars` pins. The driver handshakes with the
+   cluster's user on the secure cluster and presents no token on the
+   insecure one. "The Flight SQL smoke steps" below says what each driver
+   asserts and why.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
@@ -189,36 +199,58 @@ that client; a Go client would repeat `TestRoundtrip` in
 An endpoint lands with its step in the round trip, so the round trip
 grows with the milestones (`docs/brief.md`, Milestones). Refresh and
 session join the login step, and the exploration endpoints add steps.
-Flight SQL has no step in the round trip. Its tests are the Go property
-tests, driven by arrow-go's Flight SQL client, and the two smoke tests
-below (ADR-0018).
+Flight SQL has no HTTP step in the round trip. Its tests are the Go
+property tests, driven by arrow-go's Flight SQL client through the
+Flight client fixture (`internal/qdbtest/flight`), `TestRoundtrip`
+included, and the stock drivers' steps are the smoke steps below
+(ADR-0018).
 
-## The Flight SQL smoke tests
+## The Flight SQL smoke steps
 
 Arrow publishes two official Flight SQL drivers, and customers are
 likely to reach the Flight listener through both. DataFrame frameworks
 such as pandas and polars connect through ADBC, and Java programs
 through JDBC. The two drivers share no client code. Each sends its own
 handshake, auth metadata and connect-time metadata calls, so each gets
-its own smoke test against the built binary. ADBC is tested in Go and
-JDBC in Java. The smoke tests do not repeat the format-equivalence
-property. Through its driver, each test:
+its own smoke step against the built binary. ADBC is driven from Go and
+JDBC from Java. The smoke steps do not repeat the format-equivalence
+property. They are steps of the round trip, once per table after the
+ingest and the format loop, because the servers, the tables and the
+generated rows exist there by construction, under one lifecycle. A
+separate target reading the round trip's leftovers was rejected,
+because it fails alone and hides an ordering, and a self-contained
+target filling a table through qdbsh was rejected as a second writer of
+test data with weaker assertions (owner, 2026-10-23). Through its
+driver, each step:
 
-1. connects to `listen.flight`, with a username and secret on the
-   secure cluster, which exercises Handshake and the bearer, and as the
-   anonymous user on the insecure cluster;
-2. runs one native query and reads its rows;
-3. runs one `#sql` query and reads its rows, with at least one column of
-   a DuckDB type that QuasarDB does not have.
+1. connects to the server's Flight listener on its test port, with the
+   cluster's username and secret on the secure cluster, which exercises
+   Handshake and the bearer, and as the anonymous user on the insecure
+   cluster;
+2. reads the table back with a native `SELECT * FROM <name>`;
+3. runs the types query, one `#sql` row of DuckDB types that QuasarDB
+   does not have (an int32, a boolean, a decimal and a date).
 
-The ADBC test is an `e2etool` subcommand that drives arrow-adbc's Go
-Flight SQL driver. The Python and C packages of that driver bind the
-same Go code (the `adbc_driver_flightsql` README, 2026-10-19), so the
-Go test runs the driver logic that pandas and polars load. arrow-adbc's
-Go module is pinned in `go.mod` and vendored. It and the server use
-one arrow-go release (v18.8.0 on both sides, 2026-10-19), and one is
-bumped only together with the other. The test connects with
-certificate verification disabled.
+The two drivers assert differently, because the Go tool has the
+server's encoders and Java must not format a cell (owner, 2026-10-23).
+The ADBC step compares bytes: the table read decoded to CSV through
+`tocsv` against the generated CSV, and the types query written as CSV
+by the server's encoder against the cells `TestDuckDBScalars` pins. The
+JDBC step compares the row count and the column names the driver
+answers. Both drivers counting only was rejected, because it gives up a
+comparison the tool has for free, and Java printing CSV was rejected as
+a second formatter to keep in step.
+
+The ADBC step is `e2etool adbc`, which drives arrow-adbc's Go Flight
+SQL driver. The Python and C packages of that driver bind the same Go
+code (the `adbc_driver_flightsql` README, 2026-10-19), so the step runs
+the driver logic that pandas and polars load. arrow-adbc's Go module is
+pinned in `go.mod` (v1.12.0) and vendored for the tool and for nothing
+in the binary. Its arrow-go, grpc and protobuf requirements sit below
+the repository's pins (checked 2026-10-23), so a bump of arrow-go is
+what moves them, and arrow-adbc is bumped only together with arrow-go.
+The step connects over `grpc+tls` with certificate verification
+disabled, because the server runs on its ephemeral certificate.
 
 The JDBC test is one Java source file that `java` runs directly, with
 no build tool, because JDBC is a Java API and a Java program uses the
@@ -372,6 +404,13 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | The sql step selects the table name as `$table` | qdb-duck's scan answers no `$table` column, and tocsv routes rows by it                     | teaching tocsv a missing `$table`, because the tool would then shape a table |
 | The sql step runs on both clusters              | the secure attach through the DuckDB secret is proven over HTTP on the built binary (owner) | the insecure cluster alone                                                   |
+
+## Decision log (2026-10-23)
+
+| Decision                                                                 | Why                                                                                               | Rejected                                                                                                                                                              |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The ADBC and JDBC smoke tests are steps of the round trip                | the servers, the tables and the generated rows exist by construction, under one lifecycle (owner) | a separate target reading the round trip's leftovers, which fails alone and hides an ordering; a self-contained target filling a table through qdbsh, a second writer |
+| ADBC compares bytes through the server's encoders, JDBC counts and names | the tool has the encoders, and Java must not format a cell (owner)                                | both counting only, giving up a comparison the tool has for free; Java printing CSV, a second formatter to keep in step                                               |
 
 ## Decision log (2026-10-19)
 

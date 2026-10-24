@@ -101,16 +101,18 @@ client. The owner made the decisions below on 2026-10-13.
 
 ### Tests
 
-14. **The tests are Go property tests and two driver smoke tests.** The
+14. **The tests are Go property tests and two driver smoke steps.** The
     format-equivalence property gains a Flight SQL client from arrow-go
     and requires the decoded Flight result to equal the HTTP formats,
     for the native engine and for the `#sql` engine against `#sql` on
     `/api/v2/query`. A dispatch property generates prefixes and
-    whitespace around them. Two smoke tests drive the built binary
+    whitespace around them. Two smoke steps of the shell round trip,
+    after its ingest and over its tables, drive the built binary
     through Arrow's official Flight SQL drivers, because customers are
-    likely to connect through both: ADBC, tested from Go, and JDBC,
-    tested from Java. `docs/e2e.md`, The Flight SQL smoke tests,
-    specifies them. Flight has no step in the
+    likely to connect through both: ADBC from Go, comparing bytes
+    through the tool's encoders, and JDBC from Java, a Maven project
+    comparing row counts and column names. `docs/e2e.md`, The Flight
+    SQL smoke steps, specifies them. Flight has no HTTP step in the
     round trip and no stress case.
 
 ## Consequences

@@ -2,12 +2,13 @@
 # The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It proves
 # the built binary over HTTP like a client: login, create one table per
 # body format, ingest the generated rows into each as that format, and
-# read and query them back in every format and coding. The expected
+# read and query them back in every format and coding, then read them
+# back through Arrow's stock Flight SQL drivers. The expected
 # value of every step is the generated input, so nothing is captured
 # and nothing is audited (ADR-0014). Error rows are Go tests, never
 # steps here.
 #
-#   round-trip.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]
+#   round-trip.sh run --insecure-url <url> --secure-url <url> --insecure-flight <host:port> --secure-flight <host:port> --tool <e2etool> [--rows N] [--seed S]
 #
 # The Makefile is the only source of URLs, ports and paths, and passes
 # them as options. common.sh supplies the helpers and TZ=UTC. Working
@@ -23,10 +24,10 @@ require_command gunzip
 
 ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
-INSECURE_URL="" SECURE_URL="" TOOL="" ROWS=10000 SEED="$(date +%s)"
+INSECURE_URL="" SECURE_URL="" INSECURE_FLIGHT="" SECURE_FLIGHT="" TOOL="" ROWS=10000 SEED="$(date +%s)"
 
 usage() {
-    die "usage: round-trip.sh run --insecure-url <url> --secure-url <url> --tool <e2etool> [--rows N] [--seed S]"
+    die "usage: round-trip.sh run --insecure-url <url> --secure-url <url> --insecure-flight <host:port> --secure-flight <host:port> --tool <e2etool> [--rows N] [--seed S]"
 }
 
 # Every option is named, because two URLs on a command line need names.
@@ -37,13 +38,15 @@ parse_args() {
         case "$1" in
             --insecure-url) INSECURE_URL="$2"; shift 2 ;;
             --secure-url)   SECURE_URL="$2"; shift 2 ;;
+            --insecure-flight) INSECURE_FLIGHT="$2"; shift 2 ;;
+            --secure-flight)   SECURE_FLIGHT="$2"; shift 2 ;;
             --tool)         TOOL="$2"; shift 2 ;;
             --rows)         ROWS="$2"; shift 2 ;;
             --seed)         SEED="$2"; shift 2 ;;
             *)              usage ;;
         esac
     done
-    [[ -n "$INSECURE_URL" && -n "$SECURE_URL" && -x "$TOOL" ]] || usage
+    [[ -n "$INSECURE_URL" && -n "$SECURE_URL" && -n "$INSECURE_FLIGHT" && -n "$SECURE_FLIGHT" && -x "$TOOL" ]] || usage
 }
 
 # request <out_dir> <name> <curl args...>: one request, its body in
@@ -265,6 +268,57 @@ duckdb_back() {
     check_response "$out" "$name" "$format" "$type" "$coding" "$table" "$csv" tool
 }
 
+# TYPES_QUERY is the #sql query of one row of DuckDB-only types (int32,
+# boolean, decimal, date), and TYPES_CSV the cells the server's CSV
+# encoder writes for it, the ones TestDuckDBScalars pins
+# (internal/httpapi/duckdb_test.go), so a driver step proves it carries a
+# type QuasarDB does not have. A change to one changes the other. A list
+# or struct type was rejected, because the text encoders do not write one.
+TYPES_QUERY="#sql SELECT 1 AS i, true AS b, 1.50::DECIMAL(5,2) AS d, DATE '2026-06-11' AS day"
+TYPES_CSV=$'i,b,d,day\n1,true,1.50,2026-06-11\n'
+
+# credentials <login_body_file>: the e2etool adbc options of the cluster's
+# user, one per line, none for the anonymous user, so the driver
+# handshakes on the secure cluster and presents no token on the insecure
+# one. The user security file has the login body's shape, so one jq reads
+# both.
+credentials() {
+    local user
+    user=$(jq -r '.username' "$1")
+    [[ -z "$user" ]] || printf '%s\n%s\n%s\n%s\n' --username "$user" --secret "$(jq -r '.secret_key' "$1")"
+}
+
+# adbc_back <out_dir> <flight> <login_body_file> <table> <csv>: the table
+# over ADBC. e2etool adbc runs SELECT * FROM <table> through arrow-adbc's
+# Flight SQL driver and writes Arrow IPC, which compare_csv decodes
+# through tocsv and compares with the generated CSV as the query does, so
+# the stock driver's result is the rows generated, byte for byte.
+adbc_back() {
+    local out="$1" flight="$2" body="$3" table="$4" csv="$5"
+    local name="$table.adbc"
+    local -a creds=()
+    while IFS= read -r arg; do creds+=("$arg"); done < <(credentials "$body")
+    "$TOOL" adbc --addr "$flight" "${creds[@]+"${creds[@]}"}" --query "SELECT * FROM $table" > "$out/$name.body" \
+        || { log_error "[FAIL] $name: e2etool adbc failed"; return 1; }
+    compare_csv "$out" "$name" arrow "$table" "$out/$name.body" "$csv" tool
+}
+
+# adbc_types <out_dir> <flight> <login_body_file>: TYPES_QUERY over ADBC,
+# written as CSV by the server's encoder and compared with TYPES_CSV.
+adbc_types() {
+    local out="$1" flight="$2" body="$3"
+    local -a creds=()
+    while IFS= read -r arg; do creds+=("$arg"); done < <(credentials "$body")
+    printf '%s' "$TYPES_CSV" > "$out/adbc.types.want"
+    "$TOOL" adbc --addr "$flight" "${creds[@]+"${creds[@]}"}" --query "$TYPES_QUERY" --format csv > "$out/adbc.types.body" \
+        || { log_error "[FAIL] adbc.types: e2etool adbc failed"; return 1; }
+    if ! cmp -s "$out/adbc.types.want" "$out/adbc.types.body"; then
+        log_error "[FAIL] adbc.types: CSV differs (want vs got)"
+        diff "$out/adbc.types.want" "$out/adbc.types.body" >&2 || true
+        return 1
+    fi
+}
+
 # The matrix. One table per body format, named after it, and every
 # table is read and queried in every response format under every
 # coding, and read back through DuckDB SQL the same way. A format is one entry here and a new step is one function
@@ -273,13 +327,14 @@ BODY_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vn
 READ_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
 CODINGS=("identity" "gzip")
 
-# run_cluster <name> <url> <login_body_file>: the round trip against one
-# server: login once, then per body format create the table, ingest the
-# generated rows in that format, and read, query and read them through
-# DuckDB SQL back in every format and coding. The seed is in every line, so a failure reproduces
-# with --seed.
+# run_cluster <name> <url> <flight> <login_body_file>: the round trip
+# against one server: login once, then per body format create the table,
+# ingest the generated rows in that format, read, query and read them
+# through DuckDB SQL back in every format and coding, and read them back
+# through the ADBC driver with the types query after. The seed is in
+# every line, so a failure reproduces with --seed.
 run_cluster() {
-    local name="$1" url="$2" body="$3" token rows entry fmt table type rentry coding
+    local name="$1" url="$2" flight="$3" body="$4" token rows entry fmt table type rentry coding
     local out="$ACTUAL_DIR/$name"
     mkdir -p "$out"
     log_info "$name: $url, rows=$ROWS seed=$SEED"
@@ -299,7 +354,9 @@ run_cluster() {
                 duckdb_back "$out" "$url" "$token" "$table" "${rentry%%:*}" "${rentry#*:}" "$coding" "$out/rows.csv" || return 1
             done
         done
-        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte (seed=$SEED)"
+        adbc_back "$out" "$flight" "$body" "$table" "$out/rows.csv" || return 1
+        adbc_types "$out" "$flight" "$body" || return 1
+        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte, and read back over ADBC (seed=$SEED)"
     done
 }
 
@@ -308,8 +365,8 @@ main() {
     local failed=0
     mkdir -p "$ACTUAL_DIR"
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
-    run_cluster insecure "$INSECURE_URL" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
-    run_cluster secure "$SECURE_URL" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
+    run_cluster insecure "$INSECURE_URL" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
+    run_cluster secure "$SECURE_URL" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
     (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }
