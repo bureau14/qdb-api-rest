@@ -92,6 +92,8 @@ func Concat(t table.T, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Rec
 	t.Helper()
 	cols := make([]arrow.Array, schema.NumFields())
 	rows := int64(0)
+	// One column at a time: the column's slice of every batch is joined
+	// into one array, because Concatenate joins arrays, not batches.
 	for i := range cols {
 		parts := make([]arrow.Array, len(recs))
 		for n, r := range recs {
@@ -108,8 +110,12 @@ func Concat(t table.T, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Rec
 			t.Fatalf("concat: %v", err)
 		}
 		cols[i] = col
+		// Every column has the same length, so the last one read is the
+		// batch's row count.
 		rows = int64(col.Len())
 	}
+	// The batch retains the columns, so the arrays built here are released
+	// and the batch is the one reference left.
 	rec := array.NewRecordBatch(schema, cols, rows)
 	for _, c := range cols {
 		c.Release()
@@ -143,13 +149,18 @@ func FromIPC(t table.T, r io.Reader) arrow.RecordBatch {
 	defer rdr.Release()
 	var recs []arrow.RecordBatch
 	for rdr.Next() {
+		// The reader releases a batch on its next call, so each one is
+		// retained until the join below has read it.
 		rec := rdr.RecordBatch()
 		rec.Retain()
 		recs = append(recs, rec)
 	}
+	// Next answers false at the end of the stream and on an error alike,
+	// so the error is read after the loop.
 	if rdr.Err() != nil {
 		t.Fatalf("arrow stream: %v", rdr.Err())
 	}
+	// One batch, as Execute answers, joined before the retained ones go.
 	defer Release(recs)
 	return Concat(t, rdr.Schema(), recs)
 }
@@ -158,6 +169,8 @@ func FromIPC(t table.T, r io.Reader) arrow.RecordBatch {
 // columns by array equality, which reads no byte under a null slot,
 // because DuckDB leaves those bytes undefined.
 func Same(got, want arrow.RecordBatch) bool {
+	// A schema or row-count mismatch decides the answer before any column
+	// is compared.
 	if !got.Schema().Equal(want.Schema()) || got.NumRows() != want.NumRows() {
 		return false
 	}
