@@ -35,11 +35,10 @@ func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 // server is the root handler plus the request context main would give
 // it: logger, cluster and keychain, and the user every request acts as,
 // with one access token minted for that user. The keychain is kept so a
-// test mints what a row needs, such as an expired refresh token. Beside
-// the handler runs the Flight listener main would start, on a port of
-// its own under the same context, with a client on it, because the round
-// trip proves the two planes answer the same table (ADR-0018, Decision
-// 14).
+// test mints what a row needs, such as an expired refresh token. It also
+// starts the Flight listener on a port of its own and holds a client on
+// it, so the round trip reads one table on both planes (ADR-0018,
+// Decision 14).
 type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
