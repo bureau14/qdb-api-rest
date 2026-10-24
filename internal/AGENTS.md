@@ -177,6 +177,11 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
 - grpc-go and protobuf are vendored at the versions arrow-go requires,
   and nothing pins them on their own. Bumping arrow-go is what moves
   them, through `go mod tidy` and `go mod vendor` (owner, 2026-10-20).
+- arrow-adbc's Go module is vendored for `e2etool`'s ADBC smoke step and
+  for nothing in the binary. Its arrow-go, grpc and protobuf requirements
+  sit below this repository's pins, so a bump of arrow-go is what moves
+  them, and arrow-adbc is bumped only together with arrow-go
+  (`docs/e2e.md`, The Flight SQL smoke steps).
 
 ## Logging (ADR-0002)
 

@@ -5,6 +5,7 @@ go 1.27
 toolchain go1.27.0
 
 require (
+	github.com/apache/arrow-adbc/go/adbc v1.12.0
 	github.com/apache/arrow-go/v18 v18.8.0
 	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023063610-a93f920063f5
 	github.com/duckdb/duckdb-go/v2 v2.10504.0
@@ -24,6 +25,7 @@ require (
 )
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/duckdb/duckdb-go-bindings v0.10504.0 // indirect
 	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.10504.0 // indirect
 	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.10504.0 // indirect
@@ -40,11 +42,16 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
+	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 )
 
 // The prebuilt DuckDB libraries are never compiled, so a stub replaces

@@ -1,3 +1,5 @@
+# github.com/apache/arrow-adbc/go/adbc v1.12.0
+## explicit; go 1.25.0
 # github.com/apache/arrow-go/v18 v18.8.0
 ## explicit; go 1.25.0
 github.com/apache/arrow-go/v18/arrow
@@ -31,6 +33,8 @@ github.com/apache/arrow-go/v18/internal/utils/maphash
 # github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023063610-a93f920063f5
 ## explicit; go 1.26.0
 github.com/bureau14/qdb-api-go/v3
+# github.com/cespare/xxhash/v2 v2.3.0
+## explicit; go 1.11
 # github.com/duckdb/duckdb-go-bindings v0.10504.0
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings
@@ -132,6 +136,10 @@ github.com/stretchr/testify/require
 # github.com/zeebo/xxh3 v1.1.0
 ## explicit; go 1.22
 github.com/zeebo/xxh3
+# go.opentelemetry.io/otel v1.44.0
+## explicit; go 1.25.0
+# go.opentelemetry.io/otel/trace v1.44.0
+## explicit; go 1.25.0
 # go.yaml.in/yaml/v3 v3.0.5
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
@@ -142,6 +150,8 @@ golang.org/x/crypto/blake2b
 # golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
+# golang.org/x/mod v0.38.0
+## explicit; go 1.25.0
 # golang.org/x/net v0.58.0
 ## explicit; go 1.25.0
 golang.org/x/net/http/httpguts
@@ -152,6 +162,8 @@ golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
+# golang.org/x/sync v0.22.0
+## explicit; go 1.25.0
 # golang.org/x/sys v0.47.0
 ## explicit; go 1.25.0
 golang.org/x/sys/cpu
@@ -163,6 +175,8 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+# golang.org/x/tools v0.48.0
+## explicit; go 1.25.0
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/errdetails
