@@ -45,8 +45,8 @@ func typeName(t duckdb.Type) string {
 // enumIndex answers the index type DuckDB stores an ENUM of n values in,
 // which is the dictionary's index type on the Arrow side.
 func enumIndex(n int) arrow.DataType {
-	// DuckDB's EnumTypeInfo picks the smallest unsigned type that counts
-	// every value.
+	// DuckDB's EnumTypeInfo::DictType picks the smallest unsigned type
+	// that counts every value.
 	switch {
 	case n <= 0xff:
 		return arrow.PrimitiveTypes.Uint8
@@ -64,10 +64,10 @@ func enumIndex(n int) arrow.DataType {
 func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 	// The cases follow SetArrowFormat in arrow_converter.cpp of DuckDB
 	// 1.5.4, the version qdb-duck pins, case by case, under the defaults of
-	// its client properties: regular
-	// offsets, no list or string views, lossless conversion off and output
-	// version 1.0. The nested types recurse. TestDescribe keeps the cases
-	// equal to what the reader answers.
+	// its client properties: regular offsets, no list or string views,
+	// lossless conversion off and output version 1.0. The nested types
+	// recurse. TestDescribe keeps the cases equal to what the reader
+	// answers.
 	//
 	// The map exists because duckdb-go keeps a column's logical type
 	// unexported, so DuckDB's own conversion cannot be asked. A LIMIT 0 run
@@ -126,6 +126,9 @@ func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 		return &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: tz}, nil
 	case duckdb.TYPE_INTERVAL:
 		return arrow.FixedWidthTypes.MonthDayNanoInterval, nil
+	// unreachable through duckdb-go, which answers no TypeInfo for
+	// SQLNULL: columnsOf types a top-level one, and a nested one is
+	// ErrUndescribable there. The case keeps the conversion's row.
 	case duckdb.TYPE_SQLNULL:
 		return arrow.Null, nil
 	// the child is named l
@@ -203,7 +206,8 @@ type column struct {
 }
 
 // columnsOf answers the columns of st. A column whose type duckdb-go
-// does not model is ErrUndescribable, naming the column.
+// does not model is ErrUndescribable, naming the column, and a bare
+// SQLNULL column has a nil info, which Describe types as null.
 func columnsOf(st *duckdb.Stmt) ([]column, error) {
 	n, err := st.ColumnCount()
 	if err != nil {
@@ -292,19 +296,21 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 	//  1. open a connection of its own;
 	//  2. prepare q as one statement;
 	//  3. refuse parameter markers;
-	//  4. read the TimeZone when a column holds a TIMESTAMP_TZ;
-	//  5. map each column to its field.
+	//  4. read each column's name and type;
+	//  5. read the TimeZone when a column holds a TIMESTAMP_TZ;
+	//  6. map each column to its field.
 
-	// 1. open a connection, closed with the statement whatever happened
+	// 1. open a connection, closed whatever happened
 	conn, err := i.connector.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	// 2. driver.Conn's Prepare, because PrepareContext executes every
-	//    statement before the last. Its error is a *duckdb.Error for
-	//    DuckDB's own parse and bind errors, and any other error is
-	//    duckdb-go's refusal of a text of several statements or of none.
+	// 2. driver.Conn's Prepare, the statement closed whatever happened.
+	//    PrepareContext was rejected, because it executes every statement
+	//    before the last. Prepare's error is a *duckdb.Error for DuckDB's
+	//    own parse and bind errors, and any other error is duckdb-go's
+	//    refusal of a text of several statements or of none.
 	prepared, err := conn.Prepare(q)
 	if err != nil {
 		var de *duckdb.Error
@@ -320,11 +326,12 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 	if st.NumInput() > 0 {
 		return nil, ErrParameters
 	}
+	// 4. the columns, as the statement describes them
 	cols, err := columnsOf(st)
 	if err != nil {
 		return nil, err
 	}
-	// 4. the TimeZone on the same connection, only when a column needs it,
+	// 5. the TimeZone on the same connection, only when a column needs it,
 	//    because the reader tags a TIMESTAMP_TZ with that setting
 	var tz string
 	for _, c := range cols {
@@ -335,8 +342,9 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 			break
 		}
 	}
-	// 5. each field nullable, as DuckDB's Arrow conversion makes every
-	//    column, and named and typed as the statement says
+	// 6. each field nullable, as DuckDB's Arrow conversion makes every
+	//    column, and named and typed as the statement says. A bare SQLNULL
+	//    column is the null type, as the conversion gives it.
 	fields := make([]arrow.Field, len(cols))
 	for n, c := range cols {
 		dt := arrow.DataType(arrow.Null)
