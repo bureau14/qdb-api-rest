@@ -26,7 +26,9 @@ func registerSqlInfo(b *flightsql.BaseServer) error {
 		{flightsql.SqlInfoFlightSqlServerArrowVersion, arrow.PkgVersion},
 		// The capabilities: read-only, SQL and no Substrait, no transactions
 		// in either form, no cancel and no DDL, because the Flight plane runs
-		// queries and nothing else (ADR-0018, Decisions 9 and 12).
+		// queries and nothing else (ADR-0018, Decisions 9 and 12). Prepared
+		// statements are not listed, because Flight SQL has no SqlInfo key
+		// for them.
 		{flightsql.SqlInfoFlightSqlServerReadOnly, true},
 		{flightsql.SqlInfoFlightSqlServerSql, true},
 		{flightsql.SqlInfoFlightSqlServerSubstrait, false},
