@@ -1,6 +1,6 @@
 // Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md,
-// "The tool"). gen writes the rows the round trip ingests, in every body
-// format, tocsv turns a response into CSV, and adbc runs one statement
+// "The tool"). gen writes the rows the round trip ingests in every body
+// format. tocsv turns a response into CSV. adbc runs one statement
 // through arrow-adbc's Flight SQL driver. The tool may import any
 // package of this repository, the cgo binding included (ADR-0014).
 //
@@ -33,10 +33,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// roundTripSchema is the table the round trip creates: one column of every type,
-// named v_<type>, with the symbol's symtable named after the table and
-// the column as the fixture names them. The driver's create body spells
-// the same names.
+// roundTripSchema is the table the round trip creates. It has one column
+// of every type, named v_<type>. The symbol column's symtable is named
+// after the table and the column, as the fixture names symtables. The
+// driver's create body spells the same names.
 func roundTripSchema(name string) table.Table {
 	return table.Table{Name: name, Columns: []table.Column{
 		{Name: "v_int64", Type: qdbapi.TsColumnInt64},
@@ -56,12 +56,16 @@ var edgeStart = time.Date(2019, 12, 31, 0, 0, 0, 0, time.UTC)
 // nanos is a timestamp cell.
 func nanos(t time.Time) arrow.Timestamp { return arrow.Timestamp(t.UnixNano()) }
 
-// edgeRows is the batch of the values a draw reaches rarely, for
-// roundTripSchema's columns: the extreme integers, a double the shortest
-// round trip writes in exponent form, the awkward string with a quote,
-// a comma, <&> and an LF, a leading space, a one-byte and a two-byte
-// blob, a nanosecond timestamp at each end of the range the fixture
-// draws, and one all-null row. The caller releases it.
+// edgeRows builds a batch of the values a draw reaches rarely, over the
+// columns of roundTripSchema. The caller releases it. The batch holds:
+//
+//   - the extreme integers
+//   - a double that the shortest round trip writes in exponent form
+//   - a string with a quote, a comma, <&> and an LF, and one with a
+//     leading space
+//   - a one-byte and a two-byte blob
+//   - a nanosecond timestamp at each end of the range the fixture draws
+//   - one all-null row
 func edgeRows(schema *arrow.Schema) arrow.RecordBatch {
 	b := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer b.Release()
@@ -100,8 +104,8 @@ func edgeRows(schema *arrow.Schema) arrow.RecordBatch {
 	return b.NewRecordBatch()
 }
 
-// concat joins first and second row-wise under first's schema. The
-// caller releases the result.
+// concat joins the two batches row-wise under the schema of the first.
+// The caller releases the result.
 func concat(first, second arrow.RecordBatch) (arrow.RecordBatch, error) {
 	cols := make([]arrow.Array, first.NumCols())
 	for i := range cols {
@@ -115,8 +119,9 @@ func concat(first, second arrow.RecordBatch) (arrow.RecordBatch, error) {
 	return array.NewRecordBatch(first.Schema(), cols, first.NumRows()+second.NumRows()), nil
 }
 
-// releaser is the slice of the fixture's T the body shape needs: it
-// collects cleanups for the caller to run, and a failure is fatal.
+// releaser implements the part of the fixture's T that table.WithTable
+// needs. It collects cleanups for the caller to run, and it panics on a
+// failure.
 type releaser struct{ cleanups []func() }
 
 func (*releaser) Helper()                           {}
@@ -129,26 +134,27 @@ func (r *releaser) release() {
 	}
 }
 
-// generate draws rows rows of the round trip's table named name under seed,
-// puts the edge rows ahead of them, and returns the batch as an ingest
-// body carries it, $table first. The caller releases it.
+// generate draws the given number of rows of the named round-trip table
+// under the seed and puts the edge rows ahead of them. It returns the
+// batch as an ingest body carries it, $table first. The caller releases
+// it.
 func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
-	// The draw is the fixture's, so the vocabulary and the bounds (no
-	// empty string, no NUL, no MinInt64, alphanumeric symbols) are the
-	// property tests' and are written once:
+	// The fixture draws the rows, so the vocabulary and the bounds are
+	// those of the property tests and are written once. The bounds are no
+	// empty string, no NUL, no MinInt64 and alphanumeric symbols.
 	//
-	//  1. draw the rows under the seed. rapid.Custom(...).Example(seed)
-	//     is rapid's one seeded entry outside a test (rapid.Check under a
+	//  1. Draw the rows under the seed. rapid.Custom(...).Example(seed) is
+	//     the only seeded entry rapid offers outside a test. Example runs
+	//     the T's cleanups when the function returns, which would release
+	//     the batch, so the function retains it first. rapid.Check under a
 	//     stand-in testing.T was rejected, because it is a test harness
-	//     that shrinks on failure, and a draw of the tool's own because
-	//     it would copy the bounds); Example runs the T's cleanups when
-	//     the function returns, which would release the batch, so the
-	//     function retains it first;
-	//  2. put the edge rows ahead of the drawn ones, because the round trip
-	//     wants the extremes in every run and ten thousand drawn rows
-	//     reach them rarely. They are built here and not in the fixture,
-	//     which draws values and fixes none;
-	//  3. put the $table column in front through the fixture's WithTable,
+	//     that shrinks on failure. A draw of the tool's own was rejected,
+	//     because it would copy the bounds.
+	//  2. Put the edge rows ahead of the drawn ones. The round trip wants
+	//     the extremes in every run, and ten thousand drawn rows reach
+	//     them rarely. The tool builds them, because the fixture draws
+	//     values and fixes none.
+	//  3. Put the $table column in front through the fixture's WithTable,
 	//     so the CSV header is the one the table reader answers.
 	tbl := roundTripSchema(name)
 
@@ -179,9 +185,9 @@ func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
 	return body, nil
 }
 
-// bodyFiles is the encoder that writes each body format's file, keyed by
-// the format name the driver's matrix uses, which is also the file's
-// extension: rows.csv, rows.ndjson, rows.arrow, rows.json.
+// bodyFiles lists the encoder of each body format. Each name is the
+// format name in the driver's matrix and the extension of the file:
+// rows.csv, rows.ndjson, rows.arrow, rows.json.
 var bodyFiles = []struct {
 	name string
 	enc  encoding.Encoder
@@ -192,14 +198,14 @@ var bodyFiles = []struct {
 	{"json", encoding.JSON{}},
 }
 
-// one is rec as a sequence of that one batch. The tool writes one batch,
-// and the encoders write sequences alone.
+// one wraps a batch in a sequence of that batch. The tool writes one
+// batch, and the encoders write only sequences.
 func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
 }
 
-// writeBody writes rec to dir/<file> through enc, so the file is the
-// encoder's dialect and the tool formats no cell of its own.
+// writeBody writes the batch to dir/<file> through the encoder, so the
+// file is in the encoder's dialect and the tool formats no cell itself.
 func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) error {
 	f, err := os.Create(filepath.Join(dir, file))
 	if err != nil {
@@ -212,11 +218,12 @@ func writeBody(dir, file string, enc encoding.Encoder, rec arrow.RecordBatch) er
 	return f.Close()
 }
 
-// writeBodies writes rec as rows.<format> in dir for every body format.
-// The four files carry the same batch, $table included, so the bodies
-// the round trip ingests differ in format only. One run writes all four
-// rather than one file per run under a --format flag, because the
-// driver would then draw the same batch four times for one table.
+// writeBodies writes the batch as rows.<format> in the directory, for
+// every body format. The four files carry the same batch, $table
+// included, so the bodies the round trip ingests differ in format only.
+// One run writes all four files. One file per run under a --format flag
+// was rejected, because the driver would then draw the same batch four
+// times for one table.
 func writeBodies(dir string, rec arrow.RecordBatch) error {
 	for _, b := range bodyFiles {
 		if err := writeBody(dir, "rows."+b.name, b.enc, rec); err != nil {
@@ -227,18 +234,18 @@ func writeBodies(dir string, rec arrow.RecordBatch) error {
 }
 
 // gen is the gen subcommand. It prints the row count it wrote, edge rows
-// included, so the driver asserts the ingest's answer against the one
-// writer of that number.
+// included. The driver checks the ingest's answer against that count,
+// because the tool is the only writer of the number.
 func gen(args []string) error {
 	// Every failure ends the command before anything is printed, so a
-	// count on stdout means every file is complete:
+	// count on stdout means every file is complete.
 	//
-	//  1. parse the flags. The defaults are the Makefile's, so the tool
-	//     runs by hand with no options;
-	//  2. draw the batch, released when the function returns, after the
-	//     writes that read it;
-	//  3. write every body file;
-	//  4. print the row count, the one line the driver reads.
+	//  1. Parse the flags. The defaults are the Makefile's, so the tool
+	//     runs by hand with no options.
+	//  2. Draw the batch. It is released when the function returns, after
+	//     the writes that read it.
+	//  3. Write every body file.
+	//  4. Print the row count, which is the only line the driver reads.
 
 	// 1. the flags
 	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
@@ -267,10 +274,11 @@ func gen(args []string) error {
 	return nil
 }
 
-// decoders is the decoder of each response format tocsv reads, keyed by
-// the format name the driver's matrix uses. CSV is among them, because
-// the query answers its columns in another order than the reader, and
-// the driver sends the query's CSV through the tool to restore it.
+// decoders maps each response format tocsv reads to its decoder, keyed
+// by the format name in the driver's matrix. CSV is among them, because
+// the query answers its columns in a different order from the table
+// reader. The driver sends the query's CSV through the tool to restore
+// the order.
 var decoders = map[string]encoding.Decoder{
 	"csv":    encoding.CSV{},
 	"json":   encoding.JSON{},
@@ -278,31 +286,32 @@ var decoders = map[string]encoding.Decoder{
 	"arrow":  encoding.Arrow{},
 }
 
-// toCSV decodes one response body of the round trip's table named name
-// from r through dec and writes it as CSV to w, in the generated file's
-// column order, $table first.
+// toCSV decodes one response body of the named round-trip table through
+// the decoder and writes it as CSV, in the column order of the generated
+// file, $table first.
 func toCSV(w io.Writer, r io.Reader, dec encoding.Decoder, name string) error {
 	// The response is the table reader's or the query's answer for one
-	// table, so the decoder answers one batch, and the tool restores what
-	// the decoder strips:
+	// table, so the decoder answers one batch. The tool restores what the
+	// decoder strips.
 	//
-	//  1. the schema the decoder types against is the round trip schema
-	//     with $table in front, the shape the decoders' tests answer. No
-	//     request asks the server for it, because the tool holds the
-	//     schema already, with the binding's types the reader answers;
-	//  2. decode. A response names one table and the generated rows are
-	//     never empty, so one batch is expected and any other count is
-	//     an error naming it;
-	//  3. put $table back in front through the fixture's WithTable,
+	//  1. Build the schema the decoder types against, which is the round
+	//     trip schema with $table in front. The decoder tests answer the
+	//     same shape. The tool already holds the schema, with the
+	//     binding's types the reader answers, so no request asks the
+	//     server for it.
+	//  2. Decode. A response names one table and the generated rows are
+	//     never empty, so any count other than one batch is an error that
+	//     names the count.
+	//  3. Put $table back in front through the fixture's WithTable,
 	//     because the decoder drops it and the generated CSV carries it
-	//     first. Dropping $table from the expected file instead was
-	//     rejected, so that the expected value stays the one file every
-	//     comparison reads. The decoder puts $timestamp first and orders the data
-	//     columns by the schema for every format, and a bare SELECT *
-	//     answers $timestamp, $table and then the columns in creation
-	//     order, so this one step is the whole reorder a query needs;
-	//  4. encode through the CSV encoder, so the bytes are the dialect of
-	//     rows.csv.
+	//     first. Dropping $table from the expected file was rejected, so
+	//     that every comparison reads the same expected file. The decoder
+	//     puts $timestamp first and orders the data columns by the schema
+	//     for every format. A bare SELECT * answers $timestamp, $table and
+	//     then the columns in creation order. This step is therefore the
+	//     whole reorder a query needs.
+	//  4. Encode through the CSV encoder, so the bytes are in the dialect
+	//     of rows.csv.
 	tbl := roundTripSchema(name)
 	rel := &releaser{}
 	defer rel.release()
@@ -354,8 +363,8 @@ var outputs = map[string]encoding.Encoder{
 	"csv":   encoding.CSV{},
 }
 
-// batchesOf is the reader's batches as the sequence the encoders write,
-// with the error that ended the stream as its last element.
+// batchesOf turns the reader's batches into the sequence the encoders
+// write. The error that ended the stream is the last element.
 func batchesOf(rdr array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		for rdr.Next() {
@@ -371,24 +380,26 @@ func batchesOf(rdr array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 
 // adbc is the adbc subcommand. It runs one statement through arrow-adbc's
 // Flight SQL driver and writes the result to stdout through the encoder
-// of --format, Arrow IPC by default, so the driver pipes it through tocsv
-// as every other response, or CSV for a result the round trip's schema
-// does not type. --username and --secret make the driver handshake;
-// without them it presents no token, the anonymous user.
+// of --format. The default is Arrow IPC, so the e2e driver pipes the
+// result through tocsv like every other response. CSV serves a result
+// that the round trip's schema does not type. --username and --secret
+// make the ADBC driver handshake. Without them it presents no token,
+// which is the anonymous user.
 func adbc(args []string) error {
-	// A driver session has an order, and two of its choices need a why:
+	// The steps follow the order of an ADBC driver session.
 	//
-	//  1. parse the flags;
-	//  2. the database over the URI as given, the driver's own option, with
-	//     verification off, because the server runs on the ephemeral
-	//     certificate;
-	//  3. username and password only when a username is given, because the
-	//     driver handshakes when either is set and the insecure cluster's
-	//     user is anonymous;
-	//  4. one connection, one statement, ExecuteQuery;
-	//  5. the reader's batches as a sequence into the encoder, the tool's
-	//     rule that it formats no cell. Writing CSV in the tool was
-	//     rejected, because tocsv already decodes Arrow and restores $table.
+	//  1. Parse the flags.
+	//  2. Open the database over the URI as given, which is the driver's
+	//     own option. Verification is off, because the server runs on the
+	//     ephemeral certificate.
+	//  3. Set the username and password only when a username is given.
+	//     The driver handshakes when either is set, and the insecure
+	//     cluster's user is anonymous.
+	//  4. Open one connection and one statement, and call ExecuteQuery.
+	//  5. Feed the reader's batches as a sequence into the encoder,
+	//     because the tool formats no cell. Writing CSV in the tool was
+	//     rejected, because tocsv already decodes Arrow and restores
+	//     $table.
 
 	// 1. the flags
 	fs := flag.NewFlagSet("adbc", flag.ContinueOnError)
@@ -408,16 +419,15 @@ func adbc(args []string) error {
 		return fmt.Errorf("--format must be arrow or csv, got %q", *format)
 	}
 
-	// 2. the database over the URI, which carries the scheme (grpc+tls,
-	//    because the listener is TLS only), with verification off because
-	//    the certificate is ephemeral
+	// 2. The URI carries the scheme, grpc+tls because the listener is TLS
+	//    only. Verification is off because the certificate is ephemeral.
 	opts := map[string]string{
 		adbcapi.OptionKeyURI:           *uri,
 		adbcflight.OptionSSLSkipVerify: adbcapi.OptionValueEnabled,
 	}
 
-	// 3. credentials only for a named user, because either key makes the
-	//    driver handshake, and the anonymous user presents none
+	// 3. Only a named user sets credentials, because either key makes the
+	//    driver handshake, and the anonymous user presents none.
 	if *username != "" {
 		opts[adbcapi.OptionKeyUsername] = *username
 		opts[adbcapi.OptionKeyPassword] = *secret

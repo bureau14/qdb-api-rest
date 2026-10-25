@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
-# The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It proves
-# the built binary over HTTP like a client: login, create one table per
-# body format, ingest the generated rows into each as that format, and
-# read and query them back in every format and coding, then read them
-# back through Arrow's stock Flight SQL drivers, ADBC and JDBC. The expected
-# value of every step is the generated input, so nothing is captured
-# and nothing is audited (ADR-0014). Error rows are Go tests, never
-# steps here.
+# The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It drives the
+# built binary over HTTP like a client: it logs in, creates one table per
+# body format, ingests the generated rows into each in that format, reads
+# and queries them back in every format and coding, and then reads them
+# back through Arrow's stock Flight SQL drivers, ADBC and JDBC. Every
+# step expects the generated input, so nothing is captured and nothing is
+# audited (ADR-0014). Error rows are Go tests and never steps here.
 #
 #   round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> --jdbc-jar <jar> [--rows N] [--seed S]
 #
-# Each server is named by its cluster, insecure or secure, and each of
-# its planes by a URL in the form its client takes: the HTTP listener as
-# http://host:port for curl, and the Flight listener as
-# grpc+tls://host:port for the ADBC driver, which is TLS only, and which
-# the JDBC step rewrites into the driver's own URL. The HTTPS
-# listener has no option, because no step reads it. The Makefile is the
-# only source of URLs, ports and paths, and passes them as options. common.sh supplies the helpers and TZ=UTC. Working
-# files go to actual/round-trip/<cluster>/. The script needs bash, curl,
-# jq, cmp, gunzip and java.
+# Each server is named by its cluster, insecure or secure. Each of its
+# planes is a URL in the form its client takes: http://host:port for curl
+# on the HTTP listener, and grpc+tls://host:port for the ADBC driver on
+# the Flight listener, which is TLS only. The JDBC step rewrites the
+# Flight URL into the JDBC driver's own form. The HTTPS listener has no
+# option, because no step reads it. The Makefile is the only source of
+# URLs, ports and paths, and passes them as options. common.sh supplies
+# the helpers and TZ=UTC. Working files go to actual/round-trip/<cluster>/.
+# The script needs bash, curl, jq, cmp, gunzip and java.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
@@ -195,10 +194,10 @@ compare_csv() {
 # check_response <out_dir> <name> <format> <media_type> <coding> <table> <csv> <csv_is>:
 # the assertions the read, the query and the DuckDB read share once their
 # request answered 200. <csv_is> is raw for the read and tool for the
-# query and the DuckDB read (compare_csv). content-type equals the format's media type exactly,
-# with no charset, as the in-process round trip asserts it, and
-# content-encoding equals the coding and is absent for identity. Nothing
-# else in the headers is read. A gzip body is decompressed through
+# query and the DuckDB read (compare_csv). content-type must equal the
+# format's media type with no charset, as the in-process round trip
+# asserts it. content-encoding must equal the coding and be absent for
+# identity. No other header is read. A gzip body is decompressed through
 # gunzip into <name>.plain first, and then the body is compared with
 # the generated CSV.
 check_response() {
@@ -326,14 +325,13 @@ adbc_types() {
     fi
 }
 
-# jdbc <out_dir> <name> <flight_url> <login_body_file> <query>: runs
-# <query> through Arrow's JDBC driver and leaves the jar's two lines, the
-# column names and the row count, in <out_dir>/<name>.body. The jar takes
-# the driver's URL, so grpc+tls://host:port becomes
-# jdbc:arrow-flight-sql://host:port. The driver needs
-# --add-opens=java.base/java.nio=ALL-UNNAMED on JDK 17 and later. The
-# cluster's user logs in on the secure cluster, and the insecure one sees
-# no user.
+# jdbc <out_dir> <name> <flight_url> <login_body_file> <query>: runs the
+# query through Arrow's JDBC driver and writes the jar's two lines, the
+# column names and the row count, to <out_dir>/<name>.body. The jar takes
+# the driver's own URL, jdbc:arrow-flight-sql://host:port. The driver
+# needs --add-opens=java.base/java.nio=ALL-UNNAMED on JDK 17 and later.
+# The cluster's user logs in on the secure cluster, and the insecure one
+# gets no user.
 jdbc() {
     local out="$1" name="$2" flight="$3" body="$4" query="$5" user
     local -a creds=()
@@ -345,8 +343,8 @@ jdbc() {
         || { log_error "[FAIL] $name: the JDBC jar failed"; cat "$out/$name.log" >&2; return 1; }
 }
 
-# expect_jdbc <out_dir> <name> <names> <rows>: the jar's two lines equal
-# <names> and <rows>.
+# expect_jdbc <out_dir> <name> <names> <rows>: fails unless the jar
+# printed these names and this row count.
 expect_jdbc() {
     local out="$1" name="$2" names="$3" rows="$4"
     printf '%s\n%s\n' "$names" "$rows" > "$out/$name.want"
@@ -358,12 +356,11 @@ expect_jdbc() {
 }
 
 # jdbc_back <out_dir> <flight_url> <login_body_file> <table> <rows>:
-# SELECT * FROM <table> through the JDBC driver. The column names are the
-# header of the CSV the ADBC step decoded for the same query, which is
-# proved equal to the generated rows byte for byte, in the order a bare
-# SELECT * answers them: tocsv puts $table back in front of $timestamp,
-# and the query answers $timestamp first. The row count equals the rows
-# generated.
+# SELECT * FROM the table through the JDBC driver. The expected names come
+# from the header of the CSV the ADBC step decoded, which matches the
+# generated rows byte for byte. The first two names are swapped, because
+# tocsv puts $table in front and a bare SELECT * answers $timestamp first.
+# The row count is the number of rows generated.
 jdbc_back() {
     local out="$1" flight="$2" body="$3" table="$4" rows="$5" first second rest
     local name="$table.jdbc"
@@ -373,8 +370,8 @@ jdbc_back() {
 }
 
 # jdbc_types <out_dir> <flight_url> <login_body_file>: TYPES_QUERY through
-# JDBC, its names equal to TYPES_CSV's header and its count one, so the
-# DuckDB describe reaches a stock driver.
+# the JDBC driver, which must answer TYPES_CSV's header and one row. This
+# proves the DuckDB describe works for a stock driver.
 jdbc_types() {
     local out="$1" flight="$2" body="$3"
     jdbc "$out" jdbc.types "$flight" "$body" "$TYPES_QUERY" || return 1
