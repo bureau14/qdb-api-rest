@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -118,6 +119,111 @@ func TestQueryReadsGeneratedTable(t *testing.T) {
 		})
 		if err == nil || !strings.Contains(err.Error(), "Parser Error") {
 			t.Fatalf("parse error = %v", err)
+		}
+	})
+}
+
+// readerSchema answers the schema of the reader Query answers for q on in.
+func readerSchema(t table.T, in *olap.Instance, q string) *arrow.Schema {
+	t.Helper()
+	var sc *arrow.Schema
+	err := in.Query(context.Background(), q, func(seq iter.Seq2[arrow.RecordBatch, error]) error {
+		for rec, err := range seq {
+			if err != nil {
+				return err
+			}
+			sc = rec.Schema()
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("query %q: %v", q, err)
+	}
+	return sc
+}
+
+// enumOf is an ENUM type of n values v0 to v<n-1>.
+func enumOf(n int) string {
+	vs := make([]string, n)
+	for i := range vs {
+		vs[i] = "'v" + strconv.Itoa(i) + "'"
+	}
+	return "ENUM(" + strings.Join(vs, ", ") + ")"
+}
+
+// TestDescribe: on each cluster, the schema Describe answers equals the
+// schema of the reader Query answers, for one query per row of the
+// conversion table and for a generated table read through qdb.<name>,
+// and two statements, a ? marker and a GEOMETRY column answer their
+// errors.
+func TestDescribe(t *testing.T) {
+	// The map in describe.go is this repository's own copy of DuckDB's
+	// Arrow conversion, and this test is what keeps the two equal:
+	//
+	//  1. open one instance per cluster;
+	//  2. describe one cast per row of the conversion table;
+	//  3. describe a generated table;
+	//  4. describe the texts the describe refuses.
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		// 1. one instance per cluster, as TestQueryReadsGeneratedTable
+		//    opens it
+		in := open(t, credentialsOf(t, f))
+		// 2. one cast per row of the conversion table, the nested types,
+		//    a TIMESTAMPTZ and both ENUM index widths included, compared
+		//    with Schema.Equal, field metadata included
+		exprs := []string{
+			"true", "1::TINYINT", "1::SMALLINT", "1::INTEGER", "1::BIGINT",
+			"1::UTINYINT", "1::USMALLINT", "1::UINTEGER", "1::UBIGINT",
+			"1::FLOAT", "1::DOUBLE", "1::HUGEINT", "1::UHUGEINT",
+			"1::DECIMAL(4, 1)", "1::DECIMAL(18, 3)", "1::DECIMAL(38, 10)",
+			"'a'::VARCHAR", "gen_random_uuid()", "'a'::BLOB", "'101'::BIT",
+			"DATE '2026-01-01'", "TIME '01:02:03'", "'01:02:03+01'::TIMETZ",
+			"TIMESTAMP '2026-01-01 01:02:03'", "'2026-01-01'::TIMESTAMP_S",
+			"'2026-01-01'::TIMESTAMP_MS", "'2026-01-01'::TIMESTAMP_NS",
+			"'2026-01-01 01:02:03+00'::TIMESTAMPTZ", "INTERVAL 1 DAY", "NULL",
+			"[1, 2]", "[1, 2]::INTEGER[2]", "{'a': 1, 'b': 'x'}",
+			"MAP {'k': 1}", "union_value(n := 1)::UNION(n INTEGER, s VARCHAR)",
+			"'v1'::" + enumOf(3), "'v1'::" + enumOf(300),
+			"[TIMESTAMPTZ '2026-01-01 00:00:00+00']",
+		}
+		for _, e := range exprs {
+			q := "SELECT " + e + " AS c"
+			got, err := in.Describe(context.Background(), q)
+			if err != nil {
+				t.Errorf("describe %q: %v", q, err)
+				continue
+			}
+			if want := readerSchema(t, in, q); !got.Equal(want) {
+				t.Errorf("describe %q:\n got  %v\n want %v", q, got, want)
+			}
+		}
+		// 3. a generated table through tbl.SelectSQL(), whose columns
+		//    are the types qdb-duck reads from the cluster
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+			got, err := in.Describe(context.Background(), tbl.SelectSQL())
+			if err != nil {
+				rt.Fatal(err)
+			}
+			if want := readerSchema(rt, in, tbl.SelectSQL()); !got.Equal(want) {
+				rt.Fatalf("describe:\n got  %v\n want %v", got, want)
+			}
+		})
+		// 4. the refusals answer their errors
+		refusals := []struct {
+			q    string
+			want error
+		}{
+			{"SELECT 1; SELECT 2", olap.ErrNotOneStatement},
+			{"", olap.ErrNotOneStatement},
+			{"SELECT ?", olap.ErrParameters},
+			{"SELECT 'POINT (1 2)'::GEOMETRY AS g", olap.ErrUndescribable},
+		}
+		for _, r := range refusals {
+			if _, err := in.Describe(context.Background(), r.q); !errors.Is(err, r.want) {
+				t.Errorf("describe %q = %v, want %v", r.q, err, r.want)
+			}
 		}
 	})
 }
