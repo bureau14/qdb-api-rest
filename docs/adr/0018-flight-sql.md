@@ -81,8 +81,9 @@ schema of a query it has not run (owner, 2026-10-24).
    `ValidateArrow` on the native engine and DuckDB's prepare on `#sql`.
    `GetSchemaStatement` answers the same schema (owner, 2026-10-24).
    The describe differs from the stream in three ways, all of them
-   qdbd's validate disagreeing with its own execution, and the server
-   accepts them (owner, 2026-10-25). The described fields carry no
+   qdbd's validate disagreeing with its own execution, and no select
+   over a table hits one, so the server accepts them (owner,
+   2026-10-25). The described fields carry no
    `max_width` metadata. A bare NULL literal describes as the null type
    and streams as float64. A non-select statement's column of no rows
    or only nulls describes as its declared type and streams as the null
@@ -105,8 +106,10 @@ schema of a query it has not run (owner, 2026-10-24).
 12. **Prepared statements without parameters.** The handle is the
     query text, closing answers nothing, and the prepared statement's
     `FlightInfo` answers a statement ticket of the handle. A `#sql`
-    text is one statement, and a query with parameter markers fails
-    with `INVALID_ARGUMENT` (owner, 2026-10-24 and 2026-10-25).
+    text is one statement, because a client sends one statement per
+    invocation and a batch has no response the owner could name. A
+    query with parameter markers fails with `INVALID_ARGUMENT` (owner,
+    2026-10-24 and 2026-10-25).
     Everything else is `UNIMPLEMENTED`: the parameter upload,
     transactions, savepoints, `DoPut` in every other form, substrait,
     session options and the poll and renew RPCs.
@@ -169,4 +172,7 @@ schema of a query it has not run (owner, 2026-10-24).
 | Describing a native query through qdb-duck's `qdb_query` | the schema would be in DuckDB's types and not the native engine's                                                                 |
 | A `LIMIT 0` run to describe a `#sql` query               | SHOW, DESCRIBE, PRAGMA and SET cannot be a subquery, so it fails on them                                                          |
 | Casting the stream to the described schema               | each prepared fetch would describe again, for an edge case of qdbd's                                                              |
+| Running a multi-statement `#sql` text with no schema     | a batch has no response a client could read as one result                                                                         |
+| Describing at prepare only                               | the ADR would carry two rules for one question                                                                                    |
+| `#sql`-only parameters                                   | the handle would carry the values, which is state                                                                                 |
 | Query parameters                                         | the native engine has no binding, and native substitution is textual                                                              |
