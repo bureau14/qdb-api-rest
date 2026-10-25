@@ -42,7 +42,7 @@ github.com/apache/arrow-go/v18/internal/utils/maphash
 # github.com/bluele/gcache v0.0.2
 ## explicit; go 1.15
 github.com/bluele/gcache
-# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261023063610-a93f920063f5
+# github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261025052437-6afd5e8cae12
 ## explicit; go 1.26.0
 github.com/bureau14/qdb-api-go/v3
 # github.com/cenkalti/backoff/v5 v5.0.3
