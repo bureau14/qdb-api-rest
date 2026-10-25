@@ -283,9 +283,11 @@ read's names are the ADBC step's decoded CSV header in the order a bare
 `SELECT *` answers them, `$timestamp` before `$table`, and its count is
 the generated row count. The types query's names are its CSV header and
 its count is one. A missing `java` or `mvn` fails the round trip on
-every platform, and whether the FreeBSD agents run the driver is
-decided on the first build, because a skip written before the failure
-is seen hides where it should not apply.
+every platform. The JDBC steps run on every platform but FreeBSD. There
+the driver's shaded netty allocator fails at the first connection
+(`EmptyByteBuf.memoryAddress` throws `UnsupportedOperationException`,
+build 174, 2026-10-25), and the owner dropped the platform from the
+step (`jdbc_runs` in `round-trip.sh`).
 
 The ADBC step runs on both clusters and on all eight platforms, because
 the tool is Go and runs wherever the server builds.
@@ -440,6 +442,12 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | The JDBC smoke is a Maven project whose `pom.xml` declares the driver    | a proper JDBC project, and Maven's local repository is the cache (owner)                          | a Makefile download with a SHA-256 pin; the jar in git or in agent provisioning                                                                                       |
 | The JDBC jar is shaded and run with `java -jar` per step                 | one JVM per step with the flag the driver needs, and no classpath file whose separator differs    | `exec:java`, a Maven start per table and cluster; `dependency:build-classpath`, whose separator differs on the MSYS agents                                            |
 | A missing JVM or Maven fails the round trip everywhere                   | a skip written before the failure is seen hides where it should not apply (owner)                 | a skip with a log line where `java` is absent                                                                                                                         |
+
+## Decision log (2026-10-25)
+
+| Decision                                  | Why                                                                                          | Rejected                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| FreeBSD drops out of the JDBC smoke steps | the driver's shaded netty allocator fails at the first connection on the FreeBSD JDK (owner) | a JVM flag that re-enables netty's Unsafe |
 
 ## Decision log (2026-10-24)
 

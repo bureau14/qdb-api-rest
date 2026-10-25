@@ -38,9 +38,8 @@ In flight:
 
 Next:
 
-- The Buildkite run that closes M5. Its first build decides whether the
-  agents that lack `java` or `mvn` are provisioned or drop out of the
-  JDBC step (`docs/e2e.md`, The Flight SQL smoke steps).
+- The Buildkite run that closes M5. FreeBSD runs no JDBC step
+  (`docs/e2e.md`, The Flight SQL smoke steps), as the M5 criteria allow.
 - A later unit: refuse a multi-statement `#sql` text on
   `POST /api/v2/query` too, which runs one today, so both planes share
   the one-statement rule of ADR-0018, Decision 12.
