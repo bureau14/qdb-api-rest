@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-24
+Last updated: 2026-10-25
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -30,19 +30,20 @@ In flight:
   commands over `Cluster.Tables` and `Cluster.TableSchemas` (`GetTables`
   with `include_schema`), the Flight client fixture
   (`internal/qdbtest/flight`), the format-equivalence property over
-  Flight in `TestRoundtrip` and the ADBC smoke steps of the shell round
-  trip are landed. The rest of the milestone is the Next list.
+  Flight in `TestRoundtrip`, the ADBC smoke steps of the shell round
+  trip, the described schema on every statement and schema call
+  (`query.Describe`), stateless prepared statements without parameters
+  and the JDBC smoke steps are landed. The rest of the milestone is the
+  Next list.
 
 Next:
 
-- Prepared statements on the Flight server, stateless with the query
-  text as the handle (`CreatePreparedStatement` answering the prepare's
-  dataset schema, `GetFlightInfoPreparedStatement`,
-  `ClosePreparedStatement`), and with them the JDBC smoke step of the
-  round trip (ADR-0018, Decision 14, `docs/e2e.md`, The Flight SQL smoke
-  steps). The native engine has no describe, so the prepare's schema
-  needs a design before the plan.
-- The Buildkite run that closes M5.
+- The Buildkite run that closes M5. Its first build decides whether the
+  agents that lack `java` or `mvn` are provisioned or drop out of the
+  JDBC step (`docs/e2e.md`, The Flight SQL smoke steps).
+- A later unit: refuse a multi-statement `#sql` text on
+  `POST /api/v2/query` too, which runs one today, so both planes share
+  the one-statement rule of ADR-0018, Decision 12.
 - When the owner says so: file a qdb-duck story asking ATTACH to take a
   whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
   DuckDB as its first node (`Cluster.credentialsOf`).
@@ -94,11 +95,27 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   qdb-duck does either is unknown. Investigate before M6 adds any retry
   around `Cluster.Duck`, and file the findings with R&D.
 
+- The owner files one R&D story for qdbd's validate disagreeing with
+  its own execution (ADR-0018, Decision 9). The fetch adds a `max_width`
+  key to string and blob fields from the data, and validate adds none.
+  A bare NULL literal executes as a column of doubles holding NaN, and
+  validate's static typer answers the null type. A statement other than
+  SELECT runs on the row path, which types a column of no rows or only
+  nulls as the null type, and validate answers the declared type.
+
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-25 -- prepared-statements-plan.md deleted; the described schema, prepared statements and the JDBC smoke steps landed
+
+- Facts moved to ADR-0018 (Decisions 9, 10, 12 and 14), the brief
+  (Arrow Flight SQL), `docs/e2e.md`, the `AGENTS.md` files of
+  `internal`, `internal/olap`, `internal/flightsql` and `tests/e2e`, and
+  the comments of `internal/olap`, `internal/qdb`, `internal/query` and
+  `internal/flightsql`.
 
 ## 2026-10-24 -- a plain-text warning for HTTP on a secure cluster, and HTTPS steps as an option
 
