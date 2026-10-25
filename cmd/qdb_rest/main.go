@@ -32,8 +32,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/tlsconf"
 )
 
-// versionText renders the version block shared by all QuasarDB binaries
-// plus the linked C API and DuckDB versions, the two lines that are not
+// versionText renders the version block that all QuasarDB binaries share,
+// plus the linked C API and DuckDB versions. Those two lines are not
 // compile-time information. The CI smoke run of --version proves both
 // links on every platform.
 func versionText() string {
@@ -54,24 +54,26 @@ func versionText() string {
 }
 
 // shutdownGrace is the deadline shutdown works under on SIGTERM. The
-// listener drains (in-flight calls finishing) and the pool drain
-// (sessions closing) share it. Eight seconds is not measured. Anything
-// that stops the binary and then kills it sizes its window above this.
+// listener drains, which let in-flight calls finish, and the pool drain,
+// which closes the sessions, share it. Eight seconds is not measured.
+// Anything that stops the binary and then kills it waits longer than
+// this before the kill.
 const shutdownGrace = 8 * time.Second
 
 // listener is one of the binary's servers as the serve loop and shutdown
-// see it: Serve answers nil after a clean stop, and Shutdown drains under
-// the caller's deadline. One shape for servers of two types keeps the
-// serve loop and the drain to one loop each, where a Flight branch next
-// to a slice of HTTP servers would be two loops to keep in step.
+// see it. Serve answers nil after a clean stop, and Shutdown drains under
+// the caller's deadline. The HTTP and Flight servers share this shape,
+// so the serve loop and the drain are one loop each. A Flight branch
+// next to a slice of HTTP servers would need two loops kept in step.
 type listener interface {
 	Serve() error
 	Shutdown(context.Context)
 }
 
-// httpListener adapts *http.Server: ListenAndServe or ListenAndServeTLS
-// by TLSConfig, ErrServerClosed as a clean stop, and Shutdown's error
-// not reported.
+// httpListener adapts *http.Server to listener. Serve calls
+// ListenAndServeTLS when TLSConfig is set and ListenAndServe otherwise,
+// and it treats ErrServerClosed as a clean stop. Shutdown drops the error
+// of http.Server.Shutdown.
 type httpListener struct{ *http.Server }
 
 func (l httpListener) Serve() error {
@@ -112,15 +114,15 @@ func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsCo
 func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
 	// The steps:
 	//
-	//  1. the TLS material, once;
-	//  2. HTTP, when configured;
-	//  3. HTTPS;
-	//  4. Flight.
+	//  1. Load the TLS material once.
+	//  2. Add HTTP, when configured.
+	//  3. Add HTTPS.
+	//  4. Add Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
-	// 1. The TLS material is loaded once for HTTPS and Flight, because
-	//    both serve the same certificate and an ephemeral certificate
-	//    must be one identity per start, and its warning is logged once.
+	// 1. HTTPS and Flight serve the same certificate, so the TLS material
+	//    loads once. Loading it once keeps an ephemeral certificate to one
+	//    identity per start and logs its warning once.
 	tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
 	if err != nil {
 		return nil, err
@@ -139,8 +141,8 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))
 	log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 		"certificate", string(info.Source), "not_after", info.NotAfter)
-	// 4. Flight. Binding the port happens here, so a port in use fails
-	//    the start as the TLS material does.
+	// 4. Flight. flightsql.New binds the port, so a port in use fails the
+	//    start, as bad TLS material does.
 	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -151,10 +153,10 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	return listeners, nil
 }
 
-// serveUntilDone serves all listeners until ctx is cancelled (SIGINT or
-// SIGTERM) or one of them fails, and returns the first terminal error
-// (nil on a clean cancel). It does not shut anything down. shutdown does,
-// under the single shutdownGrace deadline.
+// serveUntilDone serves all listeners until the context is cancelled by
+// SIGINT or SIGTERM or one listener fails. It returns the first terminal
+// error, or nil on a clean cancel. It shuts nothing down, because
+// shutdown does that under the single shutdownGrace deadline.
 func serveUntilDone(ctx context.Context, listeners []listener) error {
 	errs := make(chan error, len(listeners))
 	for _, l := range listeners {
@@ -169,12 +171,12 @@ func serveUntilDone(ctx context.Context, listeners []listener) error {
 }
 
 // shutdown drains the listeners first and the cluster second, both under
-// the shutdownGrace deadline. The listeners drain in parallel, the Flight
-// server next to the HTTP ones rather than stopped hard, because the
-// graceful drain covers Flight streams (docs/brief.md, Resilience). The
-// order matters, because in-flight calls on either plane hold sessions,
-// so every drain returning means the cluster has no callers left and its
-// close only has idle sessions to wait for.
+// the shutdownGrace deadline. The listeners drain in parallel. The Flight
+// server drains next to the HTTP servers and is not stopped hard, because
+// the graceful drain covers Flight streams (docs/brief.md, Resilience).
+// The order matters, because in-flight calls on either plane hold
+// sessions. Once every listener has drained, the cluster has no callers
+// left, and its close waits only for idle sessions.
 func shutdown(ctx context.Context, listeners []listener, cluster *qdb.Cluster) {
 	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
@@ -189,9 +191,10 @@ func shutdown(ctx context.Context, listeners []listener, cluster *qdb.Cluster) {
 }
 
 func main() {
-	// 1. Configuration: defaults, file, environment, flags. --version and
-	//    --help are answered here and exit. A config error refuses the
-	//    start with exit code 2, the only startup failure that does.
+	// 1. Load the configuration from the defaults, the file, the
+	//    environment and the flags. --version and --help are answered here
+	//    and exit. A config error refuses the start with exit code 2, the
+	//    only startup failure that does.
 	cfg, err := config.Load("qdb_rest", os.Args[1:], os.LookupEnv, os.Stderr)
 	if errors.Is(err, config.ErrVersionRequested) {
 		fmt.Print(versionText())
@@ -205,8 +208,9 @@ func main() {
 		os.Exit(2)
 	}
 
-	// 2. The process logger, placed in the root context. The root context
-	//    also ends on SIGINT/SIGTERM, which is what stops serving below.
+	// 2. Build the process logger and place it in the root context. The
+	//    root context also ends on SIGINT or SIGTERM, which stops serving
+	//    below.
 	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
@@ -217,17 +221,18 @@ func main() {
 	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,
 		"qdb_api_version", qdb.APIVersion())
 
-	// 3. The cluster binding. The binding's own logger is routed into ours
-	//    before anything can dial. The cluster dials nothing at startup
-	//    and travels in the context so handlers reach it there.
+	// 3. Bind the cluster. The binding's own logger is routed into the
+	//    process logger before anything can dial. The cluster dials
+	//    nothing at startup, and it travels in the context so handlers
+	//    reach it there.
 	qdb.InstallLogger(logger)
 	cluster := qdb.New(cfg, time.Now)
 	ctx = qdb.WithCluster(ctx, cluster)
 
-	// 4. The token keychain, derived once from the configured
-	//    passphrases. It travels in the context like the cluster.
-	//    Derivation pays the argon2id cost per passphrase here, at
-	//    startup, and never per request.
+	// 4. Derive the token keychain once from the configured passphrases.
+	//    It travels in the context like the cluster. Derivation pays the
+	//    argon2id cost per passphrase here, at startup, and never per
+	//    request.
 	tokens, err := auth.New(ctx, cfg.Auth, time.Now)
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
@@ -235,18 +240,17 @@ func main() {
 	}
 	ctx = auth.WithTokens(ctx, tokens)
 
-	// 5. The listeners, over the root context so every request inherits
-	//    the logger, the cluster and the keychain. Loading the TLS
-	//    material and binding the Flight port are the steps here that
-	//    can fail.
+	// 5. Build the listeners over the root context, so every request
+	//    inherits the logger, the cluster and the keychain. Loading the
+	//    TLS material and binding the Flight port can fail here.
 	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 
-	// 6. Serve until a signal or a listener failure, then drain: the
-	//    listeners first, the cluster second, one shutdownGrace for all.
+	// 6. Serve until a signal or a listener failure, then drain the
+	//    listeners first and the cluster second, under one shutdownGrace.
 	runErr := serveUntilDone(ctx, listeners)
 	shutdown(ctx, listeners, cluster)
 	if runErr != nil {
