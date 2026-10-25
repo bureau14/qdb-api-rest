@@ -47,7 +47,9 @@ func Bearer(ctx context.Context, token string) context.Context {
 }
 
 // TicketOf runs Execute for q and answers the one endpoint's ticket.
-// GetFlightInfo runs nothing, so a statement's failure surfaces on DoGet.
+// GetFlightInfo describes the query, so a query that fails to describe
+// fails here and t fails. The tests of a failing statement call Execute
+// directly.
 func TicketOf(t table.T, cl *flightsql.Client, ctx context.Context, q string) *flight.Ticket {
 	t.Helper()
 	info, err := cl.Execute(ctx, q)

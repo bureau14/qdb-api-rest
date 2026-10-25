@@ -299,10 +299,15 @@ func retryInfo(err error) *errdetails.RetryInfo {
 }
 
 // statementErr runs q as a statement, Execute then DoGet, and answers the
-// error that ends the stream.
+// error of whichever call failed, so a row passes whether the describe or
+// the run refused the query.
 func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
 	t.Helper()
-	_, recs, err := qdbflight.ReadAll(t, cl, ctx, qdbflight.TicketOf(t, cl, ctx, q))
+	info, err := cl.Execute(ctx, q)
+	if err != nil {
+		return err
+	}
+	_, recs, err := qdbflight.ReadAll(t, cl, ctx, info.Endpoint[0].Ticket)
 	qdbflight.Release(recs)
 	return err
 }

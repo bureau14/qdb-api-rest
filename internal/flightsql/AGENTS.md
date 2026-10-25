@@ -58,10 +58,15 @@ Each rule below names the function whose comments carry its reason.
 
 ## Statement
 
-- GetFlightInfo for a statement answers one endpoint whose ticket is the
-  query text verbatim, with no schema, no location and unknown totals;
-  it runs nothing and keeps nothing. `GetFlightInfoStatement` says why
-  the text travels unchanged (ADR-0018, Decision 9; owner, 2026-10-21).
+- GetFlightInfo for a statement describes the query and answers one
+  endpoint whose ticket is the query text verbatim, with the described
+  schema, no location and unknown totals. It runs nothing and keeps
+  nothing. `GetFlightInfoStatement` says why the text travels unchanged
+  (ADR-0018, Decision 9; owner, 2026-10-21).
+- A query describes through `query.Describe`. A DuckDB column type the
+  describe does not map answers no schema in the info, and
+  INVALID_ARGUMENT from the calls whose answer is the schema (`describe`,
+  `schemaOf`). GetSchemaStatement answers the described schema.
 - DoGet for a statement ticket is this package's own method on the
   registered service, and every other ticket goes to arrow-go's router.
   The query runs through `query.Run` inside the sink, and the sink writes

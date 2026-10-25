@@ -2,19 +2,60 @@ package flightsql
 
 import (
 	"context"
+	"errors"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
+	"github.com/bureau14/qdb-api-rest/internal/olap"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/query"
 )
+
+// userOf answers the user of the call: the claims the auth edge placed on
+// ctx, zero claims for the anonymous user, as the HTTP handlers derive it.
+func userOf(ctx context.Context) qdb.User {
+	c := auth.ClaimsFrom(ctx)
+	return qdb.User{Username: c.Username, SecretKey: c.SecretKey}
+}
+
+// describe answers q's schema as the call's user, and whether it has
+// one. A column type the DuckDB describe does not map answers no schema
+// and no error. Every other failure is statusOf's, with INVALID_ARGUMENT
+// for what an engine answered.
+func describe(ctx context.Context, q string) (*arrow.Schema, bool, error) {
+	sc, err := query.Describe(ctx, userOf(ctx), q)
+	switch {
+	// No schema, so a plain statement over such a type runs as it would
+	// without a describe, and only the calls whose answer is the schema
+	// fail (schemaOf).
+	case errors.Is(err, olap.ErrUndescribable):
+		return nil, false, nil
+	// A text that is not one statement and a query with parameters fall to
+	// INVALID_ARGUMENT, because the request is at fault.
+	case err != nil:
+		return nil, false, statusOf(ctx, err, codes.InvalidArgument)
+	}
+	return sc, true, nil
+}
+
+// schemaOf answers q's schema for a call whose whole answer is the
+// schema: the prepare and both schema calls. A column type the describe
+// does not map is INVALID_ARGUMENT naming the column and the type.
+func schemaOf(ctx context.Context, q string) (*arrow.Schema, error) {
+	sc, err := query.Describe(ctx, userOf(ctx), q)
+	if err != nil {
+		return nil, statusOf(ctx, err, codes.InvalidArgument)
+	}
+	return sc, nil
+}
 
 // GetFlightInfoStatement is the first half of a Flight SQL query. Flight
 // fetches a result in two calls: the client sends its query text here and
@@ -23,25 +64,47 @@ import (
 // streams that endpoint's batches. A server that partitions a result or
 // runs the query ahead of time does its work here. This server has one
 // endpoint, keeps nothing between calls and runs the query at DoGet
-// (ADR-0018, Decision 9), so the info is one endpoint whose ticket is
-// the query text, with no schema, because the native engine does not
-// know a result's columns before running the query, no location, which
-// means this server, and unknown totals.
-func (s *Server) GetFlightInfoStatement(_ context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
+// (ADR-0018, Decision 9). The info is one endpoint whose ticket is the
+// query text, the described schema when there is one, no location, which
+// means this server, and unknown totals. A query that fails to describe
+// fails here with describe's status, before any ticket.
+func (s *Server) GetFlightInfoStatement(ctx context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
+	// The describe runs here and the query at DoGet, so the server still
+	// stores nothing between the calls.
+	sc, ok, err := describe(ctx, q.GetQuery())
+	if err != nil {
+		return nil, err
+	}
 	// The text travels verbatim and DoGet dispatches it, so the #sql rule
 	// has one home, in query.Run. A mint failure is INTERNAL.
 	ticket, err := flightsql.CreateStatementQueryTicket([]byte(q.GetQuery()))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	return &flight.FlightInfo{
+	info := &flight.FlightInfo{
 		// The descriptor is echoed, as arrow-go's examples do.
 		FlightDescriptor: desc,
 		Endpoint:         []*flight.FlightEndpoint{{Ticket: &flight.Ticket{Ticket: ticket}}},
 		// -1 means unknown, because nothing has run yet.
 		TotalRecords: -1,
 		TotalBytes:   -1,
-	}, nil
+	}
+	// The schema is serialized as the base server serializes a prepare's
+	// dataset schema.
+	if ok {
+		info.Schema = flight.SerializeSchema(sc, memory.DefaultAllocator)
+	}
+	return info, nil
+}
+
+// GetSchemaStatement answers the described schema of the statement's
+// query, without running it.
+func (s *Server) GetSchemaStatement(ctx context.Context, q flightsql.StatementQuery, _ *flight.FlightDescriptor) (*flight.SchemaResult, error) {
+	sc, err := schemaOf(ctx, q.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	return &flight.SchemaResult{Schema: flight.SerializeSchema(sc, memory.DefaultAllocator)}, nil
 }
 
 // service is the Flight RPC service the gRPC server registers: arrow-go's
@@ -75,10 +138,8 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 	if err != nil {
 		return v.FlightServer.DoGet(t, stream)
 	}
-	// 2. the auth edge placed the claims, zero claims for the anonymous
-	//    user, as the HTTP handlers derive it
-	c := auth.ClaimsFrom(ctx)
-	u := qdb.User{Username: c.Username, SecretKey: c.SecretKey}
+	// 2. the user from the claims the auth edge placed
+	u := userOf(ctx)
 	// 3. query.Run retries the native engine once before the sink and
 	//    DuckDB never, so this method retries nothing. The sink opens the
 	//    Flight writer on the first batch's schema and writes each batch as
