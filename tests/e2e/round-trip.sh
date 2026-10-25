@@ -378,6 +378,19 @@ jdbc_types() {
     expect_jdbc "$out" jdbc.types "${TYPES_CSV%%$'\n'*}" 1
 }
 
+# jdbc_runs: whether this platform runs the JDBC steps. FreeBSD does not,
+# because the driver's shaded netty allocator fails there at the first
+# connection (EmptyByteBuf.memoryAddress throws
+# UnsupportedOperationException, build 174), and the owner chose to drop
+# the platform from the step (docs/e2e.md, The Flight SQL smoke steps).
+jdbc_runs() {
+    [[ "$(uname -s)" != FreeBSD ]]
+}
+
+# JDBC_OK is the OK line's mention of the JDBC steps, empty where they do
+# not run.
+if jdbc_runs; then JDBC_OK=" and JDBC"; else JDBC_OK=""; log_info "the JDBC steps do not run on FreeBSD"; fi
+
 # The matrix. One table per body format, named after it, and every
 # table is read and queried in every response format under every
 # coding, and read back through DuckDB SQL the same way. A format is one entry here and a new step is one function
@@ -415,9 +428,11 @@ run_cluster() {
         done
         adbc_back "$out" "$flight" "$body" "$table" "$out/rows.csv" || return 1
         adbc_types "$out" "$flight" "$body" || return 1
-        jdbc_back "$out" "$flight" "$body" "$table" "$rows" || return 1
-        jdbc_types "$out" "$flight" "$body" || return 1
-        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte, and read back over ADBC and JDBC (seed=$SEED)"
+        if jdbc_runs; then
+            jdbc_back "$out" "$flight" "$body" "$table" "$rows" || return 1
+            jdbc_types "$out" "$flight" "$body" || return 1
+        fi
+        log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte, and read back over ADBC${JDBC_OK} (seed=$SEED)"
     done
 }
 
