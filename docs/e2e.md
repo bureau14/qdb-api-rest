@@ -29,7 +29,7 @@ harness when that milestone starts (`docs/brief.md`, Milestones).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
 lineage) plus one Go tool, which also drives the ADBC smoke step, and
-one Maven project for the JDBC smoke step when it lands. It runs
+one Maven project for the JDBC smoke step. It runs
 identically on developer machines and in Buildkite on every platform
 (see "In Buildkite").
 
@@ -117,10 +117,13 @@ is timed.
    decodes to CSV and compares with the generated CSV as in step 5. Then
    it runs the types query (`TYPES_QUERY` in the driver), one row of
    DuckDB-only types, written as CSV by the server's encoder and compared
-   with the cells `TestDuckDBScalars` pins. The driver handshakes with the
-   cluster's user on the secure cluster and presents no token on the
-   insecure one. The JDBC read waits on prepared statements, and "The
-   Flight SQL smoke steps" below says why and what each driver asserts.
+   with the cells `TestDuckDBScalars` pins. The JDBC jar then runs the same two
+   queries through Arrow's JDBC driver and prints the column names and
+   the row count, which equal the table read's names and generated row
+   count, and the types query's names and one row. Each driver
+   handshakes with the cluster's user on the secure cluster and presents
+   no token on the insecure one. "The Flight SQL smoke steps" below says
+   what each driver asserts.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
@@ -262,21 +265,24 @@ what moves them, and arrow-adbc is bumped only together with arrow-go.
 The step connects over `grpc+tls` with certificate verification
 disabled, because the server runs on its ephemeral certificate.
 
-The JDBC step is not in the round trip yet. Arrow's Flight SQL JDBC
-driver (`org.apache.arrow:flight-sql-jdbc-driver`, 19.0.0 run on JDK 21,
-2026-10-24) sends every `executeQuery` as `CreatePreparedStatement`,
-then `GetFlightInfo` of the prepared statement, `DoGet` and
-`ClosePreparedStatement`, and it classes the statement as an update
-unless the prepare answers a dataset schema with fields. The server
-answers `UNIMPLEMENTED` to the prepared-statement commands (ADR-0018,
-Decision 12), so the driver fails on every query, and the step lands
-with those commands as a unit of its own (owner, 2026-10-24). Its shape
-is settled: a Maven project under `tests/e2e/tools/jdbc/` whose
-`pom.xml` declares the driver, so Maven resolves and caches the jar in
-its local repository and the harness downloads and hashes nothing
-itself, shaded into one runnable jar that `java -jar` runs once per step
-with the `--add-opens=java.base/java.nio=ALL-UNNAMED` flag the driver
-needs on JDK 17+. A missing `java` or `mvn` fails the round trip on
+The JDBC step drives Arrow's Flight SQL JDBC driver
+(`org.apache.arrow:flight-sql-jdbc-driver`, 19.0.0 run on JDK 21,
+2026-10-24). The driver sends every `executeQuery` as
+`CreatePreparedStatement`, then `GetFlightInfo` of the prepared
+statement, `DoGet` and `ClosePreparedStatement`, and it classes the
+statement as an update unless the prepare answers a dataset schema with
+fields, so the step needs the server's prepared statements (ADR-0018,
+Decision 12). The step is a Maven project under `tests/e2e/tools/jdbc/`
+whose `pom.xml` declares the driver, so Maven resolves and caches the
+jar in its local repository and the harness downloads and hashes
+nothing itself. `make jdbc` shades it into one runnable jar, which
+`java -jar` runs once per query with the
+`--add-opens=java.base/java.nio=ALL-UNNAMED` flag the driver needs on
+JDK 17+. The jar prints the column names and the row count. The table
+read's names are the ADBC step's decoded CSV header in the order a bare
+`SELECT *` answers them, `$timestamp` before `$table`, and its count is
+the generated row count. The types query's names are its CSV header and
+its count is one. A missing `java` or `mvn` fails the round trip on
 every platform, and whether the FreeBSD agents run the driver is
 decided on the first build, because a skip written before the failure
 is seen hides where it should not apply.
@@ -315,13 +321,15 @@ completed when the resilience milestone starts.
 ```
 scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...); qdbd up
 tests/e2e/
-  Makefile                services-check | e2etool | test-round-trip | clean
+  Makefile                services-check | e2etool | jdbc | test-round-trip | clean
                           test-stress (arrives with the resilience milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper
   round-trip.sh           the v2 round trip driver
   tools/e2etool/          Go: gen, tocsv and adbc;
                           gen writes the four body files, tocsv decodes a response to CSV,
                           adbc runs a statement through arrow-adbc's Flight SQL driver
+  tools/jdbc/             Maven: the JDBC smoke jar, which runs a query through Arrow's
+                          JDBC driver and prints the column names and the row count
   AGENTS.md, README.md    conventions, usage
 ```
 
