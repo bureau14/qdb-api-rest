@@ -295,6 +295,22 @@ func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
 	return rec, nil
 }
 
+// describe answers the schema q's result would have, without running q.
+// A statement without a result set answers the empty schema, as Query
+// stands in an empty batch with no columns for it.
+func (s *Session) describe(q string) (*arrow.Schema, error) {
+	sc, err := s.session.Query(q).ValidateArrow()
+	if err != nil {
+		return nil, err
+	}
+	// ValidateArrow answers nil for a statement with no result set, and the
+	// empty schema is the one Query hands the sink for it.
+	if sc == nil {
+		return arrow.NewSchema(nil, nil), nil
+	}
+	return sc, nil
+}
+
 // CreateTable creates the table called name, with cols after the implied
 // $timestamp column and a shard size of shard.
 func (s *Session) CreateTable(name string, shard time.Duration, cols ...qdbapi.TsColumnInfo) error {
@@ -453,6 +469,26 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 	//    under gRPC's receive limit.
 	defer rec.Release()
 	return sink(slices(rec, model.BatchRows))
+}
+
+// Describe answers the Arrow schema of native query q's result as u,
+// without running q. Field names, types and order are Query's for the
+// same q. The fields carry no metadata, where Query's string and blob
+// fields carry a max_width key. A bare NULL literal describes as the null
+// type and a non-select statement's empty column as its declared type,
+// where Query answers float64 and the null type. Errors are Query's.
+// The divergences are qdbd's validate disagreeing with its own execution,
+// and they are accepted (ADR-0018, Decision 9).
+func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOption) (*arrow.Schema, error) {
+	// opts carry the read retry as Query's do, because the validate holds
+	// a session for one round trip and sends nothing to the caller.
+	var sc *arrow.Schema
+	err := c.Call(ctx, u, func(s *Session) error {
+		var err error
+		sc, err = s.describe(q)
+		return err
+	}, opts...)
+	return sc, err
 }
 
 // Authenticate proves u's credentials by one direct dial, outside the
