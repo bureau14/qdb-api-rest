@@ -18,6 +18,7 @@ bin/
 test-reports/
 # e2e harness working files
 tests/e2e/actual/
+tests/e2e/tools/jdbc/target/
 tests/e2e/*.log
 tests/e2e/*.pid
 # Python venvs
