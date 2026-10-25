@@ -38,9 +38,9 @@ type userPool struct {
 }
 
 // Cluster binds this process to one configured cluster: the dial options,
-// the global budget, the breaker, and the per-user session pools. It is the
-// only door to a session (Call) and answers readiness on its own dial
-// (Probe). Nothing dials at startup. Every session is dialed on demand.
+// the global budget, the breaker, and the per-user session pools. Call is
+// the only way to a session, and Probe answers readiness on a dial of its
+// own. Nothing dials at startup. Every session is dialed on demand.
 type Cluster struct {
 	cfg            config.Cluster
 	poolCfg        config.Pool
@@ -163,9 +163,9 @@ func (c *Cluster) handleOptions(u credentials) *qdbapi.HandleOptions {
 // ErrInvalidReply on a push (sc-19944) keeps its own answer.
 var ErrCredentialsRefused = errors.New("qdb: the cluster refused the credentials")
 
-// connect dials one session for u. A budgeted dial takes a budget unit
-// first and holds it until the session's close returns. A dial that fails
-// gives its unit back at once. On a secure cluster, a dial that fails
+// connect dials one session for the user. A budgeted dial takes a budget
+// unit first and holds it until the session's close returns. A dial that
+// fails gives its unit back at once. On a secure cluster, a dial that fails
 // other than by an unreachable cluster is ErrCredentialsRefused.
 func (c *Cluster) connect(ctx context.Context, u credentials, budgeted bool) (qdbapi.Session, error) {
 	// A dial is three steps, and a failure at any of them leaves the
@@ -207,9 +207,9 @@ func (c *Cluster) dial(u credentials) func(context.Context) (qdbapi.Session, err
 }
 
 // closeBudgeted is the closer of the user pools. It closes the handle and
-// only then releases its budget unit, so a session counts against max_sessions
-// until qdb_close has returned and the cluster has let go of it. The pool
-// runs it on its own goroutine.
+// only then releases its budget unit, so a session counts against
+// max_sessions until qdb_close has returned and the cluster has let go of
+// it. The pool runs it on its own goroutine.
 func (c *Cluster) closeBudgeted(s qdbapi.Session) error {
 	err := s.Close()
 	c.budget.release()
@@ -278,11 +278,11 @@ func (s *Session) closeAsync() {
 	go func() { _ = s.session.Close() }()
 }
 
-// fetch runs q through the C API's Arrow path and returns the record batch
-// the binding moved out of it, which holds no reference to the session.
-// The caller owns the batch and releases it once. An error means no
-// result. A batch handed back with an error (a partial failure) is
-// released here, and nil is returned. A statement that produces no
+// fetch runs the query through the C API's Arrow path and returns the
+// record batch the binding moved out of it, which holds no reference to
+// the session. The caller owns the batch and releases it once. An error
+// means no result. A batch handed back with an error (a partial failure)
+// is released here, and nil is returned. A statement that produces no
 // result set (DDL) yields a nil batch.
 func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
 	rec, err := s.session.Query(q).FetchArrow()
@@ -295,16 +295,15 @@ func (s *Session) fetch(q string) (arrow.RecordBatch, error) {
 	return rec, nil
 }
 
-// describe answers the schema q's result would have, without running q.
-// A statement without a result set answers the empty schema, as Query
-// stands in an empty batch with no columns for it.
+// describe returns the schema of the query's result without running the
+// query. A statement without a result set has the empty schema, which
+// matches the empty batch Query hands the sink for it.
 func (s *Session) describe(q string) (*arrow.Schema, error) {
 	sc, err := s.session.Query(q).ValidateArrow()
 	if err != nil {
 		return nil, err
 	}
-	// ValidateArrow answers nil for a statement with no result set, and the
-	// empty schema is the one Query hands the sink for it.
+	// ValidateArrow returns nil for a statement with no result set.
 	if sc == nil {
 		return arrow.NewSchema(nil, nil), nil
 	}
@@ -322,8 +321,8 @@ func (s *Session) RemoveTable(name string) error {
 	return s.session.Table(name).Remove()
 }
 
-// PushArrow writes every table w holds in one batch. The writer pins the
-// Go buffers it hands to the C API for the duration of the call.
+// PushArrow writes every table the writer holds in one batch. The writer
+// pins the Go buffers it hands to the C API for the duration of the call.
 func (s *Session) PushArrow(w *qdbapi.ArrowWriter) error {
 	return w.Push(s.session)
 }
@@ -364,16 +363,16 @@ func (c *Cluster) feedBreaker(err error) {
 	c.breaker.recordSuccess()
 }
 
-// Call runs f against a session authenticated as u. The breaker gates the
-// call. u's pool leases a session, dialing one on demand, runs f, and
-// decides the session's fate from f's error through the binding's
-// IsBadSession and Lease.Done. This layer decides two things, both per
-// cluster. The first is the breaker, which is fed only by the errors
-// that are evidence about the cluster (IsClusterUnavailable). The second
-// is the opt-in retry of an idempotent read after a retryable failure,
-// which a refused credential never gets. A retry after a bad session runs
-// on a fresh session, because the pool discarded the old one. A retry
-// after any other retryable failure may run on the same session again.
+// Call runs f on a session authenticated as the user. The breaker gates
+// the call. The user's pool leases a session, dialing one on demand, and
+// runs f. The binding's IsBadSession and Lease.Done decide from f's error
+// whether the pool keeps the session. This layer adds two decisions, both
+// per cluster. Only errors that are evidence about the cluster
+// (IsClusterUnavailable) feed the breaker. An idempotent read can opt in
+// to one retry after a retryable failure, and a refused credential is
+// never retried. A retry after a bad session runs on a fresh session,
+// because the pool discarded the old one. A retry after any other
+// retryable failure may run on the same session.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -401,15 +400,15 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 	return err
 }
 
-// slices is rec as a sequence of slices of at most n rows, in order. Each
-// slice retains rec and is released after yield returns, so the receiver
-// releases none. The caller owns rec and releases it after the sequence.
-// A rec of no rows is one empty slice, so the sequence is never empty.
+// slices cuts the batch into a sequence of slices of at most n rows, in
+// order. Each slice retains the batch and is released after yield
+// returns, so the receiver releases none. The caller owns the batch and
+// releases it after the sequence. A batch of no rows is yielded itself,
+// once, so the sequence is never empty.
 func slices(rec arrow.RecordBatch, n int64) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
-		// A rec of no rows yields rec itself once, because every receiver
-		// expects a batch and the Arrow encoder reads the first batch's
-		// schema.
+		// An empty batch is yielded itself, because every receiver expects a
+		// batch and the Arrow encoder reads the first batch's schema.
 		if rec.NumRows() == 0 {
 			yield(rec, nil)
 			return
@@ -427,22 +426,22 @@ func slices(rec arrow.RecordBatch, n int64) Batches {
 	}
 }
 
-// Query runs q as u and hands its result to sink as a sequence of slices
-// of at most model.BatchRows rows. The session is back in its pool before
-// sink runs, so a slow receiver holds no session. Every error other than
-// sink's own is returned before sink is called, and sink's error is
-// returned as is. A statement with no result set yields one empty batch
-// with no columns. Under WithReadRetry the query is retried once on a
-// fresh session, which is safe because the query completes before sink
-// runs.
+// Query runs a native query as the user and hands the result to the sink
+// as a sequence of slices of at most model.BatchRows rows. The session is
+// back in its pool before the sink runs, so a slow receiver holds no
+// session. Every error other than the sink's own is returned before the
+// sink is called, and the sink's error is returned as is. A statement
+// with no result set yields one empty batch with no columns. Under
+// WithReadRetry the query is retried once, as Call retries a read. The
+// retry is safe because the query completes before the sink runs.
 func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches) error, opts ...CallOption) error {
 	// The binding materializes the whole result in one fetch, so the
-	// session is needed only for that fetch and sink runs after the call
-	// returns it:
+	// session is needed only for that fetch, and the sink runs after Call
+	// has returned the session:
 	//
 	//  1. fetch the result on a leased session, retried as opts say;
 	//  2. stand in an empty batch for a statement with no result set;
-	//  3. run sink over the slices and release the batch afterwards.
+	//  3. run the sink over the slices and release the batch afterwards.
 
 	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
@@ -460,28 +459,29 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 	if rec == nil {
 		rec = model.EmptyBatch(arrow.NewSchema(nil, nil))
 	}
-	// 3. the batch is released after sink returns rather than when yield
-	//    returns, so a sink that never ranges over the sequence leaks
-	//    nothing. The slices share the batch's buffers, and each retains
-	//    it, so a sink that keeps a slice keeps the buffers. The batch is
-	//    sliced here and not in the encoder, so every consumer, HTTP and
-	//    Flight, reads batches of one size and a Flight message stays
-	//    under gRPC's receive limit.
+	// 3. the batch is released after the sink returns rather than when
+	//    yield returns, so a sink that never ranges over the sequence
+	//    leaks nothing. Each slice retains the batch and shares its
+	//    buffers, so a sink that keeps a slice keeps the buffers. The batch
+	//    is sliced here rather than in the encoder, so HTTP and Flight read
+	//    batches of one size and a Flight message stays under gRPC's
+	//    receive limit.
 	defer rec.Release()
 	return sink(slices(rec, model.BatchRows))
 }
 
-// Describe answers the Arrow schema of native query q's result as u,
-// without running q. Field names, types and order are Query's for the
-// same q. The fields carry no metadata, where Query's string and blob
-// fields carry a max_width key. A bare NULL literal describes as the null
-// type and a non-select statement's empty column as its declared type,
-// where Query answers float64 and the null type. Errors are Query's.
-// The divergences are qdbd's validate disagreeing with its own execution,
-// and they are accepted (ADR-0018, Decision 9).
+// Describe returns the Arrow schema of a native query's result, as the
+// user, without running the query. Field names, types and order match
+// what Query returns for the same query. The fields carry no metadata,
+// while Query's string and blob fields carry a max_width key. A bare NULL
+// literal describes as the null type, where Query returns float64. A
+// non-select statement's empty column describes as its declared type,
+// where Query returns the null type. The errors are Query's. The
+// divergences come from qdbd's validate disagreeing with its own
+// execution, and they are accepted (ADR-0018, Decision 9).
 func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOption) (*arrow.Schema, error) {
-	// opts carry the read retry as Query's do, because the validate holds
-	// a session for one round trip and sends nothing to the caller.
+	// The read retry is as safe here as in Query, because the validate
+	// holds a session for one round trip and sends nothing to the caller.
 	var sc *arrow.Schema
 	err := c.Call(ctx, u, func(s *Session) error {
 		var err error
@@ -491,13 +491,13 @@ func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOp
 	return sc, err
 }
 
-// Authenticate proves u's credentials by one direct dial, outside the
-// user pools, because a pool holds the credentials it was created with,
-// so a lease could only confirm those. The breaker gates the dial and
-// hears of its outcome. The budget does not count the dial, because the
-// session lives for one handshake and closes on its own goroutine. A
-// refused dial is an answer and the caller's error, ErrCredentialsRefused
-// on a secure cluster. An unreachable cluster is IsClusterUnavailable.
+// Authenticate checks the user's credentials with one direct dial outside
+// the user pools. A pool keeps the credentials it was created with, so a
+// lease could only confirm those. The breaker gates the dial and hears its
+// outcome. The budget does not count the dial, because the session lives
+// for one handshake and closes on its own goroutine. A refused dial is an
+// answer and the caller's error, ErrCredentialsRefused on a secure
+// cluster. An unreachable cluster is IsClusterUnavailable.
 func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 	remaining, ok := c.breaker.allow()
 	if !ok {
@@ -519,7 +519,7 @@ func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 // user (outside the pool, the budget and the breaker), runs
 // status.readiness_query, and closes the session on its own goroutine. The
 // dial proves that the cluster is reachable and that the REST API's own
-// user authenticates. The query proves that the session serves one.
+// user authenticates. The query proves that the session serves queries.
 func (c *Cluster) Probe(ctx context.Context) error {
 	hdl, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
@@ -536,9 +536,9 @@ func (c *Cluster) Probe(ctx context.Context) error {
 
 // InstanceLimitError is the error of a DuckDB call that would open a DuckDB
 // instance past duckdb.max_instances. RetryAfter is the eviction tick,
-// the soonest an idle instance can close. A configurable value was
-// rejected as one more knob. The HTTP layer maps it to 503
-// with a Retry-After of RetryAfter.
+// the soonest an idle instance can close. A configurable RetryAfter was
+// rejected as one more knob. The HTTP layer maps the error to 503 with a
+// Retry-After of RetryAfter.
 type InstanceLimitError struct {
 	RetryAfter time.Duration
 }
@@ -547,10 +547,10 @@ func (e *InstanceLimitError) Error() string {
 	return fmt.Sprintf("qdb: duckdb instance limit reached, retry after %s", e.RetryAfter)
 }
 
-// credentialsOf is what u's instance attaches with: the first node of the
-// cluster URI, and on a secure cluster u's credentials and the cluster
-// public key read from its file. On an insecure cluster every instance
-// attaches anonymously.
+// credentialsOf returns what the user's instance attaches with. That is
+// the first node of the cluster URI and, on a secure cluster, the user's
+// credentials and the cluster public key read from its file. On an
+// insecure cluster every instance attaches anonymously.
 func (c *Cluster) credentialsOf(u User) (olap.Credentials, error) {
 	// qdb-duck's ATTACH takes one host and one port, so a multi-node URI
 	// is handed over as its first node.
@@ -577,22 +577,23 @@ func (c *Cluster) credentialsOf(u User) (olap.Credentials, error) {
 	return creds, nil
 }
 
-// instanceOf answers u's instance from up, opening it on u's first sql
-// call. The open counts against duckdb.max_instances, and past the cap the
-// answer is an *InstanceLimitError. On a secure cluster, a failed attach
-// whose credentials the cluster refuses is ErrCredentialsRefused. A
-// failed open is not kept, so the next call tries again.
+// instanceOf returns the user's DuckDB instance, opening it on the user's
+// first DuckDB call. The open counts against duckdb.max_instances, and past
+// the cap the error is an *InstanceLimitError. On a secure cluster, a
+// failed attach whose credentials the cluster refuses is
+// ErrCredentialsRefused. A failed open is not kept, so the next call tries
+// again.
 func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.Instance, error) {
 	// The instance is opened once per user and counted against the cap
 	// before the open:
 	//
-	//  1. under duckMu, answer the instance when it exists;
-	//  2. take a unit of the cap under mu, or answer InstanceLimitError;
+	//  1. under duckMu, return the instance when it exists;
+	//  2. take a unit of the cap under mu, or fail with InstanceLimitError;
 	//  3. open outside mu;
 	//  4. on a secure cluster, classify a failed attach by one direct dial;
 	//  5. on failure, give the unit back.
 
-	// 1. answer the instance when it exists. duckMu is held through the
+	// 1. return the instance when it exists. duckMu is held through the
 	//    open, so a second first call waits for this one's instance.
 	up.duckMu.Lock()
 	defer up.duckMu.Unlock()
@@ -615,12 +616,13 @@ func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.I
 	}
 	// 4. classify a failed attach on a secure cluster. qdb-duck's message
 	//    does not say whether the cluster refused or was unreachable, so
-	//    one direct dial as u asks the cluster. A refused dial replaces the
-	//    attach error, and any other outcome keeps olap.ErrAttach and its
-	//    503. The dial runs on this failure path only. It goes through
-	//    connect and not Authenticate, because a DuckDB call does not feed the
-	//    breaker. Refusing an empty username in credentialsOf was rejected,
-	//    because it misses a user removed after login.
+	//    one direct dial as the user asks the cluster. A refused dial
+	//    replaces the attach error, and any other outcome keeps
+	//    olap.ErrAttach and its 503. The dial runs on this failure path
+	//    only. It goes through connect and not Authenticate, because a
+	//    DuckDB call does not feed the breaker. Refusing an empty username
+	//    in credentialsOf was rejected, because it misses a user removed
+	//    after login.
 	if errors.Is(err, olap.ErrAttach) && c.Secured() {
 		hdl, derr := c.connect(ctx, u.credentials(), false)
 		switch {
@@ -645,9 +647,9 @@ func (c *Cluster) releaseInstance() {
 	c.mu.Unlock()
 }
 
-// closeInstance closes up's instance, if it has one, and only then gives
-// its unit back, so an instance counts against the cap until its close
-// returns.
+// closeInstance closes the pool's instance, if it has one, and only then
+// gives its unit back, so an instance counts against the cap until its
+// close returns.
 func (up *userPool) closeInstance(c *Cluster) {
 	up.duckMu.Lock()
 	defer up.duckMu.Unlock()
@@ -659,17 +661,18 @@ func (up *userPool) closeInstance(c *Cluster) {
 	c.releaseInstance()
 }
 
-// withInstance runs f on u's DuckDB instance, opening it on u's first
-// call, and counts the call as use of u's pool until f returns. An error
-// before f runs is instanceOf's, and the error of f is returned unchanged.
+// withInstance runs f on the user's DuckDB instance, opening it on the
+// user's first call. The call counts as use of the user's pool until f
+// returns. An error before f runs comes from instanceOf, and f's error is
+// returned unchanged.
 func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instance) error) error {
-	// The call counts as use of u's pool from before the instance opens
-	// until after f returns, on every path, so eviction never closes an
-	// instance that a call is opening or using:
+	// The call counts as use of the user's pool from before the instance
+	// opens until after f returns, on every path, so eviction never closes
+	// an instance that a call is opening or using:
 	//
-	//  1. find or create u's pool and count the call, under one hold of
-	//     mu, so no eviction pass sees the pool in between;
-	//  2. answer u's instance, opening it on the first call;
+	//  1. find or create the user's pool and count the call, under one
+	//     hold of mu, so no eviction pass sees the pool in between;
+	//  2. get the user's instance, opening it on the first call;
 	//  3. run f on the instance;
 	//  4. uncount the call, whatever happened.
 
@@ -684,7 +687,7 @@ func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instanc
 		up.duckIn--
 		c.mu.Unlock()
 	}()
-	// 2. answer the instance
+	// 2. get the instance
 	in, err := c.instanceOf(ctx, up, u)
 	if err != nil {
 		return err
@@ -693,29 +696,29 @@ func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instanc
 	return f(in)
 }
 
-// Duck runs q, DuckDB SQL, as u on u's own DuckDB instance and hands its
-// batches to sink, on a connection of the instance that closes when sink
-// returns. An error before sink runs is the instance cap
-// (*InstanceLimitError), a refused credential on a secure cluster
-// (ErrCredentialsRefused), the attach (olap.ErrAttach, which
-// IsClusterUnavailable reports) or DuckDB's. The error of sink is returned
-// unchanged. A DuckDB call is never retried and does not feed the breaker.
-// The budget does not count it, because qdb-duck pools its own qdbd
-// sessions.
+// Duck runs a DuckDB query on the user's own DuckDB instance and hands its
+// batches to the sink. The query runs on a connection of the instance,
+// which closes when the sink returns. An error before the sink runs comes
+// from the instance cap (*InstanceLimitError), a refused credential on a
+// secure cluster (ErrCredentialsRefused), the attach (olap.ErrAttach,
+// which IsClusterUnavailable reports) or DuckDB itself. The sink's error
+// is returned unchanged. A DuckDB call is never retried and does not feed
+// the breaker. The budget does not count it, because qdb-duck pools its
+// own qdbd sessions.
 func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
 	return c.withInstance(ctx, u, func(in *olap.Instance) error {
 		return in.Query(ctx, q, sink)
 	})
 }
 
-// DuckDescribe answers the Arrow schema of DuckDB query q's result on
-// u's instance, without running q. Field names, types and order are the
-// ones Duck streams for the same q. A text that is not one statement is
-// olap.ErrNotOneStatement, a query with parameters is
+// DuckDescribe returns the Arrow schema of a DuckDB query's result on the
+// user's instance, without running the query. Field names, types and order
+// match what Duck streams for the same query. A text that is not one
+// statement is olap.ErrNotOneStatement, a query with parameters is
 // olap.ErrParameters, and a column type the describe does not map is
 // olap.ErrUndescribable. The other errors are Duck's before its sink runs.
 func (c *Cluster) DuckDescribe(ctx context.Context, u User, q string) (*arrow.Schema, error) {
-	// The describe counts as use of the pool as Duck does, because it
+	// The describe counts as use of the pool, as Duck does, because it
 	// holds a connection of the instance.
 	var sc *arrow.Schema
 	err := c.withInstance(ctx, u, func(in *olap.Instance) error {

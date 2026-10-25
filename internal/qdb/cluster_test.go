@@ -1,12 +1,12 @@
 // This file holds the integration tests of Cluster against the live qdbd
-// fixture (internal/qdbtest): breaker, per-user cap, retry-once, a
-// rejected query's session and breaker, user-pool eviction, and the
-// probe as the REST API's own user, the table list, and the slicing of a
-// query result, which dials nothing. Every test that dials the fixture
-// runs once per cluster, as the user the fixture names there, except
-// TestAuthenticate, which checks each cluster's own verdict. The tests
-// against an unreachable URI dial no fixture cluster. The pool's own
-// invariants and the error predicates are pinned upstream in qdb-api-go.
+// fixture (internal/qdbtest). They cover the breaker, the per-user cap,
+// retry-once, a rejected query's session and breaker, user-pool eviction,
+// the probe as the REST API's own user, and the table list. TestSlices
+// covers the slicing of a query result and dials nothing. Every test that
+// dials the fixture runs once per cluster, as the user the fixture names
+// there, except TestAuthenticate, which checks each cluster's own verdict.
+// The tests against an unreachable URI dial no fixture cluster. qdb-api-go
+// pins the pool's own invariants and the error predicates upstream.
 package qdb
 
 import (
@@ -29,12 +29,12 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// userOf is the user a test acts as on spec.
+// userOf returns the user a test acts as on the cluster.
 func userOf(spec qdbtest.Cluster) User {
 	return User{Username: spec.Username, SecretKey: spec.SecretKey}
 }
 
-// eachCluster runs test once per cluster of the test services, as a
+// eachCluster runs the test once per cluster of the test services, as a
 // subtest named by the cluster. The cluster fixture cannot serve this
 // package, because it imports internal/qdb.
 func eachCluster(t *testing.T, test func(t *testing.T, spec qdbtest.Cluster)) {
@@ -309,9 +309,9 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 }
 
 // TestSlices: for a batch of any row count and any n, slices yields
-// ceil(rows/n) slices of at most n rows, at least one, in order, each
-// equal to the parent's rows at that offset, and releases each after
-// yield. It dials nothing.
+// ceil(rows/n) slices of at most n rows, and at least one. The slices come
+// in order, each equal to the parent's rows at that offset, and slices
+// releases each after yield. The test dials nothing.
 func TestSlices(t *testing.T) {
 	// One property with a release check:
 	//
@@ -394,8 +394,8 @@ func TestTables(t *testing.T) {
 		u := userOf(spec)
 		ctx := context.Background()
 
-		// The name is qdbtest_ plus a fresh suffix, so a killed run is found
-		// by the qdbsh sweep internal/AGENTS.md, Tests, names.
+		// The name is qdbtest_ plus a fresh suffix, so the qdbsh sweep that
+		// internal/AGENTS.md describes under Tests finds a killed run.
 		name := fmt.Sprintf("qdbtest_tables_%d", time.Now().UnixNano())
 		// One double column and a remove on cleanup, so the test needs no
 		// fixture, which package qdb cannot import.
@@ -425,10 +425,10 @@ func TestTables(t *testing.T) {
 }
 
 // TestTableSchemas: a table created as the user with one column of every
-// type appears in TableSchemas on both clusters with $timestamp then its
-// columns in the binding's Arrow types, the symtable on its symbol
-// column, and the shard size and TTL it was created with, and every
-// listed schema starts with $timestamp.
+// type appears in TableSchemas on both clusters. Its schema holds
+// $timestamp, then its columns in the binding's Arrow types, the symtable
+// on its symbol column, and the shard size and TTL it was created with.
+// Every listed schema starts with $timestamp.
 func TestTableSchemas(t *testing.T) {
 	// Create, list, find and compare:
 	//
@@ -476,8 +476,8 @@ func TestTableSchemas(t *testing.T) {
 		}
 
 		// 3. Schema.Equal compares the fields with their metadata, so the
-		//    symtable key is checked here, and ignores the schema's own
-		//    metadata, which step 4 reads
+		//    symtable key is checked here. It ignores the schema's own
+		//    metadata, which step 4 reads.
 		fields := []arrow.Field{{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()}}
 		for _, col := range cols {
 			f := arrow.Field{Name: col.Name, Type: columnTypes[col.Type].ArrowType(), Nullable: true}

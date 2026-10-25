@@ -38,7 +38,7 @@ var columnTypes = map[string]qdbapi.TsColumnType{
 	"timestamp": qdbapi.TsColumnTimestamp,
 }
 
-// info is c as the create call takes it.
+// info converts the column into the binding's column info.
 func (c Column) info() (qdbapi.TsColumnInfo, error) {
 	kind, ok := columnTypes[c.Type]
 	switch {
@@ -54,8 +54,8 @@ func (c Column) info() (qdbapi.TsColumnInfo, error) {
 	return qdbapi.NewTsColumnInfo(c.Name, kind), nil
 }
 
-// columnInfos is cols as the create call takes them, or the first invalid
-// column's error.
+// columnInfos converts the columns for the create call, or fails on the
+// first invalid column.
 func columnInfos(cols []Column) ([]qdbapi.TsColumnInfo, error) {
 	infos := make([]qdbapi.TsColumnInfo, len(cols))
 	for i, c := range cols {
@@ -68,8 +68,8 @@ func columnInfos(cols []Column) ([]qdbapi.TsColumnInfo, error) {
 	return infos, nil
 }
 
-// CreateTable creates the table called name, as user u, with cols after
-// the implied $timestamp column and a shard size of shard. An invalid
+// CreateTable creates the table as the user, with the columns after the
+// implied $timestamp column and the given shard size. An invalid
 // column is reported before a session is leased. A create is never
 // retried, because it is not a read.
 func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard time.Duration, cols []Column) error {
@@ -80,7 +80,7 @@ func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard ti
 	return c.Call(ctx, u, func(s *Session) error { return s.CreateTable(name, shard, infos...) })
 }
 
-// RemoveTable removes the table called name, as user u. It leaves the
+// RemoveTable removes the table as the user. It leaves the
 // table's symtable in place, because a symtable is its own entry and
 // other tables may share it.
 func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
@@ -103,7 +103,7 @@ func (s *Session) tables() ([]string, error) {
 	//  3. copy each name out before the batch goes.
 
 	// 1. one fetch, whose batch this function owns and releases. fetch
-	//    answers a nil batch for a statement without a result set, which
+	//    returns a nil batch for a statement without a result set, which
 	//    is read as no table rather than dereferenced.
 	rec, err := s.fetch("show tables")
 	if err != nil {
@@ -130,7 +130,7 @@ func (s *Session) tables() ([]string, error) {
 	return names, nil
 }
 
-// Tables lists the names of the cluster's tables as user u, in the order
+// Tables lists the names of the cluster's tables as the user, in the order
 // the cluster reports them, qdbd's own $qdb. tables included. The listing
 // is retried once on a retryable failure, as a read is.
 func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
@@ -166,17 +166,17 @@ type TableSchema struct {
 	Schema *arrow.Schema
 }
 
-// millis is d as the metadata keys carry it: an integer count of
-// milliseconds.
+// millis formats the duration as the metadata keys carry it, an integer
+// count of milliseconds.
 func millis(d time.Duration) string {
 	return strconv.FormatInt(d.Milliseconds(), 10)
 }
 
-// schemaOfMetadata is the schema TableSchemas answers for a table whose
-// metadata is md: $timestamp, non-nullable, then the columns in order,
-// nullable, in the binding's Arrow types, a symbol column's field carrying
-// MetaSymtable, and the schema carrying MetaShardSize and MetaTTL in
-// milliseconds.
+// schemaOfMetadata returns the schema TableSchemas answers for a table's
+// metadata. $timestamp comes first and is non-nullable. The columns follow
+// in order, nullable and in the binding's Arrow types. A symbol column's
+// field carries MetaSymtable, and the schema carries MetaShardSize and
+// MetaTTL in milliseconds.
 func schemaOfMetadata(md qdbapi.TableMetadata) *arrow.Schema {
 	// The shape is the table as it was created and not the reader's or a
 	// query's result set, because the metadata call is the canonical
@@ -197,8 +197,8 @@ func schemaOfMetadata(md qdbapi.TableMetadata) *arrow.Schema {
 	fields = append(fields, specialFields["$timestamp"])
 	// 2. dataFields builds the column fields, because the server declares
 	//    no type map of its own. The symtable joins a symbol field as
-	//    metadata, because it is the one column attribute the Arrow type
-	//    loses: a symbol reads as a string.
+	//    metadata, because it is the only column attribute that the Arrow
+	//    type loses, as a symbol reads as a string.
 	cols, _ := dataFields(md.Columns)
 	for i, f := range cols {
 		if c := md.Columns[i]; c.Type() == qdbapi.TsColumnSymbol {
@@ -216,7 +216,7 @@ func schemaOfMetadata(md qdbapi.TableMetadata) *arrow.Schema {
 	return arrow.NewSchema(fields, &meta)
 }
 
-// tableSchema answers the schema of the table called name through one
+// tableSchema returns the schema of the table called name through one
 // metadata call on the held session. The binding's error for an unknown
 // table passes through unchanged, so IsTableNotFound classifies it.
 func (s *Session) tableSchema(name string) (*arrow.Schema, error) {
@@ -229,7 +229,7 @@ func (s *Session) tableSchema(name string) (*arrow.Schema, error) {
 	return schemaOfMetadata(md), nil
 }
 
-// TableSchemas lists the cluster's tables as user u with the schema of
+// TableSchemas lists the cluster's tables as the user with the schema of
 // each, in the order the cluster reports them, qdbd's own $qdb. tables
 // included, through one leased session. Any failed lookup fails the
 // listing. The listing is retried once on a retryable failure, as a read
@@ -258,9 +258,9 @@ func (c *Cluster) TableSchemas(ctx context.Context, u User) ([]TableSchema, erro
 		for _, name := range names {
 			// 2. one round trip per name
 			schema, err := s.tableSchema(name)
-			// 3. a not-found included, because a table that vanishes between
-			//    the two calls makes the request inconsistent, and the case
-			//    is extreme. Skipping the vanished row was rejected: an
+			// 3. a not-found fails the listing too, because a table that
+			//    vanishes between the two calls makes the request inconsistent,
+			//    and the case is extreme. Skipping the vanished row was rejected: an
 			//    errors.Is per lookup for a case that does not happen in
 			//    practice.
 			if err != nil {

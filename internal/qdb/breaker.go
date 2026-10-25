@@ -107,9 +107,9 @@ func (e *BreakerOpenError) Error() string {
 }
 
 // IsClusterUnavailable reports whether err means the cluster was
-// unreachable, timed out or was too busy to answer. This is the binding's
-// own classification, the same one that feeds the breaker, and a DuckDB
-// attach that failed (olap.ErrAttach), which does not feed it. The server
+// unreachable, timed out or was too busy to answer. It combines the
+// binding's own classification, which also feeds the breaker, with a
+// failed DuckDB attach (olap.ErrAttach), which does not feed it. The server
 // cannot tell a refused attach from an unreachable cluster, and the
 // user's credentials were proven at login, so a failed attach counts as
 // an unavailable cluster. The HTTP layer maps it to 503.

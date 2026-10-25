@@ -25,8 +25,9 @@ type ReadOptions struct {
 	BatchRows  int
 }
 
-// readerOptions is o as the bulk reader takes it, for the single table
-// name. A zero range is no range, so the binding reads the whole table.
+// readerOptions converts the options into the bulk reader's options for
+// a read of the table called name. A zero range is no range, so the
+// binding reads the whole table.
 func (o ReadOptions) readerOptions(name string) qdbapi.ReaderOptions {
 	return qdbapi.NewReaderOptions().
 		WithTables([]string{name}).
@@ -62,8 +63,9 @@ func dataFields(cols []qdbapi.TsColumnInfo) ([]arrow.Field, map[string]arrow.Fie
 	return fields, byName
 }
 
-// schemaOf is the schema the reader answers for a table with cols read
-// under o. An unknown requested name is ErrUnknownColumn.
+// schemaOf returns the schema the reader gives for a table of these
+// columns read under the options. An unknown requested name is
+// ErrUnknownColumn.
 func schemaOf(cols []qdbapi.TsColumnInfo, o ReadOptions) (*arrow.Schema, error) {
 	// The schema follows the reader's layout. Without a column list it is
 	// $table, $timestamp, then the table's columns. With one it is the
@@ -92,8 +94,8 @@ func schemaOf(cols []qdbapi.TsColumnInfo, o ReadOptions) (*arrow.Schema, error) 
 // and is the last. The sequence is never empty.
 type Batches = iter.Seq2[arrow.RecordBatch, error]
 
-// lent turns the batches the reader owns into the lent Batches. schema
-// is the schema the reader answers. It shapes the empty batch an empty
+// lent turns the batches the reader owns into the lent Batches. The
+// schema is the reader's, and it shapes the empty batch that an empty
 // table yields.
 func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
@@ -123,10 +125,10 @@ func lent(owned iter.Seq2[arrow.RecordBatch, error], schema *arrow.Schema) Batch
 	}
 }
 
-// Read reads the table called name under o through the bulk reader and
-// hands its batches to sink, one per fetch, the next fetched only when
-// yield returns. An error before sink runs comes from the table,
-// the range or a column. The error of sink itself is returned unchanged.
+// Read reads the table through the bulk reader and hands its batches to
+// the sink, one per fetch. The next batch is fetched only when yield
+// returns. An error before the sink runs comes from the table, the range
+// or a column. The sink's own error is returned unchanged.
 func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) error {
 	// Everything that can refuse the read runs before the sink, so a caller
 	// that has to decide a status (the HTTP handler) decides it before the
@@ -136,7 +138,7 @@ func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) err
 	//     size, and the cluster judges the table's existence;
 	//  2. fetch the table's columns, which is where an empty table's schema
 	//     comes from;
-	//  3. shape that schema under o, which finds an unknown column;
+	//  3. shape that schema under the options, which finds an unknown column;
 	//  4. run the sink over the lent batches. The reader closes after it.
 
 	// 1. open the reader
@@ -159,12 +161,12 @@ func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) err
 	return sink(lent(rd.Arrow(), schema))
 }
 
-// Read reads the table name as u through the bulk reader and runs sink
-// over its batches while the session is held, because every fetch needs
-// the live handle. A read occupies one session of u's pool for as long
-// as sink runs, and the budget bounds concurrent reads like any other
-// call. A read is never retried, because sink may have written to the
-// caller.
+// Read reads the table as the user through the bulk reader and runs the
+// sink over its batches while the session is held, because every fetch
+// needs the live handle. A read occupies one session of the user's pool
+// for as long as the sink runs, and the budget bounds concurrent reads
+// like any other call. A read is never retried, because the sink may have
+// written to the caller.
 func (c *Cluster) Read(ctx context.Context, u User, name string, o ReadOptions, sink func(Batches) error) error {
 	return c.Call(ctx, u, func(s *Session) error { return s.Read(name, o, sink) })
 }

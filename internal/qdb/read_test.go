@@ -1,6 +1,6 @@
 // The table read is pinned against the live qdbd fixture. A generated
 // table, read back batch by batch, answers the rows that were written,
-// whole or as a requested subset of columns. This is the package's one
+// whole or as a requested subset of columns. This is the package's only
 // black-box test, because the table fixture imports internal/qdb, so a
 // white-box test could not use it.
 package qdb_test
@@ -25,8 +25,9 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// oneRow builds a one-row batch for tbl, with its $timestamp at
-// 2020-01-01 and s in its one string column. The caller releases it.
+// oneRow builds a one-row batch for the table, with $timestamp at
+// 2020-01-01 and the given string in its only column. The caller releases
+// it.
 func oneRow(tbl table.Table, s string) arrow.RecordBatch {
 	schema := table.Schema(tbl)
 	// There is one builder per field. A builder is released once it has
@@ -69,8 +70,8 @@ func concat(t *rapid.T, schema *arrow.Schema, batches []arrow.RecordBatch) arrow
 	return array.NewRecordBatch(schema, cols, rows)
 }
 
-// read reads table name under o as u into one batch
-// the caller owns, asserting that no batch exceeded BatchRows. Each
+// read reads the table as the user into one batch the caller owns, and
+// fails when a batch exceeds BatchRows. Each
 // batch is only lent by the sequence and is released when yield
 // returns, so it is retained here.
 func read(t *rapid.T, c *qdb.Cluster, u qdb.User, name string, o qdb.ReadOptions) arrow.RecordBatch {
@@ -101,7 +102,7 @@ func read(t *rapid.T, c *qdb.Cluster, u qdb.User, name string, o qdb.ReadOptions
 	return concat(t, batches[0].Schema(), batches)
 }
 
-// names is the column names of rec's schema, in order.
+// names returns the batch's column names, in order.
 func names(rec arrow.RecordBatch) []string {
 	out := make([]string, rec.NumCols())
 	for i, f := range rec.Schema().Fields() {
@@ -112,7 +113,7 @@ func names(rec arrow.RecordBatch) []string {
 
 // TestReadAnswersRowsWritten: a generated table read back in batches of
 // a drawn size answers $table, $timestamp and every column as written.
-// A drawn subset of names answers exactly those, in that order. A drawn
+// A drawn subset of names answers only those, in that order. A drawn
 // row count of zero is the schema-only batch.
 func TestReadAnswersRowsWritten(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {

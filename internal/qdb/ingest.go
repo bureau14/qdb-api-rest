@@ -44,10 +44,10 @@ var deduplicationModes = map[string]qdbapi.WriterDeduplicationMode{
 	"upsert": qdbapi.WriterDeduplicationModeUpsert,
 }
 
-// writerOptions is o as the writer takes it, or the error of the first
-// invalid word. The columns and the mode come together, because the
-// binding would deduplicate on every column for a bare drop, and this
-// surface refuses that silent widening.
+// writerOptions converts the options into the binding's writer options,
+// or fails on the first invalid word. The columns and the mode come
+// together, because the binding would deduplicate on every column for a
+// bare drop, and this surface refuses that silent widening.
 func (o PushOptions) writerOptions() (qdbapi.WriterOptions, error) {
 	mode, ok := pushModes[o.Mode]
 	if !ok {
@@ -83,11 +83,10 @@ type IngestResult struct {
 // there are no batches.
 type Decode func(schemaOf model.SchemaOf) ([]model.TableBatch, error)
 
-// schemaOf answers the schema the reader gives for the whole of table
-// name: its columns, looked up through the held session s and shaped
-// as for a read without a column list. The binding's error for an
-// unknown table passes through unchanged, so IsTableNotFound
-// classifies it.
+// schemaOf returns the schema the reader gives for the whole table. The
+// held session looks up the table's columns, and they are shaped as for a
+// read without a column list. The binding's error for an unknown table
+// passes through unchanged, so IsTableNotFound classifies it.
 func (s *Session) schemaOf(name string) (*arrow.Schema, error) {
 	cols, err := s.session.Table(name).ColumnsInfo()
 	if err != nil {
@@ -96,8 +95,8 @@ func (s *Session) schemaOf(name string) (*arrow.Schema, error) {
 	return schemaOf(cols, ReadOptions{})
 }
 
-// ingest runs decode under s's schema lookup and pushes its batches once
-// under opts.
+// ingest decodes the body with the session's schema lookup and pushes the
+// batches in one push.
 func (s *Session) ingest(decode Decode, opts qdbapi.WriterOptions) (IngestResult, error) {
 	// The lease spans the decode and the push, because the lookups need a
 	// session and the push needs the same one:
@@ -153,12 +152,12 @@ func (s *Session) ingest(decode Decode, opts qdbapi.WriterOptions) (IngestResult
 	return res, err
 }
 
-// Ingest pushes the batches that decode reads, as user u and under o, in
-// one push. The session is held for the whole body: the tables' schemas
-// are looked up through it as the body names them, and the push runs
-// through it. Invalid options fail before a session is leased. An
-// invalid body or an unknown table fails the whole request before the
-// push. An ingest is never retried, because a push is not a read.
+// Ingest pushes the batches that decode reads, as the user and under the
+// push options, in one push. The session is held for the whole body. The
+// tables' schemas are looked up through it as the body names them, and the
+// push runs through it. Invalid options fail before a session is leased. An
+// invalid body or an unknown table fails the whole request before the push.
+// An ingest is never retried, because a push is not a read.
 func (c *Cluster) Ingest(ctx context.Context, u User, o PushOptions, decode Decode) (IngestResult, error) {
 	opts, err := o.writerOptions()
 	if err != nil {
