@@ -87,6 +87,16 @@ Each rule below names the function whose comments carry its reason.
   after the first message closes the stream with INTERNAL, or the ctx's
   code when the caller left, and one warning line (owner, 2026-10-21).
 
+## Prepared
+
+- The handle of a prepared statement is the query text, so the server
+  stores nothing and closing answers nothing (`CreatePreparedStatement`).
+- GetFlightInfo of a prepared statement answers a statement ticket of
+  the handle, and DoGet streams it as a statement
+  (`GetFlightInfoPreparedStatement`).
+- No parameters: a query with markers fails the describe, and the
+  parameter upload is UNIMPLEMENTED (ADR-0018, Decision 12).
+
 ## Catalog
 
 - GetSqlInfo is arrow-go's: `New` registers the values through
