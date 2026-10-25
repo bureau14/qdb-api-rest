@@ -113,7 +113,10 @@ decisions are in `docs/adr/`.
   which alone recognizes the `#sql` prefix (ADR-0018). The HTTP query
   route calls it, and the Flight server's `DoGet` does. It calls
   `Cluster.Query` with `WithReadRetry` or `Cluster.Duck`, which take the
-  same sink.
+  same sink. `query.Describe` answers a query's schema without running
+  it, through `Cluster.Describe` (qdb-api-go's `ValidateArrow`, under the
+  read retry) or `Cluster.DuckDescribe` (`Instance.Describe`). The Flight
+  server calls it.
 - The table list is `Cluster.Tables`, the native `show tables` query on
   a held session under the read retry, answering names in the cluster's
   order with qdbd's own `$qdb.` tables included. The C API has no

@@ -1,12 +1,14 @@
 // Package query runs one query string on the engine its text names. A
 // string whose first non-whitespace bytes are #sql runs on DuckDB, and
 // any other string runs on the native engine (ADR-0018). The HTTP query
-// route calls it, and the Flight server will.
+// route calls Run, and the Flight server calls Run and Describe.
 package query
 
 import (
 	"context"
 	"strings"
+
+	"github.com/apache/arrow-go/v18/arrow"
 
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
@@ -72,4 +74,18 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 		return c.Duck(ctx, u, text, sink)
 	}
 	return c.Query(ctx, u, text, sink, qdb.WithReadRetry())
+}
+
+// Describe answers the schema of q's result as u without running q, on
+// the engine Run would run it on. The errors are those of
+// qdb.Cluster.Describe and qdb.Cluster.DuckDescribe.
+func Describe(ctx context.Context, u qdb.User, q string) (*arrow.Schema, error) {
+	// The native describe takes the read retry, as Run's native query
+	// does.
+	text, duck := split(q)
+	c := qdb.ClusterFrom(ctx)
+	if duck {
+		return c.DuckDescribe(ctx, u, text)
+	}
+	return c.Describe(ctx, u, text, qdb.WithReadRetry())
 }
