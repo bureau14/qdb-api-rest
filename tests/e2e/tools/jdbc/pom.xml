@@ -32,6 +32,13 @@
   <build>
     <finalName>jdbc-smoke</finalName>
     <plugins>
+      <!-- Pinned, because an older Maven's default compiler plugin ignores
+           maven.compiler.release and compiles for Java 5. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
