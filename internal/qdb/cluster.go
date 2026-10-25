@@ -708,6 +708,24 @@ func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches)
 	})
 }
 
+// DuckDescribe answers the Arrow schema of DuckDB query q's result on
+// u's instance, without running q. Field names, types and order are the
+// ones Duck streams for the same q. A text that is not one statement is
+// olap.ErrNotOneStatement, a query with parameters is
+// olap.ErrParameters, and a column type the describe does not map is
+// olap.ErrUndescribable. The other errors are Duck's before its sink runs.
+func (c *Cluster) DuckDescribe(ctx context.Context, u User, q string) (*arrow.Schema, error) {
+	// The describe counts as use of the pool as Duck does, because it
+	// holds a connection of the instance.
+	var sc *arrow.Schema
+	err := c.withInstance(ctx, u, func(in *olap.Instance) error {
+		var err error
+		sc, err = in.Describe(ctx, q)
+		return err
+	})
+	return sc, err
+}
+
 // evict removes user pools that have held no session for idle_timeout, on
 // a fixed tick until Close.
 func (c *Cluster) evict() {
