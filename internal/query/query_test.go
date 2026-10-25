@@ -31,17 +31,17 @@ func drawPrefix(t *rapid.T) string {
 	return b.String()
 }
 
-// TestSplit: for any leading ASCII whitespace, any case of #sql, any one
-// ASCII whitespace byte and any rest, the split answers DuckDB and the
-// rest. For any query that misses one condition, the split answers native
-// and the query unchanged. It dials nothing, because split is pure.
+// TestSplit: for any leading ASCII whitespace, any case of #sql, one
+// ASCII whitespace byte and any rest, split answers DuckDB and the rest. A
+// query that misses one condition is native and unchanged. The test dials
+// nothing, because split is pure.
 func TestSplit(t *testing.T) {
 	// The property draws one of several shapes, and each shape has its own
 	// expected answer:
 	//
 	//  1. draw the leading whitespace from the six ASCII bytes;
 	//  2. draw the case of each of the four prefix letters;
-	//  3. draw a shape and build q from it;
+	//  3. draw a shape and build the query from it;
 	//  4. compare split(q) with the shape's answer.
 	rapid.Check(t, func(t *rapid.T) {
 		// 1. the leading whitespace. Only ASCII bytes count as whitespace,

@@ -19,13 +19,13 @@ func isSpace(b byte) bool {
 	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\v' || b == '\f'
 }
 
-// split answers the text to run and whether DuckDB runs it. A #sql prefix
-// after ASCII whitespace, in any case, followed by one ASCII whitespace
-// byte, is DuckDB's, and text is what follows that byte. Any other q is
-// native, and text is q unchanged, leading whitespace included.
+// split answers the text to run and whether DuckDB runs it. A #sql
+// prefix in any case, after optional ASCII whitespace and followed by one
+// ASCII whitespace byte, sends what follows that byte to DuckDB. Any
+// other query is native and stays unchanged, leading whitespace included.
 func split(q string) (text string, duck bool) {
-	// The rule has three conditions in an order, and each one that fails
-	// sends q to the native engine unchanged. The test reads bytes and
+	// The rule has three conditions, and the first that fails sends the
+	// query to the native engine unchanged. The rule reads bytes and
 	// decodes no UTF-8, so a query in any encoding splits the same way:
 	//
 	//  1. skip the leading whitespace;
@@ -57,17 +57,17 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
-// Run runs q as u and streams the result into sink. A query that starts
-// with #sql runs on u's DuckDB instance without the prefix; any other
-// query runs on the native engine as written. The cluster comes from
-// ctx. Every error other than sink's own is returned before sink is
-// called, so a caller can pick a status before writing. Sink's error is
-// returned as is.
+// Run runs a query as the user and streams the result into the sink. A
+// query that starts with #sql runs on the user's DuckDB instance without
+// the prefix, and any other query runs on the native engine as written.
+// The cluster comes from the context. Every error other than the sink's
+// comes before the sink runs, so a caller can pick a status before
+// writing. The sink's error is returned unchanged.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
-	// Both engines hand sink the same lent Batches, so a caller reads a
+	// Both engines hand the sink the same lent Batches, so a caller reads a
 	// result one way. The native engine gets one read retry, because the
-	// query completes before sink runs and nothing has been sent. A DuckDB
-	// query is never retried.
+	// query completes before the sink runs and nothing has been sent. A
+	// DuckDB query is never retried.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
 	if duck {
@@ -76,9 +76,9 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 	return c.Query(ctx, u, text, sink, qdb.WithReadRetry())
 }
 
-// Describe answers the schema of q's result as u without running q, on
-// the engine Run would run it on. The errors are those of
-// qdb.Cluster.Describe and qdb.Cluster.DuckDescribe.
+// Describe answers the schema of a query's result without running it, on
+// the engine Run would pick. The errors are those of qdb.Cluster.Describe
+// and qdb.Cluster.DuckDescribe.
 func Describe(ctx context.Context, u qdb.User, q string) (*arrow.Schema, error) {
 	// The native describe takes the read retry, as Run's native query
 	// does.
