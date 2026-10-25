@@ -69,8 +69,8 @@ func schemaOf(ctx context.Context, q string) (*arrow.Schema, error) {
 // means this server, and unknown totals. A query that fails to describe
 // fails here with describe's status, before any ticket.
 func (s *Server) GetFlightInfoStatement(ctx context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
-	// The describe runs here and the query at DoGet, so the server still
-	// stores nothing between the calls.
+	// The describe runs here and the query at DoGet, so the server stores
+	// nothing between the calls.
 	sc, ok, err := describe(ctx, q.GetQuery())
 	if err != nil {
 		return nil, err
