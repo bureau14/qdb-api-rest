@@ -188,8 +188,9 @@ func TestEphemeralIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// a's token verifies at a and dies at b, which is the documented cost
-	// of running unconfigured behind a load balancer.
+	// The token verifies at the keychain that minted it and fails at the
+	// other. That is the documented cost of running unconfigured behind a
+	// load balancer.
 	if _, err := a.Verify(token); err != nil {
 		t.Fatalf("own token rejected: %v", err)
 	}
@@ -261,9 +262,9 @@ func TestIssue(t *testing.T) {
 	}
 }
 
-// Renew slides the refresh lifetime: the new refresh token expires one
-// refresh lifetime from the refresh, the grant keeps the login's user,
-// secret, sid, gen and auth_time with fresh handles, and the old refresh
+// Renew slides the refresh lifetime. The new refresh token expires one
+// refresh lifetime after the refresh. The grant keeps the login's user,
+// secret, sid, gen and auth_time, with fresh handles. The old refresh
 // token stays valid until its own exp, because the server holds no state
 // in which to retire it (ADR-0016).
 func TestRenewSlides(t *testing.T) {

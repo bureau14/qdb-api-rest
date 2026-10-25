@@ -17,9 +17,8 @@ import (
 )
 
 // Claims is a token's payload (brief, Authentication). It carries the
-// reconnect material, the security handles, and the times, and the JWE
-// seals and authenticates all of them. Timestamps are unix seconds, the
-// JWT convention.
+// reconnect material, the security handles and the times. The JWE seals
+// and authenticates all of them. Timestamps are unix seconds, as in JWT.
 type Claims struct {
 	Username   string `json:"username"`
 	SecretKey  string `json:"secret_key"`
@@ -133,18 +132,18 @@ func (t *Tokens) Issue(username, secretKey string) (Grant, error) {
 
 // Renew seals the grant a refresh token renews: the same username,
 // secret, sid, gen and auth_time, under the current key. The caller has
-// verified c and checked that its typ is refresh.
+// verified the claims and checked that their typ is refresh.
 func (t *Tokens) Renew(c Claims) (Grant, error) {
 	return t.grant(c)
 }
 
-// grant seals two tokens from one base: each gets its typ, a fresh jti,
-// iat now and exp at now plus its lifetime. Everything else is the
-// base's.
+// grant seals two tokens from one base. Each token gets its typ, a fresh
+// jti, iat now and exp at now plus its lifetime. Every other claim comes
+// from the base.
 func (t *Tokens) grant(base Claims) (Grant, error) {
-	// The base carries what a login and a refresh share, and this function
-	// owns what differs between the two tokens, so a change to the grant's
-	// shape is made once instead of once per caller.
+	// The base carries what a login and a refresh share. This function sets
+	// what differs between the two tokens, so a change to the grant's shape
+	// is made in one place.
 	//
 	// 1. Read the clock once, so both tokens carry the same iat and their
 	//    exp differ by the lifetimes alone.
@@ -166,9 +165,9 @@ func (t *Tokens) grant(base Claims) (Grant, error) {
 	if err != nil {
 		return Grant{}, err
 	}
-	// 3. The refresh token. The one it replaces stays valid until its own
-	//    exp, because the server holds no state in which to retire it
-	//    (ADR-0016).
+	// 3. The refresh token. The refresh token it replaces stays valid until
+	//    its own exp, because the server holds no state in which to retire
+	//    it (ADR-0016).
 	refresh, err := seal("refresh", t.refreshTTL)
 	if err != nil {
 		return Grant{}, err
@@ -190,8 +189,8 @@ func (t *Tokens) Mint(c Claims) (string, error) {
 	// ciphertext at another key or mode.
 	k := t.keys.mint
 	protected := b64.EncodeToString([]byte(headerFor(k.kid)))
-	// Each token gets a fresh random IV. At minting volume (one per login
-	// or refresh) reuse is unreachable.
+	// Each token gets a fresh random IV. At one token per login or refresh,
+	// a repeated IV is out of reach.
 	iv := make([]byte, k.aead.NonceSize())
 	if _, err := rand.Read(iv); err != nil {
 		return "", err
@@ -266,8 +265,8 @@ func (t *Tokens) Verify(token string) (Claims, error) {
 	if err := json.Unmarshal(plaintext, &c); err != nil {
 		return Claims{}, ErrInvalidToken
 	}
-	// Time is checked last, on an authentic token only, because an expiry
-	// answer proves the token was once genuine.
+	// Verify checks the time last, on an authentic token only, because an
+	// expiry answer proves the token was once genuine.
 	if t.now().Unix() >= c.ExpiresAt {
 		return Claims{}, ErrTokenExpired
 	}

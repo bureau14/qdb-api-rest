@@ -7,13 +7,14 @@ import "context"
 // every request, and handlers read it from there.
 type tokensKey struct{}
 
-// WithTokens returns ctx carrying t.
+// WithTokens returns a context that carries the tokens.
 func WithTokens(ctx context.Context, t *Tokens) context.Context {
 	return context.WithValue(ctx, tokensKey{}, t)
 }
 
-// TokensFrom returns the Tokens carried by ctx and panics without one,
-// because a fresh context mid-call-chain is a programming error.
+// TokensFrom returns the Tokens the context carries. It panics when there
+// are none, because a fresh context in the middle of a call chain is a
+// programming error.
 func TokensFrom(ctx context.Context) *Tokens {
 	t, ok := ctx.Value(tokensKey{}).(*Tokens)
 	if !ok {
@@ -27,14 +28,15 @@ func TokensFrom(ctx context.Context) *Tokens {
 // and builds the cluster user from them.
 type claimsKey struct{}
 
-// WithClaims returns ctx carrying c.
+// WithClaims returns a context that carries the claims.
 func WithClaims(ctx context.Context, c Claims) context.Context {
 	return context.WithValue(ctx, claimsKey{}, c)
 }
 
-// ClaimsFrom returns the Claims carried by ctx and panics without them.
-// A handler behind the bearer middleware always finds them, so their
-// absence is a route registered without it.
+// ClaimsFrom returns the Claims the context carries, and panics when
+// there are none. A handler behind the bearer middleware always finds
+// them, so missing claims mean a route registered without the
+// middleware.
 func ClaimsFrom(ctx context.Context) Claims {
 	c, ok := ctx.Value(claimsKey{}).(Claims)
 	if !ok {

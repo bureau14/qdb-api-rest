@@ -18,11 +18,11 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 )
 
-// salt fills argon2id's required salt parameter. A constant is safe
-// here, because keys derive from config alone, so there are no per-user
-// records to decorrelate. It still buys domain separation from other
-// argon2id users, and bumping the version suffix re-derives every key
-// and kid, which is a key rotation.
+// salt fills argon2id's required salt parameter. A constant is safe,
+// because keys derive from config alone and there are no per-user
+// records to decorrelate. The salt still separates these keys from other
+// argon2id users. Bumping its version suffix re-derives every key and
+// kid, which is a key rotation.
 var salt = []byte("qdb-rest/token-secrets/v1")
 
 // b64 is the JOSE alphabet: base64url, unpadded, and canonical. The
@@ -47,8 +47,8 @@ func expand(prk []byte, info string, n int) ([]byte, error) {
 // keyFrom splits stretched key material into a keychain entry: 32 bytes
 // of AES-256-GCM key under "enc", 8 bytes of kid under "kid".
 func keyFrom(prk []byte) (key, error) {
-	// The kid is public in every token header, so it must reveal
-	// nothing about the key, so both expand from prk independently.
+	// The kid is public in every token header and must reveal nothing
+	// about the key, so the key and the kid expand independently.
 	enc, err := expand(prk, "enc", 32)
 	if err != nil {
 		return key{}, err
@@ -71,8 +71,8 @@ func keyFrom(prk []byte) (key, error) {
 	return key{kid: b64.EncodeToString(kid), aead: aead}, nil
 }
 
-// derive stretches one passphrase at the configured argon2id cost, the
-// toll one attacker guess pays (~100ms at the default cost).
+// derive stretches one passphrase at the configured argon2id cost. Each
+// attacker guess pays that cost, about 100ms at the default.
 func derive(passphrase string, cost config.Argon2id) (key, error) {
 	prk := argon2.IDKey([]byte(passphrase), salt,
 		uint32(cost.Time), uint32(cost.MemoryMiB)*1024, uint8(cost.Parallelism), 32)
@@ -87,13 +87,17 @@ type keychain struct {
 	verify map[string]key
 }
 
-// validateAuth refuses what this package cannot use and names the
-// config key in the error. Every passphrase must be non-empty and
-// unique (a repeated entry would derive the same key twice), time and
-// memory must each be at least 1 (one pass, one MiB), parallelism must
-// fit the argon2 API's uint8, the access TTL must be positive, and the
-// refresh TTL must be above it. This package consumes these values, so
-// it owns the checks, and config only parses shape.
+// validateAuth refuses what this package cannot use and names the config
+// key in the error. The rules are:
+//
+//   - Every passphrase is non-empty and unique, because a repeated entry
+//     would derive the same key twice.
+//   - Time and memory are each at least 1, for one pass and one MiB.
+//   - Parallelism fits the uint8 of the argon2 API.
+//   - The access TTL is positive, and the refresh TTL is above it.
+//
+// This package consumes these values, so it owns the checks. config
+// parses only their shape.
 func validateAuth(a config.Auth) error {
 	seen := map[string]bool{}
 	for i, s := range a.TokenSecrets {
@@ -126,10 +130,9 @@ func validateAuth(a config.Auth) error {
 	return nil
 }
 
-// ephemeral is a single-key keychain from random material, the fallback
-// when no passphrase is configured. Tokens then survive neither a
-// restart nor a second instance. Random material needs no argon2id
-// stretching and takes the same HKDF split.
+// ephemeral builds a single-key keychain from random material. It is the
+// fallback when no passphrase is configured, and its tokens survive
+// neither a restart nor a second instance.
 func ephemeral() (keychain, error) {
 	// 32 random bytes already carry full key entropy, so argon2id would
 	// add nothing.
