@@ -39,8 +39,9 @@ func withHeader(headers map[string]string, name, value string) map[string]string
 }
 
 // TestErrorRows: on each cluster, every row answers its status, its
-// challenge and a problem body. Two fixed tables of one column each, an int64 and a
-// double, give the reader's and the ingest's rows something to name.
+// challenge and a problem body. Two fixed tables of one column each, an
+// int64 and a double, give the reader rows and the ingest rows a table
+// to name.
 func TestErrorRows(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
@@ -123,11 +124,11 @@ func TestErrorRows(t *testing.T) {
 			"ingest: tables of differing type": {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\nqdbtest_errors_b,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusBadRequest, ""},
 			"ingest: no such table":            {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_none,2020-01-01T00:00:00Z,1\n", csvBody, http.StatusNotFound, ""},
 		}
-		// The secure cluster refuses the anonymous user, and an anonymous
-		// token reaches it only by minting, because the login refuses the
-		// anonymous user. Each data route answers the refusal as an invalid
-		// token. The rows run on the secure cluster alone, because the
-		// insecure cluster accepts the anonymous user.
+		// The secure cluster refuses the anonymous user, and its login issues
+		// no anonymous token, so the test mints one. Each data route answers
+		// the refusal as an invalid token. These rows run on the secure
+		// cluster only, because the insecure cluster accepts the anonymous
+		// user.
 		if f.Spec.Secured {
 			anon := "Bearer " + mint(t, s.tk, "access", qdb.User{}, time.Now().Add(time.Hour))
 			refused := `Bearer error="invalid_token"`
@@ -161,20 +162,21 @@ func TestErrorRows(t *testing.T) {
 }
 
 // TestDuckDBInstanceLimit: on each cluster, with duckdb.max_instances at
-// one, the cluster's user's DuckDB call opens the one instance, and a second
-// user's call answers 503 with the eviction tick as its Retry-After. It
-// needs a cluster of its own limit, so it is not a row of TestErrorRows.
+// one, a DuckDB call as the cluster's user opens the only instance, and
+// a call as a second user answers 503 with the eviction tick as its
+// Retry-After. It needs a cluster with its own limit, so it is not a
+// row of TestErrorRows.
 func TestDuckDBInstanceLimit(t *testing.T) {
 	cluster.EachWith(t, func(cfg *config.Config) { cfg.DuckDB.MaxInstances = 1 }, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
-		// 1. The cluster's user opens the one instance. A string column is
-		//    one the encoders write.
+		// 1. The cluster's user opens the only instance. The query selects a
+		//    string, because the encoders write strings.
 		if resp := s.post("/api/v2/query", "#sql SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + s.token}); resp.Code != http.StatusOK {
 			t.Fatalf("first user: status %d: %s", resp.Code, resp.Body.String())
 		}
-		// 2. The cap is taken before a second user's instance opens, so the
-		//    second user needs no credential the cluster accepts, and the
-		//    call answers past the cap on either cluster.
+		// 2. The cap is checked before the second user's instance opens, so
+		//    the second user needs no credential the cluster accepts, and the
+		//    call hits the cap on either cluster.
 		other := mint(t, s.tk, "access", qdb.User{Username: "qdbtest_other"}, time.Now().Add(time.Hour))
 		resp := s.post("/api/v2/query", "#sql SELECT 'a' AS s", map[string]string{"Authorization": "Bearer " + other})
 		if resp.Code != http.StatusServiceUnavailable || resp.Header().Get("Retry-After") != "10" {

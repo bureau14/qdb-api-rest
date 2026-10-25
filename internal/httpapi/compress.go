@@ -9,8 +9,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// coding is a content coding of the response body, the token the wire
-// uses in Accept-Encoding and Content-Encoding.
+// coding is an HTTP content coding, the token that Accept-Encoding and
+// Content-Encoding carry.
 type coding string
 
 const (
@@ -24,7 +24,7 @@ const (
 // server produces wins. An absent header, no match and identity itself
 // all mean identity, because the server never compresses uninvited. It
 // does not read q weights, because a client that wants a coding names
-// it, which is the rule the Accept header follows too.
+// it, as negotiate does for Accept.
 func negotiateCoding(acceptEncoding string) coding {
 	for tok := range strings.SplitSeq(acceptEncoding, ",") {
 		// The coding name ends at the parameters (q included), which are
@@ -38,12 +38,12 @@ func negotiateCoding(acceptEncoding string) coding {
 	return identityCoding
 }
 
-// newCompressor opens a compressor of coding c over w at the fastest
-// level, because a gateway pays CPU per byte on every response it
-// compresses, and the bytes saved are the WAN client's gain, not this
-// process's. The zstd encoder runs at concurrency one, so a response
-// spawns no goroutines. Its options are constants, so a construction
-// error is a programming error.
+// newCompressor opens a compressor for the coding over the writer at
+// the fastest level. A gateway pays CPU per byte on every response it
+// compresses, and only the WAN client gains from the bytes saved. The
+// zstd encoder runs at concurrency one, so a response spawns no
+// goroutines. Its options are constants, so a construction error is a
+// programming error.
 func newCompressor(c coding, w io.Writer) io.WriteCloser {
 	switch c {
 	case gzipCoding:
@@ -60,10 +60,10 @@ func newCompressor(c coding, w io.Writer) io.WriteCloser {
 }
 
 // compressingWriter compresses one response body in the negotiated
-// coding. It holds the status a handler writes back until the first
-// body byte, when Content-Encoding is settled and the compressor opens.
-// A handler that writes a status and no body gets that status
-// uncompressed and unlabelled, so no empty frame is sent. Unwrap keeps
+// coding. It holds back the handler's status until the first body byte,
+// which sets Content-Encoding and opens the compressor. A handler that
+// writes a status and no body gets that status uncompressed and
+// unlabelled, so no empty frame is sent. Unwrap keeps
 // http.ResponseController working through it.
 type compressingWriter struct {
 	http.ResponseWriter
@@ -112,10 +112,10 @@ func (c *compressingWriter) Unwrap() http.ResponseWriter {
 
 // withCompression compresses one route's responses in the coding the
 // client asked for, problem bodies included. Identity passes the writer
-// through untouched. Every response of the route varies on the header,
-// so a cache does not serve one client's coding to another. It is
-// applied per route and never to the mux, because the probes answer
-// empty bodies.
+// through untouched. Every response of the route carries Vary:
+// Accept-Encoding, so a cache does not serve one client's coding to
+// another. It wraps single routes and never the mux, because the probes
+// answer empty bodies.
 func withCompression(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Accept-Encoding")
@@ -137,9 +137,9 @@ func withCompression(next http.Handler) http.Handler {
 // false for a coding this server does not read, which includes a list
 // of several.
 func requestCoding(contentEncoding string) (coding, bool) {
-	// A coding list is refused rather than unwound, because no client
-	// stacks codings on a request and unwinding is code for nobody. The
-	// name is case-insensitive on the wire, like a response coding.
+	// A list of codings is refused instead of unwound, because no client
+	// stacks codings on a request. The name is case-insensitive on the
+	// wire, like a response coding.
 	name := strings.ToLower(strings.TrimSpace(contentEncoding))
 	switch c := coding(name); {
 	case name == "":
@@ -150,11 +150,11 @@ func requestCoding(contentEncoding string) (coding, bool) {
 	return "", false
 }
 
-// newDecompressor opens a reader of coding c over r, the inverse of
-// newCompressor. The gzip reader reads its header here, so a corrupt
+// newDecompressor opens a reader that decodes the coding, the inverse
+// of newCompressor. The gzip reader reads its header here, so a corrupt
 // body can fail at the open. The zstd decoder runs at concurrency one,
-// so a request spawns no goroutines, as a response spawns none, at the
-// cost of a slower decode on a large body, which is not measured.
+// so a request spawns no goroutines, like a response. The cost is a
+// slower decode of a large body, which has not been measured.
 func newDecompressor(c coding, r io.Reader) (io.ReadCloser, error) {
 	switch c {
 	case gzipCoding:

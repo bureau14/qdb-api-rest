@@ -20,21 +20,21 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// readTable gets the rows of name under the URL parameters with headers.
+// readTable gets the rows of the named table with the URL parameters
+// and the headers.
 func (s server) readTable(name, params string, headers map[string]string) *httptest.ResponseRecorder {
 	return s.send(http.MethodGet, tablesPath+"/"+name+"/rows?"+params, "", headers)
 }
 
-// rangeParams renders the span of tbl's rows as the start and end URL
-// parameters the read takes, in RFC 3339 with nanoseconds as parseTime
-// reads it.
+// rangeParams renders the span of the table's rows as the start and end
+// URL parameters, in RFC 3339 with nanoseconds as parseTime reads it.
 func rangeParams(tbl table.Table) string {
 	start, end := tbl.Range()
 	return "start=" + url.QueryEscape(start.Format(time.RFC3339Nano)) + "&end=" + url.QueryEscape(end.Format(time.RFC3339Nano))
 }
 
-// directRead reads name over the cluster and encodes it through e's
-// stream path. The endpoint must answer these exact bytes.
+// directRead reads the named table over the cluster and encodes it with
+// the encoder's stream path. The endpoint must answer the same bytes.
 func (s server) directRead(t *rapid.T, e encoding.Encoder, name string, o qdb.ReadOptions) []byte {
 	t.Helper()
 	var buf bytes.Buffer

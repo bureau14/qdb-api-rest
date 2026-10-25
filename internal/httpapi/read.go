@@ -28,9 +28,9 @@ func parseTime(params url.Values, key string) (time.Time, error) {
 }
 
 // readOptions reads the URL parameters of a table read. It reads start
-// and end as times and columns as a comma-separated list, where an
-// absent columns means every column. The cluster call judges whether the
-// pair makes a range.
+// and end as times and columns as a comma-separated list. An absent
+// columns parameter means every column. The cluster call decides
+// whether start and end form a range.
 func readOptions(params url.Values) (qdb.ReadOptions, error) {
 	var o qdb.ReadOptions
 	var err error
@@ -51,16 +51,16 @@ func readOptions(params url.Values) (qdb.ReadOptions, error) {
 func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// The read runs inside the cluster call's sink, which holds a session
-	// for as long as the client reads. Two kinds of failure come out of it
-	// and they answer differently, so the handler keeps them apart:
+	// for as long as the client reads. A stream failure and a call failure
+	// answer differently:
 	//
 	//  1. read the parameters. A bad time is the caller's 400, answered
 	//     here;
 	//  2. read the table, with the encoder streaming inside the sink;
-	//  3. a failure of the stream. With zero bytes out it is 500. After the
-	//     first byte the stream is cut and only the log hears of it;
-	//  4. a failure of the call, before the sink ran and before any byte.
-	//     An unknown table is 404, and ADR-0010's table answers the rest.
+	//  3. a stream failure is 500 while no byte has gone out. After the
+	//     first byte the stream is cut and the failure is only logged;
+	//  4. a call failure arrives before the sink runs. An unknown table is
+	//     404, and writeClusterError answers the rest by ADR-0010's table.
 
 	// 1. the parameters
 	o, err := readOptions(r.URL.Query())

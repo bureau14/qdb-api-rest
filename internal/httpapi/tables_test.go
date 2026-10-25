@@ -25,7 +25,7 @@ func (s server) send(method, path, body string, headers map[string]string) *http
 	return resp
 }
 
-// createTable posts req as the create body.
+// createTable posts the request as the create body.
 func (s server) createTable(t table.T, req createTableRequest) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(req)
@@ -35,7 +35,7 @@ func (s server) createTable(t table.T, req createTableRequest) *httptest.Respons
 	return s.post(tablesPath, string(body), map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"})
 }
 
-// deleteTable deletes the table name.
+// deleteTable deletes the named table.
 func (s server) deleteTable(name string) *httptest.ResponseRecorder {
 	return s.send(http.MethodDelete, tablesPath+"/"+name, "", map[string]string{"Authorization": "Bearer " + s.token})
 }
@@ -50,7 +50,8 @@ var typeWords = map[qdbapi.TsColumnType]string{
 	qdbapi.TsColumnTimestamp: "timestamp",
 }
 
-// createBodyOf is the create body that describes tbl, sharded by a day.
+// createBodyOf is the create body that describes the table, sharded by
+// a day.
 func createBodyOf(tbl table.Table) createTableRequest {
 	shard := int64(86_400_000)
 	cols := make([]columnRequest, len(tbl.Columns))

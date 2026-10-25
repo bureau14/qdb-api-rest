@@ -13,8 +13,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// loginRequest is the body, which carries the fields of a QuasarDB user
-// security file. An empty or absent username is an anonymous login.
+// loginRequest is the login body. It carries the fields of a QuasarDB
+// user security file. An empty or absent username is an anonymous login.
 type loginRequest struct {
 	Username  string `json:"username"`
 	SecretKey string `json:"secret_key"`
@@ -45,9 +45,9 @@ type tokenResponse struct {
 }
 
 // writeTokenResponse answers 200 with the grant. expires_in is the
-// access lifetime, because that is the token the client counts down. A
+// access token's lifetime, because the client counts down that token. A
 // client learns that its refresh token has expired from the refresh's
-// 401, and does not count it (ADR-0016).
+// 401 and does not count it down (ADR-0016).
 func writeTokenResponse(w http.ResponseWriter, tk *auth.Tokens, g auth.Grant) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(tokenResponse{
@@ -85,12 +85,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, "invalid body: "+err.Error())
 		return
 	}
-	// Authenticate opens one connection to the cluster as the caller,
-	// and the cluster checks the credentials when it accepts or refuses
-	// it. A refusal answers 401 without a WWW-Authenticate challenge,
-	// because the caller sent its credentials in the body and not as a
-	// bearer token. A caller that has gone away gets no answer, and every
-	// other failure is writeClusterError's.
+	// Authenticate opens one connection to the cluster as the caller, and
+	// the cluster checks the credentials when it accepts or refuses it. A
+	// refusal is 401 without a WWW-Authenticate challenge, because the
+	// credentials came in the body instead of a bearer token. A caller that
+	// has gone away gets no answer, and writeClusterError answers every
+	// other failure.
 	u := req.user()
 	if err := qdb.ClusterFrom(ctx).Authenticate(ctx, u); err != nil {
 		if errors.Is(err, qdb.ErrCredentialsRefused) && ctx.Err() == nil {
@@ -100,8 +100,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeClusterError(ctx, w, err, http.StatusUnauthorized)
 		return
 	}
-	// The grant is written by the same function the refresh uses, so the
-	// two routes answer one shape.
+	// writeTokenResponse also writes the refresh's grant, so both routes
+	// answer the same shape.
 	tk := auth.TokensFrom(ctx)
 	g, err := tk.Issue(u.Username, u.SecretKey)
 	if err != nil {
@@ -123,10 +123,10 @@ type refreshRequest struct {
 // names which.
 func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// The refresh is a pure function of the token, the keychain and the
-	// clock. It touches neither the cluster, the budget nor the breaker,
-	// so it has no 503, and clients may call it as often as they like
-	// (ADR-0016). The checks run in the login's order:
+	// The refresh depends only on the token, the keychain and the clock. It
+	// touches no cluster, budget or breaker, so it has no 503 and clients
+	// may call it as often as they like (ADR-0016). The checks run in the
+	// login's order:
 	//
 	// 1. Content type and body, as the login's: 415, 413, 400.
 	// 2. Verify the token: expired and invalid are both 401 with the
@@ -148,9 +148,8 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusBadRequest, "invalid body: "+err.Error())
 		return
 	}
-	// 2. Verify. The challenge is error="invalid_token" in both cases,
-	//    because a token was presented and failed, which is what the
-	//    bearer edge says of the same failures.
+	// 2. Verify. Both failures carry the error="invalid_token" challenge,
+	//    because a token was presented, as at the bearer edge.
 	tk := auth.TokensFrom(ctx)
 	c, err := tk.Verify(req.RefreshToken)
 	switch {
@@ -187,12 +186,12 @@ func handleLogout(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// sessionResponse is the caller's view of their session, assembled from
-// the claims, the cluster this process fronts and the build, without a
-// cluster round trip. The object is grouped by where each value comes
-// from, so a reader of the support questions it serves ("who am I
-// logged in as", "why am I unauthorized") sees the source of each
-// answer. The secret is never echoed (ADR-0016).
+// sessionResponse is the caller's view of their session, built from the
+// claims, the cluster this process fronts and the build, without a
+// cluster round trip. The fields are grouped by source, so whoever
+// answers a support question ("who am I logged in as", "why am I
+// unauthorized") sees where each value comes from. The secret is never
+// echoed (ADR-0016).
 type sessionResponse struct {
 	Username string         `json:"username"`
 	Cluster  sessionCluster `json:"cluster"`
@@ -207,8 +206,8 @@ type sessionCluster struct {
 }
 
 // sessionToken is the access token's own claims. The times are unix
-// seconds, as the claims carry them, so the handler converts nothing and
-// the auth surface spells a time one way.
+// seconds as in the claims, so the handler converts nothing and the
+// auth routes write every time the same way.
 type sessionToken struct {
 	Typ       string `json:"typ"`
 	IssuedAt  int64  `json:"iat"`
@@ -223,9 +222,10 @@ type sessionServer struct {
 }
 
 // handleSession answers the caller's session from the claims, the
-// cluster it fronts, and the build version. It makes no cluster call,
-// so it is cheap enough to poll. It reports what the token says, so a
-// token whose credentials the cluster refuses still reads its session.
+// cluster this process fronts, and the build version. It makes no
+// cluster call, so it is cheap enough to poll. It reports what the
+// token says, so a token whose credentials the cluster refuses still
+// reads its session.
 func handleSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	c := auth.ClaimsFrom(ctx)
@@ -239,12 +239,12 @@ func handleSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// registerAuthRoutes serves the login and the refresh unauthenticated,
-// because the login is where a caller, anonymous included, gets the
-// token every other v2 route wants, and the refresh's credential is the
-// refresh token in its body, which the bearer edge would refuse. The
-// logout and the session sit behind the bearer edge, so only an access
-// token reaches them.
+// registerAuthRoutes serves the login and the refresh unauthenticated.
+// The login is where a caller, anonymous included, gets the token every
+// other v2 route requires. The refresh's credential is the refresh
+// token in its body, which the bearer edge would refuse. The logout and
+// the session sit behind the bearer edge, so only an access token
+// reaches them.
 func registerAuthRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
 	mux.Handle("POST /api/v2/auth/refresh", withCompression(http.HandlerFunc(handleRefresh)))

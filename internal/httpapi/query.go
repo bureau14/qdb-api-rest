@@ -15,9 +15,9 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
-// maxBodyBytes caps every request body. A QuasarDB query is a line of
-// text and a login is two fields, so a cap sized for one line bounds
-// what a request can make the server read.
+// maxBodyBytes caps every body that readBody reads. A QuasarDB query is
+// a line of text and a login is two fields, so a cap sized for one line
+// bounds what a request can make the server read.
 const maxBodyBytes = 1 << 20
 
 // readBody reads a capped request body whole. It answers 413 over the
@@ -62,30 +62,29 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// retryAfter renders d as Retry-After wants it: whole seconds, rounded
-// up, so a client does not come back early.
+// retryAfter formats a duration as Retry-After seconds, rounded up so a
+// client does not come back early.
 func retryAfter(d time.Duration) string {
 	return strconv.FormatInt(int64((d+time.Second-1)/time.Second), 10)
 }
 
-// writeClusterError maps a failed cluster call onto the wire by who
-// failed. A credential the secure cluster refused is 401 with the
-// invalid_token challenge, so the client logs in again. An open breaker
-// or a full DuckDB instance cap is 503 with Retry-After, and an
-// unreachable cluster is 503 without it. Anything else the cluster
-// answered is the caller's fault and gets the status in answered (400
-// for a query, 401 for a login). A caller whose context has ended gets no
-// response at all.
+// writeClusterError answers a failed cluster call by who failed. A
+// credential the secure cluster refused is 401 with the invalid_token
+// challenge, so the client logs in again. An open breaker or a full
+// DuckDB instance cap is 503 with Retry-After, and an unreachable
+// cluster is 503 without it. Any other cluster error is the caller's
+// fault and gets the status the handler passes (400 for a query, 401
+// for a login). A caller whose context has ended gets no response.
 func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, answered int) {
 	var open *qdb.BreakerOpenError
 	var full *qdb.InstanceLimitError
 	switch {
 	case ctx.Err() != nil:
 		observe.Logger(ctx).DebugContext(ctx, "request abandoned by the caller", observe.Err(err))
-	// The token's credentials are what failed, so the answer is the
-	// bearer edge's own for an invalid token (ADR-0010 names what it
-	// beat). The case comes before the unreachable one, because a refused
-	// attach would otherwise count as an unreachable cluster.
+	// The token's credentials failed, so the answer is the bearer edge's
+	// answer to an invalid token (ADR-0010 lists the rejected
+	// alternatives). This case comes before the unreachable one, because a
+	// refused attach would otherwise count as an unreachable cluster.
 	case errors.Is(err, qdb.ErrCredentialsRefused):
 		unauthorized(w, true, err.Error())
 	case errors.As(err, &open):
@@ -109,21 +108,21 @@ func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, an
 // before the first byte.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// The query runs inside the sink, and every error of the run arrives
-	// before the sink runs, so the status is decided before the first byte.
-	// Two kinds of failure come out, and they answer differently:
+	// The encoder streams inside the sink, and every error of the run
+	// arrives before the sink runs, so the status is decided before the
+	// first byte. A stream failure and a run failure answer differently:
 	//
 	//  1. read the body as query text;
 	//  2. run the query through query.Run, with the encoder streaming
 	//     inside the sink;
-	//  3. a failure of the stream. With zero bytes out it is 500, which is
+	//  3. a stream failure is 500 while no byte has gone out, which is
 	//     where a column type no encoder writes lands. After the first
-	//     byte the stream is cut and only the log hears of it;
-	//  4. a failure of the run, before any byte. The engine's error is the
+	//     byte the stream is cut and the failure is only logged;
+	//  4. a run failure arrives before any byte. An engine error is the
 	//     caller's 400, and writeClusterError maps the rest.
 
-	// 1. the body. A non-text body is a clear 415 instead of an engine's
-	//    parse error, and the body is capped and read whole.
+	// 1. the body. A non-text body gets a clear 415 instead of an engine's
+	//    parse error. The body is capped and read whole.
 	if !isQueryText(r.Header.Get("Content-Type")) {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be text/plain or application/sql")
 		return
@@ -153,9 +152,9 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		default:
 			observe.Logger(ctx).WarnContext(ctx, "response cut mid-stream", slog.Int64("bytes", cw.n), observe.Err(streamErr))
 		}
-	// 4. the run failed. The instance cap, a refused credential, an open
-	//    breaker and an unreachable cluster answer as writeClusterError
-	//    maps them, and anything else an engine answered is 400.
+	// 4. the run failed. writeClusterError maps the instance cap, a refused
+	//    credential, an open breaker and an unreachable cluster, and any
+	//    other engine error is 400.
 	case err != nil:
 		writeClusterError(ctx, w, err, http.StatusBadRequest)
 	}

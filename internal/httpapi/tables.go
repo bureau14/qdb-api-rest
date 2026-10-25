@@ -42,8 +42,8 @@ var (
 	errShardSizeRange = errors.New("shard_size is out of range")
 )
 
-// decodeCreateTable reads the body's shape only. Whoever consumes the
-// names, the sizes and the column vocabulary judges them.
+// decodeCreateTable checks the body's shape only. The code that
+// consumes the names, the sizes and the column types validates them.
 func decodeCreateTable(body []byte) (createTableRequest, error) {
 	var req createTableRequest
 	if err := json.Unmarshal(body, &req); err != nil {

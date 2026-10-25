@@ -31,7 +31,9 @@ This file, Handlers, holds the table reader's.
   a login) with the binding's message as the detail. The caller's own
   context ending gets nothing on the wire and one debug line. 500 is
   reserved for this process.
-- Every body is read through `readBody`, which caps all of them alike.
+- Every body but the ingest's is read whole through `readBody`, under
+  one cap. The ingest streams its body under a cap of its own
+  (`maxIngestBytes`).
 - A route whose resource is a name refines the caller's 400 in its own
   handler, before `writeClusterError` and never inside it. The create
   answers 409 on `qdb.IsTableExists`, and the delete answers 404 on

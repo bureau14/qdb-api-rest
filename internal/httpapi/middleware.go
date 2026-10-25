@@ -65,9 +65,10 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 	return rec.ResponseWriter
 }
 
-// withRequestLogging tags the request context with its id, echoes the
-// id, and emits one access line when the handler returns. Only the id
-// rides on the context, and log lines join on it.
+// withRequestLogging puts the request id on the request context and on
+// the response, and logs one access line when the handler returns. The
+// id is the only attribute it adds to the context, and log lines join
+// on it.
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

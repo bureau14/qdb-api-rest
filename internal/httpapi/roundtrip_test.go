@@ -1,16 +1,17 @@
-// The good path of the v2 surface is one round trip against the live qdbd
-// fixture, the in-process twin of the e2e flow. It runs once per cluster,
-// as the cluster's user, anonymous on the insecure one. The test logs in,
-// refreshes, reads its session and logs out, then under the refreshed
-// token creates generated tables that share one column list over HTTP, reads them
-// empty, ingests them in one body of a drawn format under a drawn
-// request coding, reads them, queries them and reads them through DuckDB
-// behind #sql on the query route in every format, deletes them, re-creates them over what the
-// delete leaves behind, and deletes them again. What went in comes back
-// out. Each response equals the encoder run directly over the cluster,
-// and each direct read passes table.Check against the rows generated, so
-// the bytes on the wire carry the rows written, and the DuckDB path and
-// the native path answer the same rows.
+// The good path of the v2 surface is one round trip against the live
+// qdbd fixture, the in-process twin of the e2e flow. It runs once per
+// cluster as the cluster's user, who is anonymous on the insecure one.
+// The test logs in, refreshes, reads its session and logs out. Under the
+// refreshed token it then creates, over HTTP, generated tables that
+// share one column list, and reads them empty. It ingests them in one
+// body of a drawn format under a drawn request coding. It reads them,
+// queries them, and reads them through DuckDB behind #sql on the query
+// route, each in every format. It deletes them, re-creates them over
+// what the delete leaves behind, and deletes them again. Each response
+// equals the encoder run directly over the cluster, and each direct read
+// passes table.Check against the rows generated. So the bytes on the
+// wire carry the rows written, and the DuckDB path and the native path
+// answer the same rows.
 package httpapi
 
 import (
@@ -40,8 +41,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// ingest posts body under the URL parameters, as CSV when no headers
-// are given.
+// ingest posts the body with the URL parameters, as CSV when headers is
+// nil.
 func (s server) ingest(body []byte, params string, headers map[string]string) *httptest.ResponseRecorder {
 	if headers == nil {
 		headers = map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
@@ -49,14 +50,14 @@ func (s server) ingest(body []byte, params string, headers map[string]string) *h
 	return s.post(rowsPath+"?"+params, string(body), headers)
 }
 
-// one is rec as a sequence of that one batch.
+// one wraps a batch in a sequence of that batch alone.
 func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
 }
 
-// ingestBodyOf is the body in e's format that carries every table. The
-// fixture joins the tables into one batch, and the encoder writes it
-// out as a sequence of that one batch.
+// ingestBodyOf is the body in the encoder's format that carries every
+// table. The fixture joins the tables into one batch, and the encoder
+// writes it as a stream of that batch alone.
 func ingestBodyOf(t table.T, e encoding.Encoder, tables []table.Table) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -66,9 +67,9 @@ func ingestBodyOf(t table.T, e encoding.Encoder, tables []table.Table) []byte {
 	return buf.Bytes()
 }
 
-// compressedBody is body under coding c, through the server's own
-// compressor, which the round trip trusts because the response tests
-// have decoded it with the reference decoders.
+// compressedBody compresses the body in the coding with the server's
+// own compressor. The round trip trusts that compressor, because the
+// response tests decode its output with the reference decoders.
 func compressedBody(t table.T, c coding, body []byte) []byte {
 	t.Helper()
 	if c == identityCoding {
@@ -99,8 +100,8 @@ func (s server) drawnIngest(t *rapid.T, tables []table.Table, mode string) *http
 	return s.ingest(body, "push-mode="+mode, headers)
 }
 
-// checkRead reads tbl over the cluster under the span of its rows and
-// compares what comes back with the rows generated. The read is bounded
+// checkRead reads the table over the cluster within the span of its rows
+// and compares the result with the rows generated. The read is bounded
 // because an unbounded read of a table with no rows probes every shard
 // of a forever range. The fixture's tables fit one batch.
 func (s server) checkRead(t *rapid.T, tbl table.Table) {
@@ -120,10 +121,9 @@ func (s server) checkRead(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// checkQuery queries tbl over the cluster and compares what comes back
-// with the rows generated. This is the view a query has, which after an
-// async push is ahead of what the bulk reader sees (internal/AGENTS.md,
-// the ingest).
+// checkQuery queries the table over the cluster and compares the result
+// with the rows generated. After an async push a query sees rows before
+// the bulk reader does (internal/AGENTS.md, the ingest).
 func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	err := s.c.Query(context.Background(), s.user, tbl.Select(), func(seq qdb.Batches) error {
@@ -140,10 +140,11 @@ func (s server) checkQuery(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// checkReadFormats reads tbl over HTTP in every format under the span of
-// its rows, once whole and, when picked is non-nil, once more restricted
-// to those columns, and compares each body with the stream encoder run
-// directly. The reads are bounded as checkRead's is.
+// checkReadFormats reads the table over HTTP in every format within the
+// span of its rows and compares each body with the stream encoder run
+// directly. It reads every column once, and when picked is non-nil, it
+// reads the picked columns once more. The reads are bounded as in
+// checkRead.
 func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	t.Helper()
 	start, end := tbl.Range()
@@ -173,8 +174,8 @@ func (s server) checkReadFormats(t *rapid.T, tbl table.Table, picked []string) {
 	}
 }
 
-// checkQueryFormats queries tbl over HTTP in every format and compares
-// each body with the encoder run directly.
+// checkQueryFormats queries the table over HTTP in every format and
+// compares each body with the encoder run directly.
 func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	for accept, e := range encoders {
@@ -191,8 +192,8 @@ func (s server) checkQueryFormats(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// directDuckDB runs q on DuckDB over the cluster and encodes the stream
-// with e. The endpoint must answer these exact bytes.
+// directDuckDB runs the query on DuckDB over the cluster and encodes the
+// stream with the encoder. The endpoint must answer the same bytes.
 func (s server) directDuckDB(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -205,9 +206,10 @@ func (s server) directDuckDB(t *rapid.T, e encoding.Encoder, q string) []byte {
 	return buf.Bytes()
 }
 
-// checkDuckDB reads tbl through DuckDB over the cluster and compares what
-// comes back with the rows generated, so the DuckDB path answers the rows
-// the native read answers. The fixture's tables fit one batch.
+// checkDuckDB reads the table through DuckDB over the cluster and
+// compares the result with the rows generated, so the DuckDB path
+// answers the rows the native read answers. The fixture's tables fit
+// one batch.
 func (s server) checkDuckDB(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	err := s.c.Duck(context.Background(), s.user, tbl.SelectSQL(), func(batches qdb.Batches) error {
@@ -249,9 +251,9 @@ func sameArrowStream(t *rapid.T, got, want []byte) bool {
 	return !g.Next() && g.Err() == nil && w.Err() == nil
 }
 
-// checkDuckDBFormats posts tbl's DuckDB select behind the #sql prefix to
-// /api/v2/query in every format and compares each body with directDuckDB
-// over the select alone.
+// checkDuckDBFormats posts the table's DuckDB select behind the #sql
+// prefix to /api/v2/query in every format and compares each body with
+// directDuckDB over the select alone.
 func (s server) checkDuckDBFormats(t *rapid.T, tbl table.Table) {
 	t.Helper()
 	for accept, e := range encoders {
@@ -263,12 +265,12 @@ func (s server) checkDuckDBFormats(t *rapid.T, tbl table.Table) {
 			t.Fatalf("duckdb %s: Content-Type = %q", accept, ct)
 		}
 		// The oracle runs the stripped text on DuckDB directly, so equal
-		// bytes prove that the prefix reached DuckDB and the rest of the text
-		// reached it unchanged. DuckDB leaves the value bytes under a null
-		// slot undefined, and the Arrow stream carries the buffers as they
-		// are, so two runs of one query differ there. The Arrow body is
-		// compared decoded, and the text formats, which write no value for a
-		// null, byte for byte.
+		// bytes prove that the prefix routed the query to DuckDB and the rest
+		// of the text reached it unchanged. DuckDB leaves the value bytes
+		// under a null slot undefined, and the Arrow stream carries the
+		// buffers as they are, so two runs of one query differ there. The
+		// test compares the Arrow body decoded, and the text formats, which
+		// write no value for a null, byte for byte.
 		want := s.directDuckDB(t, e, tbl.SelectSQL())
 		same := bytes.Equal(resp.Body.Bytes(), want)
 		if accept == encoding.ArrowContentType {
@@ -280,26 +282,27 @@ func (s server) checkDuckDBFormats(t *rapid.T, tbl table.Table) {
 	}
 }
 
-// checkFlight reads tbl over Flight with q under the server's token and
-// compares the result with the rows generated and with the Arrow body
-// the query route answers for q, so the two planes answer one table
-// (ADR-0018, Decision 14).
+// checkFlight runs the query over Flight under the server's token. It
+// compares the result with the rows generated and with the query
+// route's Arrow body for the same query, so both planes answer the same
+// table (ADR-0018, Decision 14).
 func (s server) checkFlight(t *rapid.T, tbl table.Table, q string) {
 	t.Helper()
-	// Two oracles in a fixed order, under the HTTP token:
+	// The Flight result is checked against two oracles in a fixed order,
+	// under the HTTP token:
 	//
 	//  1. the Flight result joined into one batch, because the engines cut
 	//     the stream differently;
 	//  2. the rows generated, column by column by name;
-	//  3. the Arrow body of POST /api/v2/query for q, read into one batch
-	//     and compared by array equality, because every text format is
-	//     already proven equal to the encoder over these batches, so Flight
-	//     equals every HTTP format through this one.
+	//  3. the Arrow body of POST /api/v2/query for the same query, read
+	//     into one batch and compared by array equality. Every text format
+	//     is already proven equal to the encoder over these batches, so
+	//     this comparison makes Flight equal to every HTTP format.
 	//
-	// The token is the refreshed HTTP access token presented as the Flight
-	// bearer, because one token opens both planes (docs/brief.md,
-	// Authentication), and the round trip proves it. A Flight Handshake
-	// per iteration was rejected, because TestHandshake already proves it.
+	// The Flight bearer is the refreshed HTTP access token, because one
+	// token opens both planes (docs/brief.md, Authentication), and the
+	// round trip proves that. A Flight Handshake per iteration was
+	// rejected, because TestHandshake already proves the handshake.
 	ctx := qdbflight.Bearer(context.Background(), s.token)
 
 	// 1. the Flight result joined into one batch, because the native engine
@@ -310,10 +313,10 @@ func (s server) checkFlight(t *rapid.T, tbl table.Table, q string) {
 	// 2. the rows generated, column by column by name
 	table.Check(t, tbl, got)
 
-	// 3. the query route's Arrow body for q, compared by array equality,
-	//    which reads no byte under a null slot. Decoding every text format
-	//    back was rejected, because the decoders read the ingest dialect
-	//    and drop $table
+	// 3. the query route's Arrow body for the query, compared by array
+	//    equality, which reads no byte under a null slot. Decoding every
+	//    text format back was rejected, because the decoders read the
+	//    ingest dialect and drop $table
 	resp := s.query(q, map[string]string{"Authorization": "Bearer " + s.token, "Accept": encoding.ArrowContentType})
 	if resp.Code != http.StatusOK {
 		t.Fatalf("query arrow for flight: status %d: %s", resp.Code, resp.Body.String())
@@ -338,9 +341,9 @@ func grantOf(t table.T, step string, resp *httptest.ResponseRecorder) tokenRespo
 // authRoundTrip logs in as the server's user, refreshes, reads the
 // session under the refreshed access token and logs out, and returns the
 // refreshed access token. The user is anonymous on the insecure cluster.
-// The refreshed token carries the login's session, and the session
-// answers that token's claims, this user, this cluster as secured says
-// the fixture is, and this build.
+// The refreshed token carries the login's session. The session route
+// answers that token's claims, this user, this cluster with the
+// fixture's secured flag, and this build.
 func (s server) authRoundTrip(t *rapid.T, secured bool) string {
 	t.Helper()
 	jsonBody := map[string]string{"Content-Type": "application/json"}
@@ -395,14 +398,15 @@ func TestRoundtrip(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)
 		rapid.Check(t, func(rt *rapid.T) {
-			// 1. the auth steps: login, refresh, session, logout, and every
-			// later step runs under the refreshed access token, so the round
-			// trip proves a refreshed token is a working token on every route.
-			// The logout is a step here and not in the shell round trip,
-			// because its 204 is all there is to observe
+			// 1. log in, refresh, read the session and log out. Every later step
+			// runs under the refreshed access token, so the round trip proves
+			// that a refreshed token works on every route. The logout is a step
+			// here and not in the shell round trip, because its 204 is all there
+			// is to observe
 			s.token = s.authRoundTrip(rt, f.Spec.Secured)
 
-			// 2. the tables: the first is drawn whole, the rest are generated over its columns
+			// 2. the tables: the first is drawn whole, and the rest are generated
+			// over its columns
 			first := table.Generate(rt)
 			tables := []table.Table{first}
 			for range rapid.IntRange(0, 2).Draw(rt, "more tables") {
@@ -433,11 +437,11 @@ func TestRoundtrip(t *testing.T) {
 				}
 			}
 
-			// 4. read the first table empty, which answers the schema alone in
-			// every format, and the schema is the one generated. The others
-			// share the schema, so one table stands for all. The read is
-			// bounded like every read here, and a table with no rows spans
-			// one nanosecond at the index start
+			// 4. read the first table empty. It answers the schema alone in every
+			// format, and the schema is the one generated. The other tables share
+			// the schema, so one table stands for all. The read is bounded like
+			// every read here, and a table with no rows spans one nanosecond at
+			// the index start
 			empty := first
 			empty.Batch = nil
 			s.checkRead(rt, empty)
@@ -445,24 +449,23 @@ func TestRoundtrip(t *testing.T) {
 
 			// 5. ingest every table's rows in one body of a drawn format under a
 			// drawn request coding and a drawn push mode, the default included.
-			// The counts answered are the rows generated and the tables that
-			// had any
+			// The answer counts the rows generated and the tables that had any
 			mode := rapid.SampledFrom([]string{"", "fast", "transactional", "async"}).Draw(rt, "push mode")
 			got := ingestResponseOf(rt, s.drawnIngest(rt, tables, mode))
 			if got.Rows != wantRows || got.Tables != wantTables {
 				rt.Fatalf("ingest answered %+v, want %d rows in %d tables", got, wantRows, wantTables)
 			}
 
-			// 6. read, query and read through DuckDB behind #sql on the query
+			// 6. read, query, and read through DuckDB behind #sql on the query
 			// route, each in every format. The rows written are the rows
-			// generated, and every format's body carries the encoder's own
-			// bytes. Both engines are read over Flight too, the #sql one
-			// skipped with the DuckDB checks. After an async push a query sees
-			// the rows at once, but the bulk reader sees them only once the
-			// server has flushed. Before that it answers none of them, or some
-			// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so the
-			// async mode is read back through the query alone. qdb-duck scans
-			// through the bulk reader, so the DuckDB read is skipped with it
+			// generated, and every format's body carries the encoder's own bytes.
+			// Both engines are also read over Flight, and the #sql read is
+			// skipped along with the DuckDB checks. After an async push a query
+			// sees the rows at once, but the bulk reader sees them only after the
+			// server has flushed. Until then it answers none of them, or some
+			// twice while the flush runs (qdbd 3.15.0.dev0, both writers), so an
+			// async push is read back through the query only. qdb-duck scans
+			// through the bulk reader, so the DuckDB reads are skipped too
 			for _, tbl := range tables {
 				s.checkQuery(rt, tbl)
 				s.checkQueryFormats(rt, tbl)

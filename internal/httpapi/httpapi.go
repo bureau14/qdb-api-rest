@@ -1,8 +1,7 @@
-// Package httpapi assembles the HTTP surface of the REST server, which
-// is the /api/v2 resource API, its bearer middleware and the
-// unauthenticated status probes. It never imports v1 compatibility
-// code. The v1 package wraps this one, and the entry point composes the
-// two.
+// Package httpapi serves the REST server's /api/v2 resource API, its
+// bearer middleware and the unauthenticated status probes. It never
+// imports v1 compatibility code. The v1 package wraps this one, and the
+// entry point composes the two.
 package httpapi
 
 import (
@@ -18,12 +17,10 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleReadiness answers whether this instance can serve traffic. It
-// dials the cluster as the REST API's own user on every probe. It
-// caches no verdict and touches neither the pool, the budget nor the
-// breaker. It answers 200 when the probe succeeds and 503 when it
-// fails, both with an empty body. The cause goes to the log line and
-// stays off the wire.
+// handleReadiness reports whether this instance can serve traffic. Every
+// probe dials the cluster as the REST API's own user, caches nothing,
+// and bypasses the pool, the budget and the breaker. It answers 200 or
+// 503 with an empty body, and the cause of a failure is only logged.
 func handleReadiness(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := qdb.ClusterFrom(ctx).Probe(ctx); err != nil {
@@ -45,10 +42,10 @@ func registerStatusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/status/readiness", handleReadiness)
 }
 
-// NewHandler returns the root handler, which is every route registered
-// and wrapped by the request middleware. A handler takes the logger and
-// the cluster from the request context, which the server derives from
-// the process context. NewHandler injects nothing.
+// NewHandler returns the root handler, which serves every route behind
+// the request middleware. The handlers take the logger and the cluster
+// from the request context, which the server derives from the process
+// context, so NewHandler injects nothing.
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	registerStatusRoutes(mux)

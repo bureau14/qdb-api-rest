@@ -18,7 +18,8 @@ type failer interface {
 	Fatalf(format string, args ...any)
 }
 
-// decompress decodes body in coding c with the reference decoders.
+// decompress decodes a body in the given coding with the reference
+// decoders.
 func decompress(t failer, c coding, body []byte) []byte {
 	t.Helper()
 	var r io.Reader

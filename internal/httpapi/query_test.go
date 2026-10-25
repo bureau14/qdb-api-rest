@@ -1,8 +1,8 @@
 // This file holds the query endpoint's test helpers and its compression
 // test. The good path in every media type is the round trip
 // (roundtrip_test.go), and the error rows live in errors_test.go. The
-// encoders' own tests prove the bytes decode, and this file proves
-// negotiation and headers.
+// tests of internal/encoding prove that the bytes decode, and this file
+// proves negotiation and headers.
 package httpapi
 
 import (
@@ -32,27 +32,28 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// server is the root handler plus the request context main would give
-// it: logger, cluster and keychain, and the user every request acts as,
-// with one access token minted for that user. The keychain is kept so a
-// test mints what a row needs, such as an expired refresh token. It also
-// starts the Flight listener on a port of its own and holds a client on
-// it, so the round trip reads one table on both planes (ADR-0018,
-// Decision 14).
+// server is the root handler with the request context main would give
+// it, which carries the logger, the cluster and the keychain. It holds
+// the user every request acts as and one access token minted for that
+// user. It keeps the keychain so a test can mint what a row needs, such
+// as an expired refresh token. It also runs the Flight listener on its
+// own port and holds a client on it, so the round trip reads one table
+// over both planes (ADR-0018, Decision 14).
 type server struct {
 	ctx     context.Context
 	c       *qdb.Cluster
 	tk      *auth.Tokens
 	handler http.Handler
-	// user is who the direct oracle calls and the fixture's cleanups act
-	// as, so on the secure cluster they pass the cluster's check.
+	// The direct oracle calls and the fixture's cleanups act as user, so
+	// they pass the secure cluster's check.
 	user  qdb.User
 	token string
 	// flight is the fixture's client on the Flight listener.
 	flight *flightsql.Client
 }
 
-// newServer binds the server to f and acts as f's user.
+// newServer binds the server to the fixture's cluster and acts as the
+// fixture's user.
 func newServer(t *testing.T, f cluster.Fixture) server {
 	t.Helper()
 	return newServerOn(t, f.Cluster, f.User)
@@ -68,7 +69,7 @@ func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	// The token carries the user's secret key, because the data routes
 	// dial the cluster with the token's credentials.
 	token := mint(t, tk, "access", u, time.Now().Add(time.Hour))
-	// The ephemeral certificate, as a start with no tls block gets.
+	// A start with no tls block gets the ephemeral certificate.
 	tlsConfig, _, err := tlsconf.Load(config.TLS{}, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,8 @@ func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), user: u, token: token, flight: qdbflight.Dial(t, fs.Addr().String())}
 }
 
-// post sends body to path with the given headers, nil meaning none.
+// post sends the body to the path with the given headers, where nil
+// means none.
 func (s server) post(path, body string, headers map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequestWithContext(s.ctx, http.MethodPost, path, strings.NewReader(body))
 	for k, v := range headers {
@@ -99,13 +101,14 @@ func (s server) post(path, body string, headers map[string]string) *httptest.Res
 	return resp
 }
 
-// query posts body as the query.
+// query posts the body to the query endpoint.
 func (s server) query(body string, headers map[string]string) *httptest.ResponseRecorder {
 	return s.post("/api/v2/query", body, headers)
 }
 
-// direct runs q through query.Run as the server's user and encodes the
-// stream with e. The endpoint must answer these exact bytes.
+// direct runs the query through query.Run as the server's user and
+// encodes the stream with the encoder. The endpoint must answer the
+// same bytes.
 func (s server) direct(t *rapid.T, e encoding.Encoder, q string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -129,11 +132,10 @@ func TestQueryCompressed(t *testing.T) {
 			// 1. A generated table, created as the cluster's user.
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, s.c, s.user, tbl)
-			// 2. The expected body: the same query run on the cluster
-			//    directly and written by the JSON stream encoder, the array
-			//    of one result. The requests
-			//    below send no Accept header, so JSON is what the endpoint
-			//    answers, and once decompressed its body must be these
+			// 2. The expected body is the same query run on the cluster
+			//    directly and written by the JSON stream encoder, an array of
+			//    one result. The requests below send no Accept header, so the
+			//    endpoint answers JSON, and each body must decompress to these
 			//    bytes.
 			want := s.direct(rt, encoding.JSON{}, tbl.Select())
 			// 3. Each coding answers 200, labels the body with its coding,

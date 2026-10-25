@@ -16,12 +16,12 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// rowsPath is the ingest. It is the writer's door, as the table reader
-// is the reader's.
+// rowsPath is the path of the ingest, which writes the rows that the
+// table reader reads.
 const rowsPath = "/api/v2/rows"
 
-// maxIngestBytes caps an ingest body, which is the one body that is a
-// dataset rather than a line of text. 64 MiB is the owner's number.
+// maxIngestBytes caps an ingest body, the only body that carries a
+// dataset instead of a line of text. The owner chose 64 MiB.
 const maxIngestBytes = 64 << 20
 
 // decoders maps each media type the ingest accepts to its decoder.
@@ -49,8 +49,8 @@ func acceptedTypes() string {
 	return strings.Join(slices.Sorted(maps.Keys(decoders)), ", ")
 }
 
-// pushOptions reads the push options among the URL parameters as words.
-// The cluster call judges them.
+// pushOptions reads the push options from the URL parameters as plain
+// strings. The cluster call validates them.
 func pushOptions(params url.Values) qdb.PushOptions {
 	o := qdb.PushOptions{
 		Mode:              params.Get("push-mode"),
@@ -62,8 +62,8 @@ func pushOptions(params url.Values) qdb.PushOptions {
 	return o
 }
 
-// ingestResponse is the answer. It says what was written and how long
-// the two halves took, in whole milliseconds.
+// ingestResponse is the ingest's answer. It counts the rows and tables
+// written and gives the parse and push durations in whole milliseconds.
 type ingestResponse struct {
 	Rows    int   `json:"rows"`
 	Tables  int   `json:"tables"`
@@ -77,25 +77,24 @@ type ingestResponse struct {
 // so, and is never read whole. The status is decided when the push has
 // returned, because the answer is one small object.
 func handleIngestRows(w http.ResponseWriter, r *http.Request) {
-	// The two headers are judged before any byte is read, the body is
-	// wrapped from the wire inward, and the decoder runs inside the
-	// session lease:
+	// The handler checks both headers before it reads a byte, wraps the
+	// body from the wire inward, and runs the decoder inside the session
+	// lease:
 	//
 	//  1. a body of a type no decoder reads gets a clear 415 instead of a
 	//     decode error;
-	//  2. a Content-Encoding this server does not read is 415 naming gzip
-	//     and zstd, the mirror of the type check;
-	//  3. the body under the ingest cap, which bounds the bytes on the
-	//     wire; the decoded size of a hostile body is not bounded, an
-	//     accepted cost inside a customer network, where the brief puts
-	//     this server;
-	//  4. the decompressor over the capped body; its open can fail on a
-	//     corrupt gzip header, which is the body's fault, 400, and it is
+	//  2. a Content-Encoding this server does not read is also 415, with a
+	//     detail that names gzip and zstd;
+	//  3. the ingest cap bounds the bytes on the wire. The decoded size of
+	//     a hostile body is not bounded, which is an accepted cost because
+	//     the brief puts this server inside a customer network;
+	//  4. the decompressor wraps the capped body. Opening it can fail on a
+	//     corrupt gzip header, which is the body's fault and 400. It is
 	//     closed when the handler returns;
-	//  5. one call, in which the decoder runs under the held session's
-	//     schema lookup;
-	//  6. the status by who failed. A corrupt coding surfaces from the
-	//     decode as ErrInvalidRows, so it needs no arm of its own.
+	//  5. one cluster call runs the decoder with the held session's schema
+	//     lookup;
+	//  6. the status follows who failed. A corrupt coding surfaces from the
+	//     decode as ErrInvalidRows, so it needs no case of its own.
 	ctx := r.Context()
 
 	// 1. the body's type
@@ -148,7 +147,8 @@ func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 	// The cap surfaces from inside the decode, so it is classified here.
 	case errors.As(err, &tooLarge):
 		writeProblem(w, http.StatusRequestEntityTooLarge, err.Error())
-	// A body's or an option's fault is the caller's, before any push.
+	// An invalid body or invalid options are the caller's fault, found
+	// before any push.
 	case errors.Is(err, qdb.ErrInvalidPushOptions), errors.Is(err, encoding.ErrInvalidRows):
 		writeProblem(w, http.StatusBadRequest, err.Error())
 	// A $table the cluster does not know fails the whole request.

@@ -65,7 +65,7 @@ func TestLoginThenQuery(t *testing.T) {
 	})
 }
 
-// claimsOf verifies token with the fixture's keychain.
+// claimsOf verifies a token with the fixture's keychain.
 func claimsOf(t *testing.T, s server, token string) auth.Claims {
 	t.Helper()
 	c, err := s.tk.Verify(token)
@@ -78,8 +78,7 @@ func claimsOf(t *testing.T, s server, token string) auth.Claims {
 // TestLoginVerdicts: the secure cluster accepts its user and refuses a
 // wrong secret with 401 and no challenge. A non-JSON body answers 415
 // and an undecodable one answers 400. The test runs on the secure
-// cluster alone, because the insecure cluster accepts any secret, so the
-// refusal has no insecure twin.
+// cluster only, because the insecure cluster accepts any secret.
 func TestLoginVerdicts(t *testing.T) {
 	s := newServer(t, cluster.Bind(t, qdbtest.Secure(t), nil))
 	name, secret := qdbtest.SecureUser(t)

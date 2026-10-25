@@ -14,11 +14,11 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 )
 
-// TestDuckDBScalars posts, on each cluster, one row of every DuckDB scalar
-// behind #sql to /api/v2/query and checks that the JSON result names each column by its
-// Arrow type and writes each cell in the encoders' text. It proves that
-// DuckDB answers the types the encoders write, in the words the encoders
-// write them.
+// TestDuckDBScalars: on each cluster, a #sql query of one row with
+// every DuckDB scalar answers JSON that names each column by its Arrow
+// type and writes each cell as the encoders write it. It proves that
+// DuckDB answers types the encoders write, under the type names the
+// encoders use.
 func TestDuckDBScalars(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		s := newServer(t, f)

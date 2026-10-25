@@ -27,7 +27,7 @@ func tokensAt(t *testing.T, now time.Time) *auth.Tokens {
 	return tk
 }
 
-// mint seals a token of kind typ for u, expiring at exp.
+// mint seals a token of the given type for the user, expiring at exp.
 func mint(t *testing.T, tk *auth.Tokens, typ string, u qdb.User, exp time.Time) string {
 	t.Helper()
 	token, err := tk.Mint(auth.Claims{Username: u.Username, SecretKey: u.SecretKey, Typ: typ, SessionID: "sid-1", ExpiresAt: exp.Unix()})
