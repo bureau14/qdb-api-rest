@@ -18,6 +18,11 @@ until it fails. arrow-go, already the vendored Arrow, ships the Flight
 and Flight SQL protos pre-compiled, a server base type and a pure Go
 client. The owner made the decisions below on 2026-10-13.
 
+Arrow's Flight SQL JDBC driver runs every statement as a prepared
+statement, and it reads a result only when the prepare answers the
+result's schema, so the server answers prepared statements and the
+schema of a query it has not run (owner, 2026-10-24).
+
 ## Decision
 
 ### Listener
@@ -70,13 +75,20 @@ client. The owner made the decisions below on 2026-10-13.
 ### Tickets and the surface
 
 9. **The server stores nothing between calls.** The ticket
-   `GetFlightInfo` answers carries the query text after dispatch, and
-   `DoGet` runs the query. `FlightInfo` has one endpoint and no
-   schema, because the native engine does not know a result's columns
-   before running the query. `GetSchemaStatement` is `UNIMPLEMENTED`
-   rather than running every query twice.
+   `GetFlightInfo` answers carries the query text, and `DoGet` runs
+   the query. `FlightInfo` has one endpoint and carries the schema the
+   engine describes without running the query: qdb-api-go's
+   `ValidateArrow` on the native engine and DuckDB's prepare on `#sql`.
+   `GetSchemaStatement` answers the same schema (owner, 2026-10-24).
+   The describe differs from the stream in three ways, all of them
+   qdbd's validate disagreeing with its own execution, and the server
+   accepts them (owner, 2026-10-25). The described fields carry no
+   `max_width` metadata. A bare NULL literal describes as the null type
+   and streams as float64. A non-select statement's column of no rows
+   or only nulls describes as its declared type and streams as the null
+   type.
 10. **`GetSqlInfo` describes the server fully.** Server name, version,
-    read-only, no transactions, no prepared statements, and the
+    read-only, no transactions, and the
     information the drivers read about identifiers, keywords and
     supported statements, described for DuckDB as the SQL engine with
     the native engine named in the server name. The field list is the
@@ -90,9 +102,14 @@ client. The owner made the decisions below on 2026-10-13.
     `GetDbSchemas` and `GetTableTypes` answer the fixed shape of one
     cluster. The table list core in `internal/qdb` is written here and
     the exploration milestone reuses it.
-12. **Everything else is `UNIMPLEMENTED`.** Prepared statements,
-    transactions, savepoints, `DoPut` in every form, substrait, session
-    options and the poll and renew RPCs.
+12. **Prepared statements without parameters.** The handle is the
+    query text, closing answers nothing, and the prepared statement's
+    `FlightInfo` answers a statement ticket of the handle. A `#sql`
+    text is one statement, and a query with parameter markers fails
+    with `INVALID_ARGUMENT` (owner, 2026-10-24 and 2026-10-25).
+    Everything else is `UNIMPLEMENTED`: the parameter upload,
+    transactions, savepoints, `DoPut` in every other form, substrait,
+    session options and the poll and renew RPCs.
 13. **Status codes.** A bad or missing token is `UNAUTHENTICATED`. A
     parse or execution error of either engine is `INVALID_ARGUMENT`
     with the engine's message. An open breaker or a budget timeout is
@@ -112,11 +129,7 @@ client. The owner made the decisions below on 2026-10-13.
     likely to connect through both: ADBC from Go, comparing bytes
     through the tool's encoders, and JDBC from Java, a Maven project
     comparing row counts and column names. `docs/e2e.md`, The Flight
-    SQL smoke steps, specifies them. The JDBC step lands with the
-    prepared-statement commands, because Arrow's JDBC driver sends
-    every statement as `CreatePreparedStatement` and needs the
-    prepare's dataset schema to read a result (owner, 2026-10-24).
-    Flight has no HTTP step in the round trip and no stress case.
+    SQL smoke steps, specifies them. Flight has no HTTP step in the round trip and no stress case.
 
 ## Consequences
 
@@ -140,15 +153,20 @@ client. The owner made the decisions below on 2026-10-13.
 
 ## Alternatives rejected
 
-| Alternative                                            | Why not                                                                                                                           |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| A gRPC metadata header choosing the engine             | needs a driver knob per client, and the query text travels through every driver untouched                                         |
-| Flight SQL session options choosing the engine         | server-side session state, which the project rules out everywhere else                                                            |
-| A listener that is off until configured                | the owner wants Flight SQL available on every install, and the port is the configurable part                                      |
-| Running the query in `GetFlightInfo` and caching it    | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                      |
-| A refresh token accepted on the Flight plane           | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise                     |
-| A `DoAction` refresh on the Flight port                | more surface before a problem is observed                                                                                         |
-| Catalog commands deferred to the exploration milestone | drivers call `GetTables` at connect, and the table list core is small                                                             |
-| An e2e Flight step through arrow-go's client           | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work                        |
-| A plaintext Flight listener                            | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                                             |
-| `POST /api/v2/sql` kept as a direct DuckDB route       | the prefix already chooses the engine on both planes, so a second route is a second way to say the same thing (owner, 2026-10-19) |
+| Alternative                                              | Why not                                                                                                                           |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| A gRPC metadata header choosing the engine               | needs a driver knob per client, and the query text travels through every driver untouched                                         |
+| Flight SQL session options choosing the engine           | server-side session state, which the project rules out everywhere else                                                            |
+| A listener that is off until configured                  | the owner wants Flight SQL available on every install, and the port is the configurable part                                      |
+| Running the query in `GetFlightInfo` and caching it      | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                      |
+| A refresh token accepted on the Flight plane             | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise                     |
+| A `DoAction` refresh on the Flight port                  | more surface before a problem is observed                                                                                         |
+| Catalog commands deferred to the exploration milestone   | drivers call `GetTables` at connect, and the table list core is small                                                             |
+| An e2e Flight step through arrow-go's client             | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work                        |
+| A plaintext Flight listener                              | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                                             |
+| `POST /api/v2/sql` kept as a direct DuckDB route         | the prefix already chooses the engine on both planes, so a second route is a second way to say the same thing (owner, 2026-10-19) |
+| Running the query at prepare                             | every JDBC query would run twice                                                                                                  |
+| Describing a native query through qdb-duck's `qdb_query` | the schema would be in DuckDB's types and not the native engine's                                                                 |
+| A `LIMIT 0` run to describe a `#sql` query               | SHOW, DESCRIBE, PRAGMA and SET cannot be a subquery, so it fails on them                                                          |
+| Casting the stream to the described schema               | each prepared fetch would describe again, for an edge case of qdbd's                                                              |
+| Parameters now                                           | the native engine has no binding, and native substitution is textual                                                              |
