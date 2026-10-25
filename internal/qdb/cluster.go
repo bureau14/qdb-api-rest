@@ -659,24 +659,18 @@ func (up *userPool) closeInstance(c *Cluster) {
 	c.releaseInstance()
 }
 
-// Duck runs q, DuckDB SQL, as u on u's own DuckDB instance and hands its
-// batches to sink, on a connection of the instance that closes when sink
-// returns. An error before sink runs is the instance cap
-// (*InstanceLimitError), a refused credential on a secure cluster
-// (ErrCredentialsRefused), the attach (olap.ErrAttach, which
-// IsClusterUnavailable reports) or DuckDB's. The error of sink is returned
-// unchanged. A DuckDB call is never retried and does not feed the breaker.
-// The budget does not count it, because qdb-duck pools its own qdbd
-// sessions.
-func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
+// withInstance runs f on u's DuckDB instance, opening it on u's first
+// call, and counts the call as use of u's pool until f returns. An error
+// before f runs is instanceOf's, and the error of f is returned unchanged.
+func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instance) error) error {
 	// The call counts as use of u's pool from before the instance opens
-	// until after sink returns, on every path, so eviction never closes
-	// an instance that a call is opening or querying:
+	// until after f returns, on every path, so eviction never closes an
+	// instance that a call is opening or using:
 	//
 	//  1. find or create u's pool and count the call, under one hold of
 	//     mu, so no eviction pass sees the pool in between;
 	//  2. answer u's instance, opening it on the first call;
-	//  3. run the query and the sink on the instance;
+	//  3. run f on the instance;
 	//  4. uncount the call, whatever happened.
 
 	// 1. find the pool and count the call
@@ -695,8 +689,23 @@ func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches)
 	if err != nil {
 		return err
 	}
-	// 3. run the query and the sink
-	return in.Query(ctx, q, sink)
+	// 3. run f
+	return f(in)
+}
+
+// Duck runs q, DuckDB SQL, as u on u's own DuckDB instance and hands its
+// batches to sink, on a connection of the instance that closes when sink
+// returns. An error before sink runs is the instance cap
+// (*InstanceLimitError), a refused credential on a secure cluster
+// (ErrCredentialsRefused), the attach (olap.ErrAttach, which
+// IsClusterUnavailable reports) or DuckDB's. The error of sink is returned
+// unchanged. A DuckDB call is never retried and does not feed the breaker.
+// The budget does not count it, because qdb-duck pools its own qdbd
+// sessions.
+func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
+	return c.withInstance(ctx, u, func(in *olap.Instance) error {
+		return in.Query(ctx, q, sink)
+	})
 }
 
 // evict removes user pools that have held no session for idle_timeout, on
