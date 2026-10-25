@@ -66,8 +66,8 @@ const (
 	KeySession = "session"
 )
 
-// Err renders err under KeyError. A nil err yields an empty attr, which
-// handlers omit.
+// Err renders the error under KeyError. A nil error yields an empty
+// attribute, which handlers omit.
 func Err(err error) slog.Attr {
 	if err == nil {
 		return slog.Attr{}
@@ -79,17 +79,17 @@ func Err(err error) slog.Attr {
 // WithLogger and Logger touch it.
 type loggerKey struct{}
 
-// WithLogger returns ctx carrying l. Callees reach it through
-// Logger(ctx), because the logger is explicit state of the call and
+// WithLogger returns a context that carries the logger. Callees reach the
+// logger through Logger, because it is explicit state of the call and
 // never a global.
 func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
 }
 
-// Logger returns the logger carried by ctx. A ctx without one is a
-// programming error (a context.Background() or TODO() mid-call-chain)
-// and panics, so the call fails fast rather than logging somewhere
-// nobody reads.
+// Logger returns the logger the context carries. A context without one
+// is a programming error, such as a context.Background() or TODO() in
+// the middle of a call chain. Logger panics on it, so the call fails
+// fast instead of logging somewhere nobody reads.
 func Logger(ctx context.Context) *slog.Logger {
 	l, ok := ctx.Value(loggerKey{}).(*slog.Logger)
 	if !ok {
@@ -98,9 +98,9 @@ func Logger(ctx context.Context) *slog.Logger {
 	return l
 }
 
-// WithAttrs returns a child ctx whose logger carries attrs on every
-// record. Scope is lexical. The caller's ctx is untouched, so the attrs
-// end where the child ctx goes out of scope.
+// WithAttrs returns a child context whose logger adds the attributes to
+// every record. The caller's context is untouched, so the attributes end
+// where the child context goes out of scope.
 func WithAttrs(ctx context.Context, attrs ...any) context.Context {
 	return WithLogger(ctx, Logger(ctx).With(attrs...))
 }

@@ -94,11 +94,11 @@ func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, nil
 }
 
-// loadCertificate resolves the certificate per config, which is the PEM
-// pair when configured and a generated one otherwise. It rejects a lone
-// certificate or key, because it is the only place that reads the pair,
-// so a half-configured pair cannot silently serve an ephemeral
-// certificate.
+// loadCertificate resolves the certificate from the config. It loads the
+// PEM pair when configured and generates a certificate otherwise. It
+// rejects a lone certificate or key, so a half-configured pair cannot
+// silently serve an ephemeral certificate. The rule lives here because
+// this function is the only place that reads the pair.
 func loadCertificate(cfg config.TLS, now time.Time) (tls.Certificate, Source, error) {
 	if (cfg.Certificate == "") != (cfg.PrivateKey == "") {
 		return tls.Certificate{}, SourceFile, errors.New("tls.certificate and tls.private_key must be set together")

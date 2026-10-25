@@ -26,7 +26,7 @@ func envFrom(vars map[string]string) func(string) (string, bool) {
 	}
 }
 
-// writeConfig writes yaml into a temp file and returns its path.
+// writeConfig writes the YAML into a temp file and returns its path.
 func writeConfig(t *testing.T, yaml string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "qdb_rest.yaml")
@@ -41,10 +41,10 @@ func load(args []string, vars map[string]string) (Config, error) {
 	return Load("qdb_rest", args, envFrom(vars), io.Discard)
 }
 
-// values returns the generator for one key: its vocabulary plus one word
-// outside it for the enumerated keys, and a spread of parseable words per
-// type otherwise. Values that fail validation are drawn on purpose, so
-// the fold is checked on the reject side as well.
+// values returns the generator for one key. An enumerated key draws from
+// its vocabulary plus one word outside it. Any other key draws from a
+// spread of parseable words for its type. Values that fail validation
+// are drawn on purpose, so the fold is checked on the reject side too.
 func values(k key) *rapid.Generator[string] {
 	if words, ok := vocab[k.path]; ok {
 		return rapid.SampledFrom(append(append([]string{}, words...), "bogus"))
@@ -64,9 +64,9 @@ func values(k key) *rapid.Generator[string] {
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }
 
-// set writes text into cfg at the key's path through the same parser the
-// layers use, following the yaml tags. This builds the expected side of
-// the fold.
+// set writes the text into the config at the key's path, through the
+// parser the layers use and following the yaml tags. It builds the
+// expected side of the fold.
 func set(t *rapid.T, cfg *Config, k key, text string) {
 	t.Helper()
 	value, err := parseValue(k, text)
@@ -88,7 +88,7 @@ func set(t *rapid.T, cfg *Config, k key, text string) {
 // fileLayer is the YAML document under construction, as nested maps.
 type fileLayer map[string]any
 
-// put writes value at path, creating sections on the way.
+// put writes the value at the path and creates sections on the way.
 func (f fileLayer) put(path string, value any) {
 	parts := strings.Split(path, ".")
 	section := f
@@ -103,11 +103,12 @@ func (f fileLayer) put(path string, value any) {
 	section[parts[len(parts)-1]] = value
 }
 
-// Load is the fold defaults < file < env < flags followed by validate.
-// For any drawn combination of layers over every key, it returns the
-// folded config exactly when validate accepts it. File values are written
-// literally or as ${VAR} references, flags by their derived name or a
-// qdbsh alias, and the file path arrives by flag or by QDB_REST_CONFIG.
+// Load folds the layers defaults < file < env < flags and then validates.
+// For any drawn combination of layers over every key, Load returns the
+// folded config if and only if validate accepts it. A file value is
+// written literally or as a ${VAR} reference. A flag uses its derived
+// name or a qdbsh alias. The file path arrives by flag or by
+// QDB_REST_CONFIG.
 func TestLoadIsTheLayerFold(t *testing.T) {
 	byTarget := map[string]string{}
 	for alias, path := range aliases {

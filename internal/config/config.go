@@ -2,10 +2,10 @@
 // once, as a field of Config with its yaml tag, and reaches the process
 // through three layers named after that key path: the YAML file
 // (listen.http), the environment (QDB_REST_LISTEN_HTTP) and the command
-// line (--listen-http). Precedence, lowest to highest: built-in defaults,
-// the file, the environment, explicitly passed flags. Values in the file
-// support ${VAR} environment interpolation so secrets can be injected
-// without living on disk.
+// line (--listen-http). The environment overrides the file, explicitly
+// passed flags override both, and the built-in defaults sit below all
+// three. Values in the file support ${VAR} environment interpolation, so
+// secrets can be injected without living on disk.
 package config
 
 import (
@@ -31,8 +31,8 @@ import (
 
 // ErrVersionRequested is returned by Load when the --version flag is
 // passed. The caller prints its build metadata and exits. The metadata
-// itself lives in package main (injected via -ldflags), which is why the
-// flag surfaces as a sentinel instead of being handled here.
+// lives in package main, injected via -ldflags, so this package returns
+// a sentinel and does not handle the flag itself.
 var ErrVersionRequested = errors.New("version requested")
 
 // Listen holds the listener addresses. The HTTP listener is off unless
@@ -56,12 +56,13 @@ type Log struct {
 	Format string `yaml:"format" help:"json | console"`
 }
 
-// Cluster binds the process to one cluster: where it is, its public key
-// file, the REST API's own user (the user security file carrying username
-// and secret key, where empty means anonymous), and the per-session C API
-// knobs. A zero knob means the C API default. Key material comes from
-// files only, the form QuasarDB's tooling produces, so no secret sits in
-// the YAML, and callers' credentials arrive through the API.
+// Cluster binds the process to one cluster. It holds the cluster URI, the
+// cluster public key file, the REST API's own user and the per-session C
+// API knobs. The REST API's user is a user security file with a username
+// and a secret key, and an empty path means anonymous. A zero knob means
+// the C API default. Key material comes from files only, in the form
+// QuasarDB's tooling produces, so no secret sits in the YAML. Callers'
+// credentials arrive through the API.
 type Cluster struct {
 	URI                   string        `yaml:"uri" help:"cluster URI, comma-separated for several nodes"`
 	PublicKeyFile         string        `yaml:"public_key_file" help:"cluster public key file; empty means an insecure cluster"`
@@ -106,8 +107,8 @@ type Status struct {
 	ReadinessQuery string `yaml:"readiness_query" help:"query the readiness probe runs after its dial"`
 }
 
-// Argon2id sets the cost of deriving token keys from passphrases, which
-// is what one attacker guess pays. Every instance behind a load balancer
+// Argon2id sets the cost of deriving token keys from passphrases. Each
+// attacker guess pays this cost. Every instance behind a load balancer
 // must run the same values, because changing any of them re-derives
 // every key and behaves as a key rotation.
 type Argon2id struct {
@@ -163,13 +164,16 @@ type Config struct {
 	DuckDB  DuckDB  `yaml:"duckdb"`
 }
 
-// Default returns the configuration used when nothing is specified: both
-// listeners on their customary ports, JSON logs at info, the local
-// insecure cluster, C API knobs at their C API defaults, the pool sized
-// for one gateway in front of one cluster, no token passphrases (an
-// ephemeral key per start), argon2id at RFC 9106's second recommended
-// cost, and one DuckDB instance per user at one gibibyte and four
-// threads, with no spilling and sixteen instances at once.
+// Default returns the configuration used when nothing is specified:
+//
+//   - the HTTPS and Flight listeners on their customary ports
+//   - JSON logs at info
+//   - the local insecure cluster, with the C API knobs at their defaults
+//   - the pool sized for one gateway in front of one cluster
+//   - no token passphrases, so an ephemeral key per start
+//   - argon2id at the second recommended cost of RFC 9106
+//   - one DuckDB instance per user at one gibibyte and four threads,
+//     with no spilling and at most sixteen instances at once
 func Default() Config {
 	return Config{
 		Listen: Listen{HTTPS: ":40443", Flight: ":40493"},
@@ -188,23 +192,23 @@ func Default() Config {
 		},
 		Status: Status{ReadinessQuery: "SELECT 1"},
 		// TokenSecrets defaults to a non-nil empty slice. The defaults
-		// round-trip through YAML (defaults()), where nil marshals as []
-		// and decodes back as a non-nil empty slice, and a single
-		// canonical empty value keeps whole-value comparisons honest.
+		// round-trip through YAML in defaults(), where nil marshals as []
+		// and decodes back as a non-nil empty slice. One canonical empty
+		// value keeps whole-value comparisons honest.
 		Auth: Auth{
 			TokenSecrets: []string{},
 			Argon2id:     Argon2id{Time: 3, MemoryMiB: 64, Parallelism: 4},
 			AccessTTL:    15 * time.Minute,
 			RefreshTTL:   14 * 24 * time.Hour,
 		},
-		// DuckDB's own defaults take most of the RAM and every core, which
-		// suits a workstation and not a gateway next to qdbd, so these are
-		// conservative. Half a gibibyte, two threads and eight instances
-		// were rejected as too tight for joins. Four threads bound one user's scan at four qdbd
-		// sessions, because a qdb-duck scan takes one worker per four
-		// shards and one qdbd handle per worker. The empty spill directory
-		// disables spilling, so a query over the memory limit fails
-		// instead of writing to disk.
+		// DuckDB's own defaults take most of the RAM and every core. That
+		// suits a workstation and not a gateway next to qdbd, so these
+		// values are conservative. Half a gibibyte, two threads and eight
+		// instances were rejected as too tight for joins. Four threads
+		// bound one user's scan at four qdbd sessions, because a qdb-duck
+		// scan takes one worker per four shards and one qdbd handle per
+		// worker. The empty spill directory disables spilling, so a query
+		// over the memory limit fails instead of writing to disk.
 		DuckDB: DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
 	}
 }
@@ -268,9 +272,9 @@ var aliases = map[string]string{
 	"user-security-file": "cluster.user_security_file",
 }
 
-// parseValue parses text, as the environment and the command line carry
-// it, into the key's Go type, so a malformed value is refused with the
-// name of the variable or flag that carried it.
+// parseValue parses the text of an environment variable or a flag into
+// the key's Go type. Parsing here lets the caller refuse a malformed
+// value with the name of the variable or flag that carried it.
 func parseValue(k key, text string) (any, error) {
 	switch k.typ {
 	case reflect.TypeFor[string]():
@@ -322,9 +326,9 @@ func placeholder(k key) string {
 // envReference matches a ${VAR} reference inside a value.
 var envReference = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// interpolateEnv replaces every ${VAR} in text via lookup. An unset
-// variable is an error, because a silently empty secret is worse than a
-// refused start.
+// interpolateEnv replaces every ${VAR} in the text with the variable's
+// value. An unset variable is an error, because a silently empty secret
+// is worse than a refused start.
 func interpolateEnv(text string, lookup func(string) (string, bool)) (string, error) {
 	var missing []string
 	expanded := envReference.ReplaceAllStringFunc(text, func(ref string) string {
@@ -341,10 +345,10 @@ func interpolateEnv(text string, lookup func(string) (string, bool)) (string, er
 	return expanded, nil
 }
 
-// flagValues holds one parsed command line: the meta flags, and the
-// value of every key flag that was actually passed, by key path, so only
-// those override the file and the environment (an explicitly empty flag
-// value, e.g. --listen-http=, is an override too).
+// flagValues holds one parsed command line: the meta flags and, by key
+// path, the value of every key flag that was passed. Only the passed
+// flags override the file and the environment. An explicitly empty value
+// such as --listen-http= is an override too.
 type flagValues struct {
 	configPath  string
 	showVersion bool
@@ -380,9 +384,9 @@ func usageText(name string, defaults *koanf.Koanf) string {
 	return b.String()
 }
 
-// parseFlags parses args: one string flag per key, the qdbsh aliases, and
-// the two meta flags. Every flag starts empty, and fs.Visit reports what
-// the user passed.
+// parseFlags parses the arguments against one string flag per key, the
+// qdbsh aliases and the two meta flags. Every flag starts empty, and
+// fs.Visit reports what the user passed.
 func parseFlags(name string, args []string, defaults *koanf.Koanf, output io.Writer) (flagValues, error) {
 	parsed := flagValues{passed: map[string]string{}}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
@@ -411,9 +415,10 @@ func parseFlags(name string, args []string, defaults *koanf.Koanf, output io.Wri
 	return parsed, nil
 }
 
-// layer turns the values one source carries, text keyed by path as the
-// environment and the command line deliver them, into a typed map for
-// the loader. label names the source in errors.
+// layer parses the text values of one source, keyed by path, into a
+// typed map for the loader. The environment and the command line deliver
+// their values in that form. The label function names the source in
+// errors.
 func layer(values map[string]string, label func(path string) string) (map[string]any, error) {
 	out := map[string]any{}
 	for _, k := range keys() {
@@ -430,7 +435,7 @@ func layer(values map[string]string, label func(path string) string) (map[string
 	return out, nil
 }
 
-// envLayer reads every key's environment variable through lookup.
+// envLayer reads the environment variable of every key.
 func envLayer(lookup func(string) (string, bool)) (map[string]any, error) {
 	values := map[string]string{}
 	for _, k := range keys() {
@@ -470,7 +475,8 @@ func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 				}
 				v[i] = expanded
 			}
-			// Mutate in place, then Set so koanf sees the expanded list.
+			// The loop expanded the list in place, and Set makes koanf see
+			// the expanded list.
 			if err := k.Set(path, v); err != nil {
 				return err
 			}
@@ -479,8 +485,8 @@ func interpolate(k *koanf.Koanf, lookup func(string) (string, bool)) error {
 	return nil
 }
 
-// loadFile decodes the YAML file at path over k, then interpolates the
-// environment into its values.
+// loadFile decodes the YAML file over the loaded layers, then
+// interpolates the environment into its values.
 func loadFile(k *koanf.Koanf, path string, lookup func(string) (string, bool)) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -556,11 +562,15 @@ func positive(key string, d time.Duration) error {
 	return nil
 }
 
-// validateCluster checks only what the binding does not: the vocabulary
-// this config maps onto the binding's enums, the socket timeout (zero
-// leaves the Go API's default, and otherwise whole seconds of at least
-// one, the C API's own granularity) and the buffer size (an int64 here, a
-// uint there). The C API judges the URI scheme and the knob ranges at dial.
+// validateCluster checks only what the binding does not check:
+//
+//   - the vocabulary this config maps onto the binding's enums
+//   - the socket timeout, which is zero for the Go API's default or else
+//     a whole number of seconds of at least one, the granularity of the
+//     C API
+//   - the buffer size, which is an int64 here and a uint in the binding
+//
+// The C API judges the URI scheme and the knob ranges at dial.
 func validateCluster(c Cluster) error {
 	if err := oneOf("cluster.compression", c.Compression); err != nil {
 		return err
