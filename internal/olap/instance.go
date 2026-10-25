@@ -19,10 +19,9 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
-// Credentials are what an instance attaches the cluster with: one node of
-// the cluster, the user, and the cluster public key. An empty Username is
-// the anonymous user, and an empty ClusterPublicKey is an insecure
-// cluster.
+// Credentials are what an instance attaches the cluster with: one node,
+// the user and the cluster public key. An empty Username is the anonymous
+// user, and an empty ClusterPublicKey means an insecure cluster.
 type Credentials struct {
 	Host, Port          string
 	Username, SecretKey string
@@ -42,55 +41,58 @@ func (c Credentials) LogValue() slog.Value {
 		slog.Bool("secured", c.ClusterPublicKey != ""))
 }
 
-// ErrAttach is the error of an instance whose cluster attach failed. The
-// cluster refused the attach or could not be reached, and qdb-duck's
-// message does not say which.
+// ErrAttach is the error of a failed cluster attach. The cluster either
+// refused the attach or could not be reached, and qdb-duck's message does
+// not say which.
 var ErrAttach = errors.New("olap: attach failed")
 
-// Instance is one in-memory DuckDB instance with the cluster attached as
+// Instance is an in-memory DuckDB instance with the cluster attached as
 // qdb under one user's credentials. Every connection of the instance sees
-// that catalog, so an instance serves one user. It is safe for concurrent
-// queries, each on its own connection.
+// that catalog, so an instance serves one user. Concurrent queries are
+// safe, each on its own connection.
 type Instance struct {
 	connector *duckdb.Connector
 }
 
-// dsn renders the duckdb block as the settings an instance opens with.
+// dsn renders the duckdb configuration block as the settings an instance
+// opens with.
 func dsn(cfg config.DuckDB) string {
 	v := url.Values{}
 	// DuckDB reads a bare byte count when it carries the b suffix.
 	v.Set("memory_limit", strconv.FormatInt(cfg.MemoryLimit, 10)+"b")
 	v.Set("threads", strconv.Itoa(cfg.Threads))
-	// An in-memory instance spills to .tmp in the working directory when
-	// temp_directory is unset, so it is always set, and the empty string
+	// temp_directory is always set, because an in-memory instance without
+	// it spills to .tmp in the working directory. The empty string
 	// disables spilling.
 	v.Set("temp_directory", cfg.SpillDirectory)
 	v.Set("max_temp_directory_size", strconv.FormatInt(cfg.MaxSpillSize, 10)+"b")
 	return "?" + v.Encode()
 }
 
-// quote renders s as a SQL string literal.
+// quote renders a string as a SQL string literal.
 func quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
-// secretName names the secret an instance attaches through. The secret
-// is the instance's own, so one name serves every instance.
+// secretName names the secret an instance attaches through. Each
+// instance holds its own secret, so one name serves them all.
 const secretName = "qdb_rest"
 
-// secretOf is the CREATE SECRET statement that holds c.
+// secretOf is the CREATE SECRET statement that holds the credentials.
 func secretOf(c Credentials) string {
-	// The values travel as quoted literals of a secret, because qdb-duck's
-	// ATTACH string splits on every = and a QuasarDB key ends in base64
-	// padding, and qdb-duck refuses its quasar_* options in the DuckDB
-	// config at open. Inside the literals the user's text cannot reach
-	// the SQL, and duckdb_secrets() shows the private key redacted. Only
-	// the host, the port and the credentials travel, so
-	// qdb-duck's own defaults apply to the timeout, the compression and
-	// the encryption. Forwarding cluster.timeout, cluster.compression and
+	// The credentials travel as quoted literals of a secret. The ATTACH
+	// string was rejected, because qdb-duck splits it on every = and a
+	// QuasarDB key ends in base64 padding. qdb-duck's quasar_* options were
+	// rejected, because qdb-duck refuses them in the DuckDB config at
+	// open. Inside a literal the user's text cannot reach the SQL, and
+	// duckdb_secrets() shows the private key redacted.
+	//
+	// Only the host, the port and the credentials travel, so qdb-duck's
+	// own defaults set the timeout, the compression and the encryption.
+	// Forwarding cluster.timeout, cluster.compression and
 	// cluster.encryption was rejected, because qdb-duck may spell their
-	// vocabulary differently. The secret is TEMPORARY, so it lives in memory with
-	// the instance and is never written to disk.
+	// values differently. The secret is TEMPORARY, so it lives in memory
+	// with the instance and never reaches disk.
 	var b strings.Builder
 	fmt.Fprintf(&b, "CREATE TEMPORARY SECRET %s (TYPE quasar, HOST %s, PORT %s",
 		secretName, quote(c.Host), quote(c.Port))
@@ -106,16 +108,15 @@ func secretOf(c Credentials) string {
 	return b.String()
 }
 
-// Open opens an instance under cfg and attaches the cluster as qdb with c.
-// An attach that fails is ErrAttach with qdb-duck's message, and no
-// instance is left open.
+// Open opens an instance under the configuration and attaches the cluster
+// as qdb with the credentials. A failed attach is ErrAttach with
+// qdb-duck's message, and leaves no instance open.
 func Open(ctx context.Context, cfg config.DuckDB, c Credentials) (*Instance, error) {
-	// The instance is in memory, so it holds nothing but the attach and
-	// what one user's queries create. Three things fail on the way, and
-	// a failure after the open closes what the open made:
+	// The instance is in memory, so it holds only the attach and what one
+	// user's queries create. A failure after the open closes what the
+	// open made:
 	//
-	//  1. open the connector under the duckdb block, which DuckDB judges
-	//     here;
+	//  1. open the connector, where DuckDB judges the configuration;
 	//  2. on one connection, create the secret and attach through it;
 	//  3. on a failed attach, close the connector and answer ErrAttach.
 
@@ -124,9 +125,8 @@ func Open(ctx context.Context, cfg config.DuckDB, c Credentials) (*Instance, err
 	if err != nil {
 		return nil, err
 	}
-	// 2. create the secret and attach. The attach is visible to every
-	//    later connection of the instance, so this connection closes
-	//    when it is done.
+	// 2. create the secret and attach. Every later connection sees the
+	//    attach, so this connection closes when it is done.
 	if err := attach(ctx, connector, c); err != nil {
 		// 3. close what the open made
 		return nil, errors.Join(err, connector.Close())
@@ -134,9 +134,9 @@ func Open(ctx context.Context, cfg config.DuckDB, c Credentials) (*Instance, err
 	return &Instance{connector: connector}, nil
 }
 
-// attach creates the secret that holds c and attaches the cluster as qdb
-// through it, on one connection of connector. A failed attach is
-// ErrAttach with qdb-duck's message.
+// attach creates the secret and attaches the cluster as qdb through it,
+// on one connection of the connector. A failed attach is ErrAttach with
+// qdb-duck's message.
 func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) error {
 	conn, err := connector.Connect(ctx)
 	if err != nil {
@@ -154,13 +154,13 @@ func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) err
 }
 
 // lent turns the reader's batches into a sequence, each batch lent until
-// yield returns. A batch is one DuckDB vector, the reader's own size,
-// which is smaller than model.BatchRows and passes through as it is;
-// model.BatchRows at the vector's size was rejected, because it is 32
-// times the messages per native result. The reader owns each batch until
-// it reads the next, so the receiver releases none. An error the reader
-// reports after its last batch is the last element. A reader of no
-// batches yields one empty batch of its schema.
+// yield returns. A batch is one DuckDB vector, which is smaller than
+// model.BatchRows and passes through unchanged. Setting model.BatchRows
+// to the vector's size was rejected, because a native result would then
+// take 32 times the messages. The reader owns each batch until it reads
+// the next, so the receiver releases none. An error after the last batch
+// is the last element, and a reader of no batches yields one empty batch
+// of its schema.
 func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		yielded := false
@@ -182,43 +182,43 @@ func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 	}
 }
 
-// Query runs q on a connection of its own and hands its result to sink
-// as a sequence of record batches, each lent until yield returns. An
-// error before sink runs is DuckDB's (a parse, bind or execution error)
-// and is returned as is. The error of sink is returned unchanged. A
-// result of no batches is one empty batch of its schema.
+// Query runs a query on a connection of its own and hands the sink its
+// result as record batches, each lent until yield returns. An error
+// before the sink runs is DuckDB's parse, bind or execution error. The
+// sink's error is returned unchanged. A result of no batches is one empty
+// batch of its schema.
 func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arrow.RecordBatch, error]) error) error {
-	// The connection lives for one query and closes when sink returns, so
-	// a request holds nothing of the instance afterwards:
+	// The connection lives for one query and closes when the sink
+	// returns, so a request holds nothing of the instance afterwards:
 	//
 	//  1. open a connection and its Arrow interface;
-	//  2. run q, which fails before sink runs;
-	//  3. run sink over the reader's batches;
-	//  4. release the reader and close the connection, whatever sink did.
+	//  2. run the query, which fails before the sink runs;
+	//  3. run the sink over the reader's batches;
+	//  4. release the reader and close the connection, whatever the sink
+	//     did.
 
 	// 1. open a connection and its Arrow interface
 	conn, err := i.connector.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	// 4. close the connection, whatever sink did
+	// 4. close the connection, whatever the sink did
 	defer func() { _ = conn.Close() }()
 	a, err := duckdb.NewArrowFromConn(conn)
 	if err != nil {
 		return err
 	}
-	// 2. run q. The binding executes the query to a materialized result
-	//    before it answers the reader, so every parse, bind and execution
-	//    error of DuckDB's arrives here, and nothing has reached sink.
-	//    The reader itself fails only on an Arrow conversion or a
-	//    cancelled ctx.
+	// 2. run the query. The binding materializes the result before it
+	//    answers the reader, so DuckDB's parse, bind and execution errors
+	//    arrive here, before anything reaches the sink. The reader itself
+	//    fails only on an Arrow conversion or a cancelled ctx.
 	rd, err := a.QueryContext(ctx, q)
 	if err != nil {
 		return err
 	}
-	// 4. release the reader, whatever sink did
+	// 4. release the reader, whatever the sink did
 	defer rd.Release()
-	// 3. run sink
+	// 3. run the sink
 	return sink(lent(rd))
 }
 

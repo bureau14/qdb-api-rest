@@ -1,3 +1,11 @@
+// The describe answers the Arrow schema of a DuckDB query without running
+// it. Flight SQL asks for a result's schema before any data: GetFlightInfo,
+// GetSchema and the prepare all answer it, and Arrow's JDBC driver reads no
+// result without the prepare's schema. DuckDB's own Arrow conversion takes
+// a column's logical type, and duckdb-go keeps that type unexported. So
+// this file prepares the statement, reads each column's type as duckdb-go
+// exposes it, and maps that type to Arrow as DuckDB's conversion does.
+// TestDescribe keeps the map equal to the conversion.
 package olap
 
 import (
@@ -11,20 +19,20 @@ import (
 )
 
 // ErrNotOneStatement is the error of a text that holds no statement or
-// more than one. A describe prepares exactly one statement.
+// more than one, because a describe prepares one statement.
 var ErrNotOneStatement = errors.New("olap: a query is one statement")
 
 // ErrParameters is the error of a statement with parameter markers,
 // which nothing binds.
 var ErrParameters = errors.New("olap: query parameters are not supported")
 
-// ErrUndescribable is the error of a column whose DuckDB type the
-// describe does not map to Arrow. It names the column and the type.
+// ErrUndescribable is the error of a column whose DuckDB type has no
+// Arrow mapping here. Its message names the column and the type.
 var ErrUndescribable = errors.New("olap: column type cannot be described")
 
-// typeName names t for an ErrUndescribable message. It names the types
-// that fall outside arrowTypeOf's cases, and any other type by its id,
-// because duckdb-go exports no name of a type.
+// typeName names a DuckDB type for an ErrUndescribable message. duckdb-go
+// exports no type names, so it knows the types arrowTypeOf has no case for
+// and gives any other type as its id.
 func typeName(t duckdb.Type) string {
 	switch t {
 	case duckdb.TYPE_GEOMETRY:
@@ -42,8 +50,8 @@ func typeName(t duckdb.Type) string {
 	}
 }
 
-// enumIndex answers the index type DuckDB stores an ENUM of n values in,
-// which is the dictionary's index type on the Arrow side.
+// enumIndex answers the index type of an ENUM of n values, which DuckDB
+// stores the ENUM in and the Arrow dictionary uses.
 func enumIndex(n int) arrow.DataType {
 	// DuckDB's EnumTypeInfo::DictType picks the smallest unsigned type
 	// that counts every value.
@@ -58,23 +66,18 @@ func enumIndex(n int) arrow.DataType {
 }
 
 // arrowTypeOf answers the Arrow type DuckDB's Arrow conversion gives a
-// column of t, under the default client properties, with tz as the
-// zone of a TIMESTAMP_TZ. A type outside the conversion's own switch is
-// ErrUndescribable.
+// column of the type, with tz as the zone of a TIMESTAMP_TZ. A type the
+// map has no case for is ErrUndescribable.
 func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 	// The cases follow SetArrowFormat in arrow_converter.cpp of DuckDB
-	// 1.5.4, the version qdb-duck pins, case by case, under the defaults of
-	// its client properties: regular offsets, no list or string views,
-	// lossless conversion off and output version 1.0. The nested types
-	// recurse. TestDescribe keeps the cases equal to what the reader
-	// answers.
+	// 1.5.4, the version qdb-duck pins, under its default client
+	// properties: regular offsets, no views, lossless conversion off and
+	// output version 1.0. The nested types recurse.
 	//
-	// The map exists because duckdb-go keeps a column's logical type
-	// unexported, so DuckDB's own conversion cannot be asked. A LIMIT 0 run
-	// through the reader was rejected, because it fails on a statement
-	// that cannot be a subquery (SHOW, DESCRIBE, PRAGMA, SET). A duckdb-go
-	// change that exports the logical type was rejected, because it waits
-	// on an outside project.
+	// A LIMIT 0 run through the reader was rejected, because SHOW,
+	// DESCRIBE, PRAGMA and SET cannot be a subquery. A duckdb-go change
+	// that exports the logical type was rejected, because it waits on an
+	// outside project.
 	switch t.InternalType() {
 	case duckdb.TYPE_BOOLEAN:
 		return arrow.FixedWidthTypes.Boolean, nil
@@ -126,9 +129,9 @@ func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 		return &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: tz}, nil
 	case duckdb.TYPE_INTERVAL:
 		return arrow.FixedWidthTypes.MonthDayNanoInterval, nil
-	// unreachable through duckdb-go, which answers no TypeInfo for
-	// SQLNULL: columnsOf types a top-level one, and a nested one is
-	// ErrUndescribable there. The case keeps the conversion's row.
+	// Unreachable: duckdb-go has no TypeInfo for SQLNULL, so columnsOf
+	// types a top-level one and refuses a nested one. The case mirrors
+	// the conversion.
 	case duckdb.TYPE_SQLNULL:
 		return arrow.Null, nil
 	// the child is named l
@@ -158,9 +161,8 @@ func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 			fields[i] = arrow.Field{Name: e.Name(), Type: c, Nullable: true}
 		}
 		return arrow.StructOf(fields...), nil
-	// DuckDB marks the entries struct and its key not nullable. arrow-go's
-	// import builds the map through MapOf from the key and value types
-	// alone, so MapOf here answers the type the reader does.
+	// arrow-go's import builds a map through MapOf from the key and value
+	// types, so MapOf answers the reader's type, non-nullable key included.
 	case duckdb.TYPE_MAP:
 		d := t.Details().(*duckdb.MapDetails)
 		k, err := arrowTypeOf(d.Key, tz)
@@ -186,13 +188,12 @@ func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 			codes[i] = arrow.UnionTypeCode(i)
 		}
 		return arrow.SparseUnionOf(fields, codes), nil
-	// a dictionary of utf8 values whose index type follows the number of
-	// values, unordered
+	// an unordered dictionary of utf8 values
 	case duckdb.TYPE_ENUM:
 		d := t.Details().(*duckdb.EnumDetails)
 		return &arrow.DictionaryType{IndexType: enumIndex(len(d.Values)), ValueType: arrow.BinaryTypes.String}, nil
-	// An extension or newer type has no case, and a guess would promise a
-	// client a type the stream does not carry.
+	// An extension or a newer type has no case, because a guess would
+	// promise a client a type the stream does not carry.
 	default:
 		return nil, fmt.Errorf("%w: DuckDB %s", ErrUndescribable, typeName(t.InternalType()))
 	}
@@ -205,9 +206,9 @@ type column struct {
 	info duckdb.TypeInfo
 }
 
-// columnsOf answers the columns of st. A column whose type duckdb-go
-// does not model is ErrUndescribable, naming the column, and a bare
-// SQLNULL column has a nil info, which Describe types as null.
+// columnsOf answers the columns of a prepared statement. A bare SQLNULL
+// column has no info, and a column of a type duckdb-go does not model is
+// ErrUndescribable.
 func columnsOf(st *duckdb.Stmt) ([]column, error) {
 	n, err := st.ColumnCount()
 	if err != nil {
@@ -218,8 +219,8 @@ func columnsOf(st *duckdb.Stmt) ([]column, error) {
 		if cols[i].name, err = st.ColumnName(i); err != nil {
 			return nil, err
 		}
-		// duckdb-go refuses a TypeInfo for SQLNULL, so the type id finds
-		// that column first.
+		// duckdb-go has no TypeInfo for SQLNULL, so the type id finds that
+		// column first.
 		id, err := st.ColumnType(i)
 		if err != nil {
 			return nil, err
@@ -234,7 +235,8 @@ func columnsOf(st *duckdb.Stmt) ([]column, error) {
 	return cols, nil
 }
 
-// hasZone reports whether t is a TIMESTAMP_TZ or holds one at any depth.
+// hasZone reports whether a type is a TIMESTAMP_TZ or holds one at any
+// depth.
 func hasZone(t duckdb.TypeInfo) bool {
 	if t == nil {
 		return false
@@ -264,8 +266,8 @@ func hasZone(t duckdb.TypeInfo) bool {
 	return t.InternalType() == duckdb.TYPE_TIMESTAMP_TZ
 }
 
-// zoneOf answers the TimeZone setting of conn, the zone DuckDB's Arrow
-// conversion tags a TIMESTAMP_TZ with.
+// zoneOf answers the connection's TimeZone setting, which DuckDB's Arrow
+// conversion puts on a TIMESTAMP_TZ.
 func zoneOf(ctx context.Context, conn driver.Conn) (string, error) {
 	rows, err := conn.(driver.QueryerContext).QueryContext(ctx, "SELECT current_setting('TimeZone')", nil)
 	if err != nil {
@@ -283,18 +285,16 @@ func zoneOf(ctx context.Context, conn driver.Conn) (string, error) {
 	return tz, nil
 }
 
-// Describe answers the Arrow schema of q's result without running q, in
-// the types Query streams for the same q. q is one statement without
-// parameter markers. A text of no statement or several is
-// ErrNotOneStatement, a statement with parameters is ErrParameters, a
-// column type outside the map is ErrUndescribable, and a parse or bind
-// error is DuckDB's.
+// Describe answers the Arrow schema Query would stream for a query,
+// without running it. The query is one statement without parameter
+// markers. The errors are ErrNotOneStatement, ErrParameters,
+// ErrUndescribable, and DuckDB's own parse and bind errors.
 func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error) {
-	// The statement is prepared and never executed, and the connection
-	// lives for one describe, as Query's does:
+	// The statement is prepared and never executed, on a connection that
+	// lives for one describe as Query's does:
 	//
 	//  1. open a connection of its own;
-	//  2. prepare q as one statement;
+	//  2. prepare the query as one statement;
 	//  3. refuse parameter markers;
 	//  4. read each column's name and type;
 	//  5. read the TimeZone when a column holds a TIMESTAMP_TZ;
@@ -306,11 +306,11 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	// 2. driver.Conn's Prepare, the statement closed whatever happened.
-	//    PrepareContext was rejected, because it executes every statement
-	//    before the last. Prepare's error is a *duckdb.Error for DuckDB's
-	//    own parse and bind errors, and any other error is duckdb-go's
-	//    refusal of a text of several statements or of none.
+	// 2. prepare through driver.Conn's Prepare, and close the statement
+	//    whatever happened. PrepareContext was rejected, because it
+	//    executes every statement before the last. A *duckdb.Error is
+	//    DuckDB's parse or bind error. Any other error is duckdb-go
+	//    refusing a text of several statements or of none.
 	prepared, err := conn.Prepare(q)
 	if err != nil {
 		var de *duckdb.Error
@@ -321,18 +321,17 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 	}
 	defer func() { _ = prepared.Close() }()
 	st := prepared.(*duckdb.Stmt)
-	// 3. NumInput above zero is ErrParameters, because nothing binds a
-	//    value
+	// 3. refuse parameter markers, because nothing binds a value
 	if st.NumInput() > 0 {
 		return nil, ErrParameters
 	}
-	// 4. the columns, as the statement describes them
+	// 4. read the columns
 	cols, err := columnsOf(st)
 	if err != nil {
 		return nil, err
 	}
-	// 5. the TimeZone on the same connection, only when a column needs it,
-	//    because the reader tags a TIMESTAMP_TZ with that setting
+	// 5. read the TimeZone only when a column needs it, because the reader
+	//    puts that setting on a TIMESTAMP_TZ
 	var tz string
 	for _, c := range cols {
 		if hasZone(c.info) {
@@ -342,9 +341,8 @@ func (i *Instance) Describe(ctx context.Context, q string) (*arrow.Schema, error
 			break
 		}
 	}
-	// 6. each field nullable, as DuckDB's Arrow conversion makes every
-	//    column, and named and typed as the statement says. A bare SQLNULL
-	//    column is the null type, as the conversion gives it.
+	// 6. map the columns. Every field is nullable, as DuckDB's conversion
+	//    makes it, and a bare SQLNULL column is the null type.
 	fields := make([]arrow.Field, len(cols))
 	for n, c := range cols {
 		dt := arrow.DataType(arrow.Null)

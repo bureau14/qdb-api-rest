@@ -1,7 +1,7 @@
-// The DuckDB query is pinned against the live qdbd fixture. A generated
-// table, read through qdb.<name> on an instance attached as the cluster's
-// user, answers the rows that were written. This is an external test
-// package, because the table fixture imports internal/qdb, which imports
+// The DuckDB tests run against the live qdbd fixture. A generated table,
+// read through qdb.<name> on an instance attached as the cluster's user,
+// answers the rows that were written. This is an external test package,
+// because the table fixture imports internal/qdb, which imports
 // internal/olap.
 package olap_test
 
@@ -43,8 +43,8 @@ func hostPort(t *testing.T, uri string) (string, string) {
 	return host, port
 }
 
-// open opens an instance under the default duckdb block with c and
-// closes it on t's cleanup.
+// open opens an instance with the default configuration and the
+// credentials, and closes it when the test ends.
 func open(t *testing.T, c olap.Credentials) *olap.Instance {
 	t.Helper()
 	in, err := olap.Open(context.Background(), config.Default().DuckDB, c)
@@ -59,9 +59,9 @@ func open(t *testing.T, c olap.Credentials) *olap.Instance {
 	return in
 }
 
-// credentialsOf is what an instance attaches with as f's user: the host
-// and port of f's URI, and on the secure cluster the user's credentials
-// and the cluster public key.
+// credentialsOf is what an instance attaches with as the fixture's user:
+// the host and port of the cluster URI, and on the secure cluster the
+// user's credentials and the cluster public key.
 func credentialsOf(t *testing.T, f cluster.Fixture) olap.Credentials {
 	t.Helper()
 	host, port := hostPort(t, f.Spec.URI)
@@ -123,7 +123,7 @@ func TestQueryReadsGeneratedTable(t *testing.T) {
 	})
 }
 
-// readerSchema answers the schema of the reader Query answers for q on in.
+// readerSchema answers the schema Query's reader answers for a query.
 func readerSchema(t table.T, in *olap.Instance, q string) *arrow.Schema {
 	t.Helper()
 	var sc *arrow.Schema
@@ -142,7 +142,7 @@ func readerSchema(t table.T, in *olap.Instance, q string) *arrow.Schema {
 	return sc
 }
 
-// enumOf is an ENUM type of n values v0 to v<n-1>.
+// enumOf is an ENUM type of n values, v0 to v<n-1>.
 func enumOf(n int) string {
 	vs := make([]string, n)
 	for i := range vs {
@@ -151,26 +151,25 @@ func enumOf(n int) string {
 	return "ENUM(" + strings.Join(vs, ", ") + ")"
 }
 
-// TestDescribe: on each cluster, the schema Describe answers equals the
-// schema of the reader Query answers, for one query per row of the
-// conversion table and for a generated table read through qdb.<name>,
-// and two statements, a ? marker and a GEOMETRY column answer their
-// errors.
+// TestDescribe: on each cluster, Describe answers the schema of Query's
+// reader for one query per row of the conversion table and for a
+// generated table. Two statements, a ? marker and a GEOMETRY column
+// answer their errors.
 func TestDescribe(t *testing.T) {
-	// The map in describe.go is this repository's own copy of DuckDB's
-	// Arrow conversion, and this test is what keeps the two equal:
+	// The map in describe.go copies DuckDB's Arrow conversion, and this test
+	// keeps the two equal:
 	//
 	//  1. open one instance per cluster;
 	//  2. describe one cast per row of the conversion table;
 	//  3. describe a generated table;
 	//  4. describe the texts the describe refuses.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
-		// 1. one instance per cluster, as TestQueryReadsGeneratedTable
-		//    opens it
+		// 1. one instance per cluster, opened as in
+		//    TestQueryReadsGeneratedTable
 		in := open(t, credentialsOf(t, f))
-		// 2. one cast per row of the conversion table, the nested types,
-		//    a TIMESTAMPTZ and both ENUM index widths included, compared
-		//    with Schema.Equal, field metadata included
+		// 2. one cast per row of the conversion table, nested types, a
+		//    TIMESTAMPTZ and both ENUM index widths included. Schema.Equal
+		//    compares the field metadata too.
 		exprs := []string{
 			"true", "1::TINYINT", "1::SMALLINT", "1::INTEGER", "1::BIGINT",
 			"1::UTINYINT", "1::USMALLINT", "1::UINTEGER", "1::UBIGINT",
@@ -197,8 +196,8 @@ func TestDescribe(t *testing.T) {
 				t.Errorf("describe %q:\n got  %v\n want %v", q, got, want)
 			}
 		}
-		// 3. a generated table through tbl.SelectSQL(), whose columns
-		//    are the types qdb-duck reads from the cluster
+		// 3. a generated table, whose columns carry the types qdb-duck reads
+		//    from the cluster
 		rapid.Check(t, func(rt *rapid.T) {
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, f.Cluster, f.User, tbl)
