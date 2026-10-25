@@ -3,6 +3,7 @@
 # explicitly.
 #
 #   make e2etool                    build the Go tool of the v2 round trip into bin/
+#   make jdbc                       build the JDBC smoke jar of the v2 round trip
 #   make test-round-trip            the v2 round trip, one server per cluster
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
@@ -50,6 +51,11 @@ EXE_EXT := $(if $(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),.exe,)
 BIN_DIR := $(REPO_ROOT)/bin
 E2ETOOL := $(BIN_DIR)/e2etool$(EXE_EXT)
 
+# The JDBC smoke step's jar (docs/e2e.md, The Flight SQL smoke steps),
+# which Maven builds in the project's own target/.
+JDBC_DIR := $(E2E_DIR)/tools/jdbc
+JDBC_JAR := $(JDBC_DIR)/target/jdbc-smoke.jar
+
 # The v2 round trip (docs/e2e.md, "The v2 round trip") runs on both clusters, each
 # against its own server, because the secure one costs one block here
 # and is the only step that proves the key-file flags. ROWS and SEED
@@ -83,10 +89,10 @@ ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
 
 COMMON := source $(E2E_DIR)/common.sh
 
-.PHONY: help services-check e2etool test-round-trip clean
+.PHONY: help services-check e2etool jdbc test-round-trip clean
 
 help:
-	@sed -n '2,8p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,9p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -102,12 +108,20 @@ e2etool:
 	    go build -mod=vendor -buildvcs=false -o $(E2ETOOL) ./tests/e2e/tools/e2etool && \
 	    log_info "built $(E2ETOOL)"
 
+# Maven resolves the driver into its local repository and shades it with
+# the tool into one jar. A missing java or mvn fails the target, and
+# with it the round trip, on every platform, because a skip written
+# before the failure is seen hides where it should not apply.
+jdbc:
+	@$(COMMON); require_command java; require_command mvn; \
+	    cd $(JDBC_DIR) && mvn -q package && log_info "built $(JDBC_JAR)"
+
 # Both clusters must answer, because the round trip logs in to each.
 # services-check probes the insecure one, and the secure probe lives
 # here. The round trip loads nothing. Each server not given as a URL is
 # started here and stopped on exit, one after the other being fine
 # because the driver runs the clusters in sequence.
-test-round-trip: services-check e2etool
+test-round-trip: services-check e2etool jdbc
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
@@ -126,10 +140,10 @@ test-round-trip: services-check e2etool
 	fi; \
 	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
 	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
-	    --tool $(E2ETOOL) --rows $(ROWS) --seed $(SEED)
+	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED)
 
 # ------------------------------------------------------------------ cleanup
 
 clean:
 	@$(COMMON); stop_server $(REST_PID); stop_server $(REST_PID_SECURE); \
-	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(E2ETOOL)
+	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(E2ETOOL) $(JDBC_DIR)/target
