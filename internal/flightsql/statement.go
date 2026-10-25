@@ -35,7 +35,8 @@ func describe(ctx context.Context, q string) (*arrow.Schema, bool, error) {
 	switch {
 	// No schema, so a plain statement over such a type runs as it would
 	// without a describe, and only the calls whose answer is the schema
-	// fail (schemaOf).
+	// fail (schemaOf). Failing every call was rejected, because it stops
+	// a query that runs over ADBC.
 	case errors.Is(err, olap.ErrUndescribable):
 		return nil, false, nil
 	// A text that is not one statement and a query with parameters fall to
