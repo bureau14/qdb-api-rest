@@ -28,6 +28,12 @@ ADR-0017.
   plain `time64` without its offset. Setting the instance's TimeZone and
   carrying the TIMETZ offset were rejected, because on the DuckDB path
   the endpoint answers what DuckDB answers and adds no rule of its own.
+- A describe prepares one statement and maps its column types to the
+  Arrow types DuckDB's conversion gives them (`arrowTypeOf`), because
+  duckdb-go keeps the logical type it would need to ask DuckDB. A type
+  outside the map is `ErrUndescribable`, and `TestDescribe` keeps the map
+  equal to the conversion for every type it covers. A DuckDB bump runs
+  that test before anything else.
 - `internal/encoding/AGENTS.md` lists the types the text encoders write,
   and a column of any other type fails at the encoder, which names the
   column.
