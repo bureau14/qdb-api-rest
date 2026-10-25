@@ -386,7 +386,9 @@ The value of Flight SQL over plain Flight is the existing client
 ecosystem: stock ADBC and JDBC drivers work without custom client code.
 QuasarDB already maintains an ODBC driver and generally ships
 compatibility layers. Having this ecosystem available is a selling point
-worth the constraint.
+worth the constraint. The server answers prepared statements without
+storing them, with the query text as the handle, because Arrow's JDBC
+driver runs every statement as one.
 
 The minimal implementation scope (ADR-0018): `Handshake` (username and
 secret, checked against the cluster as the v2 login checks them, answering
@@ -394,8 +396,9 @@ the access token) and bearer-token metadata auth, `CommandStatementQuery`
 -> `GetFlightInfo` -> `DoGet` streaming Arrow record batches, `GetSqlInfo`
 describing the server fully and honestly, and the catalog commands
 (`GetTables` from the cluster's table list, `GetCatalogs`, `GetDbSchemas`
-and `GetTableTypes` answering the fixed shape of one cluster). Prepared
-statements, transactions and everything else return UNIMPLEMENTED.
+and `GetTableTypes` answering the fixed shape of one cluster), and
+prepared statements without parameters. Transactions and everything
+else return UNIMPLEMENTED.
 Ingestion through `DoPut` is a possible later addition and not part of
 the minimal scope.
 
@@ -414,10 +417,9 @@ encoders take, so the HTTP handlers and the Flight server share it and
 **The server stores nothing between calls** (owner, 2026-10-13). The
 ticket `GetFlightInfo` answers is the query text, and `DoGet` runs it,
 so the two calls of one client may reach different instances behind a
-load balancer. `FlightInfo` carries no schema, because the native engine
-does not know a result's columns before running the query, and
-`GetSchemaStatement` is UNIMPLEMENTED rather than running every query
-twice. On a cluster without security a call with no token runs as the
+load balancer. `FlightInfo` and `GetSchemaStatement` carry the schema
+the engine describes without running the query (ADR-0018, Decision 9).
+On a cluster without security a call with no token runs as the
 anonymous user. A Flight client whose access token has expired
 reconnects, as stock drivers do, and Flight has no refresh path until
 that proves to be a problem.
