@@ -169,4 +169,4 @@ schema of a query it has not run (owner, 2026-10-24).
 | Describing a native query through qdb-duck's `qdb_query` | the schema would be in DuckDB's types and not the native engine's                                                                 |
 | A `LIMIT 0` run to describe a `#sql` query               | SHOW, DESCRIBE, PRAGMA and SET cannot be a subquery, so it fails on them                                                          |
 | Casting the stream to the described schema               | each prepared fetch would describe again, for an edge case of qdbd's                                                              |
-| Parameters now                                           | the native engine has no binding, and native substitution is textual                                                              |
+| Query parameters                                         | the native engine has no binding, and native substitution is textual                                                              |
