@@ -26,8 +26,8 @@ const (
 	SecureURI   = "qdb://127.0.0.1:2838"
 )
 
-// Require fails t with the start recipe when the node behind uri does not
-// accept a TCP connection.
+// Require fails the test with the start recipe when the node behind the
+// URI does not accept a TCP connection.
 func Require(t testing.TB, uri string) {
 	t.Helper()
 	addr := strings.TrimPrefix(uri, "qdb://")
@@ -111,15 +111,16 @@ func Secure(t testing.TB) Cluster {
 	}
 }
 
-// Clusters is both clusters, insecure first.
+// Clusters returns both clusters, insecure first.
 func Clusters(t testing.TB) []Cluster {
 	t.Helper()
 	return []Cluster{Insecure(), Secure(t)}
 }
 
-// Config is the default configuration bound to c: its URI, and on the
-// secure cluster its public key file and the REST API's own user. It
-// fails t with the start recipe when c does not answer. The cluster
+// Config returns the default configuration bound to the cluster. It sets
+// the URI and, on the secure cluster, the public key file and the REST
+// API's own user. It fails the test with the start recipe when the
+// cluster does not answer. The cluster
 // fixture and the package qdb tests both build their configurations
 // here, so the binding rule has one copy.
 func (c Cluster) Config(t testing.TB) config.Config {

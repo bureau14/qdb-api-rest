@@ -24,8 +24,8 @@ type Fixture struct {
 	User    qdb.User
 }
 
-// Bind binds spec for t's life under the default configuration as edit
-// leaves it. A nil edit keeps the defaults.
+// Bind binds a *qdb.Cluster to the cluster for the test's life, under the
+// default configuration after the edit. A nil edit keeps the defaults.
 func Bind(t testing.TB, spec qdbtest.Cluster, edit func(*config.Config)) Fixture {
 	t.Helper()
 	cfg := spec.Config(t)
@@ -39,7 +39,7 @@ func Bind(t testing.TB, spec qdbtest.Cluster, edit func(*config.Config)) Fixture
 	}
 }
 
-// Each runs test once per cluster of the test services, as a subtest
+// Each runs the test once per cluster of the test services, as a subtest
 // named by the cluster, each with its own bound cluster.
 func Each(t *testing.T, test func(t *testing.T, f Fixture)) {
 	t.Helper()
@@ -55,7 +55,8 @@ func EachWith(t *testing.T, edit func(*config.Config), test func(t *testing.T, f
 	}
 }
 
-// bind builds the cluster from cfg and closes it on t's cleanup.
+// bind builds the cluster from the configuration and closes it on the
+// test's cleanup.
 func bind(t testing.TB, cfg config.Config) *qdb.Cluster {
 	t.Helper()
 	c := qdb.New(cfg, nil)

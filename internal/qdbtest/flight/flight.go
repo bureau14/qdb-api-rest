@@ -25,10 +25,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
-// Dial opens arrow-go's Flight SQL client on addr with certificate
+// Dial opens arrow-go's Flight SQL client on the address with certificate
 // verification off, because every test server runs on the ephemeral
-// certificate, as the driver smoke steps connect. The client closes on
-// t's cleanup.
+// certificate, as the driver smoke steps connect. The client closes when
+// the test ends.
 func Dial(t table.T, addr string) *flightsql.Client {
 	t.Helper()
 	creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: true}) //nolint:gosec // the test certificate is ephemeral
@@ -40,15 +40,15 @@ func Dial(t table.T, addr string) *flightsql.Client {
 	return cl
 }
 
-// Bearer is ctx with one authorization header carrying token, the form
-// every RPC presents.
+// Bearer adds one authorization header carrying the token to the
+// context, the form every RPC presents.
 func Bearer(ctx context.Context, token string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 }
 
-// TicketOf runs Execute for q and answers the one endpoint's ticket.
+// TicketOf runs Execute for the query and answers its endpoint's ticket.
 // GetFlightInfo describes the query, so a query that fails to describe
-// fails here and t fails. The tests of a failing statement call Execute
+// fails the test here. The tests of a failing statement call Execute
 // directly.
 func TicketOf(t table.T, cl *flightsql.Client, ctx context.Context, q string) *flight.Ticket {
 	t.Helper()
@@ -81,15 +81,15 @@ func ReadAll(t table.T, cl *flightsql.Client, ctx context.Context, ticket *fligh
 	return rdr.Schema(), recs, rdr.Err()
 }
 
-// Release releases every batch of recs.
+// Release releases every batch.
 func Release(recs []arrow.RecordBatch) {
 	for _, r := range recs {
 		r.Release()
 	}
 }
 
-// Concat joins recs, which share schema, into one batch the caller
-// releases. No batch is an empty batch of schema.
+// Concat joins batches of one schema into one batch the caller releases.
+// No batches join into an empty batch of the schema.
 func Concat(t table.T, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.RecordBatch {
 	t.Helper()
 	cols := make([]arrow.Array, schema.NumFields())
@@ -125,10 +125,10 @@ func Concat(t table.T, schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Rec
 	return rec
 }
 
-// Execute runs q over Flight as a whole, Execute then DoGet, and answers
-// the result joined into one batch the caller releases, so a comparison
-// does not depend on how the server cut the stream: the native engine
-// sends model.BatchRows rows per message and DuckDB one vector.
+// Execute runs a query over Flight, Execute then DoGet, and answers the
+// result joined into one batch the caller releases. A comparison then does
+// not depend on how the server cut the stream: the native engine sends
+// model.BatchRows rows per message and DuckDB one vector.
 func Execute(t table.T, cl *flightsql.Client, ctx context.Context, q string) arrow.RecordBatch {
 	t.Helper()
 	schema, recs, err := ReadAll(t, cl, ctx, TicketOf(t, cl, ctx, q))
@@ -139,7 +139,7 @@ func Execute(t table.T, cl *flightsql.Client, ctx context.Context, q string) arr
 	return Concat(t, schema, recs)
 }
 
-// Prepare prepares q, answers the prepare's dataset schema and the
+// Prepare prepares a query, answers the prepare's dataset schema and the
 // result read through the prepared statement joined into one batch the
 // caller releases, and closes the statement.
 func Prepare(t table.T, cl *flightsql.Client, ctx context.Context, q string) (*arrow.Schema, arrow.RecordBatch) {

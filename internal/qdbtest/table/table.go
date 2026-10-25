@@ -1,13 +1,13 @@
 // Package table is the generated table fixture, in building blocks that
-// stack. GenerateSchema draws a table without rows, Generate draws rows
-// into one as a record batch in the reader's types, GenerateLike draws
-// another table of the same columns, RemoveOnCleanup removes whatever a
-// table leaves behind, and Create creates the table, pushes its batch
-// through the Arrow writer and removes it on the test's cleanup. Check
-// and CheckColumn compare what a read answers with the batch written, by
-// array equality. WithTable and Body are the batch as an ingest body
-// carries it, for a test that pushes through its own door (an HTTP
-// route). The blocks are functions of the test's rapid.T and take no
+// stack. GenerateSchema draws a table without rows. Generate draws a table
+// with rows, held as a record batch in the reader's types. GenerateLike
+// draws another table of the same columns. RemoveOnCleanup removes
+// whatever a table leaves behind. Create creates the table, pushes its
+// batch through the Arrow writer and removes it on the test's cleanup.
+// Check and CheckColumn compare what a read answers with the batch
+// written, by array equality. WithTable and Body build the batch an
+// ingest body carries, for a test that pushes through its own door (an
+// HTTP route). The blocks are functions of the test's rapid.T and take no
 // options, because the consumers differ only in bounds, and one set
 // serves all. The rules are in internal/AGENTS.md, Tests.
 package table
@@ -49,7 +49,7 @@ type Column struct {
 
 // Table is a generated table: its name, its schema and its rows as one
 // record batch, $timestamp first and then the columns in order, each in
-// the Arrow type the binding's ArrowType answers for its column type. A
+// the Arrow type that the binding's ArrowType gives for its column type. A
 // nil Batch is a table of no rows. The fixture releases the batch on
 // the test's cleanup, and a test never releases it.
 type Table struct {
@@ -93,10 +93,10 @@ func drawTime(rt *rapid.T) time.Time {
 	return time.Unix(0, rapid.Int64Range(0, max).Draw(rt, "nanos")).UTC()
 }
 
-// appendValue draws one value of kind into b. The server reads a stored
-// MinInt64 or NaN as null and a zero-length string or blob as null, so
-// none of them is drawn, because a value read back must be the value
-// written.
+// appendValue draws one value of the column type into the builder. The
+// server reads a stored MinInt64 or NaN as null and a zero-length string
+// or blob as null. None of them is drawn, because a value read back must
+// be the value written.
 func appendValue(rt *rapid.T, kind qdbapi.TsColumnType, b array.Builder) {
 	switch b := b.(type) {
 	case *array.Int64Builder:
@@ -120,7 +120,8 @@ func appendValue(rt *rapid.T, kind qdbapi.TsColumnType, b array.Builder) {
 	}
 }
 
-// generateArray draws n cells of kind, each null at nullPct percent.
+// generateArray draws n cells of the column type, each null with a
+// probability of nullPct percent.
 func generateArray(rt *rapid.T, kind qdbapi.TsColumnType, n, nullPct int) arrow.Array {
 	b := array.NewBuilder(memory.DefaultAllocator, kind.ArrowType())
 	defer b.Release()
@@ -146,8 +147,8 @@ func generateIndex(rt *rapid.T, n int) arrow.Array {
 	return b.NewArray()
 }
 
-// Schema is the schema of tbl's batch: $timestamp, non-nullable, then
-// the columns in order, nullable, in the binding's Arrow types.
+// Schema returns the schema of the table's batch: $timestamp, non-nullable,
+// then the columns in order, nullable, in the binding's Arrow types.
 func Schema(tbl Table) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(tbl.Columns)+1)
 	fields = append(fields, arrow.Field{Name: "$timestamp", Type: qdbapi.TsColumnTimestamp.ArrowType()})
@@ -157,11 +158,12 @@ func Schema(tbl Table) *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// SchemaWithMeta is the schema the Flight catalog answers for tbl under
-// include_schema: Schema's fields, a symbol column's field carrying
-// qdb.MetaSymtable, and shard and ttl as qdb.MetaShardSize and qdb.MetaTTL
-// in milliseconds. The fixture states the shape by construction, so a test
-// compares against it and not against the server's own builder.
+// SchemaWithMeta returns the schema the Flight catalog answers for the
+// table under include_schema. It has Schema's fields, and a symbol
+// column's field carries qdb.MetaSymtable. The schema carries the shard
+// size and the TTL as qdb.MetaShardSize and qdb.MetaTTL, in milliseconds.
+// The fixture states the shape by construction, so a test compares
+// against it rather than against the server's own builder.
 func SchemaWithMeta(tbl Table, shard, ttl time.Duration) *arrow.Schema {
 	// The implicit index first, non-nullable, as Schema places it.
 	fields := make([]arrow.Field, 0, len(tbl.Columns)+1)
@@ -183,9 +185,9 @@ func SchemaWithMeta(tbl Table, shard, ttl time.Duration) *arrow.Schema {
 	return arrow.NewSchema(fields, &meta)
 }
 
-// GenerateRows draws rows rows into tbl's batch at one drawn null density
-// for the whole table, so runs range from no nulls to all-null columns.
-// The batch is released on rt's cleanup.
+// GenerateRows draws the given number of rows into the table's batch. One
+// drawn null density applies to the whole table, so runs range from no
+// nulls to all-null columns. The batch is released on the test's cleanup.
 func GenerateRows(rt *rapid.T, tbl Table, rows int) Table {
 	nullPct := rapid.IntRange(0, 100).Draw(rt, "null pct")
 	cols := make([]arrow.Array, 0, len(tbl.Columns)+1)
@@ -201,14 +203,14 @@ func GenerateRows(rt *rapid.T, tbl Table, rows int) Table {
 	return tbl
 }
 
-// generateRows draws tbl's rows: a row count of 0 to 40, then
+// generateRows draws a row count of 0 to 40, then the rows through
 // GenerateRows.
 func generateRows(rt *rapid.T, tbl Table) Table {
 	return GenerateRows(rt, tbl, rapid.IntRange(0, 40).Draw(rt, "rows"))
 }
 
-// generateColumn draws column i of table without cells: its name, its
-// type and, for a symbol, a symtable named after both.
+// generateColumn draws column i of the named table without cells: its name,
+// its type and, for a symbol, a symtable named after both.
 func generateColumn(rt *rapid.T, table string, i int) Column {
 	c := Column{Name: fmt.Sprintf("c%d", i), Type: rapid.SampledFrom(columnTypes).Draw(rt, "type")}
 	if c.Type == qdbapi.TsColumnSymbol {
@@ -233,9 +235,9 @@ func Generate(rt *rapid.T) Table {
 	return generateRows(rt, GenerateSchema(rt))
 }
 
-// GenerateLike draws a table of tbl's columns under a fresh name, with
-// its own rows. The columns keep the same names and types, and a symbol
-// column's symtable is named after the new table, so several tables
+// GenerateLike draws a table of the given table's columns under a fresh
+// name, with its own rows. The columns keep the same names and types, and a
+// symbol column's symtable is named after the new table, so several tables
 // share one column list.
 func GenerateLike(rt *rapid.T, tbl Table) Table {
 	like := Table{Name: "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "table")}
@@ -249,9 +251,9 @@ func GenerateLike(rt *rapid.T, tbl Table) Table {
 	return generateRows(rt, like)
 }
 
-// Select is the query that answers tbl's rows as written: $timestamp
-// first, then the columns in order, rows ascending by $timestamp. A bare
-// SELECT * would also answer the $table column.
+// Select returns the query that answers the table's rows as written:
+// $timestamp first, then the columns in order, rows ascending by
+// $timestamp. A bare SELECT * would also answer the $table column.
 func (tbl Table) Select() string {
 	names := make([]string, 0, len(tbl.Columns)+1)
 	names = append(names, "$timestamp")
@@ -280,7 +282,7 @@ func quoteSQL(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
-// Rows is tbl's row count, and a nil batch has none.
+// Rows returns the table's row count, which is zero for a nil batch.
 func (tbl Table) Rows() int {
 	if tbl.Batch == nil {
 		return 0
@@ -288,11 +290,11 @@ func (tbl Table) Rows() int {
 	return int(tbl.Batch.NumRows())
 }
 
-// Range is the half-open span of tbl's index as the reader takes a
-// range: the first $timestamp to the last plus one nanosecond. A table
-// with no rows, a nil batch or a batch of none, answers the
-// one-nanosecond span at the start every index begins at, so a read of
-// it is bounded too.
+// Range returns the half-open span of the table's index as the reader
+// takes a range, from the first $timestamp to the last plus one
+// nanosecond. A table with no rows, whether its batch is nil or empty,
+// answers the one-nanosecond span at indexStart, so a read of it is
+// bounded too.
 func (tbl Table) Range() (start, end time.Time) {
 	// No rows were written, so there is no span to read. The
 	// one-nanosecond span keeps the read bounded without inventing rows.
@@ -308,8 +310,8 @@ func (tbl Table) Range() (start, end time.Time) {
 	return start, last.Add(time.Nanosecond)
 }
 
-// batchOf is tbl's batch, retained, or an empty batch of its schema when
-// tbl has none. The caller releases it.
+// batchOf returns the table's batch, retained, or an empty batch of its
+// schema when the table has none. The caller releases it.
 func batchOf(tbl Table) arrow.RecordBatch {
 	if tbl.Batch != nil {
 		tbl.Batch.Retain()
@@ -327,7 +329,8 @@ func batchOf(tbl Table) arrow.RecordBatch {
 	return rec
 }
 
-// tableColumn is the $table column of n rows naming tbl.
+// tableColumn builds a $table column of n rows, each holding the table's
+// name.
 func tableColumn(tbl Table, n int) arrow.Array {
 	b := array.NewStringBuilder(memory.DefaultAllocator)
 	defer b.Release()
@@ -337,10 +340,10 @@ func tableColumn(tbl Table, n int) arrow.Array {
 	return b.NewArray()
 }
 
-// expected is the column a read of tbl answers for name, which the
-// caller releases. For $table it is the table name in every row, and
-// for any other name it is the batch's column of that name. It is false
-// when tbl has no such column.
+// expected returns the column that a read of the table answers for the
+// name, and the caller releases it. For $table it is the table name in
+// every row, and for any other name it is the batch's column of that
+// name. It returns false when the table has no such column.
 func expected(tbl Table, name string) (arrow.Array, bool) {
 	if name == "$table" {
 		return tableColumn(tbl, tbl.Rows()), true
@@ -373,9 +376,9 @@ func CheckColumn(t T, tbl Table, name string, got arrow.Array) {
 	}
 }
 
-// Check compares a record batch read back with tbl, column by column by
-// name, so a read that answers $table, $timestamp and the columns and one
-// that answers a requested subset are checked alike.
+// Check compares a record batch read back with the table, column by column
+// by name, so a read that answers $table, $timestamp and the columns and
+// one that answers a requested subset are checked alike.
 func Check(t T, tbl Table, rec arrow.RecordBatch) {
 	t.Helper()
 	for i, f := range rec.Schema().Fields() {
@@ -383,8 +386,9 @@ func Check(t T, tbl Table, rec arrow.RecordBatch) {
 	}
 }
 
-// WithTable is tbl's batch as an ingest body carries it, with a $table
-// column of the name in front. The fixture releases it on t's cleanup.
+// WithTable returns the table's batch as an ingest body carries it, with a
+// $table column of the name in front. The fixture releases it on the
+// test's cleanup.
 func WithTable(t T, tbl Table) arrow.RecordBatch {
 	t.Helper()
 	rec := batchOf(tbl)
@@ -400,7 +404,7 @@ func WithTable(t T, tbl Table) arrow.RecordBatch {
 
 // Body joins the tables into the batch an ingest body carries, which is
 // every table's WithTable batch concatenated. The tables must share a
-// column list. The fixture releases the batch on t's cleanup, and an
+// column list. The fixture releases the batch on the test's cleanup, and an
 // encoder run over it writes a body of that format.
 func Body(t T, tables ...Table) arrow.RecordBatch {
 	t.Helper()
@@ -444,7 +448,7 @@ func Body(t T, tables ...Table) arrow.RecordBatch {
 	return out
 }
 
-// columnInfos is tbl's schema as the create call takes it.
+// columnInfos converts the table's columns for the create call.
 func columnInfos(tbl Table) []qdbapi.TsColumnInfo {
 	infos := make([]qdbapi.TsColumnInfo, len(tbl.Columns))
 	for i, c := range tbl.Columns {
@@ -457,7 +461,7 @@ func columnInfos(tbl Table) []qdbapi.TsColumnInfo {
 	return infos
 }
 
-// entries is every entry tbl can leave behind: the table and its
+// entries lists every entry the table can leave behind: the table and its
 // symtables. A symtable exists only once a symbol value has been pushed
 // into it, so removing one that was never filled answers alias-not-found,
 // which is the state the cleanup wants.
@@ -471,20 +475,20 @@ func entries(tbl Table) []string {
 	return names
 }
 
-// call runs f as the user u.
+// call runs f as the user.
 func call(c *qdb.Cluster, u qdb.User, f func(*qdb.Session) error) error {
 	return c.Call(context.Background(), u, f)
 }
 
-// RemoveOnCleanup removes tbl and its symtables on t's cleanup, however
-// the table came to exist, tolerating what is already gone. A failed
-// removal is reported and never fatal, so a leak is visible.
+// RemoveOnCleanup removes the table and its symtables on the test's
+// cleanup, however the table came to exist, tolerating what is already
+// gone. A failed removal is reported and never fatal, so a leak is visible.
 func RemoveOnCleanup(t T, c *qdb.Cluster, tbl Table) {
 	RemoveOnCleanupAs(t, c, qdb.User{}, tbl)
 }
 
-// RemoveOnCleanupAs is RemoveOnCleanup as the user u, for a cluster that
-// refuses the anonymous user.
+// RemoveOnCleanupAs is RemoveOnCleanup as the given user, for a cluster
+// that refuses the anonymous user.
 func RemoveOnCleanupAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
 	t.Cleanup(func() {
 		for _, name := range entries(tbl) {
@@ -496,15 +500,16 @@ func RemoveOnCleanupAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
 	})
 }
 
-// Create creates tbl in the cluster, pushes its batch through the Arrow
-// writer, and removes it on t's cleanup. The cleanup is registered as
-// soon as the table exists, so a failed push leaves nothing behind.
+// Create creates the table in the cluster, pushes its batch through the
+// Arrow writer, and removes it on the test's cleanup. The cleanup is
+// registered as soon as the table exists, so a failed push leaves nothing
+// behind.
 func Create(t T, c *qdb.Cluster, tbl Table) {
 	t.Helper()
 	CreateAs(t, c, qdb.User{}, tbl)
 }
 
-// CreateAs is Create as the user u, for a cluster that refuses the
+// CreateAs is Create as the given user, for a cluster that refuses the
 // anonymous user.
 func CreateAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
 	t.Helper()
