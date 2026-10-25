@@ -1,8 +1,8 @@
 // Package flight is the Flight client fixture: a client on a server of
-// the tests with verification off, a statement read into one batch, an
-// Arrow IPC body read the same way, and batch equality. It is a
-// subpackage of qdbtest for the reason table and cluster are, and it
-// holds no server start, because a fixture that imported
+// the tests with verification off, a statement and a prepared statement
+// read into one batch, an Arrow IPC body read the same way, and batch
+// equality. It is a subpackage of qdbtest for the reason table and
+// cluster are, and it holds no server start, because a fixture that imported
 // internal/flightsql would be a test import cycle for that package's own
 // tests. The rules are in internal/AGENTS.md, Tests.
 package flight
@@ -137,6 +137,47 @@ func Execute(t table.T, cl *flightsql.Client, ctx context.Context, q string) arr
 	}
 	defer Release(recs)
 	return Concat(t, schema, recs)
+}
+
+// Prepare prepares q, answers the prepare's dataset schema and the
+// result read through the prepared statement joined into one batch the
+// caller releases, and closes the statement.
+func Prepare(t table.T, cl *flightsql.Client, ctx context.Context, q string) (*arrow.Schema, arrow.RecordBatch) {
+	t.Helper()
+	// The calls come in the order Arrow's JDBC driver makes them:
+	//
+	//  1. prepare, whose result carries the dataset schema;
+	//  2. execute the prepared statement, one endpoint;
+	//  3. read the endpoint and join its batches, as Execute reads a
+	//     statement;
+	//  4. close, as the driver closes every statement.
+
+	// 1. prepare
+	ps, err := cl.Prepare(ctx, q)
+	if err != nil {
+		t.Fatalf("Prepare %s: %v", q, err)
+	}
+	// 4. close, whatever happened
+	defer func() {
+		if err := ps.Close(ctx); err != nil {
+			t.Errorf("Close %s: %v", q, err)
+		}
+	}()
+	// 2. execute
+	info, err := ps.Execute(ctx)
+	if err != nil {
+		t.Fatalf("Execute prepared %s: %v", q, err)
+	}
+	if len(info.Endpoint) != 1 {
+		t.Fatalf("want one endpoint, got %d", len(info.Endpoint))
+	}
+	// 3. read and join
+	schema, recs, err := ReadAll(t, cl, ctx, info.Endpoint[0].Ticket)
+	if err != nil {
+		t.Fatalf("DoGet prepared %s: %v", q, err)
+	}
+	defer Release(recs)
+	return ps.DatasetSchema(), Concat(t, schema, recs)
 }
 
 // FromIPC reads an Arrow IPC stream into one batch the caller releases,

@@ -232,11 +232,38 @@ func TestBearerRows(t *testing.T) {
 // epoch is the fixed clock the bearer rows are judged against.
 var epoch = time.Unix(1_700_000_000, 0)
 
+// stripped is sc without field metadata, the form a describe answers on
+// the native engine.
+func stripped(sc *arrow.Schema) *arrow.Schema {
+	fields := sc.Fields()
+	for i := range fields {
+		fields[i].Metadata = arrow.Metadata{}
+	}
+	return arrow.NewSchema(fields, nil)
+}
+
+// executeSchemaIs fails t unless GetExecuteSchema of q answers want.
+func executeSchemaIs(t table.T, cl *flightsql.Client, ctx context.Context, q string, want *arrow.Schema) {
+	t.Helper()
+	res, err := cl.GetExecuteSchema(ctx, q)
+	if err != nil {
+		t.Fatalf("GetExecuteSchema %s: %v", q, err)
+	}
+	got, err := flight.DeserializeSchema(res.GetSchema(), memory.DefaultAllocator)
+	if err != nil {
+		t.Fatalf("GetExecuteSchema %s: %v", q, err)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("GetExecuteSchema %s:\n got  %v\n want %v", q, got, want)
+	}
+}
+
 // TestStatement: for a generated table on each cluster, the native query
 // read back over Flight equals the rows generated, column by column, and
 // the #sql query read back over Flight equals the batches Cluster.Duck
-// answers directly, decoded. A statement without a result set streams
-// one schema and no batch. The two engines are compared with their own
+// answers directly, decoded. Both read through a prepared statement
+// answer the same rows, under the schema the prepare announced. A
+// statement without a result set streams one schema and no batch. The two engines are compared with their own
 // oracles and not with each other.
 func TestStatement(t *testing.T) {
 	// Two engines, one oracle each, both clusters:
@@ -249,7 +276,10 @@ func TestStatement(t *testing.T) {
 	//  4. #sql: Execute("#sql " + tbl.SelectSQL()), compared decoded with
 	//     Cluster.Duck's batches over the same SQL, because the bytes under
 	//     a null slot are undefined;
-	//  5. an empty result: a DROP TABLE streams one schema and no batch,
+	//  5. prepared: each query read through Prepare on both engines, the
+	//     rows equal to the statement's and the prepare's schema equal to
+	//     the stream's, and GetExecuteSchema equal to the prepare's;
+	//  6. an empty result: a DROP TABLE streams one schema and no batch,
 	//     and the reader reaches the end with no error.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		// 1. the server and the bearer
@@ -279,7 +309,32 @@ func TestStatement(t *testing.T) {
 			got.Release()
 			want.Release()
 
-			// 5. no result set: the schema has no fields and no batch follows
+			// 5. prepared, native. The stream's field metadata is stripped,
+			//    because the stream's string and blob fields carry a
+			//    max_width key that validate has no data to compute.
+			sc, got := qdbflight.Prepare(rt, cl, ctx, tbl.Select())
+			table.Check(rt, tbl, got)
+			if want := stripped(got.Schema()); !sc.Equal(want) {
+				rt.Fatalf("native prepare schema:\n got  %v\n want %v", sc, want)
+			}
+			executeSchemaIs(rt, cl, ctx, tbl.Select(), sc)
+			got.Release()
+
+			// 5. prepared, #sql, with metadata, because DuckDB adds none to
+			//    the types a generated table has
+			sc, got = qdbflight.Prepare(rt, cl, ctx, "#sql "+tbl.SelectSQL())
+			want = duck(rt, f.Cluster, f.User, tbl.SelectSQL())
+			if !qdbflight.Same(got, want) {
+				rt.Fatalf("prepared #sql differs from Cluster.Duck:\n%v\n%v", got, want)
+			}
+			if !sc.Equal(got.Schema()) {
+				rt.Fatalf("#sql prepare schema:\n got  %v\n want %v", sc, got.Schema())
+			}
+			executeSchemaIs(rt, cl, ctx, "#sql "+tbl.SelectSQL(), sc)
+			got.Release()
+			want.Release()
+
+			// 6. no result set: the schema has no fields and no batch follows
 			schema, recs, err := qdbflight.ReadAll(rt, cl, ctx, qdbflight.TicketOf(rt, cl, ctx, "DROP TABLE "+tbl.Name))
 			if err != nil || schema.NumFields() != 0 || len(recs) != 0 {
 				rt.Fatalf("drop: want a schema of no fields and no batch, got %v, %d batches, %v", schema, len(recs), err)
@@ -312,6 +367,16 @@ func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q str
 	return err
 }
 
+// prepareErr prepares q and answers the prepare's error, closing a
+// statement that prepared.
+func prepareErr(cl *flightsql.Client, ctx context.Context, q string) error {
+	ps, err := cl.Prepare(ctx, q)
+	if err == nil {
+		_ = ps.Close(ctx)
+	}
+	return err
+}
+
 // TestStatementRows: every way a statement fails before the stream
 // answers its code with the engine's or the cluster's message, and an
 // unreachable cluster answers UNAVAILABLE, with a RetryInfo detail once
@@ -321,7 +386,10 @@ func TestStatementRows(t *testing.T) {
 	// 1. the engine's rows: a native parse error and a #sql parse error
 	//    are INVALID_ARGUMENT with the engine's message, a query naming an
 	//    unknown table is INVALID_ARGUMENT, and a DoGet on a hand-built
-	//    ticket of a bad query is the same, because the ticket is the text
+	//    ticket of a bad query is the same, because the ticket is the text.
+	//    The describe's refusals are INVALID_ARGUMENT too: a #sql text of
+	//    two statements at Execute and at Prepare, a query with a ? marker
+	//    on either engine at Prepare, and a native parse error at Prepare.
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	s := newServer(t, f)
 	cl := qdbflight.Dial(t, s.srv.Addr().String())
@@ -341,6 +409,11 @@ func TestStatementRows(t *testing.T) {
 			qdbflight.Release(recs)
 			return err
 		}()},
+		{"#sql two statements", statementErr(t, cl, s.ctx, "#sql SELECT 1; SELECT 2")},
+		{"#sql two statements, prepared", prepareErr(cl, s.ctx, "#sql SELECT 1; SELECT 2")},
+		{"native marker, prepared", prepareErr(cl, s.ctx, "SELECT ?")},
+		{"#sql marker, prepared", prepareErr(cl, s.ctx, "#sql SELECT ?")},
+		{"native parse error, prepared", prepareErr(cl, s.ctx, "selec 1")},
 	} {
 		if st := status.Convert(row.err); st.Code() != codes.InvalidArgument || st.Message() == "" {
 			t.Fatalf("%s: want INVALID_ARGUMENT with a message, got %v", row.name, row.err)

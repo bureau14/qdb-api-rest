@@ -135,6 +135,10 @@ Each rule below names the function whose comments carry its reason.
   because none of its rows reaches the cluster. Tokens are minted
   directly, as the HTTP handler tests mint them. `TestStatement` draws a
   table and reads it back over Flight on both engines, on both clusters.
+  It reads each table through a prepared statement too, with the
+  prepare's schema equal to the stream's, and the native stream's field
+  metadata stripped. `TestStatementRows` covers the describe's refusals
+  at Execute and at Prepare.
   `TestStatementRows` is the error table, the unreachable cluster and
   the open breaker included, for a statement and for `GetTables`; its
   rows reach no secured check, so it runs on the insecure cluster.
