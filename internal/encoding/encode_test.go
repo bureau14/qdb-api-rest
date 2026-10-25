@@ -251,9 +251,9 @@ func parsed[V any](t failer, name string, cells []cell, parse func(string) (V, e
 	}
 }
 
-// wantValid reports whether cell i of a is a value on the wire. A null
-// is not, and neither is a NaN or an infinity of a float column, which
-// every text format writes as null.
+// wantValid reports whether cell i of the array is a value on the wire.
+// A null is not, and neither is a NaN or an infinity of a float column,
+// which every text format writes as null.
 func wantValid(a arrow.Array, i int) bool {
 	switch a := a.(type) {
 	case *array.Float32:
@@ -407,10 +407,10 @@ func drawScalar(t *rapid.T, dt arrow.DataType, n int) arrow.Array {
 	return b.NewArray()
 }
 
-// withScalars returns rec with one column appended per DuckDB scalar
-// the table fixture cannot generate: int8, int16, int32, uint8, uint16,
-// uint32, uint64, float32, one decimal128 of drawn precision and scale,
-// bool, date32, time64[us] and time64[ns]. These types reach the
+// withScalars returns the batch with one column appended per DuckDB
+// scalar the table fixture cannot generate: int8, int16, int32, uint8,
+// uint16, uint32, uint64, float32, one decimal128 of drawn precision and
+// scale, bool, date32, time64[us] and time64[ns]. These types reach the
 // encoders only through DuckDB, and the fixture writes QuasarDB tables,
 // so the columns are drawn in memory. The caller releases the batch.
 func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
@@ -437,10 +437,10 @@ func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
 	return out
 }
 
-// checkArrow writes rec through the Arrow encoder as a stream of one
-// batch and compares the stream it parses back with rec: the schema and
-// every column. The encoder writes a batch whole, so the batch count is
-// the producer's and not checked here.
+// checkArrow writes the batch through the Arrow encoder as a stream of
+// one batch, parses the stream back, and compares its schema and every
+// column with the batch. The encoder writes a batch whole, so the batch
+// count is the producer's and is not checked here.
 func checkArrow(t *rapid.T, rec arrow.RecordBatch) {
 	var buf bytes.Buffer
 	if err := (Arrow{}).EncodeStream(context.Background(), &buf, one(rec)); err != nil {
@@ -472,9 +472,9 @@ func TestRoundTrip(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		rapid.Check(t, func(rt *rapid.T) {
 			// 1. A table is generated, written and queried back. The fixture's
-			// Check proves that the batch is the table written, so the wire is
-			// compared with the batch and only one comparer, the fixture's,
-			// decides what was written.
+			// Check proves that the batch is the table written. The steps
+			// below compare the wire with the batch, so the fixture's comparer
+			// alone decides what was written.
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, f.Cluster, f.User, tbl)
 			queried := run(rt, f.Cluster, f.User, tbl.Select())
@@ -605,8 +605,8 @@ func sequence(recs []arrow.RecordBatch, err error) iter.Seq2[arrow.RecordBatch, 
 	}
 }
 
-// encodeStream runs the stream path of e over batches and returns the
-// body.
+// encodeStream runs the encoder's stream path over the batches and
+// returns the body.
 func encodeStream(t *testing.T, e Encoder, batches iter.Seq2[arrow.RecordBatch, error]) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -616,8 +616,8 @@ func encodeStream(t *testing.T, e Encoder, batches iter.Seq2[arrow.RecordBatch, 
 	return buf.Bytes()
 }
 
-// ipcStream writes recs directly as an IPC stream: one schema, one
-// record batch each, and the end marker.
+// ipcStream writes the batches through the ipc package alone: one
+// schema, one record batch each, and the end marker.
 func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -634,10 +634,10 @@ func ipcStream(t *testing.T, recs ...arrow.RecordBatch) []byte {
 }
 
 // TestStream checks the stream path of every encoder. Two batches
-// stream as the IPC stream with two record batches, the CSV with one
-// header, the NDJSON lines appended, and a JSON array of two results,
-// the two one-batch arrays joined. An
-// error element after a batch ends the stream with that error.
+// stream as an IPC stream of two record batches, as CSV with one header,
+// as the NDJSON lines appended, and as a JSON array of two results,
+// which joins the two one-batch arrays. An error element after a batch
+// ends the stream with that error.
 func TestStream(t *testing.T) {
 	rec := edgeBatch(t)
 	csv := encode(t, CSV{}, rec)

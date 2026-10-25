@@ -44,19 +44,19 @@ func appendNull(dst []byte) []byte {
 }
 
 // appendQuoted appends s as a JSON string with the minimal RFC 8785
-// escaping. The C API does not validate a utf8 column: invalid bytes
-// become U+FFFD, the error that reports them is dropped, and the body
-// stays valid JSON.
+// escaping. The C API does not validate a utf8 column, so a string may
+// hold invalid bytes. jsontext replaces them with U+FFFD, the error that
+// reports them is dropped, and the body stays valid JSON.
 func appendQuoted(dst []byte, s string) []byte {
 	dst, _ = jsontext.AppendQuote(dst, s)
 	return dst
 }
 
-// appendFloat appends a finite f of bit size bits as a JSON number, the
-// bytes encoding/json writes: shortest round trip, plain notation for
-// exponents in [-6, 21). The appender would write NaN and the infinities
-// as strings. They are not JSON, and NaN is the writer's own null for
-// doubles, so the caller writes them as null.
+// appendFloat appends a finite float of the given bit size as a JSON
+// number, in the bytes encoding/json writes: the shortest round trip, in
+// plain notation for exponents in [-6, 21). jsontext would write NaN and
+// the infinities as strings. They are not JSON numbers, and NaN is the
+// writer's own null for doubles, so the caller writes them as null.
 func appendFloat(dst []byte, f float64, bits int) []byte {
 	return jsontext.AppendFloat(dst, f, bits)
 }
@@ -70,7 +70,7 @@ func appendTimestamp(dst []byte, nanos int64) []byte {
 }
 
 // appendBase64 appends b as a JSON string in the standard alphabet with
-// padding, as encoding/json encodes bytes: what every client library
+// padding, as encoding/json encodes bytes, which every client library
 // decodes without configuration.
 func appendBase64(dst []byte, b []byte) []byte {
 	dst = append(dst, '"')
@@ -117,7 +117,7 @@ func jsonFloat[T float32 | float64](a floating[T]) func(dst []byte, i int) []byt
 	}
 }
 
-// jsonCell returns the type word and the appender of column a. The type
+// jsonCell returns the type word and the appender of a column. The type
 // switch runs once per column, so appending a cell is one call. The word
 // is the Arrow type's name: a symbol column arrives as utf8 and reports
 // utf8, and a count arrives as int64. A type without a case is
@@ -209,7 +209,7 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	return c, nil
 }
 
-// jsonColumns returns the jsonColumn of every column of rec.
+// jsonColumns returns the jsonColumn of every column of the batch.
 func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 	cols := make([]jsonColumn, rec.NumCols())
 	for i, f := range rec.Schema().Fields() {
@@ -225,8 +225,8 @@ func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 // The two JSON encoders append every cell straight into the buffered
 // writer's spare capacity (AvailableBuffer) and hand the bytes back, so
 // the hot loop allocates nothing. The buffered writer is flushed once at
-// the end of EncodeStream. That flush is internal buffering; the HTTP
-// flush belongs to the handler.
+// the end of EncodeStream. That flush empties the internal buffer, and
+// the HTTP flush belongs to the handler.
 
 // NDJSON encodes record batches as one JSON object per row, keys in
 // column order, one LF-terminated line per row. A batch with no rows
@@ -243,9 +243,9 @@ func (NDJSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[a
 		if err != nil {
 			return err
 		}
-		// A client that left is noticed at the next batch, and a batch is at
-		// most model.BatchRows rows, so the check per batch is as prompt as
-		// the per-row stride it replaced.
+		// A client that left is noticed at the next batch. A per-row stride
+		// was rejected, because a batch has at most model.BatchRows rows and
+		// the stride would notice it no sooner.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -322,9 +322,9 @@ func (JSON) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arr
 		if err != nil {
 			return err
 		}
-		// A client that left is noticed at the next batch, and a batch is at
-		// most model.BatchRows rows, so the check per batch is as prompt as
-		// the per-row stride it replaced.
+		// A client that left is noticed at the next batch. A per-row stride
+		// was rejected, because a batch has at most model.BatchRows rows and
+		// the stride would notice it no sooner.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -411,22 +411,20 @@ type jsonTable struct {
 // both tables. The error of schemaOf passes through as is.
 func newJSONTable(name string, names map[string]bool, schemaOf model.SchemaOf, first *jsonTable) (*jsonTable, error) {
 	// The batch carries the reader's types, so its fields are picked from
-	// the reader's schema rather than declared here, the four steps of
-	// newCSVTable:
+	// the reader's schema. The steps are those of newCSVTable:
 	//
 	//  1. look the table up through schemaOf, and pass its error as is;
 	//  2. pick $timestamp and the named data columns from the schema, in
-	//     the schema's order; a name the table lacks is the body's fault;
+	//     the schema's order. A name the table lacks is the body's fault;
 	//  3. check that a table after the first has the same type in every
-	//     field, by name: one body is one column list, and the Arrow
-	//     writer checks one table at a time, so this decoder has to check
-	//     it;
-	//  4. make one builder and one text appender per field, and note the
-	//     JSON kind the field reads.
+	//     field, by name. One body is one column list, and the Arrow
+	//     writer checks one table at a time, so the decoder checks it;
+	//  4. make one builder and one text appender per field, and note
+	//     whether the field reads a JSON number or a JSON string.
 	//
-	// The table's order is taken because a JSON object's members carry no
-	// order of their own, and the columnar decoder takes the same order,
-	// so both decoders give a batch of one shape.
+	// The fields follow the table's order, because a JSON object's members
+	// carry no order of their own. The columnar decoder shares this
+	// function, so both decoders build a batch of one shape.
 
 	// 1. the table's schema
 	schema, err := schemaOf(name)
@@ -490,8 +488,8 @@ func jsonText(v jsontext.Value, numeric bool) (string, error) {
 	return "", fmt.Errorf("a JSON %s where a string is expected", v.Kind())
 }
 
-// appendCell appends the JSON value v to field i of t. An absent (nil)
-// or null v appends null, except in field 0, $timestamp, which cannot be
+// appendCell appends a JSON value to field i. An absent (nil) or null
+// value appends null, except in field 0, $timestamp, which cannot be
 // null. The error names the column.
 func (t *jsonTable) appendCell(i int, v jsontext.Value) error {
 	// An absent member and a null member read alike, because the encoder
@@ -518,7 +516,7 @@ func (t *jsonTable) appendCell(i int, v jsontext.Value) error {
 }
 
 // appendRow appends one object, as the map of its raw members, to the
-// builders of t. A column the object lacks or names null is null, and a
+// table's builders. A column the object lacks or names null is null, and a
 // null or absent $timestamp is an error, because the index cannot be
 // null. A member outside the column list is an error naming it.
 func (t *jsonTable) appendRow(row map[string]jsontext.Value) error {
@@ -614,14 +612,14 @@ func ndjsonTableOf(row map[string]jsontext.Value) (string, error) {
 // encoder's dialect: the first object's keys fix the column list, $table
 // and $timestamp among them, and a later object may omit a column.
 func (NDJSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
-	// Each row is read as one map of raw values through the standard
-	// library, so the library parses and this decoder only routes, the
-	// three steps of CSV.Decode over objects:
+	// The standard library reads each row into one map of raw values, so
+	// the library parses and the decoder only routes. The steps are those
+	// of CSV.Decode, over objects:
 	//
 	//  1. the first object fixes the column list: its keys, $table and
 	//     $timestamp among them;
 	//  2. each object goes to the builders of its table, which its $table
-	//     member names; a table seen for the first time is typed through
+	//     member names. A table seen for the first time is typed through
 	//     schemaOf and must agree with the first table's types;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	dec := jsontext.NewDecoder(r)
@@ -713,8 +711,8 @@ type jsonResult struct {
 	Columns []jsonResultColumn `json:"columns"`
 }
 
-// readJSONResult reads the next value of dec as result n, counted from
-// 1. A value the standard library cannot read as a result is
+// readJSONResult reads the decoder's next value as result n, counted
+// from 1. A value the standard library cannot read as a result is
 // ErrInvalidRows, which keeps the reader's cause in the chain.
 func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 	// An unknown member is refused, because the default ignores it, and a
@@ -730,19 +728,19 @@ func readJSONResult(dec *jsontext.Decoder, n int) (jsonResult, error) {
 }
 
 // jsonResults yields the results of a body: one bare result, or each
-// result of the array every route answers. An
-// empty array yields nothing. A body that is neither, a result the
-// standard library cannot read, a member a result does not declare, and
-// a value after the body are ErrInvalidRows, which names the result,
-// counted from 1, and keeps the reader's cause in the chain. The
-// sequence ends after its first error.
+// result of the array every route answers. An empty array yields
+// nothing. A body that is neither, a result the standard library cannot
+// read, a member a result does not declare, and a value after the body
+// are ErrInvalidRows, which keeps the reader's cause in the chain. The
+// error of a result names it, counted from 1. The sequence ends after
+// its first error.
 func jsonResults(dec *jsontext.Decoder) iter.Seq2[jsonResult, error] {
-	// The results are read one at a time, each whole, so the raw cells of
-	// one result are held at a time and never those of the whole body:
+	// The decoder reads one result at a time, whole, so it holds the raw
+	// cells of one result and never those of the whole body:
 	//
-	//  1. peek the first token, because the shape of the body decides
-	//     the path: an object is one result, an array is a stream of
-	//     results, and anything else is the body's fault;
+	//  1. peek the first token, because it decides the path. An object is
+	//     one result, an array is a stream of results, and anything else
+	//     is the body's fault;
 	//  2. read the one result through readJSONResult;
 	//  3. in the array, read '[', then results until the next token is
 	//     ']', then the ']';
@@ -835,17 +833,17 @@ func readJSONHeader(res jsonResult) (map[string]bool, int, error) {
 }
 
 // Decode implements Decoder. The body is one bare columnar result, or
-// the array of results every route answers. The first result fixes the column list, $table and
-// $timestamp among them, in any order, and every later result names the
-// same columns. The type member of a column is not read.
+// the array of results every route answers. The first result fixes the
+// column list, $table and $timestamp among them, in any order, and every
+// later result names the same columns. The type member of a column is
+// not checked.
 func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
-	// A result is columnar and $table is one of its columns, at any
-	// position, so a cell cannot be routed before the $table column of its
-	// result has been read. The decoder therefore reads one result whole
-	// and then routes it row by row. A decoder that appends each cell as
-	// it reads the tokens was rejected, because the $table column may
-	// come last, and it would parse JSON by hand where the standard
-	// library parses for NDJSON.
+	// A result is columnar, and $table can be any of its columns, so no
+	// cell can be routed before the result's $table column has been read.
+	// The decoder therefore reads one result whole and then routes it row
+	// by row. A decoder that appends each cell as it reads the tokens was
+	// rejected, because the $table column may come last, and it would
+	// parse JSON by hand where the standard library parses for NDJSON.
 	//
 	//  1. each result of the body comes from jsonResults;
 	//  2. every result passes readJSONHeader, and the first result's
@@ -853,7 +851,7 @@ func (JSON) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([
 	//  3. the result's columns are indexed by name once, so each row
 	//     looks its cells up without a scan;
 	//  4. each row goes to the builders of its table, which its $table
-	//     cell names; a table seen for the first time is typed through
+	//     cell names. A table seen for the first time is typed through
 	//     schemaOf and must agree with the first table's types;
 	//  5. the row's cell of every field of the table is appended, in the
 	//     batch's order;

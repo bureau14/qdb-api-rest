@@ -1,8 +1,8 @@
 // Package model is the server's neutral representation of table data.
-// It is Arrow by indirection: the types the layers hand each other,
-// which none of them owns. The encoders and decoders encode and decode
-// it, and the cluster binding fills and pushes it. The package does no
-// I/O and knows no wire format and no C API.
+// It holds the types, built on Arrow, that the layers hand each other
+// and that none of them owns. The encoders and decoders encode and
+// decode it, and the cluster binding fills and pushes it. The package
+// does no I/O and knows no wire format and no C API.
 package model
 
 import (
@@ -19,20 +19,22 @@ type TableBatch struct {
 	Batch arrow.RecordBatch
 }
 
-// SchemaOf answers the schema the bulk reader answers for the table whole:
+// SchemaOf returns the schema the bulk reader answers for a whole table:
 // $table, $timestamp, then the data columns, in the reader's Arrow types.
-// For a table the cluster does not know, the cluster's error passes
-// through as is.
+// For a table the cluster does not know, it returns the cluster's error
+// as is.
 type SchemaOf func(table string) (*arrow.Schema, error)
 
-// BatchRows is the batch size whenever a result is split into record
-// batches, so every consumer reads batches of one shape: the slices
-// Cluster.Query hands out, the bulk reader's fetch, and the stride between
-// two ctx checks of a decoder. Not measured.
+// BatchRows is the row count of every record batch the binary splits a
+// result into, so every consumer reads batches of one size. It sizes the
+// slices Cluster.Query hands out and the bulk reader's fetch, and a
+// decoder checks the ctx once per BatchRows rows. The value was not
+// measured.
 const BatchRows = 65536
 
-// EmptyBatch is a batch of schema and no rows. A reader that yields no
-// batch answers it as its one element, so every receiver sees the schema.
+// EmptyBatch returns a batch with the given schema and no rows. A reader
+// that would yield no batch yields this one instead, so every receiver
+// sees the schema.
 // The caller owns the batch and releases it once.
 func EmptyBatch(schema *arrow.Schema) arrow.RecordBatch {
 	cols := make([]arrow.Array, schema.NumFields())

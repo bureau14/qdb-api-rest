@@ -28,11 +28,12 @@ func (Arrow) ContentType() string { return ArrowContentType }
 // schema and carries every batch as one record batch, so the producer's
 // batch size is the wire's.
 func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arrow.RecordBatch, error]) error {
-	// A lazy open and two ways to end:
+	// The writer opens on the first batch, and the stream ends with a
+	// marker:
 	//
 	//  1. open the writer on the first batch;
 	//  2. write each batch whole, with a ctx check per batch;
-	//  3. Close writes the end-of-stream marker.
+	//  3. close the writer, which writes the end-of-stream marker.
 	var ipcw *ipc.Writer
 	for rec, err := range batches {
 		if err != nil {
@@ -43,14 +44,14 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 		if ipcw == nil {
 			ipcw = ipc.NewWriter(w, ipc.WithSchema(rec.Schema()))
 		}
-		// 2. a client that left is noticed at the batch boundary, and the
-		//    batch goes out whole, because the producer already bounds a
-		//    batch at model.BatchRows rows (Cluster.Query and the bulk
-		//    reader) or one vector (DuckDB). Slicing here was rejected: the
-		//    slice is the query core's now, and the text encoders never
-		//    sliced. A batch of no rows is not written, because the schema
-		//    message already carries everything it would, so a result of no
-		//    rows is the schema and the marker alone.
+		// 2. a client that left is noticed at the batch boundary. The batch
+		//    goes out whole, because the producer already bounds it at
+		//    model.BatchRows rows (Cluster.Query and the bulk reader) or one
+		//    vector (DuckDB). Slicing here was rejected, because the query
+		//    core slices, and the text encoders do not slice either. A batch
+		//    of no rows is not written, because the schema message already
+		//    carries everything it would, so a result of no rows is the
+		//    schema and the marker alone.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -62,9 +63,9 @@ func (Arrow) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[ar
 		}
 	}
 	// 3. Close writes the end-of-stream marker. A sequence of no batch
-	//    cannot occur, because every producer yields at least one (the
-	//    Encoder contract); if one did, the writer would be unopened, so
-	//    it is opened on a schema with no fields rather than left nil.
+	//    cannot occur, because the Encoder contract has every producer
+	//    yield at least one. If one did, the writer would still be nil, so
+	//    it is opened on a schema with no fields.
 	if ipcw == nil {
 		ipcw = ipc.NewWriter(w, ipc.WithSchema(arrow.NewSchema(nil, nil)))
 	}
@@ -88,16 +89,16 @@ type arrowTable struct {
 // without a check between them, because every table is checked against
 // the same body columns. The error of schemaOf passes through as is.
 func newArrowTable(name string, body *arrow.Schema, schemaOf model.SchemaOf) (*arrowTable, error) {
-	// The batch carries the reader's types, so its fields are picked from
-	// the reader's schema, with the type check turned on the body instead
-	// of on the previous table:
+	// The batch carries the reader's types, so its fields come from the
+	// reader's schema. Each table is checked against the body's columns,
+	// so no check against the previous table is needed:
 	//
 	//  1. look the table up through schemaOf, and pass its error as is;
 	//  2. pick $timestamp and the body's data columns from the reader's
-	//     schema by name; a name the table lacks is the body's fault;
-	//  3. check that the body column's type equals the reader's, which
-	//     arrow.TypeEqual decides without the reader's max_width metadata;
-	//  4. the batch's schema is the reader's fields in that order.
+	//     schema by name. A name the table lacks is the body's fault;
+	//  3. check that each body column has the reader's type.
+	//     arrow.TypeEqual does not see the reader's max_width metadata;
+	//  4. build the batch's schema from the reader's fields, in that order.
 
 	// 1. the table's schema
 	schema, err := schemaOf(name)
@@ -121,9 +122,9 @@ func newArrowTable(name string, body *arrow.Schema, schemaOf model.SchemaOf) (*a
 			return nil, fmt.Errorf("%w: table %s has no column %s", ErrInvalidRows, name, f.Name)
 		}
 		// 3. the body's type is the reader's type. A cast (timestamp[us]
-		// into [ns], large_utf8 into utf8) was rejected: the binding refuses
-		// what the cast would take, and a conversion layer is more code
-		// than the rule.
+		// into [ns], large_utf8 into utf8) was rejected, because the binding
+		// refuses what the cast would take, and a conversion layer is more
+		// code than the rule.
 		if want := schema.Field(idx[0]); !arrow.TypeEqual(f.Type, want.Type) {
 			return nil, fmt.Errorf("%w: column %s has type %s, the table's is %s", ErrInvalidRows, f.Name, f.Type, want.Type)
 		}
@@ -134,8 +135,9 @@ func newArrowTable(name string, body *arrow.Schema, schemaOf model.SchemaOf) (*a
 	return &arrowTable{name: name, schema: arrow.NewSchema(fields, nil), fields: bodyFields}, nil
 }
 
-// add keeps the rows [i, j) of rec for this table, as a slice that
-// shares rec's buffers and stays valid past the reader's next batch.
+// add keeps rows [i, j) of the batch as a slice. The slice shares the
+// batch's buffers and stays valid after the reader moves to its next
+// batch.
 func (t *arrowTable) add(rec arrow.RecordBatch, i, j int64) {
 	t.slices = append(t.slices, rec.NewSlice(i, j))
 }
@@ -151,9 +153,9 @@ func (t *arrowTable) batch() (model.TableBatch, error) {
 		for n, s := range t.slices {
 			chunks[n] = s.Column(i)
 		}
-		// The copy is accepted: the seam hands the push one batch per table,
-		// and the binding's several-batches form is not what model.TableBatch
-		// carries.
+		// The copy is accepted, because the seam hands the push one batch per
+		// table. The binding also takes several batches per table, but
+		// model.TableBatch does not carry that form.
 		col, err := array.Concatenate(chunks, memory.DefaultAllocator)
 		if err != nil {
 			for _, c := range cols[:k] {
@@ -178,21 +180,21 @@ func (t *arrowTable) release() {
 	t.slices = nil
 }
 
-// splitRuns calls f once per run of equal $table values in rec, with the
-// table name and the row range. A null or empty $table is ErrInvalidRows
-// naming the row, counted from offset, the rows of the batches before
-// rec.
+// splitRuns calls f once per run of rows with the same $table, with the
+// table name and the row range. A null or empty $table is ErrInvalidRows.
+// The error names the row, counted from offset, which is the number of
+// rows in the batches before this one.
 func splitRuns(rec arrow.RecordBatch, table int, offset int64, f func(name string, i, j int64) error) error {
 	col := rec.Column(table).(*array.String)
 	for i := 0; i < col.Len(); {
 		if col.IsNull(i) || col.Value(i) == "" {
 			return fmt.Errorf("%w: row %d: no $table", ErrInvalidRows, offset+int64(i)+1)
 		}
-		// Rows of one table are usually contiguous, so a run is one slice
-		// and the common body costs one slice per table per batch. An
-		// interleaved body costs one slice per row and decodes all the same.
-		// Per-table builders fed row by row were rejected: a copy per cell
-		// where a slice copies nothing.
+		// Rows of one table are usually contiguous, so the common body costs
+		// one slice per table per batch. An interleaved body costs up to one
+		// slice per row and still decodes. Per-table builders fed row by row
+		// were rejected, because they copy every cell and a slice copies
+		// nothing.
 		name := col.Value(i)
 		j := i + 1
 		for j < col.Len() && !col.IsNull(j) && col.Value(j) == name {
@@ -228,10 +230,10 @@ func checkArrowHeader(schema *arrow.Schema) (arrowHeader, error) {
 	return arrowHeader{table: table[0], timestamp: timestamp[0]}, nil
 }
 
-// checkIndex refuses a null $timestamp in rec, naming the row counted
-// from offset, because the index cannot be null and the binding would
-// only say so at the push. The null count is kept by the array, so a
-// batch without nulls costs one read.
+// checkIndex refuses a null $timestamp and names the row, counted from
+// offset. The index cannot be null, and the binding would only report it
+// at the push. The array keeps its null count, so a batch without nulls
+// costs one read.
 func checkIndex(rec arrow.RecordBatch, timestamp int, offset int64) error {
 	col := rec.Column(timestamp)
 	if col.NullN() == 0 {
@@ -250,18 +252,17 @@ func checkIndex(rec arrow.RecordBatch, timestamp int, offset int64) error {
 // columns in any order, in the reader's types, and any number of record
 // batches.
 func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error) {
-	// The stream is read batch by batch and each batch is sliced into
-	// runs of one table, so a body of any batch count decodes with one
-	// copy per table, the three steps of CSV.Decode over batches:
+	// The decoder reads the stream batch by batch and slices each batch
+	// into runs of one table, so a body of any batch count costs one copy
+	// per table. The steps are those of CSV.Decode, over batches:
 	//
-	//  1. open the reader, which reads the schema; a body that is not a
+	//  1. open the reader, which reads the schema. A body that is not a
 	//     stream, or whose schema names no $table or $timestamp, is the
 	//     body's fault;
-	//  2. each batch is checked for a null index and split into runs; a
-	//     table seen for the first time
-	//     is typed through schemaOf against the body's schema, and every
-	//     run is kept as a retained slice, because the reader releases
-	//     the batch when it reads the next;
+	//  2. check each batch for a null index and split it into runs. A
+	//     table seen for the first time is typed through schemaOf against
+	//     the body's schema. Every run is kept as a retained slice,
+	//     because the reader releases the batch when it reads the next;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	tables := map[string]*arrowTable{}
 	var order []*arrowTable
@@ -298,8 +299,8 @@ func (Arrow) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) (
 			release()
 			return nil, err
 		}
-		// The callback's error is a fault of the body or the error of
-		// schemaOf, each already in the form the caller classifies.
+		// The callback returns a fault of the body or the error of schemaOf,
+		// and both are already in the form the caller classifies.
 		err := splitRuns(rec, h.table, rows, func(name string, i, j int64) error {
 			t, ok := tables[name]
 			if !ok {

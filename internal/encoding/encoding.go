@@ -18,10 +18,10 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/model"
 )
 
-// Encoder writes a sequence of record batches to w in one wire format. It
-// does not release a batch. It returns the first error it meets: a write
-// error, the error of an error element, or the ctx ending between
-// batches.
+// Encoder writes a sequence of record batches to a writer in one wire
+// format. It does not release a batch. It returns the first error it
+// meets: a write error, the error of an error element, or the ctx ending
+// between batches.
 type Encoder interface {
 	// ContentType is the media type the handler answers with.
 	ContentType() string
@@ -40,10 +40,10 @@ type Decoder interface {
 	Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]model.TableBatch, error)
 }
 
-// checkChunk looks at the ctx every model.BatchRows rows of a body a
-// decoder reads, so a client that left is noticed within one batch of
-// rows. The encoders check the ctx per batch instead, because a batch
-// they are handed is already at most that many rows.
+// checkChunk returns the ctx's error once every model.BatchRows rows of
+// a body, so a decoder notices a client that left within one batch of
+// rows. The encoders check the ctx once per batch instead, because a
+// batch they are handed has at most that many rows.
 func checkChunk(ctx context.Context, row int64) error {
 	if row%model.BatchRows == 0 {
 		return ctx.Err()
@@ -63,8 +63,8 @@ const timestampLayout = "2006-01-02T15:04:05.000000000Z"
 // time and no Z.
 const dateLayout = "2006-01-02"
 
-// nanosReader returns the reader of a's values as nanoseconds since the
-// epoch, whatever unit the field declares.
+// nanosReader returns a function that reads the array's values as
+// nanoseconds since the epoch, whatever unit the field declares.
 func nanosReader(a *array.Timestamp) func(i int) int64 {
 	unit := int64(a.DataType().(*arrow.TimestampType).Unit.Multiplier())
 	return func(i int) int64 { return int64(a.Value(i)) * unit }
@@ -79,8 +79,8 @@ func appendTimeOfDay(dst []byte, nanos int64) []byte {
 	return fmt.Appendf(dst, "%02d:%02d:%02d.%09d", h, m, s, ns)
 }
 
-// timeNanosReader returns the reader of a's values as nanoseconds since
-// midnight, whatever unit the field declares.
+// timeNanosReader returns a function that reads the array's values as
+// nanoseconds since midnight, whatever unit the field declares.
 func timeNanosReader(a *array.Time64) func(i int) int64 {
 	unit := int64(a.DataType().(*arrow.Time64Type).Unit.Multiplier())
 	return func(i int) int64 { return int64(a.Value(i)) * unit }
@@ -96,13 +96,13 @@ type signed[T int8 | int16 | int32 | int64] interface {
 	Value(i int) T
 }
 
-// unsigned is signed for the unsigned widths.
+// unsigned is the same interface as signed, for the unsigned widths.
 type unsigned[T uint8 | uint16 | uint32 | uint64] interface {
 	IsNull(i int) bool
 	Value(i int) T
 }
 
-// floating is signed for the two float widths.
+// floating is the same interface as signed, for the two float widths.
 type floating[T float32 | float64] interface {
 	IsNull(i int) bool
 	Value(i int) T
@@ -117,18 +117,18 @@ func floatBits[T float32 | float64]() int {
 	return 64
 }
 
-// textAppender returns the function that parses one cell of text into
-// the builder b, the inverse of the text the encoders write: an integer
-// and a float through strconv, a timestamp in RFC 3339, a string as its
-// own bytes, a blob through standard base64. The cell text is the same
-// on the CSV and NDJSON wires, so both decoders call it. The function
-// returns the strconv, time or base64 error as is, and the caller adds
-// the row and the column.
+// textAppender returns a function that parses the text of one cell and
+// appends the value to the builder. It reverses the text the encoders
+// write: an integer and a float through strconv, a timestamp in RFC
+// 3339, a string as its own bytes, a blob through standard base64. The
+// CSV and NDJSON wires write the same cell text, so both decoders call
+// it. The function returns the strconv, time or base64 error as is, and
+// the caller adds the row and the column.
 func textAppender(f arrow.Field, b array.Builder) (func(string) error, error) {
-	// The Builder interface carries no typed Append, so the switch on the
-	// concrete builder runs once per column and the cell path is one
-	// typed call, the shape arrow-go's own CSV reader takes. arrow-go's
-	// AppendValueFromString was rejected: its grammar refuses the Z our
+	// The Builder interface has no typed Append, so the switch on the
+	// concrete builder runs once per column and each cell costs one typed
+	// call. arrow-go's own CSV reader has the same shape. arrow-go's
+	// AppendValueFromString was rejected, because it refuses the Z our
 	// timestamps carry, accepts a bare integer as a timestamp, and reads
 	// the text "(null)" as null.
 	switch b := b.(type) {

@@ -57,8 +57,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   result names the same columns. Within a result a
   column name appears once and every column has the same number of
   cells. A member a result does not declare and a value after the body
-  are `ErrInvalidRows`. The `type` member is not read, because the
-  reader's schema types the batch. A cell reads as an NDJSON cell,
+  are `ErrInvalidRows`. The `type` member is parsed and not checked, because the reader's
+  schema types the batch. A cell reads as an NDJSON cell,
   through the `jsonTable` both decoders share.
 - The Arrow decoder reads an IPC stream of any batch count. The body's
   columns are picked by name, and a body column's type must equal the

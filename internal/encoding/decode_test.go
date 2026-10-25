@@ -1,9 +1,9 @@
 // Tests for the decoders. They need no cluster. For every codec, the
 // round trip draws tables through the fixture, encodes them as one body
-// and checks that the decoder returns the batches that were drawn; the
+// and checks that the decoder returns the batches that were drawn. The
 // fault property draws one mutation of that body and checks that the
-// decoder refuses it; the interleaved property shuffles the tables'
-// rows through the stream encoder. What a batch cannot express is one
+// decoder refuses it. The interleaved property shuffles the tables' rows
+// through the stream encoder. The faults a batch cannot express are one
 // short table per format.
 package encoding
 
@@ -25,9 +25,10 @@ import (
 )
 
 // codecs pairs every format that decodes with its encoder. A new decoder
-// joins the slice and thereby the round trip. JSON's EncodeStream writes
+// joins the slice and with it the round trip. JSON's EncodeStream writes
 // an array of results, so every property exercises the JSON decoder's
-// array, and the short table of hand-built bodies its bare result.
+// array path. The short table of hand-built bodies exercises its bare
+// result.
 var codecs = []struct {
 	Encoder
 	Decoder
@@ -94,24 +95,26 @@ func TestDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-// withoutColumn is rec without column i, the caller releasing it.
+// withoutColumn returns the batch without column i. The caller releases
+// it.
 func withoutColumn(rec arrow.RecordBatch, i int) arrow.RecordBatch {
 	fields := slices.Delete(slices.Clone(rec.Schema().Fields()), i, i+1)
 	cols := slices.Delete(slices.Clone(rec.Columns()), i, i+1)
 	return array.NewRecordBatch(arrow.NewSchema(fields, nil), cols, rec.NumRows())
 }
 
-// renamedColumn is rec with column i under name, the caller releasing
-// it.
+// renamedColumn returns the batch with column i renamed. The caller
+// releases it.
 func renamedColumn(rec arrow.RecordBatch, i int, name string) arrow.RecordBatch {
 	fields := slices.Clone(rec.Schema().Fields())
 	fields[i].Name = name
 	return array.NewRecordBatch(arrow.NewSchema(fields, nil), rec.Columns(), rec.NumRows())
 }
 
-// withNullAt is rec with slot row of column i set to null, the caller
-// releasing it. The column is rebuilt from its own values, so only the
-// two special columns, a string and a timestamp, are handled.
+// withNullAt returns the batch with the given row of column i set to
+// null. The caller releases it. The column is rebuilt from its own
+// values, so only the two special columns, a string and a timestamp, are
+// handled.
 func withNullAt(t failer, rec arrow.RecordBatch, i int, row int) arrow.RecordBatch {
 	t.Helper()
 	b := array.NewBuilder(memory.DefaultAllocator, rec.Column(i).DataType())
@@ -137,8 +140,8 @@ func withNullAt(t failer, rec arrow.RecordBatch, i int, row int) arrow.RecordBat
 	return array.NewRecordBatch(rec.Schema(), cols, rec.NumRows())
 }
 
-// retyped is schema with data column i under another type: a double for
-// an int64, an int64 for anything else.
+// retyped returns the schema with data column i under another type: a
+// double for an int64, and an int64 for anything else.
 func retyped(schema *arrow.Schema, i int) *arrow.Schema {
 	fields := slices.Clone(schema.Fields())
 	if fields[i].Type.ID() == arrow.INT64 {
@@ -221,8 +224,8 @@ var faults = []fault{
 }
 
 // TestDecodeFaults checks, for every codec, that a body with one drawn
-// fault decodes to ErrInvalidRows and no batches, and that a table
-// schemaOf refuses surfaces the error of schemaOf itself, unwrapped.
+// fault decodes to ErrInvalidRows and no batches, and that a table the
+// lookup refuses surfaces the lookup's own error.
 // The faults are mutations of the batch before it is encoded, so one
 // list serves every format.
 func TestDecodeFaults(t *testing.T) {
@@ -275,8 +278,8 @@ func TestDecodeFaults(t *testing.T) {
 	}
 }
 
-// concatenated is the batches joined column by column under the first
-// batch's schema, the caller releasing it.
+// concatenated joins the batches column by column under the first
+// batch's schema. The caller releases the result.
 func concatenated(t failer, recs []arrow.RecordBatch) arrow.RecordBatch {
 	t.Helper()
 	schema := recs[0].Schema()
@@ -415,9 +418,9 @@ func TestDecodeFormatFaults(t *testing.T) {
 	// enough for a fault of the bytes or of a value's kind
 	ints := constant(arrow.NewSchema(append(append([]arrow.Field{}, specials...), arrow.Field{Name: "i", Type: arrow.PrimitiveTypes.Int64, Nullable: true}), nil))
 
-	// The one Arrow body is built by hand, because no encoder of this
-	// package writes a dictionary-encoded column: a dictionary $table over
-	// one row, which the decoder refuses before any batch is read
+	// The Arrow body is built by hand, because no encoder of this package
+	// writes a dictionary-encoded column. It holds a dictionary $table
+	// over one row, which the decoder refuses before it reads any batch
 	dict := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int32, ValueType: arrow.BinaryTypes.String}
 	tb := array.NewDictionaryBuilder(memory.DefaultAllocator, dict).(*array.BinaryDictionaryBuilder)
 	defer tb.Release()
@@ -452,7 +455,7 @@ func TestDecodeFormatFaults(t *testing.T) {
 		"ndjson: fraction in an int64": {NDJSON{}, []byte(`{"$table":"a","$timestamp":"1970-01-01T00:00:00Z","i":1.5}` + "\n")},
 		// the standard library's parse error surfaces as the body's fault
 		"ndjson: not json": {NDJSON{}, []byte(`{"$table":` + "\n")},
-		// a row is an object; an array cannot be read into a map of members
+		// a row is an object, and an array cannot be read into a map
 		"ndjson: not an object": {NDJSON{}, []byte(`[1]` + "\n")},
 		// $table routes the row, so it must be a string, and a timestamp is
 		// written as a string, so a number cannot be one
@@ -460,12 +463,12 @@ func TestDecodeFormatFaults(t *testing.T) {
 		"ndjson: number in a string":  {NDJSON{}, []byte(`{"$table":"a","$timestamp":0,"i":1}` + "\n")},
 		// the IPC reader refuses what is not a stream when it reads the schema
 		"arrow: not a stream": {Arrow{}, []byte("nope")},
-		// $table must be a plain utf8 column; the dictionary form is refused
-		// rather than decoded (internal/encoding/AGENTS.md, The seam)
+		// $table must be a plain utf8 column, so the dictionary form is
+		// refused (internal/encoding/AGENTS.md, The seam)
 		"arrow: dictionary $table": {Arrow{}, dictionaryTable},
 		// the standard library's parse error surfaces as the body's fault
 		"json: not json": {JSON{}, []byte(`{"columns":`)},
-		// the body is one result or an array of results, nothing else
+		// the body is one result or an array of results
 		"json: not a result": {JSON{}, []byte(`1`)},
 		// a member a result does not declare is refused, so a misspelled
 		// key is not an empty result

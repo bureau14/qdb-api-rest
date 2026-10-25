@@ -1,5 +1,5 @@
 // Helpers shared by encode_test.go and decode_test.go. run executes a
-// query as the anonymous user, and encode runs an encoder over a batch.
+// query as a user, and encode runs an encoder over a batch.
 // The generated tables come from internal/qdbtest/table, which also
 // compares what a test read back with what it wrote.
 package encoding
@@ -24,9 +24,9 @@ type failer interface {
 	Fatalf(string, ...any)
 }
 
-// run executes q as u and fails the test on error. The caller releases
-// the batch it returns, which is retained here because the sequence
-// releases its batch once the sink returns.
+// run executes a query as the given user and fails the test on error.
+// It retains the batch it returns, because the sequence releases its
+// batch once the sink returns, and the caller releases it.
 func run(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	t.Helper()
 	var out arrow.RecordBatch
@@ -46,13 +46,13 @@ func run(t failer, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	return out
 }
 
-// one is rec as a sequence of that one batch.
+// one returns a sequence of the one batch.
 func one(rec arrow.RecordBatch) iter.Seq2[arrow.RecordBatch, error] {
 	return func(yield func(arrow.RecordBatch, error) bool) { yield(rec, nil) }
 }
 
-// encode runs e over rec as a sequence of that one batch and returns the
-// body.
+// encode runs the encoder over a sequence of the one batch and returns
+// the body.
 func encode(t failer, e Encoder, rec arrow.RecordBatch) []byte {
 	t.Helper()
 	var buf bytes.Buffer

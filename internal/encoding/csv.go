@@ -58,15 +58,15 @@ func csvFloat[T float32 | float64](a floating[T]) func(i int) string {
 	}
 }
 
-// csvCell returns the function that writes cell i of column a as CSV
+// csvCell returns the function that writes cell i of a column as CSV
 // text, with the empty field for null. Each type is written the way CSV
-// readers expect: an integer of any width and a float at its own
-// width's shortest round trip as plain text, a decimal as its exact
-// text, a bool as true or false, a timestamp in timestampLayout, a date
-// in dateLayout, a time of day with nine fractional digits, a string as
-// its own bytes (the writer quotes what needs quoting), a blob as
-// standard base64. NaN and the infinities of float32 and float64 become
-// the empty field, because CSV has no null token and NaN is the
+// readers expect. An integer of any width is plain text, and a float is
+// the shortest text that round-trips at its own width. A decimal is its
+// exact text, a bool is true or false, a timestamp is in
+// timestampLayout, a date is in dateLayout, and a time of day has nine
+// fractional digits. A string is its own bytes, which the writer quotes
+// where needed, and a blob is standard base64. NaN and the infinities
+// become the empty field, because CSV has no null token and NaN is the
 // writer's own null for doubles. The type switch runs once per column,
 // so writing a cell is one call. The standard writer's interface costs
 // one string allocation per cell, which is accepted.
@@ -150,7 +150,8 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 	return nil, unsupportedType(f)
 }
 
-// csvColumns binds every column of rec: the header names and the cells.
+// csvColumns returns the header names and the cell writers of every
+// column of the batch.
 func csvColumns(rec arrow.RecordBatch) ([]string, []func(int) string, error) {
 	names := make([]string, rec.NumCols())
 	cells := make([]func(int) string, rec.NumCols())
@@ -200,9 +201,9 @@ func (CSV) EncodeStream(ctx context.Context, w io.Writer, batches iter.Seq2[arro
 		if err != nil {
 			return err
 		}
-		// A client that left is noticed at the next batch, and a batch is at
-		// most model.BatchRows rows, so the check per batch is as prompt as
-		// the per-row stride it replaced.
+		// A client that left is noticed at the next batch. A per-row stride
+		// was rejected, because a batch has at most model.BatchRows rows and
+		// the stride would notice it no sooner.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -247,11 +248,11 @@ func newCSVTable(name string, h csvHeader, schemaOf model.SchemaOf, first *csvTa
 	// the reader's schema rather than declared here:
 	//
 	//  1. look the table up through schemaOf, and pass its error as is;
-	//  2. pick $timestamp and the header's names from the schema by name;
-	//     a name the table lacks is the body's fault;
+	//  2. pick $timestamp and the header's names from the schema by name.
+	//     A name the table lacks is the body's fault;
 	//  3. check that a table after the first has the same type in every
-	//     field: one body is one column list, and the Arrow writer checks
-	//     one table at a time, so this decoder has to check it;
+	//     field. One body is one column list, and the Arrow writer checks
+	//     one table at a time, so the decoder checks it;
 	//  4. make one builder and one appender per field.
 
 	// 1. the table's schema
@@ -297,7 +298,7 @@ func newCSVTable(name string, h csvHeader, schemaOf model.SchemaOf, first *csvTa
 	return t, nil
 }
 
-// appendRecord parses one record into the builders of t. An empty field
+// appendRecord parses one record into the table's builders. An empty field
 // is null, except in the index, which cannot be null.
 func (t *csvTable) appendRecord(rec []string) error {
 	for i, f := range t.fields {
@@ -382,7 +383,7 @@ func (CSV) Decode(ctx context.Context, r io.Reader, schemaOf model.SchemaOf) ([]
 	//  1. the header fixes the field count and says which fields hold the
 	//     table, the index and the data columns;
 	//  2. each record goes to the builders of its table, which its $table
-	//     field must name; a table seen for the first time is typed
+	//     field must name. A table seen for the first time is typed
 	//     through schemaOf and must agree with the first table's types;
 	//  3. at the end every table becomes one batch, in first-seen order.
 	rd := csv.NewReader(r)
