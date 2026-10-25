@@ -1,6 +1,6 @@
 # Prepared statements on the Flight server, and the JDBC smoke step
 
-Status: draft
+Status: approved
 
 ## Outcome
 
