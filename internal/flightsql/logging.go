@@ -11,17 +11,17 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 )
 
-// accessContext tags ctx with a request id minted for this call, so the
-// lines logged below join on it as the HTTP lines join on theirs.
+// accessContext tags the call's context with a request id minted for
+// the call, so its log lines join on the id as the HTTP lines do.
 func (s *Server) accessContext(ctx context.Context) context.Context {
 	// The id is minted on every call and never read from the metadata.
-	// Honoring an inbound id would move httpapi's validation of one into
-	// observe, a refactor this plane has no need for yet.
+	// Honoring an inbound id was rejected, because it would move httpapi's
+	// validation of an id into observe.
 	return observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String())
 }
 
-// accessLine writes the one line per RPC: the method, the gRPC code, the
-// duration, in the HTTP access line's vocabulary.
+// accessLine writes one line per RPC with the method, the gRPC code and
+// the duration, in the HTTP access line's vocabulary.
 func accessLine(ctx context.Context, method string, start time.Time, err error) {
 	// The code comes from status.Code, so a handler's error and a refused
 	// call log the same way, and a nil error is OK.

@@ -58,7 +58,7 @@ func tokensAt(t *testing.T, now time.Time) *auth.Tokens {
 	return tk
 }
 
-// mint seals a token of kind typ for u, expiring at exp.
+// mint seals a token of the given kind for the user, expiring at exp.
 func mint(t *testing.T, tk *auth.Tokens, typ string, u qdb.User, exp time.Time) string {
 	t.Helper()
 	token, err := tk.Mint(auth.Claims{Username: u.Username, SecretKey: u.SecretKey, Typ: typ, SessionID: "sid-1", ExpiresAt: exp.Unix()})
@@ -78,8 +78,8 @@ type server struct {
 	user qdb.User
 }
 
-// newServerOn starts the server over c as u on 127.0.0.1:0 under the
-// keychain tk, and stops it on cleanup.
+// newServerOn starts the server over the cluster on 127.0.0.1:0 under
+// the keychain, acting as the user, and stops it when the test ends.
 func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User, tk *auth.Tokens) server {
 	t.Helper()
 	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
@@ -101,14 +101,15 @@ func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User, tk *auth.Tokens) serv
 	return server{ctx: ctx, tk: tk, srv: srv, user: u}
 }
 
-// newServer starts the server for f and acts as f's user.
+// newServer starts the server for the fixture's cluster and acts as its
+// user.
 func newServer(t *testing.T, f cluster.Fixture) server {
 	t.Helper()
 	return newServerOn(t, f.Cluster, f.User, tokensAt(t, time.Now()))
 }
 
-// bearerOf reads the Bearer token the client will present from the ctx
-// AuthenticateBasicToken answered.
+// bearerOf reads the Bearer token the client will present from the
+// context AuthenticateBasicToken answered.
 func bearerOf(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	md, _ := metadata.FromOutgoingContext(ctx)
@@ -119,8 +120,9 @@ func bearerOf(t *testing.T, ctx context.Context) string {
 	return vals[0][len("Bearer "):]
 }
 
-// duck runs q on DuckDB over the cluster directly, as u, and answers its
-// batches joined into one batch the caller releases.
+// duck runs a query on the user's DuckDB instance directly, without the
+// Flight server, and answers the batches joined into one batch the caller
+// releases.
 func duck(t table.T, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	t.Helper()
 	var schema *arrow.Schema
@@ -144,7 +146,7 @@ func duck(t table.T, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	return qdbflight.Concat(t, schema, recs)
 }
 
-// code answers the gRPC code of err, OK for nil.
+// code answers an error's gRPC code, OK for nil.
 func code(err error) codes.Code { return status.Code(err) }
 
 // TestHandshake: a Handshake with the fixture's credentials answers an
@@ -232,8 +234,8 @@ func TestBearerRows(t *testing.T) {
 // epoch is the fixed clock the bearer rows are judged against.
 var epoch = time.Unix(1_700_000_000, 0)
 
-// stripped is sc without field metadata, the form a describe answers on
-// the native engine.
+// stripped is the schema without field metadata, the form a native
+// describe answers.
 func stripped(sc *arrow.Schema) *arrow.Schema {
 	fields := sc.Fields()
 	for i := range fields {
@@ -242,7 +244,8 @@ func stripped(sc *arrow.Schema) *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// executeSchemaIs fails t unless GetExecuteSchema of q answers want.
+// executeSchemaIs fails the test unless GetExecuteSchema answers want for
+// the query.
 func executeSchemaIs(t table.T, cl *flightsql.Client, ctx context.Context, q string, want *arrow.Schema) {
 	t.Helper()
 	res, err := cl.GetExecuteSchema(ctx, q)
@@ -343,7 +346,8 @@ func TestStatement(t *testing.T) {
 	})
 }
 
-// retryInfo answers the RetryInfo detail of err's status, nil without one.
+// retryInfo answers the RetryInfo detail of an error's status, nil
+// without one.
 func retryInfo(err error) *errdetails.RetryInfo {
 	for _, d := range status.Convert(err).Details() {
 		if ri, ok := d.(*errdetails.RetryInfo); ok {
@@ -353,9 +357,9 @@ func retryInfo(err error) *errdetails.RetryInfo {
 	return nil
 }
 
-// statementErr runs q as a statement, Execute then DoGet, and answers the
-// error of whichever call failed, so a row passes whether the describe or
-// the run refused the query.
+// statementErr runs a query as a statement, Execute then DoGet, and
+// answers the error of whichever call failed, so a row passes whether the
+// describe or the run refused the query.
 func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q string) error {
 	t.Helper()
 	info, err := cl.Execute(ctx, q)
@@ -367,7 +371,7 @@ func statementErr(t *testing.T, cl *flightsql.Client, ctx context.Context, q str
 	return err
 }
 
-// prepareErr prepares q and answers the prepare's error, closing a
+// prepareErr prepares a query and answers the prepare's error, closing a
 // statement that prepared.
 func prepareErr(cl *flightsql.Client, ctx context.Context, q string) error {
 	ps, err := cl.Prepare(ctx, q)
@@ -494,7 +498,7 @@ func catalogRows(t *testing.T, cl *flightsql.Client, ctx context.Context) func(*
 	}
 }
 
-// column answers the string column named name of rec as a slice.
+// column answers the batch's string column of that name as a slice.
 func column(t *testing.T, rec arrow.RecordBatch, name string) []string {
 	t.Helper()
 	idx := rec.Schema().FieldIndices(name)
@@ -509,8 +513,8 @@ func column(t *testing.T, rec arrow.RecordBatch, name string) []string {
 	return out
 }
 
-// binaryColumn answers the binary column named name of rec as a slice,
-// the sibling of column for the table_schema column.
+// binaryColumn answers the batch's binary column of that name as a
+// slice, for the table_schema column.
 func binaryColumn(t *testing.T, rec arrow.RecordBatch, name string) [][]byte {
 	t.Helper()
 	idx := rec.Schema().FieldIndices(name)
@@ -525,9 +529,10 @@ func binaryColumn(t *testing.T, rec arrow.RecordBatch, name string) [][]byte {
 	return out
 }
 
-// checkSqlInfo reads every registered SqlInfo id back through cl and
-// asserts one row per value type: the server name, read-only, transaction
-// NONE and the quote char. An id the server does not register is NOT_FOUND.
+// checkSqlInfo reads every registered SqlInfo id back through the client
+// and asserts one row per value type: the server name, read-only,
+// transaction NONE and the quote char. An id the server does not register
+// is NOT_FOUND.
 func checkSqlInfo(t *testing.T, cl *flightsql.Client, ctx context.Context) {
 	t.Helper()
 	// The batch is read whole and not through catalogRows, because Arrow

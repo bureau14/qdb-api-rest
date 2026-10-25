@@ -18,13 +18,13 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// The one cluster's place in Flight SQL's catalog tree. A driver shows a
+// The cluster's place in Flight SQL's catalog tree. A driver shows a
 // table under catalog qdb and schema main, the names a #sql query takes,
-// because qdb-duck attaches the cluster as catalog qdb with the one schema
-// main, so the tree view and the query agree. A null catalog and schema
-// were rejected: the tree view shows an unnamed node and the names differ
-// from what #sql needs. The one table type is TABLE, because the native
-// engine has no views and the native listing does not see DuckDB's.
+// because qdb-duck attaches the cluster as catalog qdb with schema main.
+// A null catalog and schema were rejected, because the tree view would
+// show an unnamed node and the names would differ from what #sql needs.
+// The table type is TABLE, because the native engine has no views and the
+// native listing does not see DuckDB's.
 const (
 	catalogName = "qdb"
 	schemaName  = "main"
@@ -32,9 +32,9 @@ const (
 )
 
 // infoFor answers the FlightInfo of a catalog command: one endpoint whose
-// ticket is the command itself, so DoGet decodes it and the server keeps
-// nothing between the calls (ADR-0018, Decision 9), with schema as the
-// command's reference schema and unknown totals.
+// ticket is the command itself, the command's reference schema and
+// unknown totals. DoGet decodes the ticket, so the server keeps nothing
+// between the calls (ADR-0018, Decision 9).
 func infoFor(desc *flight.FlightDescriptor, schema *arrow.Schema) *flight.FlightInfo {
 	return &flight.FlightInfo{
 		FlightDescriptor: desc,
@@ -48,13 +48,13 @@ func infoFor(desc *flight.FlightDescriptor, schema *arrow.Schema) *flight.Flight
 	}
 }
 
-// oneChunk answers rec as the schema and channel a DoGet method returns,
-// the channel closed after the one chunk, as the base server's DoGetSqlInfo
-// answers its batch.
+// oneChunk answers a batch as the schema and the channel a DoGet method
+// returns. The channel closes after its one chunk, as in the base
+// server's DoGetSqlInfo.
 func oneChunk(ctx context.Context, rec arrow.RecordBatch) (*arrow.Schema, <-chan flight.StreamChunk, error) {
-	// NewRecordReader retains rec, so the caller's release after this call
-	// leaves the reader's reference, which StreamChunksFromReader releases
-	// once drained.
+	// NewRecordReader retains the batch, so the caller's release after this
+	// call leaves the reader's reference, which StreamChunksFromReader
+	// releases once drained.
 	rdr, err := array.NewRecordReader(rec.Schema(), []arrow.RecordBatch{rec})
 	if err != nil {
 		return nil, nil, err
@@ -64,9 +64,9 @@ func oneChunk(ctx context.Context, rec arrow.RecordBatch) (*arrow.Schema, <-chan
 	return rec.Schema(), ch, nil
 }
 
-// likePattern answers whether s matches the SQL LIKE pattern p of a Flight
-// SQL filter, where % matches any run and _ one character and every other
-// byte matches itself. A nil p matches everything.
+// likePattern answers whether a name matches the SQL LIKE pattern of a
+// Flight SQL filter. % matches any run, _ matches one character, and
+// every other byte matches itself. A nil pattern matches everything.
 func likePattern(p *string, s string) bool {
 	if p == nil {
 		return true
@@ -91,8 +91,9 @@ func likePattern(p *string, s string) bool {
 	return regexp.MustCompile(re.String()).MatchString(s)
 }
 
-// holdsCluster answers whether a request's catalog and schema pattern admit
-// the one cluster: a nil catalog or qdb, and a schema pattern main matches.
+// holdsCluster answers whether a request's catalog and schema pattern
+// admit the cluster: a nil catalog or qdb, and a schema pattern that main
+// matches.
 // A catalog other than qdb, or a pattern main does not match, is an empty
 // result and not an error, because a driver that walks several catalogs
 // asks for each and expects the empty ones to answer empty.
@@ -100,7 +101,7 @@ func holdsCluster(catalog, schemaPattern *string) bool {
 	return (catalog == nil || *catalog == catalogName) && likePattern(schemaPattern, schemaName)
 }
 
-// GetFlightInfoCatalogs answers the info of the one catalog.
+// GetFlightInfoCatalogs answers the info of the catalog listing.
 func (s *Server) GetFlightInfoCatalogs(_ context.Context, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
 	return infoFor(desc, schema_ref.Catalogs), nil
 }
@@ -121,7 +122,7 @@ func (s *Server) GetFlightInfoSchemas(_ context.Context, _ flightsql.GetDBSchema
 }
 
 // DoGetDBSchemas answers one row, catalog qdb and schema main, or no row
-// when cmd's catalog or schema pattern excludes it.
+// when the request's catalog or schema pattern excludes it.
 func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas) (*arrow.Schema, <-chan flight.StreamChunk, error) {
 	b := array.NewRecordBuilder(memory.DefaultAllocator, schema_ref.DBSchemas)
 	defer b.Release()
@@ -134,8 +135,8 @@ func (s *Server) DoGetDBSchemas(ctx context.Context, cmd flightsql.GetDBSchemas)
 	return oneChunk(ctx, rec)
 }
 
-// GetFlightInfoTables answers the info of the table listing: four columns,
-// or five with each table's schema when cmd asks for it.
+// GetFlightInfoTables answers the info of the table listing: four
+// columns, or five with each table's schema when the request asks for it.
 func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
 	// The schema is the one the router's GetSchema promises for the flag,
 	// so the info and the schema call agree.
@@ -146,11 +147,12 @@ func (s *Server) GetFlightInfoTables(_ context.Context, cmd flightsql.GetTables,
 	return infoFor(desc, schema), nil
 }
 
-// DoGetTables answers one row per table name the cluster reports as the
-// caller's user, under catalog qdb, schema main and type TABLE, filtered by
-// cmd's table name pattern, and empty when cmd's catalog, schema pattern or
-// table types exclude the cluster. With include_schema each row carries
-// the table's schema as IPC bytes in table_schema.
+// DoGetTables answers one row per table the cluster lists for the caller,
+// under catalog qdb, schema main and type TABLE, filtered by the
+// request's table name pattern. The result is empty when the request's
+// catalog, schema pattern or table types exclude the cluster. With
+// include_schema each row carries the table's schema as IPC bytes in
+// table_schema.
 func (s *Server) DoGetTables(ctx context.Context, cmd flightsql.GetTables) (*arrow.Schema, <-chan flight.StreamChunk, error) {
 	// The listing is the cluster's, filtered here, because `show tables`
 	// has no filtered form, so the whole list crosses the wire per call and
@@ -235,7 +237,7 @@ func (s *Server) GetFlightInfoTableTypes(_ context.Context, desc *flight.FlightD
 	return infoFor(desc, schema_ref.TableTypes), nil
 }
 
-// DoGetTableTypes answers one row, TABLE, the one type the constants above
+// DoGetTableTypes answers one row, TABLE, the type the constants above
 // explain.
 func (s *Server) DoGetTableTypes(ctx context.Context) (*arrow.Schema, <-chan flight.StreamChunk, error) {
 	b := array.NewRecordBuilder(memory.DefaultAllocator, schema_ref.TableTypes)

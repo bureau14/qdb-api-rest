@@ -34,9 +34,9 @@ type Server struct {
 	lis              net.Listener
 }
 
-// New builds the server over the process context ctx, bound to addr with
-// tlsConfig, and listens. ctx carries the logger, the cluster and the
-// keychain every call reads. The listener is TLS only (ADR-0018).
+// New builds the server and listens on the address with the TLS
+// configuration. The process context carries the logger, the cluster and
+// the keychain every call reads. The listener is TLS only (ADR-0018).
 func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, error) {
 	// The gRPC server is built directly rather than through arrow-go's
 	// flight.Server helper, because the helper's shutdown is a bare
@@ -47,12 +47,11 @@ func New(ctx context.Context, addr string, tlsConfig *tls.Config) (*Server, erro
 	//  2. the TLS credentials;
 	//  3. register the Flight SQL service;
 	//  4. register what GetSqlInfo answers;
-	//  5. listen on addr.
+	//  5. listen.
 	s := &Server{root: ctx, anonymousAllowed: !qdb.ClusterFrom(ctx).Secured()}
 	// 1. The access line is outermost and the auth edge inside it, so a
-	//    refused call is logged too. The access line therefore carries
-	//    no user tag, as the HTTP access line does not, because on both
-	//    planes the bearer edge runs inside the logging edge.
+	//    refused call is logged too. The access line therefore carries no
+	//    user tag, on this plane as on HTTP.
 	// 2. TLS only, with no plaintext option: the port serves the HTTPS
 	//    listener's certificates (ADR-0018).
 	s.grpc = grpc.NewServer(
@@ -88,8 +87,8 @@ func (s *Server) Addr() net.Addr { return s.lis.Addr() }
 // Shutdown.
 func (s *Server) Serve() error { return s.grpc.Serve(s.lis) }
 
-// Shutdown stops accepting calls and waits for the calls in flight until
-// ctx ends, then cuts the rest.
+// Shutdown stops accepting calls, waits for the calls in flight until the
+// context ends, and then cuts the rest.
 func (s *Server) Shutdown(ctx context.Context) {
 	// GracefulStop has no deadline of its own, so it runs on a goroutine
 	// and the select below bounds it.
@@ -107,9 +106,9 @@ func (s *Server) Shutdown(ctx context.Context) {
 	}
 }
 
-// callContext gives a call's ctx the process values: the logger, the
-// cluster and the keychain, each copied explicitly so a reader sees what
-// a handler may read.
+// callContext gives a call's context the process values: the logger, the
+// cluster and the keychain. Each is copied explicitly, so a reader sees
+// what a handler may read.
 func (s *Server) callContext(ctx context.Context) context.Context {
 	// grpc-go has no BaseContext as net/http has, so the interceptors
 	// splice the process values onto the call's own cancellation. A
@@ -121,7 +120,7 @@ func (s *Server) callContext(ctx context.Context) context.Context {
 	return auth.WithTokens(ctx, auth.TokensFrom(s.root))
 }
 
-// wrappedStream carries a replaced ctx through a stream, because
+// wrappedStream carries a replaced context through a stream, because
 // grpc.ServerStream's Context is a method and not a field.
 type wrappedStream struct {
 	grpc.ServerStream

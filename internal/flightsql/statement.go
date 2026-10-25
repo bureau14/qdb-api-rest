@@ -19,17 +19,18 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
-// userOf answers the user of the call: the claims the auth edge placed on
-// ctx, zero claims for the anonymous user, as the HTTP handlers derive it.
+// userOf answers the call's user from the claims the auth edge placed.
+// The anonymous user has zero claims. The HTTP handlers derive the user
+// the same way.
 func userOf(ctx context.Context) qdb.User {
 	c := auth.ClaimsFrom(ctx)
 	return qdb.User{Username: c.Username, SecretKey: c.SecretKey}
 }
 
-// describe answers q's schema as the call's user, and whether it has
-// one. A column type the DuckDB describe does not map answers no schema
-// and no error. Every other failure is statusOf's, with INVALID_ARGUMENT
-// for what an engine answered.
+// describe answers a query's schema, and whether it has one. A DuckDB
+// column type without a mapping answers no schema and no error. Every
+// other failure goes through statusOf, with INVALID_ARGUMENT for what an
+// engine answered.
 func describe(ctx context.Context, q string) (*arrow.Schema, bool, error) {
 	sc, err := query.Describe(ctx, userOf(ctx), q)
 	switch {
@@ -47,9 +48,9 @@ func describe(ctx context.Context, q string) (*arrow.Schema, bool, error) {
 	return sc, true, nil
 }
 
-// schemaOf answers q's schema for a call whose whole answer is the
-// schema: the prepare and both schema calls. A column type the describe
-// does not map is INVALID_ARGUMENT naming the column and the type.
+// schemaOf answers a query's schema for the calls that answer nothing
+// else: the prepare and both schema calls. A DuckDB column type without a
+// mapping is INVALID_ARGUMENT naming the column and the type.
 func schemaOf(ctx context.Context, q string) (*arrow.Schema, error) {
 	sc, err := query.Describe(ctx, userOf(ctx), q)
 	if err != nil {
@@ -68,7 +69,7 @@ func schemaOf(ctx context.Context, q string) (*arrow.Schema, error) {
 // (ADR-0018, Decision 9). The info is one endpoint whose ticket is the
 // query text, the described schema when there is one, no location, which
 // means this server, and unknown totals. A query that fails to describe
-// fails here with describe's status, before any ticket.
+// fails here, before any ticket.
 func (s *Server) GetFlightInfoStatement(ctx context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
 	// The describe runs here and the query at DoGet, so the server stores
 	// nothing between the calls.
@@ -119,37 +120,37 @@ type service struct {
 // DoGet streams the result of a statement ticket, and hands every other
 // ticket to arrow-go's router.
 func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServer) error {
-	// The query runs inside the sink and each lent batch is written to the
-	// stream as it comes, in one function and no goroutine, the HTTP
-	// handler's shape. arrow-go's DoGetStatement hook, which answers a
+	// The query runs inside the sink, which writes each lent batch to the
+	// stream as it comes, in one function and no goroutine, as the HTTP
+	// handler does. arrow-go's DoGetStatement hook, which answers a
 	// channel the router drains, was rejected: it needs a producer
 	// goroutine, a schema handoff before the first chunk, and the
 	// error-before-first-byte split carried across the channel.
 	//
 	//  1. decode the ticket;
-	//  2. the user from the claims;
-	//  3. run through query.Run, the Flight writer inside the sink;
-	//  4. the stream failed: INTERNAL, or the ctx's code;
-	//  5. the run failed before the sink: statusOf.
+	//  2. find the user;
+	//  3. run the query, with the Flight writer inside the sink;
+	//  4. on a failed stream, answer INTERNAL or the context's code;
+	//  5. on a run that failed before the sink, answer statusOf's code.
 	ctx := stream.Context()
 
-	// 1. GetStatementQueryTicket answers an error for any ticket that is
-	//    not a statement, and that ticket is the router's
+	// 1. decode the ticket. A ticket that is not a statement goes to the
+	//    router.
 	ticket, err := flightsql.GetStatementQueryTicket(t)
 	if err != nil {
 		return v.FlightServer.DoGet(t, stream)
 	}
-	// 2. the user from the claims the auth edge placed
+	// 2. find the user
 	u := userOf(ctx)
-	// 3. query.Run retries the native engine once before the sink and
-	//    DuckDB never, so this method retries nothing. The sink opens the
-	//    Flight writer on the first batch's schema and writes each batch as
-	//    one message, with a ctx check per batch, because a client that
-	//    left is noticed at the next batch. Close runs after the last batch,
-	//    because Close writes the schema when no batch did, so an empty
-	//    result reaches the client too. A batch of no rows is not written,
-	//    as the Arrow encoder skips it, so a statement without a result set
-	//    streams a schema with no fields and no batch.
+	// 3. run the query. query.Run already retries the native engine once
+	//    before the sink, so this method retries nothing. The sink opens
+	//    the Flight writer on the first batch's schema and writes each
+	//    batch as one message. It checks the context per batch, so a
+	//    client that left is noticed at the next batch. Close runs after
+	//    the last batch, because it writes the schema when no batch did, so
+	//    an empty result reaches the client too. A batch of no rows is
+	//    skipped, as the Arrow encoder skips it, so a statement without a
+	//    result set streams a schema with no fields and no batch.
 	var streamErr error
 	err = query.Run(ctx, u, string(ticket.GetStatementHandle()), func(batches qdb.Batches) error {
 		var w *flight.Writer
@@ -173,9 +174,9 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 				return err
 			}
 		}
-		// The sequence is never empty (the Batches contract), so w is open;
-		// if it were not, Close on a nil writer would panic, and an empty
-		// schema is streamed instead so the client still reads a stream.
+		// The sequence is never empty (the Batches contract), so the writer
+		// is open. If it were not, Close on a nil writer would panic, so an
+		// empty schema is streamed and the client still reads a stream.
 		if w == nil {
 			w = flight.NewRecordWriter(stream, ipc.WithSchema(arrow.NewSchema(nil, nil)))
 		}

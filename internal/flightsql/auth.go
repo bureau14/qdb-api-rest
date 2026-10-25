@@ -16,8 +16,8 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
-// authorizationKey is the metadata key the credential travels under, the
-// one Arrow's drivers and arrow-go's client write. gRPC lowercases keys.
+// authorizationKey is the metadata key the credential travels under,
+// which Arrow's drivers and arrow-go's client write. gRPC lowercases keys.
 const authorizationKey = "authorization"
 
 // credential reads the authorization metadata of a call: its scheme, its
@@ -42,8 +42,8 @@ func credential(ctx context.Context) (scheme, value string, present bool) {
 	return scheme, strings.TrimSpace(value), true
 }
 
-// unauthenticated is the UNAUTHENTICATED status with detail, which names
-// the failure as the HTTP challenge's detail does (ADR-0018).
+// unauthenticated is the UNAUTHENTICATED status whose detail names the
+// failure, as the HTTP challenge's detail does (ADR-0018).
 func unauthenticated(detail string) error {
 	return status.Error(codes.Unauthenticated, detail)
 }
@@ -61,8 +61,8 @@ func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
 	//  3. verify: an expired token and an invalid one are both refused,
 	//     with the detail naming which;
 	//  4. typ != access: refused;
-	//  5. the claims ride the ctx, and the logger carries the user and the
-	//     session, so the code below only logs.
+	//  5. the claims ride the context, and the logger carries the user and
+	//     the session, so the code below only logs.
 	scheme, token, present := credential(ctx)
 	var c auth.Claims
 	switch {
@@ -94,7 +94,7 @@ func (s *Server) authenticate(ctx context.Context) (context.Context, error) {
 			return nil, unauthenticated("not an access token")
 		}
 	}
-	// 5. The edge enriches and the handler does not. The anonymous ctx
+	// 5. The edge enriches and the handler does not. The anonymous context
 	//    carries zero Claims, so ClaimsFrom never panics and a handler
 	//    derives the user from the claims as the HTTP handlers do.
 	ctx = auth.WithClaims(ctx, c)
@@ -179,8 +179,8 @@ func (s *Server) handshake(ctx context.Context, stream grpc.ServerStream) error 
 	return nil
 }
 
-// authUnary is the auth edge of a unary call: the call runs under
-// authenticate's ctx or not at all.
+// authUnary is the auth edge of a unary call, which runs under the
+// context authenticate answers or not at all.
 func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 	// The ctx carries the process values from the access edge outside, so
 	// authenticate can read the cluster and the keychain.
@@ -191,8 +191,9 @@ func (s *Server) authUnary(ctx context.Context, req any, _ *grpc.UnaryServerInfo
 	return next(ctx, req)
 }
 
-// authStream is the auth edge of a stream: a Handshake goes to handshake,
-// and every other stream runs under authenticate's ctx or not at all.
+// authStream is the auth edge of a stream. A Handshake goes to
+// handshake, and every other stream runs under the context authenticate
+// answers or not at all.
 func (s *Server) authStream(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, next grpc.StreamHandler) error {
 	// The ctx carries the process values from the access edge outside, so
 	// handshake and authenticate can read the cluster and the keychain.
