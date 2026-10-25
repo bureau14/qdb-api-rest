@@ -73,8 +73,9 @@ public final class Main {
             while (rs.next()) {
                 rows++;
             }
-            System.out.println(String.join(",", names));
-            System.out.println(rows);
+            // LF and not println's line separator, so the Windows agents
+            // print the bytes the driver compares with cmp.
+            System.out.print(String.join(",", names) + "\n" + rows + "\n");
         }
     }
 }
