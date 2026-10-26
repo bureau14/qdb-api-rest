@@ -7,14 +7,16 @@
 # step expects the generated input, so nothing is captured and nothing is
 # audited (ADR-0014). Error rows are Go tests and never steps here.
 #
-#   round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> --jdbc-jar <jar> [--rows N] [--seed S]
+#   round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]
 #
 # Each server is named by its cluster, insecure or secure. Each of its
 # planes is a URL in the form its client takes: http://host:port for curl
 # on the HTTP listener, and grpc+tls://host:port for the ADBC driver on
 # the Flight listener, which is TLS only. The JDBC step rewrites the
 # Flight URL into the JDBC driver's own form. The HTTPS listener has no
-# option, because no step reads it. The Makefile is the only source of
+# option, because no step reads it. Each server's log file is optional,
+# because a server given as a URL has none, and the warning step is
+# skipped for it. The Makefile is the only source of
 # URLs, ports and paths, and passes them as options. common.sh supplies
 # the helpers and TZ=UTC. Working files go to actual/round-trip/<cluster>/.
 # The script needs bash, curl, jq, cmp, gunzip and java.
@@ -29,10 +31,10 @@ require_command java
 
 ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
-INSECURE_HTTP="" INSECURE_FLIGHT="" SECURE_HTTP="" SECURE_FLIGHT="" TOOL="" JDBC_JAR="" ROWS=10000 SEED="$(date +%s)"
+INSECURE_HTTP="" INSECURE_FLIGHT="" SECURE_HTTP="" SECURE_FLIGHT="" TOOL="" JDBC_JAR="" INSECURE_LOG="" SECURE_LOG="" ROWS=10000 SEED="$(date +%s)"
 
 usage() {
-    die "usage: round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> --jdbc-jar <jar> [--rows N] [--seed S]"
+    die "usage: round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]"
 }
 
 # Every option is named, because two URLs on a command line need names.
@@ -47,6 +49,8 @@ parse_args() {
             --secure-flight)   SECURE_FLIGHT="$2"; shift 2 ;;
             --tool)         TOOL="$2"; shift 2 ;;
             --jdbc-jar)     JDBC_JAR="$2"; shift 2 ;;
+            --insecure-log) INSECURE_LOG="$2"; shift 2 ;;
+            --secure-log)   SECURE_LOG="$2"; shift 2 ;;
             --rows)         ROWS="$2"; shift 2 ;;
             --seed)         SEED="$2"; shift 2 ;;
             *)              usage ;;
@@ -391,6 +395,34 @@ jdbc_runs() {
 # not run.
 if jdbc_runs; then JDBC_OK=" and JDBC"; else JDBC_OK=""; log_info "the JDBC steps do not run on FreeBSD"; fi
 
+# PLAINTEXT_WARNING is the message the server logs at startup when its
+# HTTP listener serves a secure cluster, the text newListeners spells
+# (cmd/qdb_rest/main.go), so the log step proves the warning fires there
+# and nowhere else. A change to one changes the other.
+PLAINTEXT_WARNING='http listener on a secure cluster: access tokens travel in plain text'
+
+# check_log <name> <log_file> <present|absent>: the plain-text warning
+# is in the server's log, or is not, by a fixed-string grep. An empty
+# log file path skips the step with a line saying so, because a server
+# given as a URL has no log the harness can read.
+check_log() {
+    local name="$1" log_file="$2" want="$3"
+    # A URL server is a supported way to run the round trip, so a missing
+    # log is skipped and not failed.
+    if [[ -z "$log_file" ]]; then
+        log_info "$name: no log file, the warning step is skipped"
+        return 0
+    fi
+    # A fixed string, because the line is JSON and the message is the one
+    # field the driver knows.
+    if grep -qF "$PLAINTEXT_WARNING" "$log_file"; then
+        [[ "$want" == present ]] || { log_error "[FAIL] $name: the plain-text warning is in $log_file, want absent"; return 1; }
+    else
+        [[ "$want" == absent ]] || { log_error "[FAIL] $name: the plain-text warning is not in $log_file, want present"; return 1; }
+    fi
+    log_info "[OK] $name: the plain-text warning is $want in the log"
+}
+
 # The matrix. One table per body format, named after it, and every
 # table is read and queried in every response format under every
 # coding, and read back through DuckDB SQL the same way. A format is one entry here and a new step is one function
@@ -442,7 +474,12 @@ main() {
     mkdir -p "$ACTUAL_DIR"
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
     run_cluster insecure "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
+    # The insecure server also serves HTTP, so an unconditional warning
+    # fails here.
+    check_log insecure "$INSECURE_LOG" absent || failed=$((failed + 1))
     run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
+    # The M6 criterion: the secure server's log carries the warning.
+    check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
     (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }

@@ -120,27 +120,31 @@ jdbc:
 # services-check probes the insecure one, and the secure probe lives
 # here. The round trip loads nothing. Each server not given as a URL is
 # started here and stopped on exit, one after the other being fine
-# because the driver runs the clusters in sequence.
+# because the driver runs the clusters in sequence. Each server started
+# here passes its log file to the driver, and a server given as a URL
+# passes none.
 test-round-trip: services-check e2etool jdbc
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
 	insecure="$(REST_URL_INSECURE)"; secure="$(REST_URL_SECURE)"; \
+	insecure_log=""; secure_log=""; \
 	if [[ -z "$$insecure" || -z "$$secure" ]]; then \
 	    [[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL_INSECURE and REST_URL_SECURE"; \
 	fi; \
 	trap 'stop_server $(REST_PID); stop_server $(REST_PID_SECURE)' EXIT; \
 	if [[ -z "$$insecure" ]]; then \
 	    start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
-	    insecure=http://127.0.0.1:$(REST_PORT); \
+	    insecure=http://127.0.0.1:$(REST_PORT); insecure_log=$(REST_LOG); \
 	fi; \
 	if [[ -z "$$secure" ]]; then \
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
-	    secure=http://127.0.0.1:$(REST_PORT_SECURE); \
+	    secure=http://127.0.0.1:$(REST_PORT_SECURE); secure_log=$(REST_LOG_SECURE); \
 	fi; \
 	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
 	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
-	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED)
+	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
+	    --insecure-log "$$insecure_log" --secure-log "$$secure_log"
 
 # ------------------------------------------------------------------ cleanup
 
