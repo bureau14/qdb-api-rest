@@ -864,8 +864,11 @@ The project prefers generative and end-to-end tests over unit tests.
 Unit tests exist only where a pure function has genuine logic worth
 pinning.
 
-There are three layers, one question each (ADR-0015). All three run in
-Buildkite on every platform and gate. Every question has a yes or no
+There are three layers, one question each (ADR-0015). The Go tests and
+the round trip run in Buildkite on every platform and gate. The stress
+and the v1 golden suite run by hand (owner, 2026-10-26), because the
+Buildkite agents are small and a suite that needs load or a build of the
+old server does not belong on them. Every question has a yes or no
 answer. Nothing in the repository measures a number: no benchmark, no
 timing assertion, no performance budget.
 
@@ -901,7 +904,8 @@ timing assertion, no performance budget.
    the session budget bounds memory and load (excess waits or times
    out, no goodput collapse), and that in-flight streams complete
    across a graceful-shutdown drain. Every assertion is pass or fail on
-   behaviour. None is a timing or a measured number.
+   behaviour. None is a timing or a measured number. The stress runs by
+   hand and not in Buildkite.
 
 ## Milestones
 
@@ -947,7 +951,7 @@ starts.
   (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
   query and the DuckDB query layer of M4.
 - **M6 -- Resilience**: `/metrics`, the graceful-drain and
-  concurrency stress as behaviour assertions in Buildkite.
+  concurrency stress as behaviour assertions, run by hand.
 - **M7 -- Exploration**: tables list and schema, tags (whose tag-find
   core in `internal/qdb` the v1 `find` wart of M8 wraps), and cluster
   and node status.
@@ -955,8 +959,8 @@ starts.
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with a `v1`
   golden suite, captured from the old server when this milestone
-  starts, green in Buildkite. The outcome replaces the old binary at a
-  customer site with no client changes.
+  starts, green when run by hand. The outcome replaces the old binary at
+  a customer site with no client changes.
 - **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections), `qdb-release` version registration,
