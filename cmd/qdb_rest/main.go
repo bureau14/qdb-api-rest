@@ -134,7 +134,8 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	//    key" in the binary. The message text is spelled once here and
 	//    once in the round trip's driver (tests/e2e/round-trip.sh,
 	//    PLAINTEXT_WARNING), which greps it, and a change to one changes
-	//    the other.
+	//    the other. The line is here and not in main, because this step
+	//    already decides that the HTTP listener exists.
 	if cfg.Listen.HTTP != "" {
 		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
@@ -186,7 +187,9 @@ func serveUntilDone(ctx context.Context, listeners []listener) error {
 // callers left, and its close waits only for idle sessions.
 func shutdown(ctx context.Context, grace time.Duration, listeners []listener, cluster *qdb.Cluster) {
 	// The deadline is the caller's, read from the configuration once in
-	// main, so this function has no constant of its own.
+	// main, so this function has no constant of its own. A package
+	// variable was rejected, because the binary keeps no package-level
+	// state (internal/AGENTS.md, Code).
 	drain, cancel := context.WithTimeout(context.Background(), grace)
 	defer cancel()
 	var wg sync.WaitGroup
