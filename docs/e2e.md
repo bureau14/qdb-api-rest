@@ -297,9 +297,9 @@ the tool is Go and runs wherever the server builds.
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
 the binary `20.build.sh` built. It runs `make test-round-trip`, which
-loads nothing. The stress joins with the resilience milestone, and the
-v1 goldens with the drop-in milestone. A suite enters the step when it
-is green. The script follows qdb-nats-connector's
+loads nothing. The stress and the v1 goldens run by hand and never in
+this step (`docs/brief.md`, Testing doctrine). A suite enters the step
+when it is green. The script follows qdb-nats-connector's
 `50.test-e2e.sh`: GNU make discovery (`gmake` on FreeBSD,
 `mingw32-make` on Windows), the Windows DLL co-location into `bin/`,
 where `qdb_rest` and `e2etool` are both built, and a dump of the two
@@ -308,15 +308,20 @@ REST servers' and both qdbd clusters' logs on failure. `curl`, `jq` and
 
 ## Stress definition
 
-The stress is shell and curl, asserted as behaviour and never as a
-timing or a measured number (ADR-0015). N parallel clients (`xargs -P`
-and curl) read a large table the stress ingests itself through
-`e2etool gen` and `POST /api/v2/rows`, the way the round trip does. The
-assertions are that the session budget bounds load (a request past the
-budget waits for a session or times out at its deadline, and every
-admitted request completes with the expected body), and that in-flight
-streams complete across a graceful shutdown drain. Its definition is
-completed when the resilience milestone starts.
+The stress is shell and curl, run by hand through `make test-stress`,
+asserted as behaviour and never as a timing or a measured number
+(ADR-0015). It ingests one table through `e2etool gen` and
+`POST /api/v2/rows`, the way the round trip does, against a server it
+starts with a small `pool.max_sessions`. It has two steps, each a
+milestone's. The drain step (the hardening milestone) starts one slow
+read (`curl --limit-rate`), sends the server SIGTERM, and asserts that
+the body compares equal to the generated rows and that a new connection
+is refused. The budget step (the observability milestone) runs N
+clients, more than the budget, through `xargs -P` and curl while it
+polls the budget gauge on `/metrics`, and asserts that the gauge never
+exceeds the budget and that every client's body compares equal to the
+rows. The parameters are written in the Makefile. The agents are small,
+which is why the stress runs by hand.
 
 ## Layout
 
@@ -324,7 +329,8 @@ completed when the resilience milestone starts.
 scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...); qdbd up
 tests/e2e/
   Makefile                services-check | e2etool | jdbc | test-round-trip | clean
-                          test-stress (arrives with the resilience milestone)
+                          test-stress (by hand; the drain step with the hardening milestone,
+                          the budget step with the observability milestone)
   common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper
   round-trip.sh           the v2 round trip driver
   tools/e2etool/          Go: gen, tocsv and adbc;
@@ -414,7 +420,7 @@ the round trip on 2026-09-18 (ADR-0014). Those rows are gone with it.
 | The empty read is dropped                                                                 | `TestRoundtrip` step 3 reads the first table empty in every format (owner)                                                              | an empty read against the header line, because it costs a second expected value and a tocsv path for zero batches                                                                    |
 | Codings are identity and gzip on the response wire                                        | the agents carry `gunzip` and no zstd binary, and zstd is `compress_test.go`'s (owner)                                                  | zstd, because it needs a binary on eight agents                                                                                                                                      |
 | Request-body codings, push and deduplication modes, several tables per body stay Go tests | `TestRoundtrip` draws them and `TestRoundtripDeduplicated` covers deduplication (owner)                                                 | steps in the round trip, because each would repeat a drawn case with no new question                                                                                                 |
-| tocsv types the response through the round trip schema it holds, named by `--table`       | the decoders need a `SchemaOf`, and the tool has the schema already, with the binding's types the reader answers (owner)                | a `GET /api/v2/tables/{name}` request, because the endpoint is M7's and asking the server for the schema it must prove would be circular                                             |
+| tocsv types the response through the round trip schema it holds, named by `--table`       | the decoders need a `SchemaOf`, and the tool has the schema already, with the binding's types the reader answers (owner)                | a `GET /api/v2/tables/{name}` request, because the endpoint is M8's and asking the server for the schema it must prove would be circular                                             |
 | tocsv restores `$table` through `table.WithTable`                                         | the decoders drop `$table`, and the generated CSV and every response carry it first                                                     | stripping `$table` from the expected file, because the expected value stays one file; a tool-local column prepend, because the fixture has it                                        |
 | Headers are asserted from a `curl -D` dump                                                | `-w` formats cannot say a header is absent                                                                                              | `curl -w '%{content_type}'`, because it cannot assert an absent `content-encoding`                                                                                                   |
 | gen writes the four body files in one run                                                 | the bodies are one batch through four encoders, and one run keeps one draw per table                                                    | one file per run under `--format`, because four draws of the same seed are four times the work for the same batch                                                                    |
