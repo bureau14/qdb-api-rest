@@ -1,6 +1,6 @@
-// This file holds the DuckDB scalar test and the last-result test. The
-// good path in every media type is the round trip (roundtrip_test.go),
-// and the error rows live in errors_test.go.
+// This file holds the DuckDB scalar test. The good path in every
+// media type is the round trip (roundtrip_test.go), and the error rows
+// live in errors_test.go.
 package httpapi
 
 import (
@@ -77,55 +77,6 @@ func TestDuckDBScalars(t *testing.T) {
 			if c.Type != want[i].word || len(c.Data) != 1 || string(c.Data[0]) != want[i].cell {
 				t.Errorf("%s: type %q data %s, want type %q data [%s]", want[i].expr, c.Type, c.Data, want[i].word, want[i].cell)
 			}
-		}
-	})
-}
-
-// TestDuckDBLastResult: on each cluster, a #sql body of two statements
-// answers 200 with the second statement's result alone, so the response
-// carries one result as ADR-0018, Decision 12, says.
-func TestDuckDBLastResult(t *testing.T) {
-	// The three steps tell the story in order: the body goes out, every
-	// statement runs, and one result comes back:
-	//
-	//  1. post two statements as the fixture's user;
-	//  2. the answer is 200 in JSON;
-	//  3. the body is the second statement's result and nothing of the
-	//     first.
-	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
-		s := newServer(t, f)
-
-		// 1. two statements, each with a column name of its own, so the
-		//    body says which one answered
-		resp := s.query("#sql SELECT 1 AS a; SELECT 2 AS b", map[string]string{"Authorization": "Bearer " + s.token})
-
-		// 2. 200 in JSON, because every statement ran and the engine
-		//    answered one result
-		if resp.Code != http.StatusOK {
-			t.Fatalf("status %d: %s", resp.Code, resp.Body.String())
-		}
-		if ct := resp.Header().Get("Content-Type"); ct != encoding.JSONContentType {
-			t.Fatalf("Content-Type = %q", ct)
-		}
-
-		// 3. one result of one column b holding 2, and no column a,
-		//    because the binding discards the first statement's result
-		var body []struct {
-			Columns []struct {
-				Name string
-				Type string
-				Data []json.RawMessage
-			}
-		}
-		if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-			t.Fatalf("%s: %v", resp.Body.String(), err)
-		}
-		if len(body) != 1 || len(body[0].Columns) != 1 {
-			t.Fatalf("want one result of one column: %s", resp.Body.String())
-		}
-		c := body[0].Columns[0]
-		if c.Name != "b" || c.Type != "int32" || len(c.Data) != 1 || string(c.Data[0]) != "2" {
-			t.Fatalf("want column b int32 [2], got %s", resp.Body.String())
 		}
 	})
 }

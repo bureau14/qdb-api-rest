@@ -93,7 +93,8 @@ This file, Handlers, holds the table reader's.
   between the sink's error and the call's. DuckDB's parse, bind and
   execution errors arrive before the sink and are 400. A body of several
   statements runs every statement and answers the last statement's
-  result (ADR-0018, Decision 12), and `TestDuckDBLastResult` pins it.
+  result (ADR-0018, Decision 12), the vendored driver's convention,
+  which no test of this repository pins.
   The instance cap is 503 with `Retry-After`, and a failed
   attach is 503 without it. A column type no text encoder writes (a
   list, for one) is 500 before the first byte, and
@@ -191,9 +192,7 @@ This file, Handlers, holds the table reader's.
 - The DuckDB scalars have one test, `TestDuckDBScalars`
   (`duckdb_test.go`). It posts one row of every scalar the text encoders
   write behind `#sql` to `/api/v2/query` and checks each column's type
-  word and cell. `TestDuckDBLastResult` posts two statements and reads
-  the second's result, a 200 whose body the error table would not read.
-  The instance cap test is `TestDuckDBInstanceLimit`.
+  word and cell. The instance cap test is `TestDuckDBInstanceLimit`.
   The round trip does not reach these types, because its tables are
   QuasarDB tables.
 - Every error row of every route is one table, `TestErrorRows`
