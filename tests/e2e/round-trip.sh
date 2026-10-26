@@ -481,7 +481,7 @@ main() {
     # The secure server serves HTTP on a cluster with a public key, which
     # is the one case the warning is for.
     check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
-    (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
+    (( failed == 0 )) || die "v2 round trip: $failed of 4 checks FAILED, two clusters and two logs (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }
 
