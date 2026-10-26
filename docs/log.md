@@ -17,7 +17,7 @@ Last updated: 2026-10-26
 | M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
 | M6 -- Hardening                 | not started | criteria below                                        |
 | M7 -- Observability             | not started | criteria below                                        |
-| M8 -- Exploration               | not started |                                                       |
+| M8 -- Exploration               | not started | criteria below                                        |
 | M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M10 -- Release                  | not started |                                                       |
 
@@ -41,6 +41,16 @@ and the outcome at `info`, and the statement text, truncated, at
 `debug`; the round trip scrapes `/metrics` after its requests and
 asserts that every expected series exists; the stress's budget step is
 green by hand on both clusters.
+
+M8 criteria. Entry: M7 closed. Exit: the eight exploration routes of
+the brief's sketch (`docs/brief.md`, /api/v2 endpoint sketch, M8 rows)
+serve behind the bearer edge with ADR-0010's problems, over
+`Cluster.Tables`, `Cluster.TableSchemas`, a find core and a statistics
+core in `internal/qdb`; the round trip lists its tables under a prefix,
+reads one schema with its tags, attaches a tag, lists the tag and its
+entries, detaches it, and reads the cluster and one node, each compared
+against what it created; the Handoff item naming the table cores is
+deleted.
 
 In flight:
 
@@ -91,6 +101,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- M8 exploration defined
+
+- Owner decisions; `docs/brief.md`, /api/v2 endpoint sketch (M8 rows
+  and the paragraph below them) and Milestones. The criteria are in
+  Current state.
 
 ## 2026-10-26 -- resilience split into M6 hardening and M7 observability; no server-side deadlines; the stress and the v1 goldens run by hand
 
