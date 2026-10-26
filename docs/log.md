@@ -58,17 +58,13 @@ In flight:
 
 Next:
 
-1. `/rr-start` M6: the grace key, the plain-text warning with its
-   round-trip assertion, and the stress's drain step, in that order or
-   as one unit, the plan's call.
+1. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
+   definition) green by hand on both clusters, with its server run under
+   a long grace through `listen.shutdown_grace`, and the close of M6, as
+   one slice.
 
 Handoff to M6 and M7:
 
-- The server warns at startup when the HTTP listener is enabled and the
-  cluster is secure, because access tokens then travel in plain text.
-  The deployment behind an AWS load balancer is fine with it, because
-  traffic inside the VPC is already encrypted, and v1 did not allow the
-  combination at all (owner, 2026-10-24). Nothing warns today. M6's.
 - The round trip drives both servers over plain HTTP, and no step reads
   the HTTPS listener. Steps over both HTTP and HTTPS may be added
   (owner, 2026-10-24, and left open on 2026-10-26); `docs/e2e.md`, The
@@ -101,6 +97,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- m6-grace-warning-plan.md deleted
+
+- Facts moved to `docs/brief.md` (Observability and logging),
+  `docs/e2e.md` (The v2 round trip, The driver), `tests/e2e/AGENTS.md`
+  and the comments of `cmd/qdb_rest`, `internal/config` and `tests/e2e`.
 
 ## 2026-10-26 -- M8 exploration defined
 
