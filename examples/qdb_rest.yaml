@@ -16,6 +16,10 @@ listen:
   https: ":40443"
   # Flight SQL listener address (gRPC over TLS, the HTTPS certificates).
   flight: ":40493"
+  # Deadline for draining in-flight calls on every listener and then the
+  # session pool on SIGTERM. Whatever stops the binary and then kills it
+  # must wait longer than this before the kill.
+  shutdown_grace: "8s"
 
 tls:
   # PEM certificate and private key for the HTTPS listener, set together.

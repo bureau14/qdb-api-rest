@@ -35,12 +35,14 @@ import (
 // a sentinel and does not handle the flag itself.
 var ErrVersionRequested = errors.New("version requested")
 
-// Listen holds the listener addresses. The HTTP listener is off unless
-// an address is set, and it is the only one that can be off (ADR-0001).
+// Listen holds the listener addresses and the drain deadline. The HTTP
+// listener is off unless an address is set, and it is the only one that
+// can be off (ADR-0001).
 type Listen struct {
-	HTTP   string `yaml:"http" help:"HTTP listener address; off unless set"`
-	HTTPS  string `yaml:"https" help:"HTTPS listener address"`
-	Flight string `yaml:"flight" help:"Flight SQL listener address (gRPC over TLS)"`
+	HTTP          string        `yaml:"http" help:"HTTP listener address; off unless set"`
+	HTTPS         string        `yaml:"https" help:"HTTPS listener address"`
+	Flight        string        `yaml:"flight" help:"Flight SQL listener address (gRPC over TLS)"`
+	ShutdownGrace time.Duration `yaml:"shutdown_grace" help:"deadline for draining in-flight calls on every listener and the session pool on SIGTERM"`
 }
 
 // TLS points the HTTPS listener at a PEM certificate/key pair. Both empty
@@ -166,7 +168,8 @@ type Config struct {
 
 // Default returns the configuration used when nothing is specified:
 //
-//   - the HTTPS and Flight listeners on their customary ports
+//   - the HTTPS and Flight listeners on their customary ports, and eight
+//     seconds to drain on SIGTERM
 //   - JSON logs at info
 //   - the local insecure cluster, with the C API knobs at their defaults
 //   - the pool sized for one gateway in front of one cluster
@@ -176,7 +179,9 @@ type Config struct {
 //     with no spilling and at most sixteen instances at once
 func Default() Config {
 	return Config{
-		Listen: Listen{HTTPS: ":40443", Flight: ":40493"},
+		// Eight seconds of grace is not measured. Anything that stops the
+		// binary and then kills it waits longer than this before the kill.
+		Listen: Listen{HTTPS: ":40443", Flight: ":40493", ShutdownGrace: 8 * time.Second},
 		Log:    Log{Level: "info", Format: "json"},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",
@@ -635,6 +640,11 @@ func validate(cfg Config) error {
 	}
 	if cfg.Listen.Flight == "" {
 		return errors.New("listen.flight must be set")
+	}
+	// A zero grace would cut every call at SIGTERM, and a negative one
+	// is meaningless.
+	if err := positive("listen.shutdown_grace", cfg.Listen.ShutdownGrace); err != nil {
+		return err
 	}
 	if err := oneOf("log.level", cfg.Log.Level); err != nil {
 		return err
