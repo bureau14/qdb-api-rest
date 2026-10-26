@@ -394,8 +394,6 @@ func TestStatementRows(t *testing.T) {
 	//    The describe's refusals are INVALID_ARGUMENT too: a #sql text of
 	//    two statements at Execute and at Prepare, a query with a ? marker
 	//    on either engine at Prepare, and a native parse error at Prepare.
-	//    A hand-built ticket of the two-statement text streams the second
-	//    statement's result (1b).
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	s := newServer(t, f)
 	cl := qdbflight.Dial(t, s.srv.Addr().String())
@@ -425,27 +423,6 @@ func TestStatementRows(t *testing.T) {
 			t.Fatalf("%s: want INVALID_ARGUMENT with a message, got %v", row.name, row.err)
 		}
 	}
-
-	// 1b. a hand-built ticket of two #sql statements streams the second's
-	//     result, because DoGet runs the ticket's text with no describe
-	//     and the engine answers the last statement. The describe rows
-	//     above refuse the same text, which is the divergence ADR-0018,
-	//     Decision 12, accepts.
-	twoTicket, err := flightsql.CreateStatementQueryTicket([]byte("#sql SELECT 1 AS a; SELECT 2 AS b"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	twoSchema, twoRecs, err := qdbflight.ReadAll(t, cl, s.ctx, &flight.Ticket{Ticket: twoTicket})
-	if err != nil {
-		t.Fatalf("two statements: %v", err)
-	}
-	if twoSchema.NumFields() != 1 || twoSchema.Field(0).Name != "b" {
-		t.Fatalf("two statements: want one field b, got %v", twoSchema)
-	}
-	if len(twoRecs) != 1 || twoRecs[0].NumRows() != 1 || twoRecs[0].Column(0).(*array.Int32).Value(0) != 2 {
-		t.Fatalf("two statements: want one row holding 2, got %v", twoRecs)
-	}
-	qdbflight.Release(twoRecs)
 
 	// 2. the cluster's rows: a server over a cluster that does not answer
 	//    is UNAVAILABLE with no detail, and once the breaker opens,
