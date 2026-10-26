@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -14,7 +14,7 @@ Last updated: 2026-10-25
 | M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
 | M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
 | M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
-| M5 -- Flight SQL                | in flight   | ADR-0018 fixes the design, criteria below             |
+| M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
 | M6 -- Resilience                | not started |                                                       |
 | M7 -- Exploration               | not started |                                                       |
 | M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
@@ -22,44 +22,11 @@ Last updated: 2026-10-25
 
 In flight:
 
-- M5. The `#sql` dispatcher (`query.Run`, `internal/query`) behind
-  `POST /api/v2/query`, the Flight listener (`listen.flight`,
-  `internal/flightsql`) with Handshake, bearer and anonymous auth, the
-  statement query on it (`GetFlightInfoStatement` and `DoGet` through
-  `query.Run`, with `statusOf`'s codes), `GetSqlInfo` and the catalog
-  commands over `Cluster.Tables` and `Cluster.TableSchemas` (`GetTables`
-  with `include_schema`), the Flight client fixture
-  (`internal/qdbtest/flight`), the format-equivalence property over
-  Flight in `TestRoundtrip`, the ADBC smoke steps of the shell round
-  trip, the described schema on every statement and schema call
-  (`query.Describe`), stateless prepared statements without parameters
-  and the JDBC smoke steps are landed. The rest of the milestone is the
-  Next list.
+- Nothing.
 
 Next:
 
-- The Buildkite run that closes M5. FreeBSD runs no JDBC step
-  (`docs/e2e.md`, The Flight SQL smoke steps), as the M5 criteria allow.
-- A later unit: refuse a multi-statement `#sql` text on
-  `POST /api/v2/query` too, which runs one today, so both planes share
-  the one-statement rule of ADR-0018, Decision 12.
-- When the owner says so: file a qdb-duck story asking ATTACH to take a
-  whole `qdb://` URI. Until then a multi-node `cluster.uri` reaches
-  DuckDB as its first node (`Cluster.credentialsOf`).
-
-M5 criteria. Entry: ADR-0018 accepted (met 2026-10-13) and M4 closed (met 2026-10-16). Exit: the `listen.flight` listener on the HTTPS
-certificates, the `#sql` dispatcher behind `POST /api/v2/query` and the
-Flight server, Handshake and bearer auth, a refused credential
-(`qdb.ErrCredentialsRefused`) answering `UNAUTHENTICATED` (owner, 2026-10-19), `CommandStatementQuery` to
-`DoGet` with the query as the ticket, `GetSqlInfo`, the catalog
-commands on a table list core in `internal/qdb`, the rest of the
-surface answering `UNIMPLEMENTED`, the format-equivalence property
-extended with a Flight SQL client for both engines and a dispatch
-property over generated prefixes (`TestSplit`, `internal/query`), the
-smoke steps through Arrow's Flight SQL ADBC and JDBC drivers
-(`docs/e2e.md`, the JDBC one with prepared statements), green in
-Buildkite on all eight platforms (FreeBSD may drop out of the JDBC
-smoke step).
+- Nothing. M6 starts when the owner writes its criteria here.
 
 Handoff to M6 and M7:
 
@@ -107,6 +74,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- M5 closed; sql-last-result-plan.md deleted
+
+- M5 exit criteria met by the tree and build 175 on the base head. Facts
+  moved to ADR-0018 (Decision 12) and the `AGENTS.md` files of
+  `internal/olap`, `internal/httpapi` and `internal/flightsql`.
 
 ## 2026-10-25 -- prepared-statements-plan.md deleted; the described schema, prepared statements and the JDBC smoke steps landed
 
