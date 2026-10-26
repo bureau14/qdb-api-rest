@@ -15,10 +15,32 @@ Last updated: 2026-10-26
 | M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
 | M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
 | M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
-| M6 -- Resilience                | not started |                                                       |
-| M7 -- Exploration               | not started |                                                       |
-| M8 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
-| M9 -- Release                   | not started |                                                       |
+| M6 -- Hardening                 | not started | criteria below                                        |
+| M7 -- Observability             | not started | criteria below                                        |
+| M8 -- Exploration               | not started |                                                       |
+| M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
+| M10 -- Release                  | not started |                                                       |
+
+M6 criteria. Entry: M5 closed. Exit: the shutdown grace is a
+configuration key with the current constant as its default, and the
+drain of both planes runs under it; the server logs one warning at
+startup when the HTTP listener is on and the cluster is secure, and the
+round trip asserts the line in the secure server's log; the stress's
+drain step (`docs/e2e.md`, Stress definition) is green by hand on both
+clusters; the Handoff items M6 consumes are deleted.
+
+M7 criteria. Entry: M6 closed. Exit: `GET /metrics` serves the
+Prometheus exposition on the HTTP and HTTPS mux outside the bearer edge,
+switched by `metrics.enabled` with true as the default (ADR-0004), with
+request and query latency, rows and bytes streamed per format, time to
+first byte, pool and breaker state, retry counts, qdb call durations, Go
+runtime and build info, on both planes where the plane has the concept,
+and a user label on the pool gauges only; every query on both planes
+logs one line with the engine, the plane, the duration, the row count
+and the outcome at `info`, and the statement text, truncated, at
+`debug`; the round trip scrapes `/metrics` after its requests and
+asserts that every expected series exists; the stress's budget step is
+green by hand on both clusters.
 
 In flight:
 
@@ -26,7 +48,9 @@ In flight:
 
 Next:
 
-- Nothing. M6 starts when the owner writes its criteria here.
+1. `/rr-start` M6: the grace key, the plain-text warning with its
+   round-trip assertion, and the stress's drain step, in that order or
+   as one unit, the plan's call.
 
 Handoff to M6 and M7:
 
@@ -34,21 +58,19 @@ Handoff to M6 and M7:
   cluster is secure, because access tokens then travel in plain text.
   The deployment behind an AWS load balancer is fine with it, because
   traffic inside the VPC is already encrypted, and v1 did not allow the
-  combination at all (owner, 2026-10-24). Nothing warns today.
+  combination at all (owner, 2026-10-24). Nothing warns today. M6's.
 - The round trip drives both servers over plain HTTP, and no step reads
   the HTTPS listener. Steps over both HTTP and HTTPS may be added
-  (owner, 2026-10-24); `docs/e2e.md`, The driver, says which planes the
-  driver takes today.
-- The stress definition has no Flight case (owner, 2026-10-13). The
-  graceful drain covers Flight streams as `docs/brief.md`, Resilience,
-  says.
+  (owner, 2026-10-24, and left open on 2026-10-26); `docs/e2e.md`, The
+  driver, says which planes the driver takes today.
+- The stress has no Flight case (owner, 2026-10-13). The drain covers
+  Flight streams (`cmd/qdb_rest/main.go`, `shutdown`).
 - `Cluster.Tables` and `Cluster.TableSchemas` (`internal/AGENTS.md`,
   Code) are the cores `GET /api/v2/tables` and
-  `GET /api/v2/tables/{name}` wrap.
-- Query capture and monitoring on both planes, every executed query and
-  its duration, possibly sampled, is M6's (owner, 2026-10-20). Nothing
-  logs query text today; the HTTP and Flight access lines carry no
-  query.
+  `GET /api/v2/tables/{name}` wrap. M8's.
+- Query capture on both planes is M7's (owner, 2026-10-20, shaped
+  2026-10-26 as the M7 criteria say). Nothing logs query text today;
+  the HTTP and Flight access lines carry no query.
 - Two flaky failures on the `#sql` path are observed in CI and not
   understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
@@ -58,14 +80,24 @@ Cannot get shards for table ...: The handle is invalid.` (the Go
 fetch data from Quasar: The timeseries does not contain this
 column.` (the e2e round trip on Windows, builds 164 and 165). The
   REST pool discards a bad session and retries a read once; whether
-  qdb-duck does either is unknown. Investigate before M6 adds any retry
-  around `Cluster.Duck`, and file the findings with R&D.
+  qdb-duck does either is unknown. The owner now owns qdb-duck and
+  investigates there, and suspects qdb-duck's table cache TTL, which
+  upstream takes as a parameter (`docs/brief.md`, Risks, 5), for the
+  second failure (owner, 2026-10-26). No milestone claims the
+  investigation yet.
 
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- resilience split into M6 hardening and M7 observability; no server-side deadlines; the stress and the v1 goldens run by hand
+
+- Owner decisions; `docs/brief.md`, Milestones, Resilience and
+  connection management, Testing doctrine, and Risks (5). ADR-0015
+  edited in place for the numbering and the Buildkite rule. The
+  criteria of both milestones are in Current state.
 
 ## 2026-10-26 -- the validate divergences filed with R&D
 
