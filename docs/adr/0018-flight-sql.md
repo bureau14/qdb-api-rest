@@ -116,7 +116,7 @@ schema of a query it has not run (owner, 2026-10-24).
     statement executes the earlier ones. So a text of several statements
     fails `GetFlightInfo`, `GetSchema` and the prepare with
     `INVALID_ARGUMENT`, and a `DoGet` ticket of it streams the last
-    result; the owner accepts the divergence (owner, 2026-10-26). A
+    result. The owner accepts the divergence (owner, 2026-10-26). A
     query with parameter markers fails with `INVALID_ARGUMENT` (owner,
     2026-10-24 and 2026-10-25).
     Everything else is `UNIMPLEMENTED`: the parameter upload,

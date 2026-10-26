@@ -100,7 +100,7 @@ Each rule below names the function whose comments carry its reason.
   parameter upload is UNIMPLEMENTED (ADR-0018, Decision 12).
 - The describe takes one statement, because the binding's prepare that
   runs nothing refuses several, so a `#sql` text of several statements
-  fails Execute and Prepare and streams through a hand-built ticket; the
+  fails Execute and Prepare and streams through a hand-built ticket. The
   rows of `TestStatementRows` pin both (ADR-0018, Decision 12).
 
 ## Catalog

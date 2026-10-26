@@ -192,7 +192,8 @@ This file, Handlers, holds the table reader's.
   (`duckdb_test.go`). It posts one row of every scalar the text encoders
   write behind `#sql` to `/api/v2/query` and checks each column's type
   word and cell. `TestDuckDBLastResult` posts two statements and reads
-  the second's result. The instance cap test is `TestDuckDBInstanceLimit`.
+  the second's result, a 200 whose body the error table would not read.
+  The instance cap test is `TestDuckDBInstanceLimit`.
   The round trip does not reach these types, because its tables are
   QuasarDB tables.
 - Every error row of every route is one table, `TestErrorRows`
