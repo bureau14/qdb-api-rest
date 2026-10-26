@@ -478,7 +478,8 @@ main() {
     # fails here.
     check_log insecure "$INSECURE_LOG" absent || failed=$((failed + 1))
     run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
-    # The M6 criterion: the secure server's log carries the warning.
+    # The secure server serves HTTP on a cluster with a public key, which
+    # is the one case the warning is for.
     check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
     (( failed == 0 )) || die "v2 round trip: $failed of 2 clusters FAILED (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
