@@ -73,7 +73,9 @@ Each rule below names the function whose comments carry its reason.
   each lent batch to the stream through arrow-go's Flight writer, as the
   HTTP handler encodes inside its sink. `DoGet` says why the hook with a
   channel was rejected. A statement is never retried once the stream has
-  started.
+  started. A ticket of several `#sql` statements streams the last
+  statement's result, because the run does not describe (ADR-0018,
+  Decision 12).
 - A batch on the Flight wire is the producer's batch: `model.BatchRows`
   rows from the native engine and the bulk reader, one vector from
   DuckDB, so one message stays under gRPC's receive limit.
@@ -96,6 +98,10 @@ Each rule below names the function whose comments carry its reason.
   (`GetFlightInfoPreparedStatement`).
 - No parameters: a query with markers fails the describe, and the
   parameter upload is UNIMPLEMENTED (ADR-0018, Decision 12).
+- The describe takes one statement, because the binding's prepare that
+  runs nothing refuses several, so a `#sql` text of several statements
+  fails Execute and Prepare and streams through a hand-built ticket; the
+  rows of `TestStatementRows` pin both (ADR-0018, Decision 12).
 
 ## Catalog
 
