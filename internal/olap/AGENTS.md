@@ -34,6 +34,12 @@ ADR-0017.
   outside the map is `ErrUndescribable`, and `TestDescribe` keeps the map
   equal to the conversion for every type it covers. A DuckDB bump runs
   that test before anything else.
+- A query of several statements runs every statement and answers the
+  last statement's result, the convention of DuckDB's C API that
+  duckdb-go's Arrow query follows. A describe takes one statement,
+  because the binding's prepare that runs nothing refuses several
+  (ADR-0018, Decision 12). `Instance.Query` and `Instance.Describe`
+  carry the two claims.
 - `internal/encoding/AGENTS.md` lists the types the text encoders write,
   and a column of any other type fails at the encoder, which names the
   column.

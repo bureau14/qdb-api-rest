@@ -183,10 +183,12 @@ func lent(rd array.RecordReader) iter.Seq2[arrow.RecordBatch, error] {
 }
 
 // Query runs a query on a connection of its own and hands the sink its
-// result as record batches, each lent until yield returns. An error
-// before the sink runs is DuckDB's parse, bind or execution error. The
-// sink's error is returned unchanged. A result of no batches is one empty
-// batch of its schema.
+// result as record batches, each lent until yield returns. A text of
+// several statements runs every statement and answers the last
+// statement's result, as DuckDB's C API does. An error before the sink
+// runs is DuckDB's parse, bind or execution error. The sink's error is
+// returned unchanged. A result of no batches is one empty batch of its
+// schema.
 func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arrow.RecordBatch, error]) error) error {
 	// The connection lives for one query and closes when the sink
 	// returns, so a request holds nothing of the instance afterwards:
@@ -210,7 +212,9 @@ func (i *Instance) Query(ctx context.Context, q string, sink func(iter.Seq2[arro
 	}
 	// 2. run the query. The binding materializes the result before it
 	//    answers the reader, so DuckDB's parse, bind and execution errors
-	//    arrive here, before anything reaches the sink. The reader itself
+	//    arrive here, before anything reaches the sink. The binding runs
+	//    the earlier statements of a text inside this call and discards
+	//    their results, so their errors arrive here too. The reader itself
 	//    fails only on an Arrow conversion or a cancelled ctx.
 	rd, err := a.QueryContext(ctx, q)
 	if err != nil {
