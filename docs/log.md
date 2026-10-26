@@ -61,19 +61,19 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   qdb-duck does either is unknown. Investigate before M6 adds any retry
   around `Cluster.Duck`, and file the findings with R&D.
 
-- The owner files one R&D story for qdbd's validate disagreeing with
-  its own execution (ADR-0018, Decision 9). The fetch adds a `max_width`
-  key to string and blob fields from the data, and validate adds none.
-  A bare NULL literal executes as a column of doubles holding NaN, and
-  validate's static typer answers the null type. A statement other than
-  SELECT runs on the row path, which types a column of no rows or only
-  nulls as the null type, and validate answers the declared type.
-
 Blocked on:
 
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- the validate divergences filed with R&D
+
+- sc-20056 tracks qdbd's validate disagreeing with its own execution
+  (ADR-0018, Decision 9): a bare NULL literal and an empty non-select
+  column type differently. sc-20057 asks for `qdb_query_validate_arrow`,
+  the statement's Arrow schema from the function `qdb_query_arrow` uses
+  for its own result, so the binding's tag-to-Arrow mapping can go.
 
 ## 2026-10-26 -- M5 closed; sql-last-result-plan.md deleted
 

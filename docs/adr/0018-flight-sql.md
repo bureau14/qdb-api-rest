@@ -87,7 +87,9 @@ schema of a query it has not run (owner, 2026-10-24).
    `max_width` metadata. A bare NULL literal describes as the null type
    and streams as float64. A non-select statement's column of no rows
    or only nulls describes as its declared type and streams as the null
-   type.
+   type. sc-20056 tracks the two type divergences with R&D, and
+   sc-20057 asks for `qdb_query_validate_arrow`, which would also drop
+   qdb-api-go's own tag-to-Arrow mapping.
 10. **`GetSqlInfo` describes the server fully.** Server name, version,
     read-only, no transactions, and the
     information the drivers read about identifiers, keywords and

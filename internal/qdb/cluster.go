@@ -478,7 +478,8 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 // non-select statement's empty column describes as its declared type,
 // where Query returns the null type. The errors are Query's. The
 // divergences come from qdbd's validate disagreeing with its own
-// execution, and they are accepted (ADR-0018, Decision 9).
+// execution, and they are accepted (ADR-0018, Decision 9). R&D tracks the
+// type divergences as sc-20056 and the Arrow-typed validate as sc-20057.
 func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOption) (*arrow.Schema, error) {
 	// The read retry is as safe here as in Query, because the validate
 	// holds a session for one round trip and sends nothing to the caller.
