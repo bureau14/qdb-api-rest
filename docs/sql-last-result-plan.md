@@ -1,6 +1,6 @@
 # A `#sql` text of several statements answers the last result, and M5 closes
 
-Status: draft
+Status: approved
 
 ## Outcome
 
