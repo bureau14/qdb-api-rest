@@ -101,7 +101,8 @@ func (s *Server) Shutdown(ctx context.Context) {
 	case <-done:
 	case <-ctx.Done():
 		// Stop cuts the calls still open when the grace ends, so shutdown
-		// never outlives the harness's SIGTERM-to-SIGKILL window.
+		// never outlives the grace the operator configured
+		// (cmd/qdb_rest/main.go, shutdown).
 		s.grpc.Stop()
 	}
 }

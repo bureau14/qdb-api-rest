@@ -53,13 +53,6 @@ func versionText() string {
 	return b.String()
 }
 
-// shutdownGrace is the deadline shutdown works under on SIGTERM. The
-// listener drains, which let in-flight calls finish, and the pool drain,
-// which closes the sessions, share it. Eight seconds is not measured.
-// Anything that stops the binary and then kills it waits longer than
-// this before the kill.
-const shutdownGrace = 8 * time.Second
-
 // listener is one of the binary's servers as the serve loop and shutdown
 // see it. Serve answers nil after a clean stop, and Shutdown drains under
 // the caller's deadline. The HTTP and Flight servers share this shape,
@@ -156,7 +149,7 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 // serveUntilDone serves all listeners until the context is cancelled by
 // SIGINT or SIGTERM or one listener fails. It returns the first terminal
 // error, or nil on a clean cancel. It shuts nothing down, because
-// shutdown does that under the single shutdownGrace deadline.
+// shutdown does that under the configured grace.
 func serveUntilDone(ctx context.Context, listeners []listener) error {
 	errs := make(chan error, len(listeners))
 	for _, l := range listeners {
@@ -171,14 +164,16 @@ func serveUntilDone(ctx context.Context, listeners []listener) error {
 }
 
 // shutdown drains the listeners first and the cluster second, both under
-// the shutdownGrace deadline. The listeners drain in parallel. The Flight
-// server drains next to the HTTP servers and is not stopped hard, because
-// the graceful drain covers Flight streams (docs/brief.md, Resilience).
-// The order matters, because in-flight calls on either plane hold
-// sessions. Once every listener has drained, the cluster has no callers
-// left, and its close waits only for idle sessions.
-func shutdown(ctx context.Context, listeners []listener, cluster *qdb.Cluster) {
-	drain, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+// the grace of listen.shutdown_grace. The listeners drain in parallel.
+// The Flight server drains next to the HTTP servers and is not stopped
+// hard, because the graceful drain covers Flight streams (docs/brief.md,
+// Resilience). The order matters, because in-flight calls on either plane
+// hold sessions. Once every listener has drained, the cluster has no
+// callers left, and its close waits only for idle sessions.
+func shutdown(ctx context.Context, grace time.Duration, listeners []listener, cluster *qdb.Cluster) {
+	// The deadline is the caller's, read from the configuration once in
+	// main, so this function has no constant of its own.
+	drain, cancel := context.WithTimeout(context.Background(), grace)
 	defer cancel()
 	var wg sync.WaitGroup
 	for _, l := range listeners {
@@ -250,9 +245,9 @@ func main() {
 	}
 
 	// 6. Serve until a signal or a listener failure, then drain the
-	//    listeners first and the cluster second, under one shutdownGrace.
+	//    listeners first and the cluster second, under listen.shutdown_grace.
 	runErr := serveUntilDone(ctx, listeners)
-	shutdown(ctx, listeners, cluster)
+	shutdown(ctx, cfg.Listen.ShutdownGrace, listeners, cluster)
 	if runErr != nil {
 		logger.ErrorContext(ctx, "server failed", observe.Err(runErr))
 		os.Exit(1)
