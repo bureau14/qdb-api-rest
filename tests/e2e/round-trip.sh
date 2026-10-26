@@ -404,7 +404,9 @@ PLAINTEXT_WARNING='http listener on a secure cluster: access tokens travel in pl
 # check_log <name> <log_file> <present|absent>: the plain-text warning
 # is in the server's log, or is not, by a fixed-string grep. An empty
 # log file path skips the step with a line saying so, because a server
-# given as a URL has no log the harness can read.
+# given as a URL has no log the harness can read. The step is here and
+# not a grep in the Makefile after the driver, so the assertion sits with
+# the other steps and the Makefile stays the one source of paths.
 check_log() {
     local name="$1" log_file="$2" want="$3"
     # A URL server is a supported way to run the round trip, so a missing
@@ -414,7 +416,9 @@ check_log() {
         return 0
     fi
     # A fixed string, because the line is JSON and the message is the one
-    # field the driver knows.
+    # field the driver knows. Matching the JSON by key with jq was
+    # rejected, because the driver would then parse a log format it knows
+    # nothing else about.
     if grep -qF "$PLAINTEXT_WARNING" "$log_file"; then
         [[ "$want" == present ]] || { log_error "[FAIL] $name: the plain-text warning is in $log_file, want absent"; return 1; }
     else
