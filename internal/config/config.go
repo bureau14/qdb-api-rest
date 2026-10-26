@@ -37,7 +37,9 @@ var ErrVersionRequested = errors.New("version requested")
 
 // Listen holds the listener addresses and the drain deadline. The HTTP
 // listener is off unless an address is set, and it is the only one that
-// can be off (ADR-0001).
+// can be off (ADR-0001). The deadline sits with the listeners it drains.
+// A shutdown block of its own would hold one key, and a server block
+// would hold nothing else.
 type Listen struct {
 	HTTP          string        `yaml:"http" help:"HTTP listener address; off unless set"`
 	HTTPS         string        `yaml:"https" help:"HTTPS listener address"`
