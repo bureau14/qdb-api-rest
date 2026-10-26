@@ -37,7 +37,13 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   of this repository. The create body in `round-trip.sh` and
   `roundTripSchema` in the tool spell the same column names, and a
   change to one changes the other. A new response format is one entry
-  in the driver's matrix and one decoder in the tool.
+  in the driver's matrix and one decoder in the tool. The driver asserts
+  the startup warning of a secure cluster behind plain HTTP by grepping
+  each server's log: present in the secure server's, absent from the
+  insecure server's. The message is spelled in `round-trip.sh`
+  (`PLAINTEXT_WARNING`) and in `cmd/qdb_rest/main.go`, and a change to
+  one changes the other. A server given as a URL has no log, and the
+  step is skipped for it.
 - The ADBC and JDBC steps. The ADBC steps run `tools/e2etool adbc`,
   which drives arrow-adbc's Flight SQL driver and writes the result
   through a server encoder: Arrow IPC, which the driver sends through

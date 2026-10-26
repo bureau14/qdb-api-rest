@@ -124,6 +124,12 @@ is timed.
    handshakes with the cluster's user on the secure cluster and presents
    no token on the insecure one. "The Flight SQL smoke steps" below says
    what each driver asserts.
+8. The warning line. The server warns at startup when its HTTP listener
+   serves a cluster with a public key, because access tokens then
+   travel in plain text (`docs/brief.md`, Observability and logging).
+   The driver greps each server's log for the message: present in the
+   secure server's, absent from the insecure server's. A server given
+   as a URL has no log and the step is skipped for it.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
@@ -183,12 +189,14 @@ through a decoder of the same package.
 ### The driver
 
 `tests/e2e/round-trip.sh run --insecure-http <url> --insecure-flight <url>
---secure-http <url> --secure-flight <url> --tool <e2etool> [--rows N]
-[--seed S]` is a small option loop. Each server is named by its
-cluster and each plane by a URL in the form its client takes, `http://`
-for curl and `grpc+tls://` for the ADBC driver, so the script owns no
-scheme. The HTTPS listener has no option, because no step reads it. The
-Makefile is the only source of URLs, ports and paths.
+--secure-http <url> --secure-flight <url> --tool <e2etool>
+[--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]` is
+a small option loop. Each server is named by its cluster and each plane
+by a URL in the form its client takes, `http://` for curl and
+`grpc+tls://` for the ADBC driver, so the script owns no scheme. The
+HTTPS listener has no option, because no step reads it. The Makefile is
+the only source of URLs, ports and paths, and it passes the log of each
+server it started and nothing for a server given as a URL.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a
 server started from `QDB_REST_BIN` (`40090` on the insecure node,
 `40091` on the secure node with `--cluster-public-key-file` and
