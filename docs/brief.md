@@ -551,20 +551,31 @@ POST   /api/v2/rows                multi-table ingest, a $table column routes ea
                                    (CSV, NDJSON, Arrow IPC, and the columnar JSON the query answers;
                                    Content-Encoding); push and deduplication modes
                                    via parameters; M2, the contract is the handler's
-GET    /api/v2/tables              list tables (prefix filter, pagination)
+GET    /api/v2/tables              table names in the cluster's order, qdbd's own $qdb. tables included,
+                                   under an optional ?prefix= applied in Go; no pagination; M8
 POST   /api/v2/tables              create table (name, shard size, columns); M2, see Tables below
-GET    /api/v2/tables/{name}       schema: columns, types, shard size, tags
+GET    /api/v2/tables/{name}       the schema the Flight catalog answers, as JSON ($timestamp, the columns
+                                   with type and symtable, shard size, TTL), plus the table's tags; M8
 DELETE /api/v2/tables/{name}       remove table; M2, see Tables below
 GET    /api/v2/tables/{name}/rows  the table reader: the bulk reader streamed batch by batch;
                                    content-negotiated; optional time range and column selection; M2, the contract is the handler's
-GET    /api/v2/tags                list tags
-GET    /api/v2/tags/{tag}          entries carrying the tag
-GET    /api/v2/cluster             cluster status (nodes, disk, memory)
-GET    /api/v2/cluster/nodes/{id}  node detail
+PUT    /api/v2/tables/{name}/tags/{tag}    attach the tag to the table; M8
+DELETE /api/v2/tables/{name}/tags/{tag}    detach the tag from the table; M8
+GET    /api/v2/tags                tag names, through the find core on $qdb.tagroot; M8
+GET    /api/v2/tags/{tag}          names of the entries carrying the tag; M8
+GET    /api/v2/cluster             the binding's per-node statistics as JSON, one object per node, plus the
+                                   endpoints; unaggregated, uncached, no status word; M8
+GET    /api/v2/cluster/nodes/{id}  one node's statistics object; M8
 GET    /api/v2/status/liveness     unauthenticated probe
 GET    /api/v2/status/readiness    unauthenticated probe (dials as the REST API's own user)
 GET    /metrics                    Prometheus exposition (config-gatable)
 ```
+
+The exploration routes (M8) take a bearer token like every data route
+and read the cluster as the caller's user on a pooled session. The find
+core (`Cluster.Find`, a find expression answering entry names) lives in
+`internal/qdb`, serves the tag routes and the v1 `find` wart, and no v2
+route takes a find expression (owner, 2026-10-26).
 
 `GET /api/v2/session` ("who am i") returns the authenticated caller's view
 of their session, assembled without any cluster round-trip, so it is
@@ -967,9 +978,12 @@ starts.
   `info` and the statement text, truncated, at `debug`; the round-trip
   step that scrapes `/metrics` and checks the series exist; and the
   budget step of the stress, green by hand.
-- **M8 -- Exploration**: tables list and schema, tags (whose tag-find
-  core in `internal/qdb` the v1 `find` wart of M9 wraps), and cluster
-  and node status.
+- **M8 -- Exploration**: `GET /api/v2/tables` and
+  `GET /api/v2/tables/{name}` over the existing table cores, the tag
+  routes (list, entries of a tag, attach and detach) over a find core
+  in `internal/qdb` that the v1 `find` wart of M9 wraps, and the
+  cluster and node statistics routes, each a step of the round trip
+  (the sketch above, M8 rows).
 - **M9 -- Drop-in compat**: the v1 endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with a `v1`
