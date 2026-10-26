@@ -106,8 +106,17 @@ schema of a query it has not run (owner, 2026-10-24).
 12. **Prepared statements without parameters.** The handle is the
     query text, closing answers nothing, and the prepared statement's
     `FlightInfo` answers a statement ticket of the handle. A `#sql`
-    text is one statement, because the owner expects one statement per invocation and could
-    not say what a batch's response would be. A
+    text may hold several statements. On both planes every statement
+    runs and the response is the last statement's result, the
+    convention of DuckDB's C API that duckdb-go's Arrow query follows.
+    The owner keeps that convention because the response format carries
+    one result and the engine answers one (owner, 2026-10-26). The
+    describe takes one statement, because the only prepare that runs
+    nothing refuses several, and the prepare that reaches the last
+    statement executes the earlier ones. So a text of several statements
+    fails `GetFlightInfo`, `GetSchema` and the prepare with
+    `INVALID_ARGUMENT`, and a `DoGet` ticket of it streams the last
+    result; the owner accepts the divergence (owner, 2026-10-26). A
     query with parameter markers fails with `INVALID_ARGUMENT` (owner,
     2026-10-24 and 2026-10-25).
     Everything else is `UNIMPLEMENTED`: the parameter upload,
@@ -156,23 +165,23 @@ schema of a query it has not run (owner, 2026-10-24).
 
 ## Alternatives rejected
 
-| Alternative                                              | Why not                                                                                                                           |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| A gRPC metadata header choosing the engine               | needs a driver knob per client, and the query text travels through every driver untouched                                         |
-| Flight SQL session options choosing the engine           | server-side session state, which the project rules out everywhere else                                                            |
-| A listener that is off until configured                  | the owner wants Flight SQL available on every install, and the port is the configurable part                                      |
-| Running the query in `GetFlightInfo` and caching it      | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                      |
-| A refresh token accepted on the Flight plane             | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise                     |
-| A `DoAction` refresh on the Flight port                  | more surface before a problem is observed                                                                                         |
-| Catalog commands deferred to the exploration milestone   | drivers call `GetTables` at connect, and the table list core is small                                                             |
-| An e2e Flight step through arrow-go's client             | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work                        |
-| A plaintext Flight listener                              | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                                             |
-| `POST /api/v2/sql` kept as a direct DuckDB route         | the prefix already chooses the engine on both planes, so a second route is a second way to say the same thing (owner, 2026-10-19) |
-| Running the query at prepare                             | every JDBC query would run twice                                                                                                  |
-| Describing a native query through qdb-duck's `qdb_query` | the schema would be in DuckDB's types and not the native engine's                                                                 |
-| A `LIMIT 0` run to describe a `#sql` query               | SHOW, DESCRIBE, PRAGMA and SET cannot be a subquery, so it fails on them                                                          |
-| Casting the stream to the described schema               | each prepared fetch would describe again, for an edge case of qdbd's                                                              |
-| Running a multi-statement `#sql` text with no schema     | a batch has no response a client could read as one result                                                                         |
-| Describing at prepare only                               | the ADR would carry two rules for one question                                                                                    |
-| `#sql`-only parameters                                   | the handle would carry the values, which is state                                                                                 |
-| Query parameters                                         | the native engine has no binding, and native substitution is textual                                                              |
+| Alternative                                                                                          | Why not                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| A gRPC metadata header choosing the engine                                                           | needs a driver knob per client, and the query text travels through every driver untouched                                           |
+| Flight SQL session options choosing the engine                                                       | server-side session state, which the project rules out everywhere else                                                              |
+| A listener that is off until configured                                                              | the owner wants Flight SQL available on every install, and the port is the configurable part                                        |
+| Running the query in `GetFlightInfo` and caching it                                                  | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                        |
+| A refresh token accepted on the Flight plane                                                         | widens what a refresh token opens, which ADR-0016 narrowed, and reconnecting is enough until proven otherwise                       |
+| A `DoAction` refresh on the Flight port                                                              | more surface before a problem is observed                                                                                           |
+| Catalog commands deferred to the exploration milestone                                               | drivers call `GetTables` at connect, and the table list core is small                                                               |
+| An e2e Flight step through arrow-go's client                                                         | the property test drives arrow-go's client already, and the e2e question is whether the stock drivers work                          |
+| A plaintext Flight listener                                                                          | the owner chose the HTTPS certificates for the port, and stock drivers default to TLS                                               |
+| `POST /api/v2/sql` kept as a direct DuckDB route                                                     | the prefix already chooses the engine on both planes, so a second route is a second way to say the same thing (owner, 2026-10-19)   |
+| Running the query at prepare                                                                         | every JDBC query would run twice                                                                                                    |
+| Describing a native query through qdb-duck's `qdb_query`                                             | the schema would be in DuckDB's types and not the native engine's                                                                   |
+| A `LIMIT 0` run to describe a `#sql` query                                                           | SHOW, DESCRIBE, PRAGMA and SET cannot be a subquery, so it fails on them                                                            |
+| Casting the stream to the described schema                                                           | each prepared fetch would describe again, for an edge case of qdbd's                                                                |
+| A second prepare in `Instance.Query` that refuses a `#sql` text of several statements on both planes | every `#sql` query would parse and bind twice, for an edge case, and the response carries one result either way (owner, 2026-10-26) |
+| Describing at prepare only                                                                           | the ADR would carry two rules for one question                                                                                      |
+| `#sql`-only parameters                                                                               | the handle would carry the values, which is state                                                                                   |
+| Query parameters                                                                                     | the native engine has no binding, and native substitution is textual                                                                |
