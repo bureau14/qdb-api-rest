@@ -108,7 +108,8 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	// The steps:
 	//
 	//  1. Load the TLS material once.
-	//  2. Add HTTP, when configured.
+	//  2. Add HTTP, when configured, with one warning when the cluster
+	//     is secure.
 	//  3. Add HTTPS.
 	//  4. Add Flight.
 	log := observe.Logger(ctx)
@@ -125,10 +126,23 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 			"fingerprint_sha256", info.Fingerprint,
 			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
 	}
-	// 2. HTTP
+	// 2. HTTP, when configured, with one warning when the cluster is
+	//    secure, because access tokens then travel in plain text, and a
+	//    deployment inside a VPC is the one case that accepts it. No key
+	//    silences the warning. The condition is read from the cluster in
+	//    the context, because Secured is the one reading of "has a public
+	//    key" in the binary. The message text is spelled once here and
+	//    once in the round trip's driver (tests/e2e/round-trip.sh,
+	//    PLAINTEXT_WARNING), which greps it, and a change to one changes
+	//    the other.
 	if cfg.Listen.HTTP != "" {
 		listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
+		if qdb.ClusterFrom(ctx).Secured() {
+			log.WarnContext(ctx, "http listener on a secure cluster: access tokens travel in plain text",
+				"addr", cfg.Listen.HTTP,
+				"hint", "serve the HTTPS listener only, unless the network between clients and this server is already encrypted")
+		}
 	}
 	// 3. HTTPS
 	listeners = append(listeners, newHTTPServer(ctx, cfg.Listen.HTTPS, handler, tlsConfig))

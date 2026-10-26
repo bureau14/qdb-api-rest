@@ -808,6 +808,11 @@ defaults by test.
   compatibility contract. The unversioned paths are kept because load
   balancers at customer sites are configured with them, not because the
   old server's answers are reproduced.
+- The server warns once at startup when the HTTP listener is on and the
+  cluster has a public key, because access tokens then travel in plain
+  text. Nothing silences it: a deployment whose network already encrypts
+  the path, inside a VPC behind a load balancer, reads the line and goes
+  on (owner, 2026-10-24).
 
 ### Dashboard (future, out of initial scope)
 
