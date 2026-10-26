@@ -617,8 +617,8 @@ convenience wrapper. The decisions:
 - **Session budget**: one configured `max_sessions` for the whole server,
   a predictable ceiling on what this binary imposes on the cluster,
   partitioned into per-user sub-pools with caps. The budget is also the
-  overload mechanism. A request past it waits for a session or times
-  out at its deadline. Sessions are pooled per user, keyed by (cluster,
+  overload mechanism. A request past it waits for a session until one
+  is free or its caller leaves. Sessions are pooled per user, keyed by (cluster,
   username). A QuasarDB user has one secret key, so every REST session
   of that user dials identically and shares the pool (anonymous is one
   user). Login finds the existing pool or creates one. It does not
@@ -630,11 +630,15 @@ convenience wrapper. The decisions:
   fail immediately with 503 and `Retry-After`, and half-open probes test
   recovery. There is no hanging, no queueing onto a dead cluster and no
   goodput collapse.
-- **Timeouts**: every request and every stream write carries a deadline.
-  Graceful shutdown drains in-flight streams. QuasarDB calls are bounded
-  by the C API's own socket timeout (`cluster.timeout`), because
-  `qdb-api-go` exposes no `context.Context` plumbing and a blocking cgo
-  call cannot be cancelled from Go.
+- **Bounds**: a QuasarDB call is bounded by the C API's own socket
+  timeout (`cluster.timeout`), because `qdb-api-go` exposes no
+  `context.Context` plumbing and a blocking cgo call cannot be cancelled
+  from Go. The server adds no deadline of its own to a request, to the
+  wait for a session or to a stream write (owner, 2026-10-26). A
+  deadline on the Go side could fire only between C calls, so it would
+  bound nothing that a client cannot bound by hanging up. Graceful
+  shutdown drains in-flight streams on both planes under a configured
+  grace.
 - All of it (pool occupancy, breaker state, retry counts) is exported
   through `/metrics`.
 
@@ -900,12 +904,13 @@ timing assertion, no performance budget.
    one `#sql` query (ADR-0018).
    The specification is `docs/e2e.md`.
 3. **Stress as behaviour**, in the same harness and on rows it
-   generates: a concurrency stress (N parallel clients) asserting that
-   the session budget bounds memory and load (excess waits or times
-   out, no goodput collapse), and that in-flight streams complete
-   across a graceful-shutdown drain. Every assertion is pass or fail on
-   behaviour. None is a timing or a measured number. The stress runs by
-   hand and not in Buildkite.
+   generates, run by hand. N parallel clients, more than
+   `pool.max_sessions`, read one table while the budget gauge on
+   `/metrics` is polled, and the assertions are that the gauge never
+   exceeds the budget and that every client receives the expected body.
+   One client's in-flight stream completes across a graceful-shutdown
+   drain while a new connection is refused. Every assertion is pass or
+   fail on behaviour. None is a timing or a measured number.
 
 ## Milestones
 
@@ -950,18 +955,28 @@ starts.
   and smoke tests through Arrow's Flight SQL ADBC and JDBC drivers
   (ADR-0018). One Flight SQL endpoint serves both the regular QuasarDB
   query and the DuckDB query layer of M4.
-- **M6 -- Resilience**: `/metrics`, the graceful-drain and
-  concurrency stress as behaviour assertions, run by hand.
-- **M7 -- Exploration**: tables list and schema, tags (whose tag-find
-  core in `internal/qdb` the v1 `find` wart of M8 wraps), and cluster
+- **M6 -- Hardening**: the shutdown grace as a configuration key, the
+  startup warning when the HTTP listener serves a secure cluster
+  (asserted by the round trip on the secure server's log), and the
+  drain step of the stress, green by hand.
+- **M7 -- Observability**: `/metrics` behind `metrics.enabled`, with
+  the series of Goal 9 and the pool, breaker and retry state, on both
+  planes where the plane has the concept, a user label on the pool
+  gauges only; query capture, one line per query on both planes with
+  the engine, the plane, the duration, the row count and the outcome at
+  `info` and the statement text, truncated, at `debug`; the round-trip
+  step that scrapes `/metrics` and checks the series exist; and the
+  budget step of the stress, green by hand.
+- **M8 -- Exploration**: tables list and schema, tags (whose tag-find
+  core in `internal/qdb` the v1 `find` wart of M9 wraps), and cluster
   and node status.
-- **M8 -- Drop-in compat**: the v1 endpoints as thin wrappers over
+- **M9 -- Drop-in compat**: the v1 endpoints as thin wrappers over
   their v2 counterparts: `/api/v1/login` (12h tokens) and
   `/api/v1/query` (and their unversioned compat aliases) with a `v1`
   golden suite, captured from the old server when this milestone
   starts, green when run by hand. The outcome replaces the old binary at
   a customer site with no client changes.
-- **M9 -- Release**: hardening, docs rewrite in `qdb-documentation`
+- **M10 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
   remote-storage sections), `qdb-release` version registration,
   Windows service mode,
@@ -983,7 +998,10 @@ binary (ADR-0014, ADR-0015). M3 completes v2 auth before the preview
 ships, so the preview exposes no v2 endpoint whose shape or lifetime is
 still moving. M4 and M5 are the preview's two features, DuckDB first
 because the Flight SQL endpoint serves both query layers and is
-designed once. Resilience and exploration follow, and compatibility
+designed once. Hardening precedes observability because the drain and
+the warning are the preview's operational gaps, and the metrics the
+stress's budget step reads arrive with observability. Exploration
+follows, and compatibility
 comes last because the preview customer does not use the v1 endpoints.
 
 ## Versioning and release
@@ -1020,9 +1038,11 @@ comes last because the preview customer does not use the v1 endpoints.
    return array-valued results correctly until that is fixed upstream.
 5. **qdb-duck's handle pool** opens qdbd sessions outside the session
    budget and never closes an idle one before detach (Embedded DuckDB).
-   Accepted for the milestones, and looked at once they are done
-   (owner, 2026-10-13): a pool size and an idle timeout as `ATTACH`
-   parameters upstream, or the budget lending qdb-duck its sessions.
+   Upstream qdb-duck takes the pool's maximum handle count and the
+   table cache's TTL as parameters (owner, 2026-10-26), and the attach
+   does not pass them yet. Accepted for the milestones, and looked at
+   once they are done (owner, 2026-10-13): the attach passing both, or
+   the budget lending qdb-duck its sessions.
 
 ## Open questions
 
