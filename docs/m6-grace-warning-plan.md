@@ -1,6 +1,6 @@
 # M6: the shutdown grace as a key, and the plain-text warning -- Plan
 
-Status: draft
+Status: approved
 
 ## Outcome
 
