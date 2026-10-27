@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-26
+Last updated: 2026-10-27
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -63,7 +63,10 @@ deleted.
 
 In flight:
 
-- Nothing.
+- `sc-19567/rr-readiness-drain`: readiness answers 503 without a dial
+  for the whole drain, built and reviewed, held before its merge
+  (owner, 2026-10-27). It rebases onto the base once the DuckDB 2.0.0
+  unit has merged and merges once a build of its head is green.
 
 Next:
 
@@ -103,9 +106,16 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 
 Blocked on:
 
-- Nothing.
+- The merge of `sc-19567/rr-readiness-drain` waits on its rebase and a
+  green build of its head.
 
 ## Entries
+
+## 2026-10-27 -- duckdb-2-plan.md deleted
+
+- Facts moved to ADR-0017 (Decisions 2 and 3, Alternatives),
+  `third_party/AGENTS.md`, `internal/encoding/AGENTS.md` and the
+  comments of `internal/olap`, `internal/encoding` and `.envrc`.
 
 ## 2026-10-26 -- M6 gains the systemd notify protocol and readiness 503 during the drain, M7 gains pprof
 
