@@ -76,8 +76,10 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   and `utf8` and `binary` carrying `max_width` field metadata. The sql
   endpoint answers DuckDB's types. The text encoders write those five
   and DuckDB's scalars: every signed and unsigned integer width,
-  `float32`, `decimal128`, `bool`, `date32` and `time64`, and a
-  timestamp of any unit. They write only the types a producer answers,
+  `float32`, `decimal128`, `bool`, `date32` and `time64`, a timestamp
+  of any unit, and the null type, which DuckDB answers for a bare
+  NULL and which is null in every cell. They write only the types a
+  producer answers,
   so the other Arrow scalars (`float16`, `decimal256`, `date64`, a
   duration) have no case. Every field is nullable, and an all-null
   column keeps its type. Any other type is an encode error that names
@@ -122,8 +124,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   timestamp, the date and the time of day as strings in their texts. The
   type word is the Arrow type's name (`DataType.Name()`): `int8` to
   `int64`, `uint8` to `uint64`, `float32`, `float64`, `decimal`, `bool`,
-  `date32`, `time64`, `utf8`, `binary`, `timestamp`. A symbol answers as
-  `utf8` and a count as `int64`. The word is the name the Arrow wire
+  `date32`, `time64`, `utf8`, `binary`, `timestamp`, `null`. A symbol
+  answers as `utf8` and a count as `int64`. The word is the name the Arrow wire
   reports, so a result column's word differs from the table schema's
   word for the same column (`float64` against `double`). QuasarDB's
   words were rejected, because they would give the narrow and unsigned
@@ -150,7 +152,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   written as `true` or `false`. The date and the time of day are written
   in their texts. `utf8` is written as its own bytes and `binary` as
   standard base64. The empty field stands for null, for NaN and the
-  infinities, and for the empty string alike. No rows encode as the
+  infinities, for the empty string and for every cell of the null type
+  alike. No rows encode as the
   header alone. A stream of batches is the first batch's header, then
   the rows of every batch. Byte identity
   with the CSV of `qdb_export` is not a goal.

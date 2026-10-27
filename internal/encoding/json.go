@@ -203,6 +203,12 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 			}
 			return appendBase64(dst, a.Value(i))
 		}
+	// Arrow's null type, which DuckDB answers for a bare NULL, has no
+	// values, so every cell is null.
+	case *array.Null:
+		c.cell = func(dst []byte, _ int) []byte {
+			return appendNull(dst)
+		}
 	default:
 		return jsonColumn{}, unsupportedType(f)
 	}

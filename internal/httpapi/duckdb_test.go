@@ -24,7 +24,8 @@ func TestDuckDBScalars(t *testing.T) {
 		s := newServer(t, f)
 
 		// 1. The query casts one literal to each type. NULL stands alone,
-		// because DuckDB types a bare NULL as int32.
+		// because DuckDB keeps a bare NULL in its NULL type, which arrives
+		// as Arrow's null type.
 		want := []struct{ expr, word, cell string }{
 			{"1::TINYINT", "int8", "1"},
 			{"1::SMALLINT", "int16", "1"},
@@ -39,7 +40,7 @@ func TestDuckDBScalars(t *testing.T) {
 			{"true", "bool", "true"},
 			{"DATE '2026-06-11'", "date32", `"2026-06-11"`},
 			{"TIME '24:00:00'", "time64", `"24:00:00.000000000"`},
-			{"NULL", "int32", "null"},
+			{"NULL", "null", "null"},
 		}
 		exprs := make([]string, len(want))
 		for i, w := range want {

@@ -261,6 +261,10 @@ func wantValid(a arrow.Array, i int) bool {
 		return a.IsValid(i) && !math.IsNaN(v) && !math.IsInf(v, 0)
 	case *array.Float64:
 		return a.IsValid(i) && !math.IsNaN(a.Value(i)) && !math.IsInf(a.Value(i), 0)
+	// arrow-go's null array keeps the base IsValid, which answers true
+	// without a validity bitmap, while its every cell is null
+	case *array.Null:
+		return false
 	}
 	return a.IsValid(i)
 }
@@ -334,6 +338,9 @@ func checkCells(t failer, f arrow.Field, want arrow.Array, got wireColumn) {
 		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, parseText), same[string])
 	case *array.Binary:
 		checkValues(t, f.Name, a, a.Value, parsed(t, f.Name, got.cells, base64.StdEncoding.DecodeString), bytes.Equal)
+	// a null column has no values, and the validity check above has
+	// compared every cell
+	case *array.Null:
 	default:
 		t.Fatalf("%s: unexpected column type %s", f.Name, f.Type)
 	}
@@ -400,6 +407,8 @@ func drawScalar(t *rapid.T, dt arrow.DataType, n int) arrow.Array {
 		case *array.Time64Builder:
 			unit := int64(dt.(*arrow.Time64Type).Unit.Multiplier())
 			b.Append(arrow.Time64(rapid.Int64Range(0, 86400e9/unit).Draw(t, "time64")))
+		case *array.NullBuilder:
+			b.AppendNull()
 		default:
 			t.Fatalf("no draw for %s", dt)
 		}
@@ -410,9 +419,10 @@ func drawScalar(t *rapid.T, dt arrow.DataType, n int) arrow.Array {
 // withScalars returns the batch with one column appended per DuckDB
 // scalar the table fixture cannot generate: int8, int16, int32, uint8,
 // uint16, uint32, uint64, float32, one decimal128 of drawn precision and
-// scale, bool, date32, time64[us] and time64[ns]. These types reach the
-// encoders only through DuckDB, and the fixture writes QuasarDB tables,
-// so the columns are drawn in memory. The caller releases the batch.
+// scale, bool, date32, time64[us], time64[ns] and the null type of a bare
+// NULL. These types reach the encoders only through DuckDB, and the
+// fixture writes QuasarDB tables, so the columns are drawn in memory. The
+// caller releases the batch.
 func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
 	p := rapid.Int32Range(1, 38).Draw(t, "precision")
 	types := []arrow.DataType{
@@ -422,6 +432,7 @@ func withScalars(t *rapid.T, rec arrow.RecordBatch) arrow.RecordBatch {
 		&arrow.Decimal128Type{Precision: p, Scale: rapid.Int32Range(0, p).Draw(t, "scale")},
 		arrow.FixedWidthTypes.Boolean, arrow.FixedWidthTypes.Date32,
 		arrow.FixedWidthTypes.Time64us, arrow.FixedWidthTypes.Time64ns,
+		arrow.Null,
 	}
 	fields := rec.Schema().Fields()
 	arrays := append([]arrow.Array{}, rec.Columns()...)
@@ -503,9 +514,9 @@ func TestRoundTrip(t *testing.T) {
 // edgeBatch builds one batch of the values the fixture does not generate:
 // the int64 extremes, NaN and an infinity, a float above 1e21, the epoch
 // and the nanosecond before it, the empty string, invalid UTF-8, the
-// empty blob, and a null in every column. It also holds the values the
-// byte-level pin needs exactly: a string that CSV must quote and a
-// leading space.
+// empty blob, a null in every column, and a column of the null type. It
+// also holds the values the byte-level pin needs exactly: a string that
+// CSV must quote and a leading space.
 func edgeBatch(t *testing.T) arrow.RecordBatch {
 	t.Helper()
 	mem := memory.DefaultAllocator
@@ -520,10 +531,12 @@ func edgeBatch(t *testing.T) arrow.RecordBatch {
 	sb.AppendValues([]string{"", "a,b \"q\"\n", " lead", "\xff", ""}, valid)
 	bb := array.NewBinaryBuilder(mem, arrow.BinaryTypes.Binary)
 	bb.AppendValues([][]byte{{}, {0x00, 0xff}, []byte("hi"), []byte("x"), nil}, valid)
+	nb := array.NewNullBuilder(mem)
+	nb.AppendNulls(len(valid))
 
-	arrays := []arrow.Array{ib.NewArray(), fb.NewArray(), tb.NewArray(), sb.NewArray(), bb.NewArray()}
+	arrays := []arrow.Array{ib.NewArray(), fb.NewArray(), tb.NewArray(), sb.NewArray(), bb.NewArray(), nb.NewArray()}
 	fields := make([]arrow.Field, len(arrays))
-	for i, name := range []string{"i", "d", "t", "s", "b"} {
+	for i, name := range []string{"i", "d", "t", "s", "b", "n"} {
 		fields[i] = arrow.Field{Name: name, Type: arrays[i].DataType(), Nullable: true}
 	}
 	rec := array.NewRecordBatch(arrow.NewSchema(fields, nil), arrays, int64(len(valid)))
@@ -551,6 +564,7 @@ func emptyIPCStream(t *testing.T) []byte {
 // become null. Invalid UTF-8 becomes U+FFFD in JSON and stays a raw byte
 // in CSV. CSV quotes the leading space and the field that holds a comma,
 // a quote and a newline. The empty string becomes the empty field. The
+// null column is null in every cell and the empty field in CSV. The
 // empty batch is a complete body: an empty result in JSON, no bytes in
 // NDJSON, the empty header line in CSV, and in Arrow a stream of a schema
 // with no fields and no batches.
@@ -568,18 +582,19 @@ func TestEdgeCells(t *testing.T) {
 			`{"name":"d","type":"float64","data":[null,null,1e+21,0.1,null]},` +
 			`{"name":"t","type":"timestamp","data":["1970-01-01T00:00:00.000000000Z","1970-01-01T00:00:00.000000001Z","2026-06-11T00:00:00.000683000Z","1969-12-31T23:59:59.999999999Z",null]},` +
 			`{"name":"s","type":"utf8","data":["","a,b \"q\"\n"," lead","` + "\xef\xbf\xbd" + `",null]},` +
-			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]}]}]`},
-		{NDJSON{}, rec, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":""}` + "\n" +
-			`{"i":-9223372036854775808,"d":null,"t":"1970-01-01T00:00:00.000000001Z","s":"a,b \"q\"\n","b":"AP8="}` + "\n" +
-			`{"i":0,"d":1e+21,"t":"2026-06-11T00:00:00.000683000Z","s":" lead","b":"aGk="}` + "\n" +
-			`{"i":42,"d":0.1,"t":"1969-12-31T23:59:59.999999999Z","s":"` + "\xef\xbf\xbd" + `","b":"eA=="}` + "\n" +
-			`{"i":null,"d":null,"t":null,"s":null,"b":null}` + "\n"},
-		{CSV{}, rec, "i,d,t,s,b\n" +
-			"9223372036854775807,,1970-01-01T00:00:00.000000000Z,,\n" +
-			"-9223372036854775808,,1970-01-01T00:00:00.000000001Z,\"a,b \"\"q\"\"\n\",AP8=\n" +
-			"0,1e+21,2026-06-11T00:00:00.000683000Z,\" lead\",aGk=\n" +
-			"42,0.1,1969-12-31T23:59:59.999999999Z,\xff,eA==\n" +
-			",,,,\n"},
+			`{"name":"b","type":"binary","data":["","AP8=","aGk=","eA==",null]},` +
+			`{"name":"n","type":"null","data":[null,null,null,null,null]}]}]`},
+		{NDJSON{}, rec, `{"i":9223372036854775807,"d":null,"t":"1970-01-01T00:00:00.000000000Z","s":"","b":"","n":null}` + "\n" +
+			`{"i":-9223372036854775808,"d":null,"t":"1970-01-01T00:00:00.000000001Z","s":"a,b \"q\"\n","b":"AP8=","n":null}` + "\n" +
+			`{"i":0,"d":1e+21,"t":"2026-06-11T00:00:00.000683000Z","s":" lead","b":"aGk=","n":null}` + "\n" +
+			`{"i":42,"d":0.1,"t":"1969-12-31T23:59:59.999999999Z","s":"` + "\xef\xbf\xbd" + `","b":"eA==","n":null}` + "\n" +
+			`{"i":null,"d":null,"t":null,"s":null,"b":null,"n":null}` + "\n"},
+		{CSV{}, rec, "i,d,t,s,b,n\n" +
+			"9223372036854775807,,1970-01-01T00:00:00.000000000Z,,,\n" +
+			"-9223372036854775808,,1970-01-01T00:00:00.000000001Z,\"a,b \"\"q\"\"\n\",AP8=,\n" +
+			"0,1e+21,2026-06-11T00:00:00.000683000Z,\" lead\",aGk=,\n" +
+			"42,0.1,1969-12-31T23:59:59.999999999Z,\xff,eA==,\n" +
+			",,,,,\n"},
 		{JSON{}, empty, `[{"columns":[]}]`},
 		{NDJSON{}, empty, ""},
 		{CSV{}, empty, "\n"},

@@ -146,6 +146,12 @@ func csvCell(f arrow.Field, a arrow.Array) (func(i int) string, error) {
 			}
 			return base64.StdEncoding.EncodeToString(a.Value(i))
 		}, nil
+	// Arrow's null type, which DuckDB answers for a bare NULL, has no
+	// values, so every cell is the empty field.
+	case *array.Null:
+		return func(int) string {
+			return ""
+		}, nil
 	}
 	return nil, unsupportedType(f)
 }
