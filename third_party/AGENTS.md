@@ -8,8 +8,8 @@ logic.
 
 `duckdb-nolib/<os>-<arch>/` are five one-file modules that `go.mod`
 puts in place of the five prebuilt DuckDB library modules of
-`duckdb-go-bindings` (`lib/linux-amd64`, `lib/linux-arm64`,
-`lib/darwin-amd64`, `lib/darwin-arm64` and `lib/windows-amd64`), one
+`duckdb-go-bindings`, `go.duckdb.org/libduckdb/linux-amd64`,
+`linux-arm64`, `darwin-amd64`, `darwin-arm64` and `windows-amd64`, one
 directory per module because a replacement directory serves one module
 path.
 
@@ -25,5 +25,9 @@ path.
 - A stub carries no cgo directive and no symbol. A build without the
   tags compiles against it and fails at link time for want of
   libduckdb, which is the signal that `.envrc` was not sourced.
-- Bumping the binding bumps the version in `go.mod` only. The stubs
-  carry no version and need no change.
+- Bumping the binding bumps the version in `go.mod` only, because the
+  stubs carry no version. The one exception is a binding that moves the
+  prebuilt modules to a new module path: then each stub's `module` line
+  and each `replace` line in `go.mod` follow it, because a replacement
+  directory whose `go.mod` names another module fails every `go`
+  command with a module path mismatch.

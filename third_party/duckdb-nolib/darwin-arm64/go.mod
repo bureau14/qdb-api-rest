@@ -1,3 +1,3 @@
-module github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64
+module go.duckdb.org/libduckdb/darwin-arm64
 
 go 1.27

@@ -194,6 +194,9 @@ func (s *Stmt) bindBigNum(val *big.Int, n int) (mapping.State, error) {
 	return state, nil
 }
 
+// Temporal binders use direct bind APIs where available to avoid the extra
+// duckdb_value allocation and cgo calls required by createPrimitiveValue.
+// Conversion rules remain shared through the infer functions.
 func (s *Stmt) bindTimestamp(val driver.NamedValue, t Type, n int) (mapping.State, error) {
 	var state mapping.State
 	switch t {
@@ -247,21 +250,20 @@ func (s *Stmt) bindDate(val driver.NamedValue, n int) (mapping.State, error) {
 }
 
 func (s *Stmt) bindTime(val driver.NamedValue, t Type, n int) (mapping.State, error) {
-	ticks, err := getTimeTicks(val.Value)
-	if err != nil {
-		return mapping.StateError, err
-	}
-
 	if t == TYPE_TIME {
-		ti := mapping.NewTime(ticks)
+		ti, err := inferTime(val.Value)
+		if err != nil {
+			return mapping.StateError, err
+		}
 		state := mapping.BindTime(*s.preparedStmt, mapping.IdxT(n+1), ti)
 		return state, nil
 	}
 
 	// TYPE_TIME_TZ: Preserve the UTC offset from the input time.
-	goTime, _ := castToTime(val.Value)
-	_, offset := goTime.Zone()
-	ti := mapping.CreateTimeTZ(ticks, int32(offset))
+	ti, err := inferTimeTZ(val.Value)
+	if err != nil {
+		return mapping.StateError, err
+	}
 	v := mapping.CreateTimeTZValue(ti)
 	state := mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), v)
 	mapping.DestroyValue(&v)
@@ -315,24 +317,21 @@ func (s *Stmt) bindCompositeValue(val driver.NamedValue, n int) (mapping.State, 
 	}
 
 	mappedVal, err := createValue(lt, val.Value)
-	defer mapping.DestroyValue(&mappedVal)
 	if err != nil {
 		return mapping.StateError, addIndexToError(err, n+1)
 	}
-
-	state := mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), mappedVal)
-	return state, nil
+	defer mapping.DestroyValue(&mappedVal)
+	return mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), mappedVal), nil
 }
 
 func (s *Stmt) tryBindComplexValue(val driver.NamedValue, n int) (mapping.State, error) {
 	lt, mappedVal, err := inferLogicalTypeAndValue(val.Value)
 	defer mapping.DestroyLogicalType(&lt)
-	defer mapping.DestroyValue(&mappedVal)
 	if err != nil {
 		return mapping.StateError, addIndexToError(err, n+1)
 	}
-	state := mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), mappedVal)
-	return state, nil
+	defer mapping.DestroyValue(&mappedVal)
+	return mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), mappedVal), nil
 }
 
 func (s *Stmt) bindComplexValue(val driver.NamedValue, n int, t Type, name string) (mapping.State, error) {
@@ -384,11 +383,10 @@ func (s *Stmt) bindTypedValue(val TypedValue, n int) (mapping.State, error) {
 	}
 
 	mappedVal, err := createPrimitiveValue(val.typ, coerced)
-	defer mapping.DestroyValue(&mappedVal)
 	if err != nil {
 		return mapping.StateError, addIndexToError(err, n+1)
 	}
-
+	defer mapping.DestroyValue(&mappedVal)
 	return mapping.BindValue(*s.preparedStmt, mapping.IdxT(n+1), mappedVal), nil
 }
 
@@ -525,7 +523,7 @@ func (s *Stmt) bind(args []driver.NamedValue) error {
 	byOrdinal := make(map[int]driver.NamedValue, len(args))
 	byName := make(map[string]driver.NamedValue, len(args))
 	for _, v := range args {
-		if v.Ordinal != 0 {
+		if v.Name == "" && v.Ordinal != 0 {
 			byOrdinal[v.Ordinal] = v
 		}
 		if v.Name != "" {
@@ -537,17 +535,23 @@ func (s *Stmt) bind(args []driver.NamedValue) error {
 	for i := range s.NumInput() {
 		name := mapping.ParameterName(*s.preparedStmt, mapping.IdxT(i+1))
 
-		// fallback on index position
+		// Only unnamed arguments may fall back on index position or ordinal.
 		arg := args[i]
+		found := arg.Name == ""
 
 		// override with ordinal if set
 		if v, ok := byOrdinal[i+1]; ok {
 			arg = v
+			found = true
 		}
 
 		// override with name if set
 		if v, ok := byName[name]; ok {
 			arg = v
+			found = true
+		}
+		if !found {
+			return fmt.Errorf("%w: no argument for parameter %q", errCouldNotBind, name)
 		}
 
 		state, err := s.bindValue(arg, i)

@@ -1,15 +1,29 @@
-DUCKDB_VERSION=v1.5.4
+BROOD=GOWORK=off go run ./internal/cmd/brood
 
-fetch.static.libs:
-	cd lib/${PLATFORM} && \
-	curl -OL https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/${FILENAME}.zip && \
-	rm -f *.a duckdb.h && \
-	unzip ${FILENAME}.zip && \
-	rm -f ${FILENAME}.zip && \
-	if [ -n "${COPY_HEADER}" ]; then cp duckdb.h ../../include/; fi
+# Stage a custom build, install its header and select it through go.work.
+use.libs:
+	$(BROOD) use
 
-test.dynamic.lib:
-	mkdir dynamic-dir && \
-	cd dynamic-dir && \
-	curl -OL https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/${FILENAME}.zip && \
-	unzip ${FILENAME}.zip
+# Restore the pinned header and stop selecting the staged native module.
+unuse.libs:
+	git restore -- include/duckdb.h
+	rm -f go.work go.work.sum
+
+update.libs:
+	$(BROOD) package
+	$(BROOD) pin
+	./scripts/test.sh packaged
+
+publish.libs:
+	$(BROOD) upload
+
+test:
+	./scripts/test.sh
+
+test.static:
+	./scripts/test.sh static
+
+test.dynamic:
+	./scripts/test.sh dynamic
+
+.PHONY: use.libs unuse.libs update.libs publish.libs test test.static test.dynamic

@@ -5,16 +5,33 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
+	"time"
 	"unsafe"
 
 	"github.com/duckdb/duckdb-go/v2/mapping"
 )
 
-// secondsPerDay to calculate the days since 1970-01-01.
-const secondsPerDay = 24 * 60 * 60
-
-// fnSetVectorValue is the setter callback function for any (nested) vector.
-type fnSetVectorValue func(vec *vector, rowIdx mapping.IdxT, val any) error
+// isNullInput reports whether val is a NULL write. An untyped nil or a nil
+// pointer to time.Time, big.Int, Interval, Bit, or UUID writes NULL regardless
+// of the target column. Unlike isNil, this check is allocation-free and does
+// not treat nil maps or slices as NULL: a nil []any is an empty LIST.
+func isNullInput[S any](val S) bool {
+	switch v := any(val).(type) {
+	case nil:
+		return true
+	case *time.Time:
+		return v == nil
+	case *big.Int:
+		return v == nil
+	case *Interval:
+		return v == nil
+	case *Bit:
+		return v == nil
+	case *UUID:
+		return v == nil
+	}
+	return false
+}
 
 func (vec *vector) setNull(rowIdx mapping.IdxT) {
 	mapping.ValiditySetRowInvalid(vec.maskPtr, rowIdx)
@@ -87,7 +104,7 @@ func setBool[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	return nil
 }
 
-func setTS(vec *vector, rowIdx mapping.IdxT, val any) error {
+func setTS[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	switch vec.Type {
 	case TYPE_TIMESTAMP, TYPE_TIMESTAMP_TZ:
 		ts, err := inferTimestamp(vec.Type, val)
@@ -220,7 +237,8 @@ func setBignum[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 func setBytes[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	switch v := any(val).(type) {
 	case string:
-		mapping.VectorAssignStringElementLen(vec.vec, rowIdx, []byte(v))
+		// Assign the string directly; converting it to []byte would copy it.
+		mapping.VectorAssignStringElement(vec.vec, rowIdx, v)
 	case []byte:
 		mapping.VectorAssignStringElementLen(vec.vec, rowIdx, v)
 	default:
@@ -276,8 +294,9 @@ func setDecimal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		return setNumeric[S, int64](vec, rowIdx, val)
 	case TYPE_HUGEINT:
 		return setHugeint(vec, rowIdx, val)
+	default:
+		return unsupportedTypeError(typeName(vec.internalType))
 	}
-	return nil
 }
 
 func setEnum[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
@@ -292,18 +311,18 @@ func setEnum[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	if v, ok := vec.namesDict[str]; ok {
 		switch vec.internalType {
 		case TYPE_UTINYINT:
-			return setNumeric[uint32, int8](vec, rowIdx, v)
-		case TYPE_SMALLINT:
-			return setNumeric[uint32, int16](vec, rowIdx, v)
-		case TYPE_INTEGER:
-			return setNumeric[uint32, int32](vec, rowIdx, v)
-		case TYPE_BIGINT:
-			return setNumeric[uint32, int64](vec, rowIdx, v)
+			return setNumeric[uint32, uint8](vec, rowIdx, v)
+		case TYPE_USMALLINT:
+			return setNumeric[uint32, uint16](vec, rowIdx, v)
+		case TYPE_UINTEGER:
+			return setNumeric[uint32, uint32](vec, rowIdx, v)
+		case TYPE_UBIGINT:
+			return setNumeric[uint32, uint64](vec, rowIdx, v)
+		default:
+			return unsupportedTypeError(typeName(vec.internalType))
 		}
-	} else {
-		return castError(reflect.TypeOf(val).String(), reflectTypeString.String())
 	}
-	return nil
+	return invalidInputError(str, "value in enum dictionary")
 }
 
 func setList[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
@@ -362,7 +381,7 @@ func setStruct[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		if !ok {
 			return structFieldError("missing field", name)
 		}
-		err := child.setFn(child, rowIdx, v)
+		err := setVectorVal(child, rowIdx, v)
 		if err != nil {
 			return err
 		}
@@ -411,7 +430,7 @@ func setSliceChildren(vec *vector, s []any, offset mapping.IdxT) error {
 	childVector := &vec.childVectors[0]
 	for i, entry := range s {
 		rowIdx := mapping.IdxT(i) + offset
-		err := childVector.setFn(childVector, rowIdx, entry)
+		err := setVectorVal(childVector, rowIdx, entry)
 		if err != nil {
 			return err
 		}
@@ -444,27 +463,22 @@ func setUnion[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		for i := 1; i < len(vec.childVectors); i++ {
 			child := &vec.childVectors[i]
 			if uint32(i) == tag+1 {
-				if err := child.setFn(child, rowIdx, v.Value); err != nil {
+				if err := setVectorVal(child, rowIdx, v.Value); err != nil {
 					return err
 				}
 				continue
 			}
-			if err := child.setFn(child, rowIdx, nil); err != nil {
-				return err
-			}
+			child.setNull(rowIdx)
 		}
 
 		return nil
 
 	default:
-		// Try to match the type with a UNION member.
-		anyVal := any(val)
-
 		// Try each member until we find one accepting the value.
 		match := 0
 		for i := 1; i < len(vec.childVectors); i++ {
 			childVec := &vec.childVectors[i]
-			err := childVec.setFn(childVec, rowIdx, anyVal)
+			err := setVectorVal(childVec, rowIdx, val)
 			if err == nil {
 				// The member accepted the value.
 				match = i
@@ -476,12 +490,8 @@ func setUnion[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		if match != 0 {
 			// Set all other members to NULL.
 			for i := 1; i < len(vec.childVectors); i++ {
-				child := &vec.childVectors[i]
-				if i == match {
-					continue
-				}
-				if err := child.setFn(child, rowIdx, nil); err != nil {
-					return err
+				if i != match {
+					vec.childVectors[i].setNull(rowIdx)
 				}
 			}
 			return nil
@@ -492,11 +502,22 @@ func setUnion[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	}
 }
 
+// setVectorVal writes val to the vector at rowIdx.
+//
+// This is the only write dispatch. DataChunk.SetValue reaches it with S = any,
+// while SetChunkValue keeps the caller's concrete type, which lets the compiler
+// instantiate the setter directly instead of boxing val through a callback.
+//
 //nolint:gocyclo
 func setVectorVal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
-	name, inMap := unsupportedValueTypeToStringMap[vec.Type]
-	if inMap {
-		return unsupportedTypeError(name)
+	// A SQLNULL column has no writable storage. Reject every write, including
+	// NULL, rather than silently accepting it.
+	if vec.Type == TYPE_SQLNULL {
+		return errSetSQLNULLValue
+	}
+	if isNullInput(val) {
+		vec.setNull(rowIdx)
+		return nil
 	}
 
 	switch vec.Type {
@@ -522,6 +543,8 @@ func setVectorVal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		return setNumeric[S, float32](vec, rowIdx, val)
 	case TYPE_DOUBLE:
 		return setNumeric[S, float64](vec, rowIdx, val)
+	case TYPE_DECIMAL:
+		return setDecimal(vec, rowIdx, val)
 	case TYPE_TIMESTAMP, TYPE_TIMESTAMP_S, TYPE_TIMESTAMP_MS, TYPE_TIMESTAMP_NS, TYPE_TIMESTAMP_TZ:
 		return setTS(vec, rowIdx, val)
 	case TYPE_DATE:
@@ -537,13 +560,15 @@ func setVectorVal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	case TYPE_BIGNUM:
 		return setBignum(vec, rowIdx, val)
 	case TYPE_VARCHAR:
+		// DuckDB stores JSON as VARCHAR; only the alias tells them apart.
+		if vec.isJSON {
+			return setJSON(vec, rowIdx, val)
+		}
 		return setBytes(vec, rowIdx, val)
 	case TYPE_BLOB, TYPE_GEOMETRY:
 		return setBytes(vec, rowIdx, val)
 	case TYPE_BIT:
 		return setBit(vec, rowIdx, val)
-	case TYPE_DECIMAL:
-		return setDecimal(vec, rowIdx, val)
 	case TYPE_ENUM:
 		return setEnum(vec, rowIdx, val)
 	case TYPE_LIST:
@@ -553,8 +578,7 @@ func setVectorVal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 	case TYPE_MAP:
 		return setMap(vec, rowIdx, val)
 	case TYPE_ARRAY:
-		// FIXME: Is this already supported? And tested?
-		return unsupportedTypeError(typeToStringMap[vec.Type])
+		return setArray(vec, rowIdx, val)
 	case TYPE_UUID:
 		return setUUID(vec, rowIdx, val)
 	case TYPE_UNION:

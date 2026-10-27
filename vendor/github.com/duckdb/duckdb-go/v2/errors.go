@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/duckdb/duckdb-go/v2/mapping"
 )
@@ -32,6 +33,11 @@ func conversionError(actual, min, max int) error {
 	return fmt.Errorf("%s: cannot convert %d, minimum: %d, maximum: %d", convertErrMsg, actual, min, max)
 }
 
+func dateRangeError(actual, min, max time.Time) error {
+	return fmt.Errorf("%s: cannot convert %s, minimum: %s, maximum: %s",
+		convertErrMsg, actual.Format(time.DateOnly), min.Format(time.DateOnly), max.Format(time.DateOnly))
+}
+
 func invalidInputError(actual, expected string) error {
 	return fmt.Errorf("%s: expected %s, got %s", invalidInputErrMsg, expected, actual)
 }
@@ -44,8 +50,8 @@ func columnCountError(actual, expected int) error {
 	return fmt.Errorf("%s: expected %d, got %d", columnCountErrMsg, expected, actual)
 }
 
-func setValueError(colIdx, rowIdx int, val any, err error) error {
-	return fmt.Errorf("%s: at row %d, col %d, val: %v: %w", setValueErrMsg, rowIdx, colIdx, val, err)
+func setValueError(colIdx, rowIdx int, err error) error {
+	return fmt.Errorf("%s: at row %d, col %d: %w", setValueErrMsg, rowIdx, colIdx, err)
 }
 
 func paramIndexError(idx int, max uint64) error {
@@ -54,6 +60,10 @@ func paramIndexError(idx int, max uint64) error {
 
 func columnIndexError(idx int, max uint64) error {
 	return fmt.Errorf("%s: %d is out of range [0, %d)", columnIndexErrMsg, idx, max)
+}
+
+func rowIndexError(idx, max int) error {
+	return fmt.Errorf("%s: %d is out of range [0, %d)", rowIndexErrMsg, idx, max)
 }
 
 func unsupportedTypeError(name string) error {
@@ -100,7 +110,7 @@ const (
 	setValueErrMsg              = "failed to set value"
 	unprojectedColumnErrMsg     = "unprojected column"
 	unsupportedTypeErrMsg       = "unsupported data type"
-	considerAppenderClearMsg    = "appended and not yet flushed data has been invalidated due to error: consider invoking Appender.Clear followed by Appender.Close in case of unexpected errors to avoid leaking memory"
+	considerAppenderClearMsg    = "the appended rows that were not yet flushed were discarded: call Appender.Clear to acknowledge this, otherwise Appender.Close reports this error"
 	invalidatedAppenderClearMsg = "failed to clear appender's internal data (this likely indicates a bug - please consider opening a bug report at https://github.com/duckdb/duckdb-go/issues)"
 	tryOtherFuncErrMsg          = "please try this function instead"
 	indexErrMsg                 = "index"
@@ -109,12 +119,16 @@ const (
 	duplicateNameErrMsg         = "duplicate name"
 	paramIndexErrMsg            = "invalid parameter index"
 	columnIndexErrMsg           = "invalid column index"
+	rowIndexErrMsg              = "invalid row index"
 )
 
 var (
-	errInternal   = errors.New("internal error: please file a bug report at duckdb-go")
-	errAPI        = errors.New("API error")
-	errVectorSize = errors.New("data chunks cannot exceed duckdb's internal vector size")
+	errInternal                  = errors.New("internal error: please file a bug report at duckdb-go")
+	errAPI                       = errors.New("API error")
+	errVectorSize                = errors.New("data chunks cannot exceed duckdb's internal vector size")
+	errNilDataChunk              = errors.New("nil data chunk")
+	errUninitializedVectorView   = errors.New("uninitialized vector view")
+	errUninitializedVectorWriter = errors.New("uninitialized vector writer")
 
 	errConnect      = errors.New("could not connect to database")
 	errParseDSN     = errors.New("could not parse DSN for database")
@@ -129,8 +143,10 @@ var (
 
 	errPrepare                    = errors.New("could not prepare query")
 	errMissingPrepareContext      = errors.New("missing context for multi-statement query: try using PrepareContext")
+	errParametersBeforeLastStmt   = errors.New("parameters are only supported in the last statement of a multi-statement query; split parameterized statements into separate calls")
 	errEmptyQuery                 = errors.New("empty query")
 	errCouldNotBind               = errors.New("could not bind parameter")
+	errCreateValue                = errors.New("could not create value")
 	errActiveRows                 = errors.New("ExecContext or QueryContext with active Rows")
 	errNotBound                   = errors.New("parameters have not been bound")
 	errBeginTx                    = errors.New("could not begin transaction")
@@ -143,6 +159,7 @@ var (
 	errAppenderDoubleClose      = fmt.Errorf("%w: already closed", errAppenderClose)
 	errAppenderAppendRow        = errors.New("could not append row")
 	errAppenderAppendAfterClose = fmt.Errorf("%w: appender already closed", errAppenderAppendRow)
+	errAppenderClearAfterClose  = errors.New("could not clear appender: appender already closed")
 	errAppenderFlush            = errors.New("could not flush appender")
 	errAppenderEmptyQuery       = errors.New("empty query")
 	errAppenderEmptyColumnTypes = errors.New("empty column types")
@@ -150,6 +167,7 @@ var (
 	errAppenderDuplicateColumn  = errors.New("duplicate column name")
 
 	errUnsupportedMapKeyType = errors.New("MAP key type not supported")
+	errNullMapKey            = errors.New("MAP keys cannot be NULL")
 	errEmptyName             = errors.New("empty name")
 	errInvalidDecimalWidth   = fmt.Errorf("the DECIMAL with must be between 1 and %d", max_decimal_width)
 	errInvalidDecimalScale   = errors.New("the DECIMAL scale must be less than or equal to the width")
@@ -165,6 +183,7 @@ var (
 	errScalarUDFResultTypeIsANY = fmt.Errorf("%w: result type is ANY, which is not supported", errScalarUDFCreate)
 	errScalarUDFCreateSet       = fmt.Errorf("could not create scalar UDF set")
 	errScalarUDFAddToSet        = fmt.Errorf("%w: could not add the function to the set", errScalarUDFCreateSet)
+	errScalarUDFBindGetArgument = errors.New("could not get scalar UDF bind argument: argument cannot be copied (e.g. correlated subquery)")
 
 	errTableUDFCreate          = errors.New("could not create table UDF")
 	errTableUDFNoName          = fmt.Errorf("%w: missing name", errTableUDFCreate)

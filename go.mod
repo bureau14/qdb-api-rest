@@ -8,7 +8,7 @@ require (
 	github.com/apache/arrow-adbc/go/adbc v1.12.0
 	github.com/apache/arrow-go/v18 v18.8.0
 	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261025052437-6afd5e8cae12
-	github.com/duckdb/duckdb-go/v2 v2.10504.0
+	github.com/duckdb/duckdb-go/v2 v2.20000.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/klauspost/compress v1.19.2
@@ -29,12 +29,7 @@ require (
 	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/duckdb/duckdb-go-bindings v0.10504.0 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.10504.0 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.10504.0 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.10504.0 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10504.0 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10504.0 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.20000.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
@@ -49,6 +44,11 @@ require (
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
+	go.duckdb.org/libduckdb/darwin-amd64 v0.20000.0 // indirect
+	go.duckdb.org/libduckdb/darwin-arm64 v0.20000.0 // indirect
+	go.duckdb.org/libduckdb/linux-amd64 v0.20000.0 // indirect
+	go.duckdb.org/libduckdb/linux-arm64 v0.20000.0 // indirect
+	go.duckdb.org/libduckdb/windows-amd64 v0.20000.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
@@ -73,12 +73,12 @@ require (
 
 // The prebuilt DuckDB libraries are never compiled, so a stub replaces
 // each (third_party/AGENTS.md).
-replace github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 => ./third_party/duckdb-nolib/darwin-amd64
+replace go.duckdb.org/libduckdb/darwin-amd64 => ./third_party/duckdb-nolib/darwin-amd64
 
-replace github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 => ./third_party/duckdb-nolib/darwin-arm64
+replace go.duckdb.org/libduckdb/darwin-arm64 => ./third_party/duckdb-nolib/darwin-arm64
 
-replace github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 => ./third_party/duckdb-nolib/linux-amd64
+replace go.duckdb.org/libduckdb/linux-amd64 => ./third_party/duckdb-nolib/linux-amd64
 
-replace github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 => ./third_party/duckdb-nolib/linux-arm64
+replace go.duckdb.org/libduckdb/linux-arm64 => ./third_party/duckdb-nolib/linux-arm64
 
-replace github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 => ./third_party/duckdb-nolib/windows-amd64
+replace go.duckdb.org/libduckdb/windows-amd64 => ./third_party/duckdb-nolib/windows-amd64

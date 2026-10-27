@@ -93,37 +93,50 @@ func runWithCtxInterrupt(ctx context.Context, conn mapping.Connection, fn func(c
 
 	go interrupterRoutine(ctx, conn, done, bgDoneCh)
 
+	// Stop the interrupter in a deferred call, so that it also stops if fn panics.
+	// Callers may recover the panic and keep using the connection. A leftover
+	// interrupter would then interrupt every later query on this connection once ctx
+	// is canceled, and call Interrupt on a freed connection after it is closed.
+	defer func() {
+		close(done)
+
+		// Wait for interrupter goroutine to finish
+		// Sometimes the go-routine is not scheduled immediately.
+		// By the time it is scheduled, another query might be running on this connection.
+		// If we don't wait for the go-routine to finish, it can cancel that new query.
+		<-bgDoneCh
+	}()
+
 	// We pass `ctx` to keep that "enriched" context with the mark that we've already spawned a go-routine
-	err := fn(ctx)
-
-	close(done)
-
-	// Wait for interrupter goroutine to finish
-	// Sometimes the go-routine is not scheduled immediately.
-	// By the time it is scheduled, another query might be running on this connection.
-	// If we don't wait for the go-routine to finish, it can cancel that new query.
-	<-bgDoneCh
-	return err
+	return fn(ctx)
 }
 
 func interrupterRoutine(ctx context.Context, conn mapping.Connection, done <-chan struct{}, bgDoneCh chan<- struct{}) {
+	defer close(bgDoneCh)
+
 	select {
 	case <-ctx.Done():
 	case <-done:
 		// finished before cancellation
-		close(bgDoneCh)
 		return
 	}
 
 	// Re-assert interruption until the wrapped function finishes.
+	ticker := time.NewTicker(interruptInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-done:
-			close(bgDoneCh)
 			return
 		default:
 			mapping.Interrupt(conn)
-			time.Sleep(interruptInterval)
+		}
+
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
 		}
 	}
 }
