@@ -74,6 +74,16 @@ Next:
    definition) green by hand on both clusters, with its server run under
    a long grace through `listen.shutdown_grace`, and the close of M6, as
    one slice.
+2. Investigate the intermittent Go runtime fault `found bad pointer in
+Go heap`, raised inside arrow-go's C data import of a string column
+   while the 2.0.0 binding converts a DuckDB chunk, under the flightsql
+   statement test on the secure cluster (Linux haswell, qdb-api-rest
+   build 188, passed on retry). It is the first such fault on the 2.0.0
+   line, the Go side of the path is unchanged across the bump, and the
+   repository's code on it consumes each batch synchronously, so the
+   suspects are the binding's C layer and the library. First step: the
+   test in a loop under the race detector and `GODEBUG=invalidptr=1`
+   on Linux amd64.
 
 Handoff to M6 and M7:
 
