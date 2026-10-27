@@ -139,15 +139,11 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	}
 	// 3. HTTP, when configured, over base, with one warning when the
 	//    cluster is secure, because access tokens then travel in plain
-	//    text, and a deployment inside a VPC is the one case that accepts
-	//    it. No key silences the warning. The condition is read from the
-	//    cluster in the context, because Secured is the one reading of
-	//    "has a public key" in the binary. The message text is spelled
-	//    once here and once in the round trip's driver
-	//    (tests/e2e/round-trip.sh, PLAINTEXT_WARNING), which greps it, and
-	//    a change to one changes the other. The line is here and not in
-	//    main, because this step already decides that the HTTP listener
-	//    exists.
+	//    text. No key silences it, and a deployment inside a VPC is the
+	//    one case that accepts it. Secured is the binary's one reading of
+	//    "has a public key". tests/e2e/round-trip.sh (PLAINTEXT_WARNING)
+	//    greps the message, so the two change together. The line is here,
+	//    because this step already decides that the HTTP listener exists.
 	if cfg.Listen.HTTP != "" {
 		listeners = append(listeners, newHTTPServer(base, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
