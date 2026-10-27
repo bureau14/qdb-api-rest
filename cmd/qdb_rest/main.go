@@ -124,7 +124,9 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	//    base context, so a request under it would be cancelled with it:
 	//    every encoder stops at its next batch and the body is truncated.
 	//    The drain and not the signal must end a stream, so the base drops
-	//    the cancellation and keeps the values. The drain signal is the
+	//    the cancellation and keeps the values. A cancel that the drain's
+	//    deadline triggers was rejected, because http.Server.Shutdown
+	//    already cuts what the grace does not cover. The drain signal is the
 	//    process context's Done channel, because that event already
 	//    exists: the first moment of the drain is the moment the context
 	//    ends, which main brings about before the drain on every path. A
