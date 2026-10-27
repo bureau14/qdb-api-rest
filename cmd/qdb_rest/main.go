@@ -117,21 +117,13 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	//  5. Add Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
-	// 1. Every HTTP request inherits the process values (the logger, the
-	//    cluster, the keychain) and the drain signal, without the process
-	//    context's cancellation. The signal cancels the process context at
-	//    SIGTERM, and net/http derives each request's context from the
-	//    base context, so a request under it would be cancelled with it:
-	//    every encoder stops at its next batch and the body is truncated.
-	//    The drain and not the signal must end a stream, so the base drops
-	//    the cancellation and keeps the values. A cancel that the drain's
-	//    deadline triggers was rejected, because http.Server.Shutdown
-	//    already cuts what the grace does not cover. The drain signal is the
-	//    process context's Done channel, because that event already
-	//    exists: the first moment of the drain is the moment the context
-	//    ends, which main brings about before the drain on every path. A
-	//    channel shutdown closes was rejected, because it is a second
-	//    event for the same moment.
+	// 1. Every HTTP request inherits the process values and the drain
+	//    signal through a context without the process context's
+	//    cancellation: the signal would otherwise cancel every request in
+	//    flight at SIGTERM and truncate its stream at the next batch, and
+	//    the grace is what ends a stream. The signal is the process
+	//    context's own end, which main brings about before the drain on
+	//    every path, rather than a second channel for the same moment.
 	base := httpapi.WithDrain(context.WithoutCancel(ctx), ctx.Done())
 	// 2. HTTPS and Flight serve the same certificate, so the TLS material
 	//    loads once. Loading it once keeps an ephemeral certificate to one
