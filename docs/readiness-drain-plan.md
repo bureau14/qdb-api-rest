@@ -1,6 +1,6 @@
 # M6: readiness answers 503 for the whole drain -- Plan
 
-Status: draft
+Status: approved
 
 ## Outcome
 
