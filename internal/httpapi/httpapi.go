@@ -14,7 +14,11 @@ import (
 
 // The drain signal travels in the request context next to the logger
 // and the cluster: the entry point places it, and the readiness handler
-// reads it.
+// reads it. A flag on qdb.Cluster that shutdown sets was rejected,
+// because it puts a serving-lifecycle fact on the binding, and the
+// request context's own cancellation was rejected, because it conflates
+// a client hangup with the drain and says nothing once the request
+// context outlives the signal.
 type drainKey struct{}
 
 // WithDrain returns ctx carrying done, a channel that is closed once the
