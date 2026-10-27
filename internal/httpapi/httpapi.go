@@ -32,6 +32,9 @@ func WithDrain(ctx context.Context, done <-chan struct{}) context.Context {
 // draining reports whether the drain has begun. It panics on a context
 // without the signal, because a request context the entry point did not
 // build is a programming error, as it is for the cluster and the logger.
+// Reading absence as not draining was rejected: it spares every test
+// fixture one line, and a wiring mistake in the entry point would then
+// be a server that dials through its drain and nothing would catch it.
 func draining(ctx context.Context) bool {
 	done, ok := ctx.Value(drainKey{}).(<-chan struct{})
 	if !ok {
