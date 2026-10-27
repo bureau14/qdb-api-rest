@@ -70,7 +70,12 @@ In flight:
 
 Next:
 
-1. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
+1. `/rr-start` M6: the systemd notify protocol, `READY=1` once every
+   listener is bound and `STOPPING=1` when the drain starts, written to
+   `$NOTIFY_SOCKET` with the standard library and silent when the
+   variable is unset; the HTTP bind moves out of `ListenAndServe` so
+   READY follows the bind.
+2. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
    definition) green by hand on both clusters, with its server run under
    a long grace through `listen.shutdown_grace`, and the close of M6, as
    one slice.
@@ -120,6 +125,12 @@ Blocked on:
   green build of its head.
 
 ## Entries
+
+## 2026-10-27 -- readiness-drain-plan.md deleted
+
+- Facts moved to `internal/httpapi/AGENTS.md` (Middleware),
+  `cmd/qdb_rest/AGENTS.md` and the comments of `internal/httpapi` and
+  `cmd/qdb_rest`.
 
 ## 2026-10-27 -- duckdb-2-plan.md deleted
 
