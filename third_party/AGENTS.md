@@ -30,4 +30,7 @@ path.
   prebuilt modules to a new module path: then each stub's `module` line
   and each `replace` line in `go.mod` follow it, because a replacement
   directory whose `go.mod` names another module fails every `go`
-  command with a module path mismatch.
+  command with a module path mismatch. The bump, the stub change and
+  the re-vendor land in one commit, because a `vendor/` out of step
+  with `go.mod` fails every `go` command as well, so no split keeps
+  every commit building.
