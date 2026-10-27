@@ -1,6 +1,6 @@
 # DuckDB 2.0.0: the binding and the package move together -- Plan
 
-Status: draft
+Status: approved
 
 ## Outcome
 
