@@ -48,38 +48,30 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// handleReadiness reports whether this instance may take new traffic.
-// It answers 200 or 503 with an empty body and no Retry-After, and the
-// cause of a 503 goes to the log line and not the wire.
+// handleReadiness reports whether this instance may take new traffic:
+// 200 or 503 with an empty body and no Retry-After, and the cause of a
+// 503 goes to the log and not the wire.
 func handleReadiness(w http.ResponseWriter, r *http.Request) {
 	// The drain is checked before the dial, because the answer during a
-	// drain is no whatever the cluster would say, and a dial there would
-	// cost a session for an answer already known.
-	//
-	//  1. Answer 503 while draining, without a dial.
-	//  2. Dial the cluster and run the readiness query; a failure is 503.
-	//  3. 200 with an empty body.
+	// drain is no whatever the cluster would say, and a dial there costs
+	// a session for an answer already known.
 	ctx := r.Context()
-	// 1. The question the probe is named for ("may this instance take new
-	//    traffic") has the answer no during a drain, and a load balancer
-	//    that polls it takes the instance out of rotation before a
-	//    listener closes and a connection is refused (ADR-0004, rule 2).
-	//    The line logs at debug, because the drain is not a failure and a
-	//    prober polls through the whole grace.
+	// 1. 503 without a dial while draining, so a load balancer takes the
+	//    instance out of rotation before a listener closes (ADR-0004,
+	//    rule 2). Debug, because the drain is not a failure and a prober
+	//    polls through the whole grace.
 	if draining(ctx) {
 		observe.Logger(ctx).DebugContext(ctx, "readiness refused: server is draining")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	// 2. Dial as the REST API's own user and run the readiness query,
-	//    caching nothing and bypassing the pool, the budget and the
-	//    breaker. A failure is 503 with the cause at warn.
+	// 2. Dial as the REST API's own user, bypassing the pool, the budget
+	//    and the breaker. A failure is 503 with the cause at warn.
 	if err := qdb.ClusterFrom(ctx).Probe(ctx); err != nil {
 		observe.Logger(ctx).WarnContext(ctx, "readiness probe failed", observe.Err(err))
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	// 3. 200 with an empty body.
 	w.WriteHeader(http.StatusOK)
 }
 
