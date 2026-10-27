@@ -14,34 +14,26 @@ import (
 
 // The drain signal travels in the request context next to the logger
 // and the cluster: the entry point places it, and the readiness handler
-// reads it. A flag on qdb.Cluster that shutdown sets was rejected,
-// because it puts a serving-lifecycle fact on the binding, and the
-// request context's own cancellation was rejected, because it conflates
-// a client hangup with the drain and says nothing once the request
-// context outlives the signal.
+// reads it. A flag on the cluster was rejected, because the binding
+// carries no serving lifecycle.
 type drainKey struct{}
 
-// WithDrain returns ctx carrying done, a channel that is closed once the
-// server has begun its shutdown drain. The entry point passes the
-// process context's Done channel, so the signal is the process
-// context's end.
+// WithDrain returns ctx carrying done, a channel closed once the
+// shutdown drain has begun.
 func WithDrain(ctx context.Context, done <-chan struct{}) context.Context {
 	return context.WithValue(ctx, drainKey{}, done)
 }
 
-// draining reports whether the drain has begun. It panics on a context
-// without the signal, because a request context the entry point did not
-// build is a programming error, as it is for the cluster and the logger.
-// Reading absence as not draining was rejected: it spares every test
-// fixture one line, and a wiring mistake in the entry point would then
-// be a server that dials through its drain and nothing would catch it.
+// draining reports whether the drain has begun.
 func draining(ctx context.Context) bool {
 	done, ok := ctx.Value(drainKey{}).(<-chan struct{})
 	if !ok {
+		// Only the entry point builds request contexts, so a missing
+		// signal is a wiring error, as a missing cluster or logger is.
+		// Reading absence as "not draining" would hide that error behind
+		// a server that dials through its drain.
 		panic("httpapi: no drain signal in context")
 	}
-	// The receive has a default, because the handler answers at once
-	// whether or not the drain has begun.
 	select {
 	case <-done:
 		return true
