@@ -124,7 +124,12 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	//    base context, so a request under it would be cancelled with it:
 	//    every encoder stops at its next batch and the body is truncated.
 	//    The drain and not the signal must end a stream, so the base drops
-	//    the cancellation and keeps the values.
+	//    the cancellation and keeps the values. The drain signal is the
+	//    process context's Done channel, because that event already
+	//    exists: the first moment of the drain is the moment the context
+	//    ends, which main brings about before the drain on every path. A
+	//    channel shutdown closes was rejected, because it is a second
+	//    event for the same moment.
 	base := httpapi.WithDrain(context.WithoutCancel(ctx), ctx.Done())
 	// 2. HTTPS and Flight serve the same certificate, so the TLS material
 	//    loads once. Loading it once keeps an ephemeral certificate to one
@@ -139,15 +144,16 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
 	}
 	// 3. HTTP, when configured, over base, with one warning when the
-	//    cluster is secure, because access tokens then travel in plain text, and a
-	//    deployment inside a VPC is the one case that accepts it. No key
-	//    silences the warning. The condition is read from the cluster in
-	//    the context, because Secured is the one reading of "has a public
-	//    key" in the binary. The message text is spelled once here and
-	//    once in the round trip's driver (tests/e2e/round-trip.sh,
-	//    PLAINTEXT_WARNING), which greps it, and a change to one changes
-	//    the other. The line is here and not in main, because this step
-	//    already decides that the HTTP listener exists.
+	//    cluster is secure, because access tokens then travel in plain
+	//    text, and a deployment inside a VPC is the one case that accepts
+	//    it. No key silences the warning. The condition is read from the
+	//    cluster in the context, because Secured is the one reading of
+	//    "has a public key" in the binary. The message text is spelled
+	//    once here and once in the round trip's driver
+	//    (tests/e2e/round-trip.sh, PLAINTEXT_WARNING), which greps it, and
+	//    a change to one changes the other. The line is here and not in
+	//    main, because this step already decides that the HTTP listener
+	//    exists.
 	if cfg.Listen.HTTP != "" {
 		listeners = append(listeners, newHTTPServer(base, cfg.Listen.HTTP, handler, nil))
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
@@ -161,8 +167,10 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	listeners = append(listeners, newHTTPServer(base, cfg.Listen.HTTPS, handler, tlsConfig))
 	log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 		"certificate", string(info.Source), "not_after", info.NotAfter)
-	// 5. Flight. flightsql.New binds the port, so a port in use fails the
-	//    start, as bad TLS material does.
+	// 5. Flight. It takes ctx and not base, because its interceptors
+	//    splice the process values onto each call's own context and it has
+	//    no readiness route. flightsql.New binds the port, so a port in use
+	//    fails the start, as bad TLS material does.
 	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -273,9 +281,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 6. Serve until a signal or a listener failure, then drain the
-	//    listeners first and the cluster second, under listen.shutdown_grace.
+	// 6. Serve until a signal or a listener failure. Then end the process
+	//    context, so readiness answers 503 on the listener-failure path
+	//    too, where no signal ended it, and drain the listeners first and
+	//    the cluster second under listen.shutdown_grace. stop is
+	//    idempotent, so the deferred call stays.
 	runErr := serveUntilDone(ctx, listeners)
+	stop()
 	shutdown(ctx, cfg.Listen.ShutdownGrace, listeners, cluster)
 	if runErr != nil {
 		logger.ErrorContext(ctx, "server failed", observe.Err(runErr))
