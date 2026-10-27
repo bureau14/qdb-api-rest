@@ -135,6 +135,13 @@ This file, Handlers, holds the table reader's.
 - `withRequestLogging` wraps the mux once. `requireBearer` and
   `withCompression` wrap a route. The probes stay outside both. The
   login and the refresh are compressed but unauthenticated.
+- Readiness reads the drain signal `WithDrain` places on the request
+  context and nothing else of the lifecycle: once the channel is closed
+  it answers 503 without a dial, at debug (ADR-0004, rule 2). A request
+  context without the signal panics, as one without the cluster does,
+  so every test fixture that builds a request context places one, open.
+  The entry point places the signal (`cmd/qdb_rest/AGENTS.md`), and the
+  Flight server does not, because no Flight call reads it.
 - Compression follows ADR-0012. `Accept-Encoding` is read in the
   client's order, the first of `gzip`, `zstd` and `identity` wins, and
   `q` is not read. The writer holds the status back until the first body
