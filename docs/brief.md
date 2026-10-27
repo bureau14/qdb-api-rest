@@ -649,7 +649,9 @@ convenience wrapper. The decisions:
   deadline on the Go side could fire only between C calls, so it would
   bound nothing that a client cannot bound by hanging up. Graceful
   shutdown drains in-flight streams on both planes under a configured
-  grace.
+  grace, and readiness answers `503` from the first moment of the drain
+  so a load balancer stops sending new connections before a listener
+  closes.
 - All of it (pool occupancy, breaker state, retry counts) is exported
   through `/metrics`.
 
@@ -799,15 +801,22 @@ defaults by test.
   `natefinch/lumberjack` (the ecosystem-standard rotation writer, vendored
   unmodified). An optional `log.file` config key exposes the same sink on
   any platform for users who want it.
-- `/metrics` (Prometheus exposition) as described under Goals.
+- `/metrics` (Prometheus exposition) as described under Goals, and the
+  Go runtime profiler (`net/http/pprof`, under `/debug/pprof/`) on the
+  same mux outside the bearer edge when `debug.pprof` is true, false by
+  default. The profiler is the way into a live instance that leaks
+  sessions or holds a stuck stream, and it is not a metrics source.
 - The status probes are `GET /api/status/liveness` and
   `GET /api/status/readiness`, mirrored under `/api/v2/status/*`,
   unauthenticated, with an empty body and `200` or `503`. Readiness
-  dials the cluster as the REST API's own user on every probe
-  (ADR-0004). The probes are an operational surface outside the
-  compatibility contract. The unversioned paths are kept because load
-  balancers at customer sites are configured with them, not because the
-  old server's answers are reproduced.
+  dials the cluster as the REST API's own user on every probe, and
+  answers `503` without a dial for the whole shutdown drain
+  (ADR-0004). On Linux under systemd the binary speaks the notify
+  protocol (`Type=notify`): `READY=1` once every listener is bound and
+  `STOPPING=1` when the drain starts. The probes are an operational
+  surface outside the compatibility contract. The unversioned paths are
+  kept because load balancers at customer sites are configured with
+  them, not because the old server's answers are reproduced.
 - The server warns once at startup when the HTTP listener is on and the
   cluster has a public key, because access tokens then travel in plain
   text. Nothing silences it: a deployment whose network already encrypts
@@ -973,16 +982,23 @@ starts.
   query and the DuckDB query layer of M4.
 - **M6 -- Hardening**: the shutdown grace as a configuration key, the
   startup warning when the HTTP listener serves a secure cluster
-  (asserted by the round trip on the secure server's log), and the
+  (asserted by the round trip on the secure server's log), readiness
+  answering `503` for the whole drain so a load balancer takes the
+  instance out of rotation before the listeners close (ADR-0004), the
+  systemd notify protocol (`READY=1` once every listener is bound,
+  `STOPPING=1` when the drain starts, written to `$NOTIFY_SOCKET` with
+  the standard library and silent when the variable is unset), and the
   drain step of the stress, green by hand.
 - **M7 -- Observability**: `/metrics` behind `metrics.enabled`, with
   the series of Goal 9 and the pool, breaker and retry state, on both
   planes where the plane has the concept, a user label on the pool
   gauges only; query capture, one line per query on both planes with
   the engine, the plane, the duration, the row count and the outcome at
-  `info` and the statement text, truncated, at `debug`; the round-trip
-  step that scrapes `/metrics` and checks the series exist; and the
-  budget step of the stress, green by hand.
+  `info` and the statement text, truncated, at `debug`; the Go runtime
+  profiler (`net/http/pprof`) on the same mux behind `debug.pprof`,
+  false by default, for goroutine, heap and CPU profiles of a live
+  instance; the round-trip step that scrapes `/metrics` and checks the
+  series exist; and the budget step of the stress, green by hand.
 - **M8 -- Exploration**: `GET /api/v2/tables` and
   `GET /api/v2/tables/{name}` over the existing table cores, the tag
   routes (list, entries of a tag, attach and detach) over a find core

@@ -18,7 +18,9 @@ listen:
   flight: ":40493"
   # Deadline for draining in-flight calls on every listener and then the
   # session pool on SIGTERM. Whatever stops the binary and then kills it
-  # must wait longer than this before the kill.
+  # must wait longer than this before the kill. The readiness probe
+  # answers 503 for the whole drain, so a load balancer that polls it
+  # stops sending new connections before a listener closes.
   shutdown_grace: "8s"
 
 tls:

@@ -25,9 +25,16 @@ M6 criteria. Entry: M5 closed. Exit: the shutdown grace is a
 configuration key with the current constant as its default, and the
 drain of both planes runs under it; the server logs one warning at
 startup when the HTTP listener is on and the cluster is secure, and the
-round trip asserts the line in the secure server's log; the stress's
-drain step (`docs/e2e.md`, Stress definition) is green by hand on both
-clusters; the Handoff items M6 consumes are deleted.
+round trip asserts the line in the secure server's log; readiness
+answers `503` without a dial from the first moment of the drain
+(ADR-0004), and the stress's drain step asserts it; the binary writes
+`READY=1` to `$NOTIFY_SOCKET` once every listener is bound and
+`STOPPING=1` when the drain starts, with the standard library and no
+dependency, and does nothing when the variable is unset; whether the
+binary also sends the `WATCHDOG=1` keepalive, tied to the serving loop
+and never to the cluster probe, is open (owner, 2026-10-26); the
+stress's drain step (`docs/e2e.md`, Stress definition) is green by
+hand on both clusters; the Handoff items M6 consumes are deleted.
 
 M7 criteria. Entry: M6 closed. Exit: `GET /metrics` serves the
 Prometheus exposition on the HTTP and HTTPS mux outside the bearer edge,
@@ -38,9 +45,11 @@ runtime and build info, on both planes where the plane has the concept,
 and a user label on the pool gauges only; every query on both planes
 logs one line with the engine, the plane, the duration, the row count
 and the outcome at `info`, and the statement text, truncated, at
-`debug`; the round trip scrapes `/metrics` after its requests and
-asserts that every expected series exists; the stress's budget step is
-green by hand on both clusters.
+`debug`; `net/http/pprof` serves under `/debug/pprof/` on the same mux
+when `debug.pprof` is true and is absent when false, false the default;
+the round trip scrapes `/metrics` after its requests and asserts that
+every expected series exists; the stress's budget step is green by hand
+on both clusters.
 
 M8 criteria. Entry: M7 closed. Exit: the eight exploration routes of
 the brief's sketch (`docs/brief.md`, /api/v2 endpoint sketch, M8 rows)
@@ -97,6 +106,12 @@ Blocked on:
 - Nothing.
 
 ## Entries
+
+## 2026-10-26 -- M6 gains the systemd notify protocol and readiness 503 during the drain, M7 gains pprof
+
+- Owner decisions; `docs/brief.md`, Milestones (M6, M7) and
+  Observability and logging, and ADR-0004, rule 2. The watchdog
+  keepalive is open (M6 criteria).
 
 ## 2026-10-26 -- m6-grace-warning-plan.md deleted
 

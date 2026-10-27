@@ -35,7 +35,11 @@ path and no dependency on its state.
    the pool, the budget or the breaker, neither reading nor feeding
    them, and nothing is cached, so every poll performs the call. The
    process starts and reports not-ready while the cluster is
-   unreachable.
+   unreachable. From the first moment of the shutdown drain readiness
+   answers `503` without dialing, because the question it is named for
+   ("may this instance take new traffic") has the answer no, and a load
+   balancer that polls it takes the instance out of rotation before a
+   listener closes and a connection is refused.
 3. **`/metrics`** reads in-process counters only. A scrape never
    triggers cluster work and is not gated on auth or on cluster state,
    and the only switch is the configuration key that disables the
