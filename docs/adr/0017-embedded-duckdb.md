@@ -37,12 +37,15 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
    link tag follows the library: `duckdb_use_static_lib` on Linux and
    FreeBSD and `duckdb_use_lib` on macOS and Windows, with
    `duckdb_arrow` everywhere, exported once by `.envrc` through
-   `GOFLAGS`. The
-   binding's five prebuilt DuckDB library modules are replaced by stubs
-   so that a re-vendor does not commit them (`third_party/AGENTS.md`).
+   `GOFLAGS`. Under `duckdb_use_static_lib` the binding registers the
+   bundle's linked extensions from its package init before any
+   database opens, so the bundle carries DuckDB's generated loader. The
+   dynamic libraries register their own. The binding's five prebuilt
+   DuckDB library modules are replaced by stubs so that a re-vendor
+   does not commit them (`third_party/AGENTS.md`).
 3. **The DuckDB release is pinned in pairs.** The qdb-duck DuckDB
    submodule and the go-duckdb tag name the same release. Today that
-   is 1.5.4, so go-duckdb is taken from the tag line that bundles it,
+   is 2.0.0, so go-duckdb is taken from the tag line that bundles it,
    and the next bump moves both.
 4. **FreeBSD is coverage, not a release target.** FreeBSD links
    `libduckdb_bundle.a` next to the shared `libqdb_api.so`, and the
@@ -106,16 +109,17 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 
 ## Alternatives rejected
 
-| Alternative                                                    | Why not                                                                                                                                      |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| One shared DuckDB instance with every user's catalog           | every connection sees every attached catalog, so one user queries under another's credentials                                                |
-| One instance per request                                       | every request attaches and dials the cluster, and the handle pool is thrown away each time                                                   |
-| A shared service credential for DuckDB                         | the user's permissions would no longer apply, which the brief rules out                                                                      |
-| Dropping FreeBSD from the platform matrix                      | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                                       |
-| Bumping qdb-duck to the newest go-duckdb release               | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                              |
-| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side       | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                |
-| An upstream pool size parameter before M4                      | the pool is correct as is, and the budget question is better answered once the milestones are done                                           |
-| A standalone property test of native-versus-DuckDB equivalence | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows |
-| An msvcrt build of MinGW on Windows                            | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                   |
-| A MinGW build of qdb-duck's Windows package                    | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                           |
-| Freeing the binding's cgo allocations with `C.free` in vendor/ | the next re-vendor overwrites a local patch, and the change belongs upstream in duckdb-go-bindings                                           |
+| Alternative                                                     | Why not                                                                                                                                        |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| One shared DuckDB instance with every user's catalog            | every connection sees every attached catalog, so one user queries under another's credentials                                                  |
+| One instance per request                                        | every request attaches and dials the cluster, and the handle pool is thrown away each time                                                     |
+| A shared service credential for DuckDB                          | the user's permissions would no longer apply, which the brief rules out                                                                        |
+| Dropping FreeBSD from the platform matrix                       | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                                         |
+| Bumping qdb-duck to the newest go-duckdb release                | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                                |
+| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side        | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                  |
+| An upstream pool size parameter before M4                       | the pool is correct as is, and the budget question is better answered once the milestones are done                                             |
+| A standalone property test of native-versus-DuckDB equivalence  | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows   |
+| An msvcrt build of MinGW on Windows                             | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                     |
+| A MinGW build of qdb-duck's Windows package                     | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                             |
+| A registration call of this repository's own in `internal/olap` | the binding's init already makes it under the static-lib tag, and a second call is a no-op that would have to be kept in step with the binding |
+| Freeing the binding's cgo allocations with `C.free` in vendor/  | the next re-vendor overwrites a local patch, and the change belongs upstream in duckdb-go-bindings                                             |
