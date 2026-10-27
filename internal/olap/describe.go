@@ -70,9 +70,10 @@ func enumIndex(n int) arrow.DataType {
 // map has no case for is ErrUndescribable.
 func arrowTypeOf(t duckdb.TypeInfo, tz string) (arrow.DataType, error) {
 	// The cases follow SetArrowFormat in arrow_converter.cpp of DuckDB
-	// 1.5.4, the version qdb-duck pins, under its default client
-	// properties: regular offsets, no views, lossless conversion off and
-	// output version 1.0. The nested types recurse.
+	// 2.0.0, the release qdb-duck's submodule names, under its default
+	// client properties: regular offsets, no list or string views,
+	// lossless conversion off and output version 1.0. The nested types
+	// recurse.
 	//
 	// A LIMIT 0 run through the reader was rejected, because SHOW,
 	// DESCRIBE, PRAGMA and SET cannot be a subquery. A duckdb-go change
