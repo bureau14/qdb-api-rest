@@ -171,18 +171,34 @@ def _lint_step() -> dict:
     return step
 
 
+# qdb-duck is pinned to its last master build before DuckDB 2.0.0
+# (qdb-duck build 103, PR #18). Under the 2.0.0 package every `#sql`
+# path fails with `Secret type "quasar" not found`, because the quasar
+# extension does not register its secret type there yet. The pin goes
+# once qdb-duck's master registers the type under 2.0.0 and is green
+# (docs/log.md, Next).
+QDB_DUCK_BUILD_ID = "01a175ae-12ae-4578-8714-8d11d3c21c7d"
+
+
 def _download_options(variant: str, git_ref: str) -> dict:
     """Return the qdb-artifacts download options of one step.
 
     Every download project receives this repository's own ref and the
     step's variant. The plugin resolves a ref that holds no artifacts of
     a project to that project's master, so no ref is spelled out here
-    for quasardb-build or qdb-duck (.buildkite/AGENTS.md).
+    for quasardb-build (.buildkite/AGENTS.md). qdb-duck is pinned to one
+    master build (QDB_DUCK_BUILD_ID).
     """
     return {
         "download": {
             "variant": variant,
             "git_ref": git_ref,
+            "by_project": {
+                "qdb-duck": {
+                    "git_ref": "refs/heads/master",
+                    "build_id": QDB_DUCK_BUILD_ID,
+                },
+            },
         }
     }
 

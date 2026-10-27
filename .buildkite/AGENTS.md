@@ -38,8 +38,9 @@ all of this should feel.
   The plugin walks that ref, then the project's master, then main, and
   takes the first one that holds artifacts, so a branch of this
   repository gets the dependency's master without `pipeline.py` naming
-  it. A `by_project` ref is only for pinning a dependency to one of its
-  branches for a while, and `pipeline.py` says when such a pin goes.
+  it. A `by_project` entry is only for pinning a dependency to one of
+  its branches or one of its builds for a while, and `pipeline.py` says
+  when such a pin goes.
 - qdbd runs in CI. The build step starts it via
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` runs last
