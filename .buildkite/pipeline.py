@@ -65,9 +65,11 @@ GLOBAL_ENV: dict[str, str] = {
 STEP_ENV: dict[str, dict[str, str]] = {}
 
 OS_ENV: dict[str, dict[str, str]] = {
+    # The vendored Go API links lib/libqdb_api.a and libstdc++ statically on
+    # Linux, so the linker must come from the GCC that quasardb-build uses.
     "linux": {
-        "CC": "$$QDB_CICD_AGENT_GCC15_CC",
-        "CXX": "$$QDB_CICD_AGENT_GCC15_CXX",
+        "CC": "$$QDB_CICD_AGENT_GCC16_CC",
+        "CXX": "$$QDB_CICD_AGENT_GCC16_CXX",
     },
     "freebsd": {},
     "macos": {},
