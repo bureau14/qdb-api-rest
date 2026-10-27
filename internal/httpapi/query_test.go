@@ -65,7 +65,7 @@ func newServer(t *testing.T, f cluster.Fixture) server {
 func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 	t.Helper()
 	tk := tokensAt(t, time.Now())
-	ctx := auth.WithTokens(qdb.WithCluster(observeContext(), c), tk)
+	ctx := WithDrain(auth.WithTokens(qdb.WithCluster(observeContext(), c), tk), make(chan struct{}))
 	// The token carries the user's secret key, because the data routes
 	// dial the cluster with the token's credentials.
 	token := mint(t, tk, "access", u, time.Now().Add(time.Hour))
