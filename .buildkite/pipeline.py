@@ -174,10 +174,14 @@ def _lint_step() -> dict:
 # qdb-duck is pinned to its last master build before DuckDB 2.0.0
 # (qdb-duck build 103, PR #18). Under the 2.0.0 package every `#sql`
 # path fails with `Secret type "quasar" not found`, because the quasar
-# extension does not register its secret type there yet. The pin goes
-# once qdb-duck's master registers the type under 2.0.0 and is green
-# (docs/log.md, Next).
+# extension does not register its secret type there yet. quasardb-build
+# is pinned to the master build that package was built against
+# (quasardb-build 3289): on the master builds after it, every symbol a
+# `#sql` query reads through that package comes back as `(unknown)`.
+# Both pins go together, once qdb-duck's master registers the type
+# under 2.0.0 and reads symbols from current qdbd (docs/log.md, Next).
 QDB_DUCK_BUILD_ID = "01a175ae-12ae-4578-8714-8d11d3c21c7d"
+QDB_BUILD_ID = "01a168f8-76e9-48c3-8091-2f383f0f9a2a"
 
 
 def _download_options(variant: str, git_ref: str) -> dict:
@@ -186,8 +190,8 @@ def _download_options(variant: str, git_ref: str) -> dict:
     Every download project receives this repository's own ref and the
     step's variant. The plugin resolves a ref that holds no artifacts of
     a project to that project's master, so no ref is spelled out here
-    for quasardb-build (.buildkite/AGENTS.md). qdb-duck is pinned to one
-    master build (QDB_DUCK_BUILD_ID).
+    for either (.buildkite/AGENTS.md). Both are pinned to one master
+    build each (QDB_DUCK_BUILD_ID, QDB_BUILD_ID).
     """
     return {
         "download": {
@@ -197,6 +201,10 @@ def _download_options(variant: str, git_ref: str) -> dict:
                 "qdb-duck": {
                     "git_ref": "refs/heads/master",
                     "build_id": QDB_DUCK_BUILD_ID,
+                },
+                "quasardb-build": {
+                    "git_ref": "refs/heads/master",
+                    "build_id": QDB_BUILD_ID,
                 },
             },
         }
