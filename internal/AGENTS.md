@@ -154,10 +154,11 @@ decisions are in `docs/adr/`.
   `internal/flightsql/AGENTS.md` before touching an interceptor, the
   Handshake or the listener.
 - The systemd notify protocol lives in `internal/notify`, and the
-  binary's entry point alone calls it. The package reads the variables
-  systemd sets and has no configuration key for the socket or the
-  interval, because systemd sets `NOTIFY_SOCKET`, `WATCHDOG_USEC` and
-  `WATCHDOG_PID` and nothing else would set a key.
+  binary's entry point alone calls it. It is a package of its own and
+  not part of `internal/observe`, whose name says logging. It reads the
+  variables systemd sets and has no configuration key, because nothing
+  but systemd would set one. It has no test, because it is glue over the
+  standard library.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), and not a bare
   `Stats`. A bare `Stats` exists only as the type that composes every
