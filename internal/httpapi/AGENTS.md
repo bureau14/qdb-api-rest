@@ -131,7 +131,7 @@ This file, Handlers, holds the table reader's.
 - `GET /metrics` serves the registry the request context carries
   (`observe.MetricsFrom`), built per scrape through the client's
   handler, when `metrics.enabled` is true; off, the route is not
-  registered and the path is the mux's 404 (ADR-0004, rule 3).
+  registered and the path is the mux's 404, per ADR-0004.
 - `/debug/pprof/` serves the stdlib profiler's handlers, registered by
   hand on this mux, when `debug.pprof` is true, and is not registered
   when it is false. It is not a metrics source.

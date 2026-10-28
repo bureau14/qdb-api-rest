@@ -53,14 +53,11 @@ func registerStatusRoutes(mux *http.ServeMux) {
 
 // handleMetrics serves the registry's exposition, with the client's
 // handler built over the registry the request context carries. A scrape
-// reads in-process counters only and never touches the cluster
-// (ADR-0004, rule 3).
+// reads in-process counters only and never touches the cluster, per
+// ADR-0004.
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
-	// The handler is built per scrape and not once at registration,
-	// because the registry travels in the context and NewHandler has no
-	// context. A scrape is rare and the build is a small allocation. The
-	// zero HandlerOpts: a gather error is a 500, and the exposition is
-	// gzip-compressed when the scraper asks, by the client's own writer,
+	// Built per scrape, because the registry travels in the context and
+	// NewHandler has none. The client's writer compresses when asked,
 	// because the route sits outside withCompression.
 	reg := observe.MetricsFrom(r.Context()).Registry
 	promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
@@ -72,7 +69,7 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 func registerMetricsRoute(mux *http.ServeMux, cfg config.Metrics) {
 	// A registered route answering 404 itself was rejected, because
 	// ADR-0004 says the key disables the endpoint and nothing else
-	// switches it, and the mux already says 404.
+	// switches it.
 	if !cfg.Enabled {
 		return
 	}
