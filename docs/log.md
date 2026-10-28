@@ -16,7 +16,7 @@ Last updated: 2026-10-28
 | M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
 | M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
 | M6 -- Hardening                 | done        | closed 2026-10-28                                     |
-| M7 -- Observability             | not started | criteria below                                        |
+| M7 -- Observability             | in progress | criteria below                                        |
 | M8 -- Exploration               | not started | criteria below                                        |
 | M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M10 -- Release                  | not started |                                                       |
@@ -93,6 +93,13 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-28 -- metrics-skeleton-plan.md deleted
+
+- Facts moved to ADR-0019, `internal/AGENTS.md`,
+  `internal/httpapi/AGENTS.md`, `cmd/qdb_rest/AGENTS.md`, `docs/e2e.md`,
+  `tests/e2e/AGENTS.md` and the comments of `internal/observe`,
+  `internal/httpapi`, `internal/config`, `cmd/qdb_rest` and `tests/e2e`.
 
 ## 2026-10-28 -- stress-drain-plan.md deleted
 
