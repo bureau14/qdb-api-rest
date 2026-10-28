@@ -649,9 +649,9 @@ convenience wrapper. The decisions:
   deadline on the Go side could fire only between C calls, so it would
   bound nothing that a client cannot bound by hanging up. Graceful
   shutdown drains in-flight streams on both planes under a configured
-  grace, and readiness answers `503` from the first moment of the drain
-  so a load balancer stops sending new connections before a listener
-  closes.
+  grace, and the listeners close their ports first, so a load
+  balancer's next connection is refused and the instance leaves
+  rotation.
 - All of it (pool occupancy, breaker state, retry counts) is exported
   through `/metrics`.
 
@@ -809,8 +809,7 @@ defaults by test.
 - The status probes are `GET /api/status/liveness` and
   `GET /api/status/readiness`, mirrored under `/api/v2/status/*`,
   unauthenticated, with an empty body and `200` or `503`. Readiness
-  dials the cluster as the REST API's own user on every probe, and
-  answers `503` without a dial for the whole shutdown drain
+  dials the cluster as the REST API's own user on every probe
   (ADR-0004). On Linux under systemd the binary speaks the notify
   protocol (`Type=notify`): `READY=1` once every listener is bound,
   `STOPPING=1` when the drain starts, and `WATCHDOG=1` every half of
@@ -985,9 +984,9 @@ starts.
   query and the DuckDB query layer of M4.
 - **M6 -- Hardening**: the shutdown grace as a configuration key, the
   startup warning when the HTTP listener serves a secure cluster
-  (asserted by the round trip on the secure server's log), readiness
-  answering `503` for the whole drain so a load balancer takes the
-  instance out of rotation before the listeners close (ADR-0004), the
+  (asserted by the round trip on the secure server's log), the
+  listeners closing their ports first during the drain so a new
+  connection is refused while in-flight streams finish (ADR-0004), the
   systemd notify protocol (`READY=1` once every listener is bound,
   `STOPPING=1` when the drain starts, written to `$NOTIFY_SOCKET` with
   the standard library and silent when the variable is unset, and the

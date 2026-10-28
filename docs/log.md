@@ -25,9 +25,10 @@ M6 criteria. Entry: M5 closed. Exit: the shutdown grace is a
 configuration key with the current constant as its default, and the
 drain of both planes runs under it; the server logs one warning at
 startup when the HTTP listener is on and the cluster is secure, and the
-round trip asserts the line in the secure server's log; readiness
-answers `503` without a dial from the first moment of the drain
-(ADR-0004), and the stress's drain step asserts it; the binary writes
+round trip asserts the line in the secure server's log; the listeners
+close their ports first during the drain, so a new connection is
+refused while in-flight streams finish (ADR-0004), and the stress's
+drain step asserts it; the binary writes
 `READY=1` to `$NOTIFY_SOCKET` once every listener is bound and
 `STOPPING=1` when the drain starts, with the standard library and no
 dependency, and does nothing when the variable is unset, and sends the
@@ -112,6 +113,11 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-28 -- the drain's signal to a load balancer is the refused connection
+
+- Owner decision; ADR-0004, rule 2, and `docs/brief.md`, Resilience.
+  Readiness is the dial alone and reads nothing of the lifecycle.
 
 ## 2026-10-28 -- systemd-notify-plan.md deleted
 

@@ -23,14 +23,13 @@ Scope: the binary's entry point. Packages it wires together live under
 - The binary serves three listeners: HTTP, HTTPS and Flight SQL. HTTP
   is off unless `--listen-http` is set, and the other two cannot be off
   (ADR-0001).
-- Every HTTP request inherits the process values and the drain signal
-  through a context without the process context's cancellation
-  (`newListeners`), so SIGINT or SIGTERM cuts no stream in flight and
-  `listen.shutdown_grace` is what ends one. The drain signal is the
-  process context's end, which `main` brings about on a signal or a
-  listener failure before the drain, so readiness answers 503 on both
-  paths. Flight takes the process context itself, because its
-  interceptors splice the values onto each call's own context.
+- Every HTTP request inherits the process values through a context
+  without the process context's cancellation (`newListeners`), so
+  SIGINT or SIGTERM cuts no stream in flight and `listen.shutdown_grace`
+  is what ends one. The drain closes every listener's port first, so a
+  new connection is refused while streams finish, and readiness is not
+  consulted (ADR-0004). Flight takes the process context itself, because
+  its interceptors splice the values onto each call's own context.
 - The binary speaks systemd's notify protocol through `internal/notify`:
   `READY=1` once `newListeners` has returned, which is once every port
   is bound, `STOPPING=1` right after the process context's end and
