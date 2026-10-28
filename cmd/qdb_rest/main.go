@@ -63,18 +63,24 @@ type listener interface {
 	Shutdown(context.Context)
 }
 
-// httpListener adapts *http.Server to listener. Serve calls
-// ListenAndServeTLS when TLSConfig is set and ListenAndServe otherwise,
-// and it treats ErrServerClosed as a clean stop. Shutdown drops the error
-// of http.Server.Shutdown.
-type httpListener struct{ *http.Server }
+// httpListener adapts *http.Server to listener over a listener bound
+// before serving. Serve serves the bound listener, over TLS when
+// TLSConfig is set, and treats ErrServerClosed as a clean stop. Shutdown
+// drops the error of http.Server.Shutdown, which closes the listener
+// Serve was given.
+type httpListener struct {
+	*http.Server
+	ln net.Listener
+}
 
 func (l httpListener) Serve() error {
 	var err error
 	if l.TLSConfig != nil {
-		err = l.ListenAndServeTLS("", "")
+		// ServeTLS with empty file names serves TLSConfig.Certificates,
+		// which tlsconf.Load filled.
+		err = l.ServeTLS(l.ln, "", "")
 	} else {
-		err = l.ListenAndServe()
+		err = l.Server.Serve(l.ln)
 	}
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
@@ -84,15 +90,24 @@ func (l httpListener) Serve() error {
 
 func (l httpListener) Shutdown(ctx context.Context) { _ = l.Server.Shutdown(ctx) }
 
-// newHTTPServer assembles one HTTP listener's server. The HTTPS listener
-// carries a tls.Config, and plain HTTP passes nil. The caller passes the
-// request base context, which carries the process values and the drain
-// signal and outlives the signal (newListeners, step 1); BaseContext
-// hands it to every request, and ErrorLog routes net/http's own
-// complaints through the same handler. There is no global write timeout,
-// because responses are streamed, so write deadlines are a per-request
-// concern.
-func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) httpListener {
+// newHTTPServer binds addr and assembles one HTTP listener's server over
+// it. The HTTPS listener carries a tls.Config, and plain HTTP passes nil.
+// A port in use fails here, before serving, as it does for Flight. The
+// caller passes the request base context, which carries the process
+// values and the drain signal and outlives the signal (newListeners,
+// step 1); BaseContext hands it to every request, and ErrorLog routes
+// net/http's own complaints through the same handler. There is no
+// global write timeout, because responses are streamed, so write
+// deadlines are a per-request concern.
+func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) (httpListener, error) {
+	// The bind happens here and not in Serve, so that main sends READY=1
+	// only once every port is held and a port in use fails the start. A
+	// hook inside ListenAndServe was rejected, because net/http offers
+	// none.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return httpListener{}, err
+	}
 	return httpListener{&http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -100,21 +115,22 @@ func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsCo
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ErrorLog:          slog.NewLogLogger(observe.Logger(ctx).Handler(), slog.LevelError),
-	}}
+	}, ln}, nil
 }
 
 // newListeners builds the listeners from config and logs what each one
 // serves. HTTP is off unless configured, and the other two always start
-// (ADR-0001).
+// (ADR-0001). Every listener is bound when it returns, so a port in use
+// fails the start.
 func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) ([]listener, error) {
 	// The steps:
 	//
 	//  1. Derive the context every HTTP request inherits.
 	//  2. Load the TLS material once.
-	//  3. Add HTTP, when configured, with one warning when the cluster
-	//     is secure.
-	//  4. Add HTTPS.
-	//  5. Add Flight.
+	//  3. Bind and add HTTP, when configured, with one warning when the
+	//     cluster is secure.
+	//  4. Bind and add HTTPS.
+	//  5. Bind and add Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
 	// 1. Requests inherit the process values and the drain signal, but
@@ -133,15 +149,21 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 			"fingerprint_sha256", info.Fingerprint,
 			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
 	}
-	// 3. HTTP, when configured, over base, with one warning when the
-	//    cluster is secure, because access tokens then travel in plain
-	//    text. No key silences it, and a deployment inside a VPC is the
-	//    one case that accepts it. Secured is the binary's one reading of
-	//    "has a public key". tests/e2e/round-trip.sh (PLAINTEXT_WARNING)
-	//    greps the message, so the two change together. The line is here,
-	//    because this step already decides that the HTTP listener exists.
+	// 3. HTTP, when configured, bound and over base, with one warning
+	//    when the cluster is secure, because access tokens then travel in
+	//    plain text. No key silences it, and a deployment inside a VPC is
+	//    the one case that accepts it. Secured is the binary's one reading
+	//    of "has a public key". tests/e2e/round-trip.sh
+	//    (PLAINTEXT_WARNING) greps the message, so the two change
+	//    together. The line is here, because this step already decides
+	//    that the HTTP listener exists. A bind error returns, as the TLS
+	//    error of step 2 does.
 	if cfg.Listen.HTTP != "" {
-		listeners = append(listeners, newHTTPServer(base, cfg.Listen.HTTP, handler, nil))
+		h, err := newHTTPServer(base, cfg.Listen.HTTP, handler, nil)
+		if err != nil {
+			return nil, err
+		}
+		listeners = append(listeners, h)
 		log.InfoContext(ctx, "listening", "proto", "http", "addr", cfg.Listen.HTTP)
 		if qdb.ClusterFrom(ctx).Secured() {
 			log.WarnContext(ctx, "http listener on a secure cluster: access tokens travel in plain text",
@@ -149,14 +171,18 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 				"hint", "serve the HTTPS listener only, unless the network between clients and this server is already encrypted")
 		}
 	}
-	// 4. HTTPS, over base.
-	listeners = append(listeners, newHTTPServer(base, cfg.Listen.HTTPS, handler, tlsConfig))
+	// 4. HTTPS, bound and over base. A bind error returns.
+	hs, err := newHTTPServer(base, cfg.Listen.HTTPS, handler, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	listeners = append(listeners, hs)
 	log.InfoContext(ctx, "listening", "proto", "https", "addr", cfg.Listen.HTTPS,
 		"certificate", string(info.Source), "not_after", info.NotAfter)
-	// 5. Flight. It takes ctx and not base, because its interceptors
-	//    splice the process values onto each call's own context and it has
-	//    no readiness route. flightsql.New binds the port, so a port in use
-	//    fails the start, as bad TLS material does.
+	// 5. Flight, bound. It takes ctx and not base, because its
+	//    interceptors splice the process values onto each call's own
+	//    context and it has no readiness route. flightsql.New binds the
+	//    port, so a port in use fails the start, as bad TLS material does.
 	fs, err := flightsql.New(ctx, cfg.Listen.Flight, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -260,7 +286,7 @@ func main() {
 
 	// 5. Build the listeners over the root context, so every request
 	//    inherits the logger, the cluster and the keychain. Loading the
-	//    TLS material and binding the Flight port can fail here.
+	//    TLS material and binding any of the three ports can fail here.
 	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
