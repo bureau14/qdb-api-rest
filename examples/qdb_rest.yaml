@@ -122,22 +122,25 @@ duckdb:
   # Instances live at once. A sql call that would open one more answers
   # 503 until an idle user pool is evicted.
   max_instances: 16
-  # qdbd sessions qdb-duck pools behind one instance, 1 to 1024. A scan
-  # takes one per DuckDB worker, and a catalog lookup can hold several.
-  max_pool_size: 100
-  # How long a qdb-duck session caches a table's metadata. 0 disables
-  # the cache, so every lookup asks qdbd.
-  table_cache_ttl: "1m"
-  # Per qdb-duck session, with 0 as the C API default: the longest wait
-  # for an unstable cluster and the longest retry of a conflicting
-  # transaction, each at least cluster.timeout when both are set, and
-  # the client-side soft memory limit in bytes.
-  stabilization_max_wait: "0s"
-  transaction_max_wait: "0s"
-  soft_memory_limit: 0
-  # Spread a session's requests across the nodes instead of pinning it
-  # to one.
-  load_balancing: false
+  # The qdb-duck sessions behind one instance, set as qdb-duck's quasar_*
+  # globals before the attach.
+  quasar:
+    # qdbd sessions qdb-duck pools behind one instance, 1 to 1024. A scan
+    # takes one per DuckDB worker, and a catalog lookup can hold several.
+    max_pool_size: 100
+    # How long a qdb-duck session caches a table's metadata. 0 disables
+    # the cache, so every lookup asks qdbd.
+    table_cache_ttl: "1m"
+    # Per session, with 0 as the C API default: the longest wait for an
+    # unstable cluster and the longest retry of a conflicting
+    # transaction, each at least cluster.timeout when both are set, and
+    # the client-side soft memory limit in bytes.
+    stabilization_max_wait: "0s"
+    transaction_max_wait: "0s"
+    soft_memory_limit: 0
+    # Spread a session's requests across the nodes instead of pinning it
+    # to one.
+    load_balancing: false
 
 metrics:
   # Serve the Prometheus exposition at GET /metrics on the HTTP and
