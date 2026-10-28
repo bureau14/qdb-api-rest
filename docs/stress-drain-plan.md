@@ -1,6 +1,6 @@
 # Plan: the stress's drain step, readiness without the drain signal, and the close of M6
 
-Status: draft
+Status: approved
 
 ## Outcome
 
