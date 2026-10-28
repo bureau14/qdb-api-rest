@@ -146,14 +146,25 @@ func (a Auth) LogValue() slog.Value {
 
 // DuckDB governs every DuckDB instance the server opens, one per user:
 // the memory and the worker threads one instance may take, where it may
-// spill and how much, and how many instances may be live at once. The
-// sizes are in bytes.
+// spill and how much, how many instances may be live at once, and the
+// qdb-duck sessions behind one instance: how many handles the attached
+// catalog pools, how long a handle caches a table's metadata, and the
+// network and retry knobs the C API takes per handle. The sizes are in
+// bytes. A wait of zero leaves the C API default where the help tag says
+// so; the pool size and the TTL have no zero rule, because 0 is a value
+// for the TTL (no cache) and refused for the pool size.
 type DuckDB struct {
-	MemoryLimit    int64  `yaml:"memory_limit" help:"memory one DuckDB instance may use, in bytes"`
-	Threads        int    `yaml:"threads" help:"worker threads of one DuckDB instance"`
-	SpillDirectory string `yaml:"spill_directory" help:"directory a DuckDB instance spills to; empty disables spilling"`
-	MaxSpillSize   int64  `yaml:"max_spill_size" help:"bytes one DuckDB instance may spill"`
-	MaxInstances   int    `yaml:"max_instances" help:"DuckDB instances live at once, one per user"`
+	MemoryLimit          int64         `yaml:"memory_limit" help:"memory one DuckDB instance may use, in bytes"`
+	Threads              int           `yaml:"threads" help:"worker threads of one DuckDB instance"`
+	SpillDirectory       string        `yaml:"spill_directory" help:"directory a DuckDB instance spills to; empty disables spilling"`
+	MaxSpillSize         int64         `yaml:"max_spill_size" help:"bytes one DuckDB instance may spill"`
+	MaxInstances         int           `yaml:"max_instances" help:"DuckDB instances live at once, one per user"`
+	MaxPoolSize          int           `yaml:"max_pool_size" help:"qdbd sessions qdb-duck pools behind one instance, 1 to 1024"`
+	TableCacheTTL        time.Duration `yaml:"table_cache_ttl" help:"how long a qdb-duck session caches a table's metadata; 0 disables the cache"`
+	StabilizationMaxWait time.Duration `yaml:"stabilization_max_wait" help:"longest wait for an unstable cluster per qdb-duck session; 0 means the C API default"`
+	TransactionMaxWait   time.Duration `yaml:"transaction_max_wait" help:"longest retry of a conflicting transaction per qdb-duck session; 0 means the C API default"`
+	SoftMemoryLimit      int64         `yaml:"soft_memory_limit" help:"client-side soft memory limit per qdb-duck session, in bytes; 0 means the C API default"`
+	LoadBalancing        bool          `yaml:"load_balancing" help:"spread a qdb-duck session's requests across the nodes instead of pinning it to one"`
 }
 
 // Metrics switches the Prometheus exposition and names its series.
@@ -192,7 +203,9 @@ type Config struct {
 //   - no token passphrases, so an ephemeral key per start
 //   - argon2id at the second recommended cost of RFC 9106
 //   - one DuckDB instance per user at one gibibyte and four threads,
-//     with no spilling and at most sixteen instances at once
+//     with no spilling and at most sixteen instances at once, over
+//     qdb-duck's own pool of one hundred handles and one minute of
+//     table metadata cache, with the other knobs at the C API defaults
 //   - the Prometheus exposition on under the qdb_rest namespace, and
 //     the runtime profiler off
 func Default() Config {
@@ -231,8 +244,19 @@ func Default() Config {
 		// bound one user's scan at four qdbd sessions, because a qdb-duck
 		// scan takes one worker per four shards and one qdbd handle per
 		// worker. The empty spill directory disables spilling, so a query
-		// over the memory limit fails instead of writing to disk.
-		DuckDB:  DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
+		// over the memory limit fails instead of writing to disk. The pool
+		// size and the TTL repeat qdb-duck's own defaults, so a server with
+		// no duckdb block behaves as one that never set them, and the one
+		// minute is the C API's own table cache default. The four other
+		// knobs stay zero, so nothing is sent and the C API default holds,
+		// as the cluster block's knobs do.
+		DuckDB: DuckDB{
+			MemoryLimit:   1 << 30,
+			Threads:       4,
+			MaxInstances:  16,
+			MaxPoolSize:   100,
+			TableCacheTTL: time.Minute,
+		},
 		Metrics: Metrics{Enabled: true, Namespace: "qdb_rest"},
 	}
 }
@@ -645,7 +669,9 @@ func validatePool(p Pool) error {
 }
 
 // validateDuckDB requires a positive memory limit, at least one thread,
-// a spill cap that is not negative, and at least one instance.
+// a spill cap that is not negative, at least one instance, at least one
+// pooled handle, and a TTL, two waits and a soft memory limit that are
+// not negative.
 func validateDuckDB(d DuckDB) error {
 	if d.MemoryLimit <= 0 {
 		return fmt.Errorf("duckdb.memory_limit must be positive, got %d", d.MemoryLimit)
@@ -660,6 +686,25 @@ func validateDuckDB(d DuckDB) error {
 	// would say why until a request came in.
 	if d.MaxInstances < 1 {
 		return fmt.Errorf("duckdb.max_instances must be at least 1, got %d", d.MaxInstances)
+	}
+	// Only the lower bound is here. The 1024 cap, the millisecond caps on
+	// the waits and the rule that a wait is at least the timeout are
+	// qdb-duck's, and it judges them at the attach, so config does not
+	// hold a second copy of them.
+	if d.MaxPoolSize < 1 {
+		return fmt.Errorf("duckdb.max_pool_size must be at least 1, got %d", d.MaxPoolSize)
+	}
+	if d.TableCacheTTL < 0 {
+		return fmt.Errorf("duckdb.table_cache_ttl must not be negative, got %s", d.TableCacheTTL)
+	}
+	if d.StabilizationMaxWait < 0 {
+		return fmt.Errorf("duckdb.stabilization_max_wait must not be negative, got %s", d.StabilizationMaxWait)
+	}
+	if d.TransactionMaxWait < 0 {
+		return fmt.Errorf("duckdb.transaction_max_wait must not be negative, got %s", d.TransactionMaxWait)
+	}
+	if d.SoftMemoryLimit < 0 {
+		return fmt.Errorf("duckdb.soft_memory_limit must not be negative, got %d", d.SoftMemoryLimit)
 	}
 	return nil
 }
