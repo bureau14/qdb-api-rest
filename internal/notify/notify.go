@@ -3,7 +3,14 @@
 // keepalive at half of WATCHDOG_USEC. Outside systemd the variables are
 // unset and every function does nothing. The binary sends READY=1 once
 // every listener is bound, STOPPING=1 when the drain starts, and
-// WATCHDOG=1 between the two (cmd/qdb_rest/main.go).
+// WATCHDOG=1 between the two (cmd/qdb_rest/main.go). The protocol is a
+// package of its own: internal/observe was rejected, because its name
+// says logging and it would gain a systemd dependency, and the entry
+// point was rejected, because the protocol is a concern of its own. The
+// package has no test, because it is glue over the standard library and
+// the first systemd host proves it. A test on a unix datagram socket and
+// a round-trip step through an e2etool listener were rejected for that
+// reason.
 package notify
 
 import (
