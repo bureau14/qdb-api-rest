@@ -66,10 +66,12 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
    threads and spill directory with its size cap per instance, and a
    cap on live instances. Defaults are conservative. The key names and
    values are the handler's.
-7. **qdb-duck's handle pool is accepted as is.** Its sessions do not
-   count against `pool.max_sessions` and idle handles live until
-   detach. The brief's Risks and open explorations carries the item
-   for after the milestones.
+7. **qdb-duck's handle pool is sized and tuned by the `duckdb` block
+   and the cluster block's network knobs**, set as qdb-duck's globals on
+   the attach connection before the ATTACH (owner, 2026-10-28). Its
+   sessions still do not count against `pool.max_sessions`, and idle
+   handles live until detach. The brief's Risks item keeps the budget
+   question.
 8. **Writes are qdbd's decision.** `CREATE VIEW` and `CREATE SEQUENCE`
    write blobs under the user's credentials and qdbd refuses them for
    a user without write permission. The server adds no filter.
@@ -118,6 +120,7 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 | Bumping qdb-duck to the newest go-duckdb release                | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                                |
 | Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side        | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                  |
 | An upstream pool size parameter before M4                       | the pool is correct as is, and the budget question is better answered once the milestones are done                                             |
+| ATTACH string parameters for the tuning                         | the pool size and the TTL need qdb-duck PR #23 and a refreshed artifact on every platform, and the globals reach every option today            |
 | A standalone property test of native-versus-DuckDB equivalence  | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows   |
 | An msvcrt build of MinGW on Windows                             | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                     |
 | A MinGW build of qdb-duck's Windows package                     | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                             |

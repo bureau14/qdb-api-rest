@@ -505,9 +505,10 @@ qdbd, and because the thread count bounds how many qdbd sessions one
 user's query opens at once. The values are the handler's.
 
 **qdb-duck pools its own qdbd sessions** (owner, 2026-10-13). Each
-attached catalog holds up to 100 lazily opened `qdb_handle_t`, one per
-operation in flight, because a scan fans out to one DuckDB worker per
-four shards and the handle serializes some operations internally.
+attached catalog holds up to `duckdb.max_pool_size` lazily opened
+`qdb_handle_t`, one hundred by default, one per operation in flight,
+because a scan fans out to one DuckDB worker per four shards and the
+handle serializes some operations internally.
 Those sessions do not count against `pool.max_sessions` and the pool
 has no idle reaper. This is accepted as is, and revisited after the
 milestones (Risks and open explorations).
@@ -1076,11 +1077,10 @@ comes last because the preview customer does not use the v1 endpoints.
    return array-valued results correctly until that is fixed upstream.
 5. **qdb-duck's handle pool** opens qdbd sessions outside the session
    budget and never closes an idle one before detach (Embedded DuckDB).
-   Upstream qdb-duck takes the pool's maximum handle count and the
-   table cache's TTL as parameters (owner, 2026-10-26), and the attach
-   does not pass them yet. Accepted for the milestones, and looked at
-   once they are done (owner, 2026-10-13): the attach passing both, or
-   the budget lending qdb-duck its sessions.
+   The attach passes the pool size and the table cache TTL
+   (`duckdb.max_pool_size`, `duckdb.table_cache_ttl`). What stays open
+   is the budget lending qdb-duck its sessions, looked at once the
+   milestones are done (owner, 2026-10-13).
 
 ## Open questions
 

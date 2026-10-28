@@ -88,11 +88,25 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   investigates there, and suspects qdb-duck's table cache TTL, which
   upstream takes as a parameter (`docs/brief.md`, Risks, 5), for the
   second failure (owner, 2026-10-26). No milestone claims the
-  investigation yet.
+  investigation yet. The TTL is `duckdb.table_cache_ttl`, and a
+  disabled cache is not the experiment: with the cache off, the C
+  API's `qdb_ts_get_metadata` answers a multi-column table's first data
+  column with an empty name, on every call, so every `#sql` read of
+  such a table fails. With the cache on it answers the name. The owner
+  holds a standalone C API reproduction for a qdbd story, and both
+  test harnesses keep the default TTL (owner, 2026-10-28). The cache's
+  refresh after expiry is the suspected path of the column-not-found
+  failure.
 
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-28 -- duckdb block governs qdb-duck's tuning
+
+- Owner decision; ADR-0017 Decision 7 edited in place. The planned test
+  default of a disabled table cache was dropped, because the C API
+  answers wrong metadata with the cache off (Current state, Handoff).
 
 ## 2026-10-28 -- metrics-skeleton-plan.md deleted
 

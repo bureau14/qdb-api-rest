@@ -15,9 +15,11 @@ ADR-0017.
 - The credentials reach qdb-duck only through a temporary DuckDB
   secret, and the attach names the secret. `secretOf` says why the
   ATTACH string and qdb-duck's `quasar_*` options were rejected.
-- qdb-duck pools its own qdbd sessions per attached catalog, up to 100,
-  and they live until the instance closes. They do not count against
-  `pool.max_sessions` (ADR-0017, Decision 7).
+- qdb-duck pools up to `duckdb.max_pool_size` sessions per attached
+  catalog, one hundred by default, and they live until the instance
+  closes. They do not count against `pool.max_sessions` (ADR-0017,
+  Decision 7). The settings reach qdb-duck as globals on the attach
+  connection, and `settingsOf` says which keys and why.
 - On Windows the package links only with a UCRT build of MinGW, because
   the binding frees its own cgo allocations inside `duckdb.dll` (root
   `.envrc`, MINGW branch, and ADR-0017).
