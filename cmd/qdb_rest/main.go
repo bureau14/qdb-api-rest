@@ -65,10 +65,8 @@ type listener interface {
 }
 
 // httpListener adapts *http.Server to listener over a listener bound
-// before serving. Serve serves the bound listener, over TLS when
-// TLSConfig is set, and treats ErrServerClosed as a clean stop. Shutdown
-// drops the error of http.Server.Shutdown, which closes the listener
-// Serve was given.
+// before serving. Serve treats ErrServerClosed as a clean stop, and
+// Shutdown closes the listener through http.Server.Shutdown.
 type httpListener struct {
 	*http.Server
 	ln net.Listener
@@ -92,23 +90,19 @@ func (l httpListener) Serve() error {
 func (l httpListener) Shutdown(ctx context.Context) { _ = l.Server.Shutdown(ctx) }
 
 // newHTTPServer binds addr and assembles one HTTP listener's server over
-// it. The HTTPS listener carries a tls.Config, and plain HTTP passes nil.
-// A port in use fails here, before serving, as it does for Flight. The
-// caller passes the request base context, which carries the process
-// values and the drain signal and outlives the signal (newListeners,
-// step 1); BaseContext hands it to every request, and ErrorLog routes
-// net/http's own complaints through the same handler. There is no
-// global write timeout, because responses are streamed, so write
-// deadlines are a per-request concern.
+// it, so a port in use fails the start before serving, as it does for
+// Flight. tlsConfig is nil for plain HTTP. ctx is the request base
+// context of newListeners, step 1.
 func newHTTPServer(ctx context.Context, addr string, handler http.Handler, tlsConfig *tls.Config) (httpListener, error) {
-	// The bind happens here and not in Serve, so that main sends READY=1
-	// only once every port is held and a port in use fails the start. A
-	// hook inside ListenAndServe was rejected, because net/http offers
-	// none.
+	// The bind is here, so that main sends READY=1 only once every port
+	// is held.
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return httpListener{}, err
 	}
+	// No WriteTimeout: responses are streamed, so write deadlines are a
+	// per-request concern. Every request inherits ctx, and net/http's own
+	// complaints go through the process logger.
 	return httpListener{&http.Server{
 		Addr:              addr,
 		Handler:           handler,
