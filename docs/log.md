@@ -94,6 +94,15 @@ Blocked on: none.
 
 ## Entries
 
+## 2026-10-28 -- stress-drain-plan.md deleted
+
+- Facts moved to ADR-0004 (rule 2), `docs/brief.md` (Resilience,
+  Observability and logging, Milestones), `docs/e2e.md` (Stress
+  definition, Layout, the decision log of 2026-10-28),
+  `tests/e2e/AGENTS.md`, `cmd/qdb_rest/AGENTS.md`,
+  `internal/httpapi/AGENTS.md` and the comments of `internal/httpapi`,
+  `cmd/qdb_rest` and `tests/e2e`.
+
 ## 2026-10-28 -- M6 closed
 
 - M6 exit criteria met by the tree, the Buildkite build of the branch
