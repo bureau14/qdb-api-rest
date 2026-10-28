@@ -28,7 +28,7 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 	ctx := qdb.WithCluster(observeContext(), c)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/status/readiness", nil)
 	resp := httptest.NewRecorder()
-	NewHandler(config.Metrics{Enabled: true}).ServeHTTP(resp, req)
+	NewHandler(config.Metrics{Enabled: true}, config.Debug{}).ServeHTTP(resp, req)
 	return resp
 }
 

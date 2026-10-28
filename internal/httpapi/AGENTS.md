@@ -1,7 +1,7 @@
 # internal/httpapi -- Agent Instructions
 
-Scope: the v2 HTTP handlers, the middleware, the probes and the
-metrics exposition. The
+Scope: the v2 HTTP handlers, the middleware, the probes, the metrics
+exposition and the runtime profiler. The
 package-wide Go rules, the logging rules and the test fixtures are in
 `internal/AGENTS.md`. ADR-0010 holds the wire contract of the query
 endpoint and the v2 error shape. ADR-0011 holds the login's, and
@@ -132,15 +132,19 @@ This file, Handlers, holds the table reader's.
   (`observe.MetricsFrom`), built per scrape through the client's
   handler, when `metrics.enabled` is true; off, the route is not
   registered and the path is the mux's 404 (ADR-0004, rule 3).
+- `/debug/pprof/` serves the stdlib profiler's handlers, registered by
+  hand on this mux, when `debug.pprof` is true, and is not registered
+  when it is false. It is not a metrics source.
 - Unknown paths and wrong methods keep the stdlib mux's plain-text 404
   and 405.
 
 ## Middleware
 
 - `withRequestLogging` wraps the mux once. `requireBearer` and
-  `withCompression` wrap a route. The probes and `/metrics` stay
-  outside both: the exposition compresses through the client's own
-  writer when a scraper asks. The login and the refresh are compressed
+  `withCompression` wrap a route. The probes, `/metrics` and
+  `/debug/pprof/` stay outside both: the exposition compresses through
+  the client's own writer when a scraper asks, and the profiler's
+  answers are the stdlib's. The login and the refresh are compressed
   but unauthenticated.
 - Readiness reads nothing of the serving lifecycle. The drain closes
   the listeners before anything else (`cmd/qdb_rest/AGENTS.md`), so a
@@ -168,7 +172,7 @@ This file, Handlers, holds the table reader's.
   discarding logger, a metrics registry, a fixture cluster and a
   keychain. The fixtures place the metrics on their context
   (`observeContext`), because `MetricsFrom` panics without them. The
-  metrics switch has one table, `TestOperationalRoutes`
+  two switches have one table, `TestOperationalRoutes`
   (`metrics_test.go`), run without a cluster. `newServer` takes
   a `cluster.Fixture` and acts as its user, every handler test that
   dials qdbd runs on both clusters through `cluster.Each`, and

@@ -7,6 +7,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -78,17 +79,37 @@ func registerMetricsRoute(mux *http.ServeMux, cfg config.Metrics) {
 	mux.HandleFunc("GET /metrics", handleMetrics)
 }
 
+// registerPprofRoutes serves the Go runtime profiler under
+// /debug/pprof/ on this mux when debug.pprof is true, for goroutine,
+// heap and CPU profiles of a live instance. It is not a metrics source.
+func registerPprofRoutes(mux *http.ServeMux, cfg config.Debug) {
+	if !cfg.Pprof {
+		return
+	}
+	// Index, Cmdline, Profile, Symbol and Trace are registered by hand on
+	// this mux, because net/http/pprof's init registers them on the
+	// default mux, which this binary never serves. The patterns carry no
+	// method, because Symbol takes POST and Index serves every named
+	// profile under the /debug/pprof/ prefix.
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+}
+
 // NewHandler returns the root handler, which serves every route behind
-// the request middleware. It takes the switch of the unauthenticated
-// operational route, because configuration does not travel in the
-// context. The handlers take the logger, the cluster, the keychain and
-// the metrics from the request context, which the server derives from
-// the process context.
-func NewHandler(metrics config.Metrics) http.Handler {
+// the request middleware. It takes the two switches of the
+// unauthenticated operational routes, because configuration does not
+// travel in the context. The handlers take the logger, the cluster, the
+// keychain and the metrics from the request context, which the server
+// derives from the process context.
+func NewHandler(metrics config.Metrics, debug config.Debug) http.Handler {
 	mux := http.NewServeMux()
 	// The unauthenticated routes sit together, before the data routes.
 	registerStatusRoutes(mux)
 	registerMetricsRoute(mux, metrics)
+	registerPprofRoutes(mux, debug)
 	registerAuthRoutes(mux)
 	registerQueryRoutes(mux)
 	registerTableRoutes(mux)
