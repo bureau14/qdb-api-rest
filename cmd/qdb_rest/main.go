@@ -288,19 +288,20 @@ func main() {
 	//    because configuration does not travel in the context. Loading
 	//    the TLS material and binding any of the three ports can fail
 	//    here.
-	//    Then tell systemd the service is up, because every port is held,
-	//    and start the keepalive on the root context, so it ends with the
-	//    serve loop and never ticks into the drain, where a tick would
-	//    re-arm the watchdog systemd disarmed on STOPPING=1.
 	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler(cfg.Metrics, cfg.Debug))
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
+
+	// 6. Tell systemd the service is up, because every port is held, and
+	//    start the keepalive on the root context, so it ends with the
+	//    serve loop and never ticks into the drain, where a tick would
+	//    re-arm the watchdog systemd disarmed on STOPPING=1.
 	notify.Send(ctx, notify.Ready)
 	go notify.RunWatchdog(ctx)
 
-	// 6. Serve until a signal or a listener failure. Then end the process
+	// 7. Serve until a signal or a listener failure. Then end the process
 	//    context, so the keepalive stops on the listener-failure path
 	//    too, where no signal ended it; then tell systemd the stop has
 	//    begun, after the context's end and never before it, so no
