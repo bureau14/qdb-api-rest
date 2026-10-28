@@ -60,6 +60,12 @@ func values(k key) *rapid.Generator[string] {
 		// Config owns only the list's shape, so ",x" and "a,a" fold like
 		// any value. internal/auth judges their content at startup.
 		return rapid.SampledFrom([]string{"", "hunter2", "new phrase,old phrase", ",x", "a,a"})
+	case reflect.TypeFor[bool]():
+		// The words ParseBool accepts in both spellings, so the fold is
+		// checked on 1 and TRUE as well as true. No reject-side word,
+		// because a bool has no validation to reject it, unlike the
+		// durations and the ints.
+		return rapid.SampledFrom([]string{"true", "false", "1", "0", "TRUE", "False"})
 	}
 	return rapid.SampledFrom([]string{"", "x", "/etc/qdb/rest", "qdb://127.0.0.1:2836", "SELECT 1"})
 }

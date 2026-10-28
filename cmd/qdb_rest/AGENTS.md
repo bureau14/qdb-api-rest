@@ -13,6 +13,10 @@ Scope: the binary's entry point. Packages it wires together live under
   picks the layer. `--cluster` and `--user-security-file` are the
   `qdbsh` aliases. `--config FILE`, `--version` and `--help` are the
   meta flags, and `examples/qdb_rest.yaml` is the reference.
+- A bool key is spelled with its value on the command line
+  (`--metrics-enabled=false`), because every flag is a string flag of
+  the stdlib package, and a bare `--metrics-enabled` is refused for
+  want of an argument.
 - Build metadata (version, commit, build time, build mode, arch level)
   is injected via `-ldflags` into `internal/build`, which `main` reads
   for `--version`, and no version constants live in source.

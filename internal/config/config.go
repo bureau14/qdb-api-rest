@@ -156,6 +156,17 @@ type DuckDB struct {
 	MaxInstances   int    `yaml:"max_instances" help:"DuckDB instances live at once, one per user"`
 }
 
+// Metrics switches the Prometheus exposition.
+type Metrics struct {
+	Enabled bool `yaml:"enabled" help:"serve the Prometheus exposition at GET /metrics on the HTTP listeners"`
+}
+
+// Debug switches the runtime profiler. The block exists for that one
+// key, because the brief spells it debug.pprof.
+type Debug struct {
+	Pprof bool `yaml:"pprof" help:"serve the Go runtime profiler under /debug/pprof/ on the HTTP listeners"`
+}
+
 // Config is the full server configuration.
 type Config struct {
 	Listen  Listen  `yaml:"listen"`
@@ -166,6 +177,8 @@ type Config struct {
 	Status  Status  `yaml:"status"`
 	Auth    Auth    `yaml:"auth"`
 	DuckDB  DuckDB  `yaml:"duckdb"`
+	Metrics Metrics `yaml:"metrics"`
+	Debug   Debug   `yaml:"debug"`
 }
 
 // Default returns the configuration used when nothing is specified:
@@ -179,6 +192,7 @@ type Config struct {
 //   - argon2id at the second recommended cost of RFC 9106
 //   - one DuckDB instance per user at one gibibyte and four threads,
 //     with no spilling and at most sixteen instances at once
+//   - the Prometheus exposition on and the runtime profiler off
 func Default() Config {
 	return Config{
 		// Eight seconds of grace is not measured. Anything that stops the
@@ -216,7 +230,8 @@ func Default() Config {
 		// scan takes one worker per four shards and one qdbd handle per
 		// worker. The empty spill directory disables spilling, so a query
 		// over the memory limit fails instead of writing to disk.
-		DuckDB: DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
+		DuckDB:  DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
+		Metrics: Metrics{Enabled: true},
 	}
 }
 
@@ -313,6 +328,16 @@ func parseValue(k key, text string) (any, error) {
 			return []string{}, nil
 		}
 		return strings.Split(text, ","), nil
+	case reflect.TypeFor[bool]():
+		// ParseBool, so the file, the variable and the flag take the same
+		// words. Every flag is a string flag, so a bool is spelled
+		// --metrics-enabled=false, and a bare --metrics-enabled is refused
+		// by the flag package for want of an argument.
+		b, err := strconv.ParseBool(text)
+		if err != nil {
+			return nil, fmt.Errorf("want true or false, got %q", text)
+		}
+		return b, nil
 	}
 	panic("config: unsupported key type " + k.typ.String())
 }
@@ -326,6 +351,8 @@ func placeholder(k key) string {
 		return "N"
 	case reflect.TypeFor[[]string]():
 		return "LIST"
+	case reflect.TypeFor[bool]():
+		return "BOOL"
 	}
 	return "VALUE"
 }

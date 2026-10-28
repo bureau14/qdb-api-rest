@@ -122,3 +122,15 @@ duckdb:
   # Instances live at once. A sql call that would open one more answers
   # 503 until an idle user pool is evicted.
   max_instances: 16
+
+metrics:
+  # Serve the Prometheus exposition at GET /metrics on the HTTP and
+  # HTTPS listeners, outside authentication. The scrape reads counters
+  # held in this process and never touches the cluster.
+  enabled: true
+
+debug:
+  # Serve the Go runtime profiler under /debug/pprof/ on the HTTP and
+  # HTTPS listeners, outside authentication, for goroutine, heap and
+  # CPU profiles of a live instance. Off unless a profile is wanted.
+  pprof: false
