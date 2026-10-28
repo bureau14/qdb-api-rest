@@ -156,9 +156,10 @@ type DuckDB struct {
 	MaxInstances   int    `yaml:"max_instances" help:"DuckDB instances live at once, one per user"`
 }
 
-// Metrics switches the Prometheus exposition.
+// Metrics switches the Prometheus exposition and names its series.
 type Metrics struct {
-	Enabled bool `yaml:"enabled" help:"serve the Prometheus exposition at GET /metrics on the HTTP listeners"`
+	Enabled   bool   `yaml:"enabled" help:"serve the Prometheus exposition at GET /metrics on the HTTP listeners"`
+	Namespace string `yaml:"namespace" help:"prefix of every series this binary names, so several exporters on one host do not collide"`
 }
 
 // Debug switches the runtime profiler. The block exists for that one
@@ -192,7 +193,8 @@ type Config struct {
 //   - argon2id at the second recommended cost of RFC 9106
 //   - one DuckDB instance per user at one gibibyte and four threads,
 //     with no spilling and at most sixteen instances at once
-//   - the Prometheus exposition on and the runtime profiler off
+//   - the Prometheus exposition on under the qdb_rest namespace, and
+//     the runtime profiler off
 func Default() Config {
 	return Config{
 		// Eight seconds of grace is not measured. Anything that stops the
@@ -231,7 +233,7 @@ func Default() Config {
 		// worker. The empty spill directory disables spilling, so a query
 		// over the memory limit fails instead of writing to disk.
 		DuckDB:  DuckDB{MemoryLimit: 1 << 30, Threads: 4, MaxInstances: 16},
-		Metrics: Metrics{Enabled: true},
+		Metrics: Metrics{Enabled: true, Namespace: "qdb_rest"},
 	}
 }
 
@@ -662,6 +664,22 @@ func validateDuckDB(d DuckDB) error {
 	return nil
 }
 
+// metricName is the Prometheus data model's name grammar, which a
+// namespace must fit because it is the head of every series name.
+var metricName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
+
+// validateMetrics requires a namespace that fits the name grammar. An
+// empty one is refused rather than read as no prefix, because the
+// prefix is what keeps the series apart from every other Go service a
+// host scrapes (ADR-0019), and the client panics at registration on a
+// name outside the grammar.
+func validateMetrics(m Metrics) error {
+	if !metricName.MatchString(m.Namespace) {
+		return fmt.Errorf("metrics.namespace must match %s, got %q", metricName, m.Namespace)
+	}
+	return nil
+}
+
 // validate rejects impossible configurations before the server starts.
 func validate(cfg Config) error {
 	if cfg.Listen.HTTPS == "" {
@@ -688,6 +706,9 @@ func validate(cfg Config) error {
 		return err
 	}
 	if err := validateDuckDB(cfg.DuckDB); err != nil {
+		return err
+	}
+	if err := validateMetrics(cfg.Metrics); err != nil {
 		return err
 	}
 	if cfg.Status.ReadinessQuery == "" {

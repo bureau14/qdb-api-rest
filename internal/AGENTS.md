@@ -22,7 +22,7 @@ decisions are in `docs/adr/`.
   owns the simple bounds a value must meet for the server to serve,
   such as a count of at least one or a size that is not negative, so
   that startup refuses a configuration that cannot serve and names the
-  key (`validatePool`, `validateDuckDB`).
+  key (`validatePool`, `validateDuckDB`, `validateMetrics`).
 - A check that needs I/O or another component's knowledge stays with
   the component that does the work, and no eager copy of it runs at
   startup. `tlsconf` owns the certificate-pair rule, the C API judges

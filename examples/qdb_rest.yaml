@@ -128,6 +128,11 @@ metrics:
   # HTTPS listeners, outside authentication. The scrape reads counters
   # held in this process and never touches the cluster.
   enabled: true
+  # Prefix of every series this binary names (qdb_rest_build_info), so
+  # several exporters on one host do not collide. The go_ and process_
+  # series of the Go client keep their names. A name of letters, digits,
+  # underscores and colons, not starting with a digit, and not empty.
+  namespace: "qdb_rest"
 
 debug:
   # Serve the Go runtime profiler under /debug/pprof/ on the HTTP and
