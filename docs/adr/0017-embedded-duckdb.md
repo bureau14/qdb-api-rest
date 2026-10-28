@@ -66,8 +66,8 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
    threads and spill directory with its size cap per instance, and a
    cap on live instances. Defaults are conservative. The key names and
    values are the handler's.
-7. **qdb-duck's handle pool is sized and tuned by the `duckdb` block
-   and the cluster block's network knobs**, set as qdb-duck's globals on
+7. **qdb-duck's handle pool is sized and tuned by the `duckdb.quasar`
+   block and the cluster block's network knobs**, set as qdb-duck's globals on
    the attach connection before the ATTACH (owner, 2026-10-28). Its
    sessions do not count against `pool.max_sessions`, and idle handles
    live until detach. The brief's Risks item keeps the budget question.

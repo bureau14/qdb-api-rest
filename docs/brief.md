@@ -505,7 +505,7 @@ qdbd, and because the thread count bounds how many qdbd sessions one
 user's query opens at once. The values are the handler's.
 
 **qdb-duck pools its own qdbd sessions** (owner, 2026-10-13). Each
-attached catalog holds up to `duckdb.max_pool_size` lazily opened
+attached catalog holds up to `duckdb.quasar.max_pool_size` lazily opened
 `qdb_handle_t`, one hundred by default, one per operation in flight,
 because a scan fans out to one DuckDB worker per four shards and the
 handle serializes some operations internally.
@@ -1078,7 +1078,7 @@ comes last because the preview customer does not use the v1 endpoints.
 5. **qdb-duck's handle pool** opens qdbd sessions outside the session
    budget and never closes an idle one before detach (Embedded DuckDB).
    The attach passes the pool size and the table cache TTL
-   (`duckdb.max_pool_size`, `duckdb.table_cache_ttl`). What stays open
+   (`duckdb.quasar.max_pool_size`, `duckdb.quasar.table_cache_ttl`). What stays open
    is the budget lending qdb-duck its sessions, looked at once the
    milestones are done (owner, 2026-10-13).
 

@@ -88,7 +88,7 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   investigates there, and suspects qdb-duck's table cache TTL, which
   upstream takes as a parameter (`docs/brief.md`, Risks, 5), for the
   second failure (owner, 2026-10-26). No milestone claims the
-  investigation yet. The TTL is `duckdb.table_cache_ttl`, and a
+  investigation yet. The TTL is `duckdb.quasar.table_cache_ttl`, and a
   disabled cache is not the experiment: with the cache off, the C
   API's `qdb_ts_get_metadata` answers a multi-column table's first data
   column with an empty name, on every call, so every `#sql` read of

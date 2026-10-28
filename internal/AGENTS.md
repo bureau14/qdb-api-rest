@@ -107,8 +107,8 @@ decisions are in `docs/adr/`.
   closes with its pool after `pool.idle_timeout`. A DuckDB call is never
   retried, does not feed the breaker, and takes no unit of the budget,
   because qdb-duck pools its own qdbd sessions. The instance opens with
-  the `duckdb` block's pool size, TTL and knobs and the cluster block's
-  network knobs as qdb-duck globals (`settingsOf`). On an insecure
+  the `duckdb.quasar` block and the cluster block's network knobs as
+  qdb-duck globals (`settingsOf`). On an insecure
   cluster every instance attaches anonymously. The result is the lent
   `Batches`, as a table read's is.
 - A query string reaches an engine through `query.Run` (`internal/query`),

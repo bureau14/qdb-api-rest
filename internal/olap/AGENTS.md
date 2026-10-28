@@ -15,7 +15,7 @@ ADR-0017.
 - The credentials reach qdb-duck only through a temporary DuckDB
   secret, and the attach names the secret. `secretOf` says why the
   ATTACH string and qdb-duck's `quasar_*` options were rejected.
-- qdb-duck pools up to `duckdb.max_pool_size` sessions per attached
+- qdb-duck pools up to `duckdb.quasar.max_pool_size` sessions per attached
   catalog, one hundred by default, and they live until the instance
   closes. They do not count against `pool.max_sessions` (ADR-0017,
   Decision 7). The settings reach qdb-duck as globals on the attach
