@@ -147,8 +147,10 @@ start_server() {
 # Send SIGTERM, wait up to 10s, then send SIGKILL. The wait sits above the
 # default shutdown grace (listen.shutdown_grace, 8s), so a clean drain of
 # a server at the default is never cut short. A server started under a
-# longer grace is stopped by the step that configured it. The window does
-# not read the grace from an argument, because no step sets one.
+# longer grace is drained by the step that configured it, which waits
+# for the exit through wait_for_exit; this function is that step's
+# failure path only, because the SIGTERM it sends would be the draining
+# server's second (wait_for_exit says why that kills it).
 # Usage: stop_server <pidfile>
 stop_server() {
     local pid_file="$1" pid i
