@@ -123,9 +123,8 @@ probe_refused() {
 drain_step() {
     # The signal goes out only once the first byte has arrived, so the
     # stream is provably in flight, and the step waits for the server to
-    # exit by itself, because main releases the signal handler once the
-    # serve loop ends and a second SIGTERM would kill it mid-drain. The
-    # steps, in the order that is the test:
+    # exit by itself, because a second SIGTERM would kill it mid-drain
+    # (wait_for_exit says why). The steps, in the order that is the test:
     #
     #  1. start the slow read;
     #  2. wait for its first byte;

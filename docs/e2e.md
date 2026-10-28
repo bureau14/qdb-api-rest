@@ -337,8 +337,7 @@ that compares byte for byte with the generated rows, that the server
 exits on its own within a window above the grace, and that its log
 says `shutdown complete` and not `server failed`. The step sends the
 one SIGTERM itself and waits for the exit with `wait_for_exit`, never
-`stop_server`, because the binary releases its signal handler once the
-serve loop ends and a second SIGTERM kills it mid-drain. The refused
+`stop_server` (`tests/e2e/AGENTS.md` says why). The refused
 connection is the drain's signal to a load balancer (ADR-0004), and a
 connect that still succeeds in the moment after the signal is retried,
 not failed. The step ends the server it was given, so the Makefile
