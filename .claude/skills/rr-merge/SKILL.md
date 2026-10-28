@@ -28,7 +28,8 @@ Plan documents on this branch (empty means none):
 
 !`git ls-tree --name-only HEAD docs/ | grep -- '-plan.md' || true`
 
-Buildkite builds of this head (number, state):
+Buildkite builds of this head (number, state), the `buildkite` skill's
+one-liner with the slug from `/rr-workflow`, Tools:
 
 !`bk api "pipelines/qdb-api-rest/builds?commit=$(git rev-parse HEAD)" 2>/dev/null | python3 -c 'import sys,json; print(*[(b["number"], b["state"]) for b in json.load(sys.stdin)] or ["none"])'`
 

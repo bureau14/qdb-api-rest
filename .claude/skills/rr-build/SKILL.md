@@ -124,11 +124,10 @@ Local lint and tests cover one platform; the pipeline covers the whole
 matrix, and the owner reviews the code while the pipeline runs rather
 than after it. So once the checks above are clean, in this order:
 
-1. With the plan deleted from the tree, push `sc-19567/rr-<slug>`
-   and create the Buildkite build for its head. The mechanics (API-created build, branch-filter bypass, full
-   40-character SHA, reprioritizing the scheduled jobs) live in
-   `.buildkite/AGENTS.md`; follow them rather than a copy kept here.
-   Wait for the build in the background; do not block on it.
+1. With the plan deleted from the tree, push `sc-19567/rr-<slug>` and
+   ensure a build of its head: the `buildkite` skill, "Ensuring and
+   watching a build", with the parameters in `/rr-workflow`, Tools.
+   Run the watcher in the background; do not block on it.
 2. Open the code review, in the background as well, with a long
    timeout:
 
@@ -149,17 +148,25 @@ than after it. So once the checks above are clean, in this order:
    - `dismissed`, or a non-zero exit without a decision: stop and
      report; the owner decides in the conversation.
 
-3. Wait for the build of the reviewed head:
-   - Green: the build-stage message names the build by its real
-     number, read back from
-     `bk api "pipelines/qdb-api-rest/builds?commit=<full sha of HEAD>"`
-     with state `passed`, never from memory of having created it.
-   - A red build caused by the branch is fixed with further small
-     commits on the branch, pushed, built again, and reviewed again
-     from step 2, because the owner has not seen the fix.
-   - A red build caused by something else (an agent, an outage, a
-     failure the base shows as well) is reported with the evidence,
+3. Wait for the build of the reviewed head. The watcher's exit says
+   what comes next:
+   - 0, `FINAL ... passed`: green. The build-stage message names the
+     build by its real number and state, read back with the skill's
+     one-liner for the builds of a commit (`/rr-workflow`, Tools),
+     never from memory of having created it.
+   - 1, `FINAL ... <state>` with the log tails: red. The skill's
+     "Reading a failure" says which kind it is, with the control branch
+     from Tools. A failure caused by the branch is fixed with further
+     small commits on the branch, pushed, built again, and reviewed
+     again from step 2, because the owner has not seen the fix. A
+     failure caused by something else (an agent, an outage, a failure
+     the control build shows as well) is reported with the evidence,
      and the owner decides.
+   - 3, `STATUS ...`: the checkpoint passed with the build still
+     running. Relaunch the watcher with the printed build number and
+     keep waiting.
+   - 5, `NOBUILD ...`: no build could be created. Stop and report; the
+     stage cannot end without a build.
 
 The stage is over only when the reviewed head is the built head, the
 review is `approved` and the build is green. Local tests passing is
