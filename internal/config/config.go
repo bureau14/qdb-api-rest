@@ -151,8 +151,10 @@ func (a Auth) LogValue() slog.Value {
 // catalog pools, how long a handle caches a table's metadata, and the
 // network and retry knobs the C API takes per handle. The sizes are in
 // bytes. A wait of zero leaves the C API default where the help tag says
-// so; the pool size and the TTL have no zero rule, because 0 is a value
-// for the TTL (no cache) and refused for the pool size.
+// so. The pool size and the TTL have no zero rule, because 0 is a value
+// for the TTL (no cache) and refused for the pool size. A sentinel such
+// as -1 for "leave the default" on the TTL was rejected, because it
+// would give one key a third meaning.
 type DuckDB struct {
 	MemoryLimit          int64         `yaml:"memory_limit" help:"memory one DuckDB instance may use, in bytes"`
 	Threads              int           `yaml:"threads" help:"worker threads of one DuckDB instance"`
@@ -247,9 +249,11 @@ func Default() Config {
 		// over the memory limit fails instead of writing to disk. The pool
 		// size and the TTL repeat qdb-duck's own defaults, so a server with
 		// no duckdb block behaves as one that never set them, and the one
-		// minute is the C API's own table cache default. The four other
-		// knobs stay zero, so nothing is sent and the C API default holds,
-		// as the cluster block's knobs do.
+		// minute is the C API's own table cache default. A smaller pool
+		// tied to Threads was rejected, because the session budget is the
+		// brief's Risks item and is answered after the milestones. The four
+		// other knobs stay zero, so nothing is sent and the C API default
+		// holds, as the cluster block's knobs do.
 		DuckDB: DuckDB{
 			MemoryLimit:   1 << 30,
 			Threads:       4,
