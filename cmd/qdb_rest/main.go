@@ -257,7 +257,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
 		os.Exit(2)
 	}
-	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics())
+	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics(cfg.Metrics))
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,

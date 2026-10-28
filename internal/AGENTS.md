@@ -223,8 +223,8 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   `observe.MetricsFrom(ctx)` is the registry, placed once by main, and
   it panics on a context without one, so a test that reaches a route
   or a package that records places `observe.NewMetrics()` on its
-  context. Every series this binary names carries the `qdb_rest_`
-  prefix (ADR-0019).
+  context. Every series this binary names carries `metrics.namespace`
+  as its prefix, `qdb_rest_` by default (ADR-0019).
 
 ## Tests
 

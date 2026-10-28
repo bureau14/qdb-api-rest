@@ -25,9 +25,12 @@ The owner settled the three on 2026-10-28.
    and `observe.MetricsFrom`, which panics on a context without one, as
    `observe.Logger` does (ADR-0002). `main` places it once, right after
    the logger, and every listener and every package records into it.
-3. Every series this binary names carries the `qdb_rest_` prefix. The
-   client's own `go_` and `process_` series keep their names.
-4. The build-info series is `qdb_rest_build_info` at 1, with the labels
+3. Every series this binary names carries the `metrics.namespace` key
+   as its prefix, `qdb_rest_` by default. The key is never empty, so
+   the prefix never disappears, and it fits the Prometheus name
+   grammar, which `internal/config` checks at startup. The client's
+   own `go_` and `process_` series keep their names.
+4. The build-info series is `<namespace>_build_info` at 1, with the labels
    `version`, `commit` and `build_mode` from `internal/build`, the three
    attributes of `main`'s starting line, so a dashboard reads what the
    log says.
@@ -53,7 +56,8 @@ The owner settled the three on 2026-10-28.
 | A no-op `MetricsFrom` on a context without metrics | a forgotten placement in `main` would serve an empty exposition without failing                                 |
 | The registry as a constructor argument             | it breaks the carriage rule of `internal/AGENTS.md` and threads a value through every `Call`                    |
 | The `qdb_` prefix                                  | it collides with qdbd or another component on the same Prometheus                                               |
-| No prefix                                          | `http_requests_total` collides with every Go service a host scrapes                                             |
+| No prefix, or an empty namespace                   | `http_requests_total` collides with every Go service a host scrapes                                             |
+| The prefix as a constant                           | two instances of this binary on one Prometheus, or a site's naming rule, need a prefix of their own             |
 | The client's build-info collector                  | it reports the Go module version and not the ldflags-injected one                                               |
 | `build_time` and `goamd64` as build-info labels    | the starting line does not carry them, and a label set is a wire shape                                          |
 | The client's global default registry               | the brief forbids package-level mutable state, and two servers in one test binary would register twice          |

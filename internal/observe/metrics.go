@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
 	"github.com/bureau14/qdb-api-rest/internal/build"
+	"github.com/bureau14/qdb-api-rest/internal/config"
 )
 
 // Metrics is the process's instrument registry: every series this
@@ -21,18 +22,16 @@ type Metrics struct {
 	Registry *prometheus.Registry
 }
 
-// namespace is the prefix of every series this binary names, so a host
-// scraping several exporters does not collide. The client's own go_ and
-// process_ series keep their conventional names (ADR-0019).
-const namespace = "qdb_rest"
-
 // NewMetrics builds the registry with the series every instance
-// exposes: build info, the Go runtime and the process. Later units
+// exposes: build info, the Go runtime and the process. Every series this
+// binary names carries cfg.Namespace as its prefix, so a host scraping
+// several exporters does not collide, and the client's own go_ and
+// process_ series keep their conventional names (ADR-0019). Later units
 // register their instruments on it.
-func NewMetrics() *Metrics {
+func NewMetrics(cfg config.Metrics) *Metrics {
 	// Three registrations, each with a choice of its own:
 	//
-	//  1. the build-info series, qdb_rest_build_info at 1, labelled with
+	//  1. the build-info series, <namespace>_build_info at 1, labelled with
 	//     what main's starting line logs, so a dashboard reads what the
 	//     log says;
 	//  2. the Go runtime collector;
@@ -47,7 +46,7 @@ func NewMetrics() *Metrics {
 	//    collector was rejected, because it reports the Go module version
 	//    and not the ldflags-injected one.
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: namespace,
+		Namespace: cfg.Namespace,
 		Name:      "build_info",
 		Help:      "The version, commit and build mode of this binary, at 1.",
 	}, []string{"version", "commit", "build_mode"})

@@ -38,7 +38,7 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	ctx := observe.WithLogger(context.Background(), logger)
-	return observe.WithMetrics(ctx, observe.NewMetrics())
+	return observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Metrics))
 }
 
 // TestReadinessOKAgainstLiveCluster: each reachable cluster answers 200

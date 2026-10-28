@@ -4,14 +4,15 @@ import (
 	"testing"
 
 	"github.com/bureau14/qdb-api-rest/internal/build"
+	"github.com/bureau14/qdb-api-rest/internal/config"
 )
 
 // TestNewMetricsExposesBuildInfo gathers the registry once and asserts
-// the build-info series is there with its three labels, because the
-// name and the labels are the wire shape dashboards read, and the e2e
-// scrape sees only the name.
+// the build-info series is there under the configured namespace with
+// its three labels, because the name and the labels are the wire shape
+// dashboards read, and the e2e scrape sees only the name.
 func TestNewMetricsExposesBuildInfo(t *testing.T) {
-	families, err := NewMetrics().Registry.Gather()
+	families, err := NewMetrics(config.Metrics{Namespace: "qdb_rest"}).Registry.Gather()
 	if err != nil {
 		t.Fatal(err)
 	}
