@@ -288,20 +288,27 @@ func main() {
 	// 5. Build the listeners over the root context, so every request
 	//    inherits the logger, the cluster and the keychain. Loading the
 	//    TLS material and binding any of the three ports can fail here.
-	//    Then tell systemd the service is up, because every port is held.
+	//    Then tell systemd the service is up, because every port is held,
+	//    and start the keepalive on the root context, so it ends with the
+	//    serve loop and never ticks into the drain, where a tick would
+	//    re-arm the watchdog systemd disarmed on STOPPING=1.
 	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler())
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
 	}
 	notify.Send(ctx, notify.Ready)
+	go notify.RunWatchdog(ctx)
 
 	// 6. Serve until a signal or a listener failure. Then end the process
 	//    context, so readiness answers 503 on the listener-failure path
-	//    too, where no signal ended it; then tell systemd the stop has
-	//    begun, after the context's end and never before it; then drain
-	//    the listeners first and the cluster second under
-	//    listen.shutdown_grace. stop is idempotent, so the deferred call
+	//    too, where no signal ended it, and the keepalive stops; then
+	//    tell systemd the stop has begun, after the context's end and
+	//    never before it, so no keepalive is planned after STOPPING=1;
+	//    then drain the listeners first and the cluster second under
+	//    listen.shutdown_grace. A tick already in flight at the context's
+	//    end may still land after STOPPING=1 and re-arm the watchdog,
+	//    which the exit outruns. stop is idempotent, so the deferred call
 	//    stays.
 	runErr := serveUntilDone(ctx, listeners)
 	stop()
