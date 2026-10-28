@@ -15,27 +15,11 @@ Last updated: 2026-10-28
 | M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
 | M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
 | M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
-| M6 -- Hardening                 | not started | criteria below                                        |
+| M6 -- Hardening                 | done        | closed 2026-10-28                                     |
 | M7 -- Observability             | not started | criteria below                                        |
 | M8 -- Exploration               | not started | criteria below                                        |
 | M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M10 -- Release                  | not started |                                                       |
-
-M6 criteria. Entry: M5 closed. Exit: the shutdown grace is a
-configuration key with the current constant as its default, and the
-drain of both planes runs under it; the server logs one warning at
-startup when the HTTP listener is on and the cluster is secure, and the
-round trip asserts the line in the secure server's log; the listeners
-close their ports first during the drain, so a new connection is
-refused while in-flight streams finish (ADR-0004), and the stress's
-drain step asserts it; the binary writes
-`READY=1` to `$NOTIFY_SOCKET` once every listener is bound and
-`STOPPING=1` when the drain starts, with the standard library and no
-dependency, and does nothing when the variable is unset, and sends the
-`WATCHDOG=1` keepalive at half of `WATCHDOG_USEC`, tied to the serving
-loop and never to the cluster probe, from `READY=1` until the drain
-starts; the stress's drain step (`docs/e2e.md`, Stress definition) is green by
-hand on both clusters; the Handoff items M6 consumes are deleted.
 
 M7 criteria. Entry: M6 closed. Exit: `GET /metrics` serves the
 Prometheus exposition on the HTTP and HTTPS mux outside the bearer edge,
@@ -66,11 +50,7 @@ In flight: none.
 
 Next:
 
-1. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
-   definition) green by hand on both clusters, with its server run under
-   a long grace through `listen.shutdown_grace`, and the close of M6, as
-   one slice.
-2. Investigate the intermittent Go runtime fault `found bad pointer in
+1. Investigate the intermittent Go runtime fault `found bad pointer in
 Go heap`, raised inside arrow-go's C data import of a string column
    while the 2.0.0 binding converts a DuckDB chunk, under the flightsql
    statement test on the secure cluster (Linux haswell, qdb-api-rest
@@ -81,7 +61,7 @@ Go heap`, raised inside arrow-go's C data import of a string column
    test in a loop under the race detector and `GODEBUG=invalidptr=1`
    on Linux amd64.
 
-Handoff to M6 and M7:
+Handoff to M7 and M8:
 
 - The round trip drives both servers over plain HTTP, and no step reads
   the HTTPS listener. Steps over both HTTP and HTTPS may be added
@@ -113,6 +93,12 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-28 -- M6 closed
+
+- M6 exit criteria met by the tree, the Buildkite build of the branch
+  head and `make test-stress` green by hand on both clusters. The
+  Handoff item on the stress's Flight case stays for M7's budget step.
 
 ## 2026-10-28 -- the drain's signal to a load balancer is the refused connection
 
