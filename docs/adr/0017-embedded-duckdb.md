@@ -69,9 +69,8 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 7. **qdb-duck's handle pool is sized and tuned by the `duckdb` block
    and the cluster block's network knobs**, set as qdb-duck's globals on
    the attach connection before the ATTACH (owner, 2026-10-28). Its
-   sessions still do not count against `pool.max_sessions`, and idle
-   handles live until detach. The brief's Risks item keeps the budget
-   question.
+   sessions do not count against `pool.max_sessions`, and idle handles
+   live until detach. The brief's Risks item keeps the budget question.
 8. **Writes are qdbd's decision.** `CREATE VIEW` and `CREATE SEQUENCE`
    write blobs under the user's credentials and qdbd refuses them for
    a user without write permission. The server adds no filter.
