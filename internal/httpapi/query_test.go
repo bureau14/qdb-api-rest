@@ -86,7 +86,7 @@ func newServerOn(t *testing.T, c *qdb.Cluster, u qdb.User) server {
 		defer cancel()
 		fs.Shutdown(drain)
 	})
-	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(), user: u, token: token, flight: qdbflight.Dial(t, fs.Addr().String())}
+	return server{ctx: ctx, c: c, tk: tk, handler: NewHandler(config.Metrics{Enabled: true}), user: u, token: token, flight: qdbflight.Dial(t, fs.Addr().String())}
 }
 
 // post sends the body to the path with the given headers, where nil

@@ -1,12 +1,16 @@
 // Package httpapi serves the REST server's /api/v2 resource API, its
-// bearer middleware and the unauthenticated status probes. It never
-// imports v1 compatibility code. The v1 package wraps this one, and the
-// entry point composes the two.
+// bearer middleware and the unauthenticated operational routes: the
+// status probes, the metrics exposition and the runtime profiler. It
+// never imports v1 compatibility code. The v1 package wraps this one,
+// and the entry point composes the two.
 package httpapi
 
 import (
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
@@ -46,13 +50,45 @@ func registerStatusRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v2/status/readiness", handleReadiness)
 }
 
+// handleMetrics serves the registry's exposition, with the client's
+// handler built over the registry the request context carries. A scrape
+// reads in-process counters only and never touches the cluster
+// (ADR-0004, rule 3).
+func handleMetrics(w http.ResponseWriter, r *http.Request) {
+	// The handler is built per scrape and not once at registration,
+	// because the registry travels in the context and NewHandler has no
+	// context. A scrape is rare and the build is a small allocation. The
+	// zero HandlerOpts: a gather error is a 500, and the exposition is
+	// gzip-compressed when the scraper asks, by the client's own writer,
+	// because the route sits outside withCompression.
+	reg := observe.MetricsFrom(r.Context()).Registry
+	promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+}
+
+// registerMetricsRoute serves GET /metrics beside the probes, outside
+// the bearer edge and the compression wrapper, when the exposition is
+// on. Off, the route is not registered and the path is the mux's 404.
+func registerMetricsRoute(mux *http.ServeMux, cfg config.Metrics) {
+	// A registered route answering 404 itself was rejected, because
+	// ADR-0004 says the key disables the endpoint and nothing else
+	// switches it, and the mux already says 404.
+	if !cfg.Enabled {
+		return
+	}
+	mux.HandleFunc("GET /metrics", handleMetrics)
+}
+
 // NewHandler returns the root handler, which serves every route behind
-// the request middleware. The handlers take the logger and the cluster
-// from the request context, which the server derives from the process
-// context, so NewHandler injects nothing.
-func NewHandler() http.Handler {
+// the request middleware. It takes the switch of the unauthenticated
+// operational route, because configuration does not travel in the
+// context. The handlers take the logger, the cluster, the keychain and
+// the metrics from the request context, which the server derives from
+// the process context.
+func NewHandler(metrics config.Metrics) http.Handler {
 	mux := http.NewServeMux()
+	// The unauthenticated routes sit together, before the data routes.
 	registerStatusRoutes(mux)
+	registerMetricsRoute(mux, metrics)
 	registerAuthRoutes(mux)
 	registerQueryRoutes(mux)
 	registerTableRoutes(mux)

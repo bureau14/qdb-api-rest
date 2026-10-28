@@ -28,14 +28,17 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 	ctx := qdb.WithCluster(observeContext(), c)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/status/readiness", nil)
 	resp := httptest.NewRecorder()
-	NewHandler().ServeHTTP(resp, req)
+	NewHandler(config.Metrics{Enabled: true}).ServeHTTP(resp, req)
 	return resp
 }
 
-// observeContext carries a discarding logger so handlers can log.
+// observeContext carries a discarding logger so handlers can log, and
+// a fresh metrics registry, because MetricsFrom panics without one and
+// every later unit's middleware records into it.
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
-	return observe.WithLogger(context.Background(), logger)
+	ctx := observe.WithLogger(context.Background(), logger)
+	return observe.WithMetrics(ctx, observe.NewMetrics())
 }
 
 // TestReadinessOKAgainstLiveCluster: each reachable cluster answers 200

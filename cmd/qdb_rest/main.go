@@ -285,7 +285,7 @@ func main() {
 	//    and start the keepalive on the root context, so it ends with the
 	//    serve loop and never ticks into the drain, where a tick would
 	//    re-arm the watchdog systemd disarmed on STOPPING=1.
-	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler())
+	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler(cfg.Metrics))
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
