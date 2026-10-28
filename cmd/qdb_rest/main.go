@@ -128,10 +128,9 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	//  5. Bind and add Flight.
 	log := observe.Logger(ctx)
 	var listeners []listener
-	// 1. Requests inherit the process values and the drain signal, but
-	//    not the cancellation: the signal cuts no stream, the grace ends
-	//    it. The signal is the process context's own end.
-	base := httpapi.WithDrain(context.WithoutCancel(ctx), ctx.Done())
+	// 1. Requests inherit the process values but not the cancellation:
+	//    the signal cuts no stream, the grace ends it.
+	base := context.WithoutCancel(ctx)
 	// 2. HTTPS and Flight serve the same certificate, so the TLS material
 	//    loads once. Loading it once keeps an ephemeral certificate to one
 	//    identity per start and logs its warning once.
@@ -295,12 +294,14 @@ func main() {
 	go notify.RunWatchdog(ctx)
 
 	// 6. Serve until a signal or a listener failure. Then end the process
-	//    context, so readiness answers 503 on the listener-failure path
-	//    too, where no signal ended it, and the keepalive stops; then
-	//    tell systemd the stop has begun, after the context's end and
-	//    never before it, so no keepalive is planned after STOPPING=1;
-	//    then drain the listeners first and the cluster second under
-	//    listen.shutdown_grace. A tick already in flight at the context's
+	//    context, so the keepalive stops on the listener-failure path
+	//    too, where no signal ended it; then tell systemd the stop has
+	//    begun, after the context's end and never before it, so no
+	//    keepalive is planned after STOPPING=1; then drain the listeners
+	//    first and the cluster second under listen.shutdown_grace. The
+	//    listeners close their ports as the drain's first act, so a load
+	//    balancer's next connection is refused while in-flight streams
+	//    finish. A tick already in flight at the context's
 	//    end may still land after STOPPING=1 and re-arm the watchdog,
 	//    which the exit outruns. stop is idempotent, so the deferred call
 	//    stays.

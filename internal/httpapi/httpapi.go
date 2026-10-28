@@ -5,42 +5,11 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
-
-// The drain signal travels in the request context next to the logger
-// and the cluster: the entry point places it, and the readiness handler
-// reads it. A flag on the cluster was rejected, because the binding
-// carries no serving lifecycle.
-type drainKey struct{}
-
-// WithDrain returns ctx carrying done, a channel closed once the
-// shutdown drain has begun.
-func WithDrain(ctx context.Context, done <-chan struct{}) context.Context {
-	return context.WithValue(ctx, drainKey{}, done)
-}
-
-// draining reports whether the drain has begun.
-func draining(ctx context.Context) bool {
-	done, ok := ctx.Value(drainKey{}).(<-chan struct{})
-	if !ok {
-		// Only the entry point builds request contexts, so a missing
-		// signal is a wiring error, as a missing cluster or logger is.
-		// Reading absence as "not draining" would hide that error behind
-		// a server that dials through its drain.
-		panic("httpapi: no drain signal in context")
-	}
-	select {
-	case <-done:
-		return true
-	default:
-		return false
-	}
-}
 
 // handleLiveness reports that the process is up and serving HTTP. It
 // does not look at the cluster.
@@ -50,23 +19,13 @@ func handleLiveness(w http.ResponseWriter, _ *http.Request) {
 
 // handleReadiness reports whether this instance may take new traffic:
 // 200 or 503 with an empty body and no Retry-After, and the cause of a
-// 503 goes to the log and not the wire.
+// 503 goes to the log and not the wire. It reads nothing of the serving
+// lifecycle: the drain closes the listeners before anything else, so a
+// prober's next connection is refused.
 func handleReadiness(w http.ResponseWriter, r *http.Request) {
-	// The drain is checked before the dial, because the answer during a
-	// drain is no whatever the cluster would say, and a dial there costs
-	// a session for an answer already known.
 	ctx := r.Context()
-	// 1. 503 without a dial while draining, so a load balancer takes the
-	//    instance out of rotation before a listener closes (ADR-0004,
-	//    rule 2). Debug, because the drain is not a failure and a prober
-	//    polls through the whole grace.
-	if draining(ctx) {
-		observe.Logger(ctx).DebugContext(ctx, "readiness refused: server is draining")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	// 2. Dial as the REST API's own user, bypassing the pool, the budget
-	//    and the breaker. A failure is 503 with the cause at warn.
+	// Dial as the REST API's own user, bypassing the pool, the budget and
+	// the breaker. A failure is 503 with the cause at warn.
 	if err := qdb.ClusterFrom(ctx).Probe(ctx); err != nil {
 		observe.Logger(ctx).WarnContext(ctx, "readiness probe failed", observe.Err(err))
 		w.WriteHeader(http.StatusServiceUnavailable)
