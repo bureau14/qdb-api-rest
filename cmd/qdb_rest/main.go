@@ -246,15 +246,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	// 2. Build the process logger and place it in the root context. The
-	//    root context also ends on SIGINT or SIGTERM, which stops serving
-	//    below.
+	// 2. Build the process logger and the metrics registry and place both
+	//    in the root context. The registry is built once here, so every
+	//    listener and later every package records into one registry, and
+	//    before the cluster, because the next unit's pool gauges read the
+	//    cluster from a collector registered here. The root context also
+	//    ends on SIGINT or SIGTERM, which stops serving below.
 	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
 		os.Exit(2)
 	}
-	ctx, stop := signal.NotifyContext(observe.WithLogger(context.Background(), logger), syscall.SIGINT, syscall.SIGTERM)
+	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics())
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,
 		"qdb_api_version", qdb.APIVersion())
@@ -279,8 +283,11 @@ func main() {
 	ctx = auth.WithTokens(ctx, tokens)
 
 	// 5. Build the listeners over the root context, so every request
-	//    inherits the logger, the cluster and the keychain. Loading the
-	//    TLS material and binding any of the three ports can fail here.
+	//    inherits the logger, the metrics, the cluster and the keychain.
+	//    The handler takes metrics.enabled and debug.pprof as arguments,
+	//    because configuration does not travel in the context. Loading
+	//    the TLS material and binding any of the three ports can fail
+	//    here.
 	//    Then tell systemd the service is up, because every port is held,
 	//    and start the keepalive on the root context, so it ends with the
 	//    serve loop and never ticks into the drain, where a tick would
