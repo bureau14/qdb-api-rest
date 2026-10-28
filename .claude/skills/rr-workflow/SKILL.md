@@ -23,6 +23,42 @@ user-invocable: false
 - No GitHub pull requests, no stacked branches, no history rewriting on
   the base.
 
+## Tools
+
+The generic `buildkite` skill owns how a build is ensured for a commit
+past the pipeline's branch filter, how its queued jobs are
+reprioritized, how it is watched and how its state is read back. The
+stage skills say what to do with a build; the skill says how, and it
+takes these values from this repository:
+
+| Parameter      | Value                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Pipeline slug  | `qdb-api-rest`                                                                            |
+| Org            | `quasar-1`, resolved from the repository's `.bk.yaml`; nothing to set                     |
+| Branch         | the feature branch, `sc-19567/rr-<slug>`                                                  |
+| Commit         | the full SHA of the head, `git rev-parse HEAD`                                            |
+| `MESSAGE`      | `rr-<slug>`, so the pipeline's build list reads by unit                                   |
+| `CHECKPOINT`   | `7200`, because the watcher runs beside a plannotator review that can take hours          |
+| Control branch | `sc-19567/rest-rewrite`, when the skill says to check a failure against an unchanged base |
+
+The builds of a head, with their states, are read with the skill's
+one-liner in "Inspecting builds and jobs". `/rr-merge` quotes it in its
+entry check because the harness evaluates that check at load time.
+
+The `quasardb-workflow` skill does not apply on this branch, and
+neither does the `github` skill: the whole rewrite is one Shortcut
+story that lasts months, so there is no story to create, no pull
+request to open and no squash-merge. `/rr-merge` is the only merge,
+and the base lands on `master` once, at the end, outside these skills.
+
+Correct: the build stage runs the buildkite skill's watcher with slug
+`qdb-api-rest`, the feature branch, the head's SHA,
+`MESSAGE=rr-flight-catalog` and `CHECKPOINT=7200`, in the background.
+
+Incorrect: the owner's message says "build", the origin is under
+bureau14, and the session opens `quasardb-workflow`, which would create
+a story and a pull request for one unit of the rewrite.
+
 ## Lifecycle: four stages, three gates
 
 Every unit of work moves through these stages in order. Each stage is a
