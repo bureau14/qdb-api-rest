@@ -812,8 +812,10 @@ defaults by test.
   dials the cluster as the REST API's own user on every probe, and
   answers `503` without a dial for the whole shutdown drain
   (ADR-0004). On Linux under systemd the binary speaks the notify
-  protocol (`Type=notify`): `READY=1` once every listener is bound and
-  `STOPPING=1` when the drain starts. The probes are an operational
+  protocol (`Type=notify`): `READY=1` once every listener is bound,
+  `STOPPING=1` when the drain starts, and `WATCHDOG=1` every half of
+  `WATCHDOG_USEC` between the two, tied to the serving loop and never
+  to the cluster. The probes are an operational
   surface outside the compatibility contract. The unversioned paths are
   kept because load balancers at customer sites are configured with
   them, not because the old server's answers are reproduced.
@@ -988,8 +990,9 @@ starts.
   instance out of rotation before the listeners close (ADR-0004), the
   systemd notify protocol (`READY=1` once every listener is bound,
   `STOPPING=1` when the drain starts, written to `$NOTIFY_SOCKET` with
-  the standard library and silent when the variable is unset), and the
-  drain step of the stress, green by hand.
+  the standard library and silent when the variable is unset, and the
+  `WATCHDOG=1` keepalive at half of `WATCHDOG_USEC`, tied to the
+  serving loop), and the drain step of the stress, green by hand.
 - **M7 -- Observability**: `/metrics` behind `metrics.enabled`, with
   the series of Goal 9 and the pool, breaker and retry state, on both
   planes where the plane has the concept, a user label on the pool

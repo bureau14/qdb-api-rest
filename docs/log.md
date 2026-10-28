@@ -30,10 +30,10 @@ answers `503` without a dial from the first moment of the drain
 (ADR-0004), and the stress's drain step asserts it; the binary writes
 `READY=1` to `$NOTIFY_SOCKET` once every listener is bound and
 `STOPPING=1` when the drain starts, with the standard library and no
-dependency, and does nothing when the variable is unset; whether the
-binary also sends the `WATCHDOG=1` keepalive, tied to the serving loop
-and never to the cluster probe, is open (owner, 2026-10-26); the
-stress's drain step (`docs/e2e.md`, Stress definition) is green by
+dependency, and does nothing when the variable is unset, and sends the
+`WATCHDOG=1` keepalive at half of `WATCHDOG_USEC`, tied to the serving
+loop and never to the cluster probe, from `READY=1` until the drain
+starts; the stress's drain step (`docs/e2e.md`, Stress definition) is green by
 hand on both clusters; the Handoff items M6 consumes are deleted.
 
 M7 criteria. Entry: M6 closed. Exit: `GET /metrics` serves the
@@ -79,7 +79,7 @@ Next:
    definition) green by hand on both clusters, with its server run under
    a long grace through `listen.shutdown_grace`, and the close of M6, as
    one slice.
-2. Investigate the intermittent Go runtime fault `found bad pointer in
+3. Investigate the intermittent Go runtime fault `found bad pointer in
 Go heap`, raised inside arrow-go's C data import of a string column
    while the 2.0.0 binding converts a DuckDB chunk, under the flightsql
    statement test on the secure cluster (Linux haswell, qdb-api-rest
@@ -125,6 +125,11 @@ Blocked on:
   green build of its head.
 
 ## Entries
+
+## 2026-10-27 -- the watchdog keepalive is part of M6
+
+- Owner decision; `docs/brief.md`, Milestones, M6. The keepalive proves
+  the serving loop and never the cluster.
 
 ## 2026-10-27 -- readiness-drain-plan.md deleted
 
