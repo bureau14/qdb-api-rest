@@ -5,6 +5,7 @@
 #   make e2etool                    build the Go tool of the v2 round trip into bin/
 #   make jdbc                       build the JDBC smoke jar of the v2 round trip
 #   make test-round-trip            the v2 round trip, one server per cluster
+#   make test-stress                the stress, by hand: the drain step on both clusters
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -89,10 +90,10 @@ ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
 
 COMMON := source $(E2E_DIR)/common.sh
 
-.PHONY: help services-check e2etool jdbc test-round-trip clean
+.PHONY: help services-check e2etool jdbc test-round-trip test-stress clean
 
 help:
-	@sed -n '2,9p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,10p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -145,6 +146,57 @@ test-round-trip: services-check e2etool jdbc
 	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
 	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
 	    --insecure-log "$$insecure_log" --secure-log "$$secure_log"
+
+# ---------------------------------------------------------------- stress
+
+# The stress (docs/e2e.md, Stress definition) runs by hand and never in
+# CI. Its parameters live here. STRESS_ROWS is sized so the CSV body
+# outgrows the loopback socket buffers and curl's own, so that the
+# server's write blocks on the slow client and the stream is in flight
+# when the signal arrives; not measured, the first value that held.
+# STRESS_LIMIT_RATE makes the read outlast the signal by seconds.
+# STRESS_GRACE outlasts the read by a wide margin, because a grace that
+# expires cuts the stream by process exit and fails the body assertion,
+# and STRESS_EXIT_WINDOW sits above the grace. The budget is two
+# sessions, the smallest that leaves the ingest and the read one each.
+STRESS_ROWS        ?= 200000
+STRESS_SEED        ?= $(shell date +%s)
+STRESS_LIMIT_RATE  ?= 500k
+STRESS_GRACE       ?= 60s
+STRESS_EXIT_WINDOW ?= 70
+STRESS_FLAGS       := --listen-shutdown-grace $(STRESS_GRACE) --pool-max-sessions 2 --pool-per-user-max 2
+STRESS_PID         := $(E2E_DIR)/stress.pid
+STRESS_LOG         := $(E2E_DIR)/stress.log
+STRESS_PID_SECURE  := $(E2E_DIR)/stress-secure.pid
+STRESS_LOG_SECURE  := $(E2E_DIR)/stress-secure.log
+STRESS_OUT         := $(E2E_DIR)/actual/stress
+STRESS             := $(E2E_DIR)/stress.sh
+
+# The stress always starts its servers, because the step ends the server
+# with SIGTERM, so no URL form exists. The round trip's ports are reused,
+# because the two suites never run at once on one machine, and a clash
+# fails the bind loudly. Own pidfiles and logs, because the log is
+# asserted. One cluster after the other, each server started here and
+# ended by the step, which waits for the exit itself; the trap covers a
+# failed step, where stop_server finds a dead pid or a server it may
+# kill.
+test-stress: services-check e2etool
+	@$(COMMON); \
+	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
+	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
+	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary>"; \
+	trap 'stop_server $(STRESS_PID); stop_server $(STRESS_PID_SECURE)' EXIT; \
+	rm -rf $(STRESS_OUT); \
+	start_server $(STRESS_PID) $(STRESS_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS) $(STRESS_FLAGS); \
+	$(STRESS) drain --name insecure --http http://127.0.0.1:$(REST_PORT) --pid-file $(STRESS_PID) --log $(STRESS_LOG) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW); \
+	start_server $(STRESS_PID_SECURE) $(STRESS_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE) $(STRESS_FLAGS); \
+	$(STRESS) drain --name secure --http http://127.0.0.1:$(REST_PORT_SECURE) --pid-file $(STRESS_PID_SECURE) --log $(STRESS_LOG_SECURE) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/secure --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW) \
+	    --login-body $(REPO_ROOT)/user_private.key; \
+	log_info "stress drain step: both clusters passed (seed=$(STRESS_SEED))"
 
 # ------------------------------------------------------------------ cleanup
 
