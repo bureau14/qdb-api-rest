@@ -22,3 +22,4 @@ edited in place and what stays in plan decision-log tables:
 | [0016](0016-v2-refresh-logout-session.md)           | v2 refresh, logout and session: lifetimes, shapes and what the server forgets          | accepted           |
 | [0017](0017-embedded-duckdb.md)                     | Embedded DuckDB: the qdb-duck package, one instance per user, governance and FreeBSD   | accepted           |
 | [0018](0018-flight-sql.md)                          | Flight SQL: one listener, the `#sql` prefix, stateless tickets and the minimal surface | accepted           |
+| [0019](0019-metrics-registry.md)                    | Metrics: the Prometheus client, the registry in the context, one namespace             | accepted           |

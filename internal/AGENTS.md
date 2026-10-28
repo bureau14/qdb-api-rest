@@ -192,7 +192,7 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   them, and arrow-adbc is bumped only together with arrow-go
   (`docs/e2e.md`, The Flight SQL smoke steps).
 
-## Logging (ADR-0002)
+## Logging and metrics (ADR-0002, ADR-0019)
 
 - Log through the context, with the `*Context` methods only:
   `observe.Logger(ctx).InfoContext(ctx, msg, attrs...)`. Never
@@ -219,6 +219,12 @@ vendor`. Nothing under `vendor/` is written by hand. A branch commit
   below them only logs.
 - Any type that holds a secret implements `slog.LogValuer`, so it can
   never print one.
+- The metrics travel in the context like the logger:
+  `observe.MetricsFrom(ctx)` is the registry, placed once by main, and
+  it panics on a context without one, so a test that reaches a route
+  or a package that records places `observe.NewMetrics()` on its
+  context. Every series this binary names carries the `qdb_rest_`
+  prefix (ADR-0019).
 
 ## Tests
 
