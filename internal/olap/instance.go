@@ -81,8 +81,8 @@ const secretName = "qdb_rest"
 
 // compressionWords and encryptionWords map the config vocabulary of
 // cluster.compression and cluster.encryption onto qdb-duck's words for
-// the same C API values: the REST aes is the C API's aes_gcm_256. This
-// map is the one place the two vocabularies meet, and it moves when
+// the same C API values: the REST aes is the C API's aes_gcm_256. The
+// two vocabularies meet here and nowhere else, so these maps move when
 // either grows. The config vocabulary admits these words only, so a
 // lookup has no missing branch.
 var (
@@ -107,8 +107,11 @@ func millis(d time.Duration) string {
 // vocabulary the server renders, never a user's text.
 func settingsOf(duck config.DuckDB, cluster config.Cluster) []string {
 	// qdb-duck reads the globals once at the ATTACH, and the instance
-	// serves one user, so a global is this user's setting. Which keys are
-	// sent follows what zero means to qdb-duck for each:
+	// serves one user, so a global is this user's setting. The function
+	// takes both config blocks, so the key list lives here once. A
+	// settings struct filled field by field in internal/qdb was rejected,
+	// because it would be a second copy of the list. Which keys are sent
+	// follows what zero means to qdb-duck for each:
 	//
 	//  1. the pool size and the TTL are always sent;
 	//  2. the waits, the buffer cap, the soft memory limit and the
