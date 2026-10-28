@@ -1,6 +1,6 @@
 # systemd notify -- plan
 
-Status: draft
+Status: approved
 
 Unit of M6 (`docs/log.md`, M6 criteria). Branch `sc-19567/rr-systemd-notify`.
 
