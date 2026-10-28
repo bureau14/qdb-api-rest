@@ -1,6 +1,6 @@
 # Plan: the metrics skeleton
 
-Status: draft
+Status: approved
 
 The first slice of M7 (`docs/log.md`, M7 criteria): the Prometheus
 registry and its exposition, the two configuration keys, the runtime
