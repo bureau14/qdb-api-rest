@@ -1,6 +1,6 @@
 # Plan: the duckdb block governs qdb-duck's tuning
 
-Status: draft
+Status: approved
 
 ## Outcome
 
