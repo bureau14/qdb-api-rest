@@ -102,6 +102,12 @@ Blocked on: none.
 
 ## Entries
 
+## 2026-10-28 -- duck-tuning-plan.md deleted
+
+- Facts moved to ADR-0017, `docs/brief.md` (Embedded DuckDB, Risks),
+  `internal/AGENTS.md`, `internal/olap/AGENTS.md` and the comments of
+  `internal/config` and `internal/olap`.
+
 ## 2026-10-28 -- duckdb block governs qdb-duck's tuning
 
 - Owner decision; ADR-0017 Decision 7 edited in place. The planned test
