@@ -51,11 +51,7 @@ all of this should feel.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.
-- The org-wide `branch_configuration` (`master 3.14.x`) gates only
-  webhook-triggered builds. Build a feature branch through the API with
-  `ignore_pipeline_branch_filters: true`. The `bk` CLI does not set it,
-  so its 422 on a feature branch means "filtered" rather than "blocked".
-- Build creation takes the full 40-character commit SHA
-  (`git rev-parse HEAD`). An abbreviated or hand-expanded SHA fails at
-  checkout as GitHub's `upload-pack: not our ref`, which is not a
-  replication problem.
+- The pipeline builds from its GitHub webhook only on `master` and
+  `3.14.x`, the org-wide `branch_configuration`. A feature branch is
+  built by hand through the API, as the `buildkite` skill describes;
+  `/rr-workflow`, Tools, holds this repository's parameters.
