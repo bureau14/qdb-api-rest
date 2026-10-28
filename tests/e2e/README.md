@@ -37,7 +37,8 @@ byte for byte with the generated file, then reads every table back
 through arrow-adbc's Flight SQL driver and runs a `#sql` query of
 DuckDB-only types through it, then does both through Arrow's JDBC
 driver, comparing column names and row counts, on the insecure and the
-secure cluster. Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>`
+secure cluster, and scrapes `/metrics` on each server for the series
+names, presence only. Nothing is captured (ADR-0014). `ROWS=<n>` and `SEED=<s>`
 select the generated data, and the round trip prints both so a failure
 reproduces. `tools/e2etool gen` draws the rows and writes `rows.csv`,
 `rows.ndjson`, `rows.arrow` and `rows.json` through the server's own

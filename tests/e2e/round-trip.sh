@@ -302,6 +302,44 @@ check_log() {
     log_info "[OK] $name: the plain-text warning is $want in the log"
 }
 
+# METRIC_SERIES: the series every platform exposes, asserted by name on
+# each server's scrape: the build-info series this binary names and two
+# of the client's Go runtime series. The process_ series are not listed,
+# because the client reads procfs for them and FreeBSD, in the matrix,
+# does not mount it. A later unit's series joins this list with its
+# commit.
+METRIC_SERIES=(qdb_rest_build_info go_goroutines go_info)
+
+# scrape_metrics <out_dir> <url>: GET /metrics is 200, text/plain, and
+# the body names every series of METRIC_SERIES at the start of a line.
+# Presence only, because nothing in the harness asserts a value
+# (ADR-0015), and a fixed-string grep per name, as check_log greps,
+# because the exposition is a text format the driver knows nothing else
+# about.
+scrape_metrics() {
+    local out="$1" url="$2" status series failed=0
+    # 1. The request carries no token, because the route is outside the
+    #    bearer edge (ADR-0004, rule 3).
+    status=$(request "$out" metrics "$url/metrics")
+    expect 200 "$status" "$out" metrics || return 1
+    # 2. The content type is matched by prefix, because the exposition
+    #    carries version and charset parameters.
+    if ! grep -qi '^content-type: text/plain' "$out/metrics.headers"; then
+        log_error "[FAIL] metrics: content-type is not text/plain"
+        return 1
+    fi
+    # 3. One grep per series, each a [FAIL] line naming the series, so one
+    #    scrape reports every missing name.
+    for series in "${METRIC_SERIES[@]}"; do
+        if ! grep -q "^$series" "$out/metrics.body"; then
+            log_error "[FAIL] metrics: the series $series is not in the exposition"
+            failed=1
+        fi
+    done
+    (( failed == 0 )) || return 1
+    log_info "[OK] metrics: ${METRIC_SERIES[*]} are in the exposition"
+}
+
 # The matrix. One table per body format, named after it, and every
 # table is read and queried in every response format under every
 # coding, and read back through DuckDB SQL the same way. A format is one entry here and a new step is one function
@@ -345,6 +383,10 @@ run_cluster() {
         fi
         log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte, and read back over ADBC${JDBC_OK} (seed=$SEED)"
     done
+    # The scrape follows every request of the round trip, as the M7
+    # criterion says, so the series of later units are counted when it
+    # runs.
+    scrape_metrics "$out" "$url" || return 1
 }
 
 main() {

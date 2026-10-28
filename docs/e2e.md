@@ -130,6 +130,12 @@ is timed.
    The driver greps each server's log for the message: present in the
    secure server's, absent from the insecure server's. A server given
    as a URL has no log and the step is skipped for it.
+9. The scrape. `GET /metrics` on each server, after every other step,
+   answers 200 with `text/plain` and a body naming the build-info
+   series and the Go runtime series (`METRIC_SERIES` in the driver,
+   presence only, never a value). The `process_` series are not
+   asserted, because the client reads procfs for them and FreeBSD does
+   not mount it. A later unit's series joins the list with its commit.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
@@ -395,6 +401,7 @@ the same generator in-process and over HTTP.
 | One `stress.sh` call is one cluster, the Makefile starts each server, the step ends it           | the step drains the server it was given, so the start per cluster is the lifecycle; the round trip's ports are reused and the pidfiles and logs are its own | a URL form, which the step could not signal; separate ports, because the suites run one at a time and a clash is loud |
 | SIGTERM once the first byte has arrived; the refusal probe retries while both sides are alive    | a byte proves the stream is in flight, and a refusal from a dead server or after the read proves nothing; the port closes a moment after the signal         | a fixed sleep before the signal, a timing (ADR-0015)                                                                  |
 | The step waits for the exit with `wait_for_exit`; a long grace; a large row count                | a second SIGTERM kills a draining server; a grace that expires cuts the stream; a body inside the socket buffers finishes before the signal                 | a window argument on `stop_server`, which still sends the killing SIGTERM; the default grace and row count            |
+| The scrape asserts series names by grep, after the format loop                                   | the exposition is text the driver knows nothing else about, and the M7 criterion says after its requests                                                    | a value assertion (ADR-0015); a scrape before the loop, which would miss the request series of later units            |
 
 ## Decision log (2026-08-16)
 
