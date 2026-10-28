@@ -165,6 +165,23 @@ stop_server() {
     cleanup_pid_file "$pid_file"
 }
 
+# Wait for a process to end on its own, and die when it has not within
+# the window. Nothing is sent: the one SIGTERM a draining server may
+# receive is the caller's, because main releases the signal handler once
+# the serve loop ends, and a second SIGTERM then kills the process
+# outright, mid-drain. The step that drains a server under a long grace
+# sizes the window above that grace.
+# Usage: wait_for_exit <pid> <seconds>
+wait_for_exit() {
+    local pid="$1" seconds="$2" i
+    # kill -0 every tenth of a second, as stop_server polls.
+    for i in $(seq 1 $((seconds * 10))); do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 0.1
+    done
+    die "process $pid did not exit within ${seconds}s"
+}
+
 # ---------------------------------------------------------------- requests
 
 # The request helpers both drivers share: one curl request with its body
