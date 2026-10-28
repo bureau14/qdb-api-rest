@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -78,21 +79,108 @@ func quote(s string) string {
 // instance holds its own secret, so one name serves them all.
 const secretName = "qdb_rest"
 
+// compressionWords and encryptionWords map the config vocabulary of
+// cluster.compression and cluster.encryption onto qdb-duck's words for
+// the same C API values: the REST aes is the C API's aes_gcm_256. This
+// map is the one place the two vocabularies meet, and it moves when
+// either grows. The config vocabulary admits these words only, so a
+// lookup has no missing branch.
+var (
+	compressionWords = map[string]string{"none": "none", "balanced": "balanced"}
+	encryptionWords  = map[string]string{"none": "none", "aes": "aes_gcm_256"}
+)
+
+// setGlobal renders one SET GLOBAL statement of a qdb-duck setting.
+func setGlobal(name, value string) string {
+	return "SET GLOBAL quasar_" + name + " = " + value
+}
+
+// millis renders a duration as the millisecond count qdb-duck takes.
+func millis(d time.Duration) string {
+	return strconv.FormatInt(int64(d/time.Millisecond), 10)
+}
+
+// settingsOf renders the qdb-duck globals an instance sets before its
+// attach, one SET GLOBAL statement per setting the configuration gives:
+// the duckdb block's own knobs and the cluster block's network knobs. A
+// statement carries a number, a boolean or a word of the config
+// vocabulary the server renders, never a user's text.
+func settingsOf(duck config.DuckDB, cluster config.Cluster) []string {
+	// qdb-duck reads the globals once at the ATTACH, and the instance
+	// serves one user, so a global is this user's setting. Which keys are
+	// sent follows what zero means to qdb-duck for each:
+	//
+	//  1. the pool size and the TTL are always sent;
+	//  2. the waits, the buffer cap, the soft memory limit and the
+	//     connections per address are sent only when non-zero;
+	//  3. load balancing is sent only when true;
+	//  4. compression and encryption are always sent, through the
+	//     vocabulary map.
+
+	// 1. the pool size and the TTL are always sent, because qdb-duck reads
+	//    a TTL of 0 as no cache and the config default repeats qdb-duck's
+	//    own, so one rule covers both. qdb-duck takes the TTL and the waits
+	//    in milliseconds.
+	out := []string{
+		setGlobal("max_pool_size", strconv.Itoa(duck.MaxPoolSize)),
+		setGlobal("table_cache_ttl", millis(duck.TableCacheTTL)),
+	}
+	// 2. the waits, the buffer cap, the soft memory limit and the
+	//    connections per address are sent only when non-zero, because 0 is
+	//    "keep the client default" on both sides and sending it would say
+	//    the same in more statements. The timeout, the buffer cap and the
+	//    connections per address are the cluster block's, so a native
+	//    session and a qdb-duck session run under one network policy.
+	//    cluster.parallelism stays out, because duckdb.threads already
+	//    bounds a scan's sessions and qdb-duck's per-handle default is one.
+	if cluster.Timeout > 0 {
+		out = append(out, setGlobal("timeout", millis(cluster.Timeout)))
+	}
+	if duck.StabilizationMaxWait > 0 {
+		out = append(out, setGlobal("stabilization_max_wait", millis(duck.StabilizationMaxWait)))
+	}
+	if duck.TransactionMaxWait > 0 {
+		out = append(out, setGlobal("transaction_max_wait", millis(duck.TransactionMaxWait)))
+	}
+	if cluster.MaxInBufferSize > 0 {
+		out = append(out, setGlobal("max_in_buf_size", strconv.FormatInt(cluster.MaxInBufferSize, 10)))
+	}
+	if duck.SoftMemoryLimit > 0 {
+		out = append(out, setGlobal("soft_memory_limit", strconv.FormatInt(duck.SoftMemoryLimit, 10)))
+	}
+	if cluster.ConnectionsPerAddress > 0 {
+		out = append(out, setGlobal("connection_per_address_soft_limit", strconv.Itoa(cluster.ConnectionsPerAddress)))
+	}
+	// 3. load balancing is sent only when true, because false is qdb-duck's
+	//    default.
+	if duck.LoadBalancing {
+		out = append(out, setGlobal("load_balancing", "true"))
+	}
+	// 4. compression and encryption are always sent, so a session of
+	//    either kind runs under the same wire policy. Leaving them out
+	//    was rejected, because the native sessions would run encrypted
+	//    and compressed while qdb-duck's ran plain against the same
+	//    cluster.
+	return append(out,
+		setGlobal("compression", quote(compressionWords[cluster.Compression])),
+		setGlobal("encryption", quote(encryptionWords[cluster.Encryption])))
+}
+
 // secretOf is the CREATE SECRET statement that holds the credentials.
 func secretOf(c Credentials) string {
 	// The credentials travel as quoted literals of a secret. The ATTACH
 	// string was rejected, because qdb-duck splits it on every = and a
-	// QuasarDB key ends in base64 padding. qdb-duck's quasar_* options were
-	// rejected, because qdb-duck refuses them in the DuckDB config at
-	// open. Inside a literal the user's text cannot reach the SQL, and
-	// duckdb_secrets() shows the private key redacted.
+	// QuasarDB key ends in base64 padding. Inside a literal the user's
+	// text cannot reach the SQL, and duckdb_secrets() shows the private
+	// key redacted.
 	//
-	// Only the host, the port and the credentials travel, so qdb-duck's
-	// own defaults set the timeout, the compression and the encryption.
-	// Forwarding cluster.timeout, cluster.compression and
-	// cluster.encryption was rejected, because qdb-duck may spell their
-	// values differently. The secret is TEMPORARY, so it lives in memory
-	// with the instance and never reaches disk.
+	// The DSN was rejected for qdb-duck's quasar_* options, because
+	// DuckDB refuses them at open, so the tuning travels as globals
+	// instead (settingsOf). Only the host, the port and the credentials
+	// travel in the secret. The cluster's compression and encryption
+	// travel as globals too, through the vocabulary map in settingsOf.
+	// The secret is TEMPORARY, so it lives in memory with the instance
+	// and never reaches disk.
 	var b strings.Builder
 	fmt.Fprintf(&b, "CREATE TEMPORARY SECRET %s (TYPE quasar, HOST %s, PORT %s",
 		secretName, quote(c.Host), quote(c.Port))
@@ -108,42 +196,55 @@ func secretOf(c Credentials) string {
 	return b.String()
 }
 
-// Open opens an instance under the configuration and attaches the cluster
-// as qdb with the credentials. A failed attach is ErrAttach with
-// qdb-duck's message, and leaves no instance open.
-func Open(ctx context.Context, cfg config.DuckDB, c Credentials) (*Instance, error) {
+// Open opens an instance under the two configuration blocks and attaches
+// the cluster as qdb with the credentials. A failed attach is ErrAttach
+// with qdb-duck's message, and leaves no instance open. A setting the C
+// API refuses fails the attach the same way, because qdb-duck applies
+// every setting to each pooled handle when it connects.
+func Open(ctx context.Context, duck config.DuckDB, cluster config.Cluster, c Credentials) (*Instance, error) {
 	// The instance is in memory, so it holds only the attach and what one
 	// user's queries create. A failure after the open closes what the
 	// open made:
 	//
 	//  1. open the connector, where DuckDB judges the configuration;
-	//  2. on one connection, create the secret and attach through it;
+	//  2. on one connection, set the globals, create the secret and
+	//     attach through it;
 	//  3. on a failed attach, close the connector and answer ErrAttach.
 
 	// 1. open the connector
-	connector, err := duckdb.NewConnector(dsn(cfg), nil)
+	connector, err := duckdb.NewConnector(dsn(duck), nil)
 	if err != nil {
 		return nil, err
 	}
-	// 2. create the secret and attach. Every later connection sees the
-	//    attach, so this connection closes when it is done.
-	if err := attach(ctx, connector, c); err != nil {
+	// 2. set the globals, create the secret and attach. The globals go
+	//    first, because the attach reads them once. Every later connection
+	//    sees the attach, so this connection closes when it is done.
+	if err := attach(ctx, connector, settingsOf(duck, cluster), c); err != nil {
 		// 3. close what the open made
 		return nil, errors.Join(err, connector.Close())
 	}
 	return &Instance{connector: connector}, nil
 }
 
-// attach creates the secret and attaches the cluster as qdb through it,
-// on one connection of the connector. A failed attach is ErrAttach with
-// qdb-duck's message.
-func attach(ctx context.Context, connector *duckdb.Connector, c Credentials) error {
+// attach sets the globals, creates the secret and attaches the cluster
+// as qdb through it, on one connection of the connector. A failed attach
+// is ErrAttach with qdb-duck's message.
+func attach(ctx context.Context, connector *duckdb.Connector, settings []string, c Credentials) error {
 	conn, err := connector.Connect(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = conn.Close() }()
 	exec := conn.(driver.ExecerContext)
+	// A refused SET is a configuration error and not an attach error, so
+	// it returns unchanged, as a refused secret does. Only the ATTACH
+	// wraps ErrAttach, because only it dials, and the caller classifies
+	// ErrAttach by dialing again.
+	for _, stmt := range settings {
+		if _, err := exec.ExecContext(ctx, stmt, nil); err != nil {
+			return err
+		}
+	}
 	if _, err := exec.ExecContext(ctx, secretOf(c), nil); err != nil {
 		return err
 	}

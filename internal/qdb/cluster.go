@@ -613,7 +613,7 @@ func (c *Cluster) instanceOf(ctx context.Context, up *userPool, u User) (*olap.I
 	//    guards every user
 	creds, err := c.credentialsOf(u)
 	if err == nil {
-		up.duck, err = olap.Open(ctx, c.duckCfg, creds)
+		up.duck, err = olap.Open(ctx, c.duckCfg, c.cfg, creds)
 	}
 	// 4. classify a failed attach on a secure cluster. qdb-duck's message
 	//    does not say whether the cluster refused or was unreachable, so

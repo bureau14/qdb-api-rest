@@ -20,7 +20,6 @@ import (
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 	"pgregory.net/rapid"
 
-	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
@@ -43,11 +42,14 @@ func hostPort(t *testing.T, uri string) (string, string) {
 	return host, port
 }
 
-// open opens an instance with the default configuration and the
-// credentials, and closes it when the test ends.
-func open(t *testing.T, c olap.Credentials) *olap.Instance {
+// open opens an instance with the fixture's configuration and the
+// credentials, and closes it when the test ends. The fixture's Config is
+// the one copy of the test binding, so the olap tests open with the
+// duckdb and cluster blocks every other test runs under.
+func open(t *testing.T, f cluster.Fixture, c olap.Credentials) *olap.Instance {
 	t.Helper()
-	in, err := olap.Open(context.Background(), config.Default().DuckDB, c)
+	cfg := f.Spec.Config(t)
+	in, err := olap.Open(context.Background(), cfg.DuckDB, cfg.Cluster, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func TestQueryReadsGeneratedTable(t *testing.T) {
 		// 2. One instance serves every iteration, because qdb-duck
 		//    holds up to 100 qdbd sessions per attach and the test
 		//    cluster punishes exhaustion.
-		in := open(t, credentialsOf(t, f))
+		in := open(t, f, credentialsOf(t, f))
 		rapid.Check(t, func(rt *rapid.T) {
 			// 3. A generated table read back in $timestamp order. Its
 			//    rows are few enough to fit in one DuckDB vector, so
@@ -166,7 +168,7 @@ func TestDescribe(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		// 1. one instance per cluster, opened as in
 		//    TestQueryReadsGeneratedTable
-		in := open(t, credentialsOf(t, f))
+		in := open(t, f, credentialsOf(t, f))
 		// 2. one cast per row of the conversion table, nested types, a
 		//    TIMESTAMPTZ and both ENUM index widths included. Schema.Equal
 		//    compares the field metadata too.
