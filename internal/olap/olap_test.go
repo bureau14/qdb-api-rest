@@ -90,7 +90,7 @@ func TestQueryReadsGeneratedTable(t *testing.T) {
 	//    credentials.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		// 2. One instance serves every iteration, because qdb-duck
-		//    holds up to duckdb.max_pool_size qdbd sessions per attach
+		//    holds up to duckdb.quasar.max_pool_size qdbd sessions per attach
 		//    and the test cluster punishes exhaustion.
 		in := open(t, f, credentialsOf(t, f))
 		rapid.Check(t, func(rt *rapid.T) {
