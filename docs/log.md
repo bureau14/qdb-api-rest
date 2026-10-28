@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-27
+Last updated: 2026-10-28
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -61,25 +61,15 @@ entries, detaches it, and reads the cluster and one node, each compared
 against what it created; the Handoff item naming the table cores is
 deleted.
 
-In flight:
-
-- `sc-19567/rr-readiness-drain`: readiness answers 503 without a dial
-  for the whole drain, built and reviewed, held before its merge
-  (owner, 2026-10-27). It rebases onto the base once the DuckDB 2.0.0
-  unit has merged and merges once a build of its head is green.
+In flight: none.
 
 Next:
 
-1. `/rr-start` M6: the systemd notify protocol, `READY=1` once every
-   listener is bound and `STOPPING=1` when the drain starts, written to
-   `$NOTIFY_SOCKET` with the standard library and silent when the
-   variable is unset; the HTTP bind moves out of `ListenAndServe` so
-   READY follows the bind.
-2. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
+1. `/rr-start` M6: the stress's drain step (`docs/e2e.md`, Stress
    definition) green by hand on both clusters, with its server run under
    a long grace through `listen.shutdown_grace`, and the close of M6, as
    one slice.
-3. Investigate the intermittent Go runtime fault `found bad pointer in
+2. Investigate the intermittent Go runtime fault `found bad pointer in
 Go heap`, raised inside arrow-go's C data import of a string column
    while the 2.0.0 binding converts a DuckDB chunk, under the flightsql
    statement test on the secure cluster (Linux haswell, qdb-api-rest
@@ -119,12 +109,18 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   second failure (owner, 2026-10-26). No milestone claims the
   investigation yet.
 
-Blocked on:
-
-- The merge of `sc-19567/rr-readiness-drain` waits on its rebase and a
-  green build of its head.
+Blocked on: none.
 
 ## Entries
+
+## 2026-10-28 -- systemd-notify-plan.md deleted
+
+- Facts moved to `docs/brief.md` (Observability and logging, Milestones,
+  Project structure), `cmd/qdb_rest/AGENTS.md`, `internal/AGENTS.md`
+  and the comments of `internal/notify` and `cmd/qdb_rest`. The
+  packaged units stay `Type=simple` until a release carries this binary,
+  and the change to `Type=notify` with `WatchdogSec=` is made in
+  `qdb-pkg-debian` and `qdb-pkg-rpm`.
 
 ## 2026-10-27 -- the watchdog keepalive is part of M6
 
