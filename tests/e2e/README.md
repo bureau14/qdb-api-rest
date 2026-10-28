@@ -23,6 +23,7 @@ make jdbc                    # build the JDBC smoke jar into tools/jdbc/target/
 make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
     FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
+make test-stress QDB_REST_BIN=<new server binary>      # the stress, by hand: the drain step on both clusters
 ```
 
 ## The v2 round trip
@@ -44,3 +45,17 @@ encoders, and `tools/e2etool tocsv` turns a response into CSV through
 the server's own decoders. The definition is `docs/e2e.md`, "The v2
 round trip". Working files are under `actual/round-trip/<cluster>/`,
 one `.body` and one `.headers` per request.
+
+## The stress
+
+`make test-stress` starts one server per cluster under a long shutdown
+grace and a budget of two sessions, ingests generated rows into
+`e2e_stress` as CSV, starts one slow read of the table, sends the
+server SIGTERM once the first byte has arrived, and asserts that a new
+connection is refused while the read is open, that the body compares
+byte for byte with the generated rows, and that the server exits
+cleanly on its own. It runs by hand and never in CI. `STRESS_ROWS`,
+`STRESS_SEED`, `STRESS_LIMIT_RATE`, `STRESS_GRACE` and
+`STRESS_EXIT_WINDOW` are its parameters, and the Makefile says why
+each has its value. The definition is `docs/e2e.md`, "Stress
+definition". Working files are under `actual/stress/<cluster>/`.

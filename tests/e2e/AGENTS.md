@@ -7,10 +7,11 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
 - `Makefile` is the only entry point and the single source of truth for
   paths, ports and flags. Scripts receive them as arguments or exported
   variables. Add targets there rather than new top-level scripts.
-- `common.sh` holds every shared helper (logging, pidfiles, the qdbsh
-  wrapper). Source it and do not duplicate it. Always call `qdbsh`
-  through the wrapper, which redirects qdbsh's log files out of the
-  tree.
+- `common.sh` holds every shared helper (logging, pidfiles,
+  `wait_for_exit`, the request, login, create, ingest and compare
+  helpers both drivers share, the qdbsh wrapper). Source it and do not
+  duplicate it. Always call `qdbsh` through the wrapper, which redirects
+  qdbsh's log files out of the tree.
 - qdbd is a service (`scripts/tests/setup/start-services.sh`, a git
   submodule that is never edited here). Tests fail fast if it is down,
   and they never start or stop it. The harness starts and stops only
@@ -34,7 +35,7 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   built by `make e2etool` with the server's toolchain and the root
   `.envrc` into the repository's `bin/`, next to `qdb_rest`, so the CI
   step co-locates the Windows DLLs once, and it may import any package
-  of this repository. The create body in `round-trip.sh` and
+  of this repository. The create body in `common.sh` and
   `roundTripSchema` in the tool spell the same column names, and a
   change to one changes the other. A new response format is one entry
   in the driver's matrix and one decoder in the tool. The driver asserts
@@ -44,6 +45,13 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   (`PLAINTEXT_WARNING`) and in `cmd/qdb_rest/main.go`, and a change to
   one changes the other. A server given as a URL has no log, and the
   step is skipped for it.
+- The stress (`stress.sh`, `make test-stress`, `docs/e2e.md`, Stress
+  definition) runs by hand and never in CI. One call is one cluster,
+  and the step ends the server it was given: it sends the one SIGTERM
+  and waits for the exit with `wait_for_exit`. Never send a draining
+  server a second SIGTERM, and never `stop_server` it: the binary
+  releases its signal handler once the serve loop ends, and the second
+  signal kills it mid-drain. The parameters are the Makefile's.
 - The ADBC and JDBC steps. The ADBC steps run `tools/e2etool adbc`,
   which drives arrow-adbc's Flight SQL driver and writes the result
   through a server encoder: Arrow IPC, which the driver sends through

@@ -204,8 +204,9 @@ server started from `QDB_REST_BIN` (`40090` on the insecure node,
 and `40093` and the Flight listener on `40094` and `40095`, because
 neither can be turned off and the two servers must not collide, and
 `TZ=UTC`. Working files go to `actual/round-trip/<cluster>/`, one
-`.body` and one `.headers` file per request. The driver is one file:
-generic request and status helpers, one function per
+`.body` and one `.headers` file per request. The driver is one file
+over the request, status, login, create, ingest and compare helpers of
+`common.sh`, which the stress shares: one function per
 step kind (login, create, ingest, read back, query back, sql back) that
 takes the table, the format and the coding as arguments, one
 `check_response` that the read, the query and the sql read share for the header assertions, the
@@ -316,20 +317,44 @@ REST servers' and both qdbd clusters' logs on failure. `curl`, `jq` and
 
 ## Stress definition
 
-The stress is shell and curl, run by hand through `make test-stress`,
-asserted as behaviour and never as a timing or a measured number
-(ADR-0015). It ingests one table through `e2etool gen` and
-`POST /api/v2/rows`, the way the round trip does, against a server it
-starts with a small `pool.max_sessions`. It has two steps, each a
-milestone's. The drain step (the hardening milestone) starts one slow
-read (`curl --limit-rate`), sends the server SIGTERM, and asserts that
-the body compares equal to the generated rows and that a new connection
-is refused. The budget step (the observability milestone) runs N
-clients, more than the budget, through `xargs -P` and curl while it
-polls the budget gauge on `/metrics`, and asserts that the gauge never
-exceeds the budget and that every client's body compares equal to the
-rows. The parameters are written in the Makefile. The agents are small,
-which is why the stress runs by hand.
+The stress is shell and curl (`stress.sh`), run by hand through
+`make test-stress`, asserted as behaviour and never as a timing or a
+measured number (ADR-0015). It runs on both clusters, one server after
+the other, the secure one under the key files, and each server starts
+with a long `listen.shutdown_grace` and a budget of two sessions. It
+ingests one table, `e2e_stress`, through `e2etool gen` and
+`POST /api/v2/rows` as CSV, the way the round trip does, and reads it
+back as CSV only, because the formats are the round trip's question.
+It has two steps, each a milestone's.
+
+The drain step (the hardening milestone) starts one slow read of the
+table (`curl --limit-rate`, so the server's write blocks on the client
+and the stream is in flight), sends the server one SIGTERM once the
+first byte has arrived, and asserts, in this order, that a new
+connection to the HTTP listener is refused while the read is still
+open and the server still alive, that the read ends with 200 and a body
+that compares byte for byte with the generated rows, that the server
+exits on its own within a window above the grace, and that its log
+says `shutdown complete` and not `server failed`. The step sends the
+one SIGTERM itself and waits for the exit with `wait_for_exit`, never
+`stop_server`, because the binary releases its signal handler once the
+serve loop ends and a second SIGTERM kills it mid-drain. The refused
+connection is the drain's signal to a load balancer (ADR-0004), and a
+connect that still succeeds in the moment after the signal is retried,
+not failed. The step ends the server it was given, so the Makefile
+starts one per cluster and the stress has no URL form.
+
+The budget step (the observability milestone) runs N clients, more than
+the budget, through `xargs -P` and curl while it polls the budget gauge
+on `/metrics`, and asserts that the gauge never exceeds the budget and
+that every client's body compares equal to the rows.
+
+The parameters and their reasons are written in the Makefile: the row
+count, sized so the CSV body outgrows the socket buffers and the read
+is still streaming when the signal arrives; the rate; the grace, which
+outlasts the read because a grace that expires cuts the stream by
+process exit; and the exit window above the grace. The agents are
+small, which is why the stress runs by hand.
 
 ## Layout
 
@@ -337,10 +362,13 @@ which is why the stress runs by hand.
 scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...); qdbd up
 tests/e2e/
   Makefile                services-check | e2etool | jdbc | test-round-trip | clean
-                          test-stress (by hand; the drain step with the hardening milestone,
-                          the budget step with the observability milestone)
-  common.sh               helpers: log_*, pidfile/start_server/stop_server, qdbsh wrapper
+                          test-stress (by hand; the drain step, and the budget step
+                          with the observability milestone)
+  common.sh               helpers: log_*, pidfile/start_server/stop_server/wait_for_exit,
+                          the request, login, create, ingest and compare helpers both
+                          drivers share, qdbsh wrapper
   round-trip.sh           the v2 round trip driver
+  stress.sh               the stress driver, one cluster per call
   tools/e2etool/          Go: gen, tocsv and adbc;
                           gen writes the four body files, tocsv decodes a response to CSV,
                           adbc runs a statement through arrow-adbc's Flight SQL driver
@@ -358,6 +386,16 @@ golden datasets are not used: every row the harness needs is drawn by
 `e2etool gen` through the table fixture of the Go property tests, so
 schema variety (every column type, nulls, awkward strings) comes from
 the same generator in-process and over HTTP.
+
+## Decision log (2026-10-28)
+
+| Decision                                                                                         | Why                                                                                                                                                         | Rejected                                                                                                              |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| The request, login, create, ingest and compare helpers live in `common.sh`, the tool an argument | `common.sh` holds every shared helper, so a wire change is fixed once                                                                                       | a second library file; the helpers duplicated in the stress                                                           |
+| The stress ingests and reads CSV only, compared raw                                              | the formats are the round trip's question, and the raw compare needs no decoder                                                                             | every format under a slow client, which repeats the round trip                                                        |
+| One `stress.sh` call is one cluster, the Makefile starts each server, the step ends it           | the step drains the server it was given, so the start per cluster is the lifecycle; the round trip's ports are reused and the pidfiles and logs are its own | a URL form, which the step could not signal; separate ports, because the suites run one at a time and a clash is loud |
+| SIGTERM once the first byte has arrived; the refusal probe retries while both sides are alive    | a byte proves the stream is in flight, and a refusal from a dead server or after the read proves nothing; the port closes a moment after the signal         | a fixed sleep before the signal, a timing (ADR-0015)                                                                  |
+| The step waits for the exit with `wait_for_exit`; a long grace; a large row count                | a second SIGTERM kills a draining server; a grace that expires cuts the stream; a body inside the socket buffers finishes before the signal                 | a window argument on `stop_server`, which still sends the killing SIGTERM; the default grace and row count            |
 
 ## Decision log (2026-08-16)
 
