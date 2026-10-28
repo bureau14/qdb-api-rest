@@ -847,6 +847,7 @@ internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/query/        one query string to the engine its #sql prefix names (ADR-0018)
 internal/observe/      metrics, logging setup
+internal/notify/       systemd notify protocol: READY, STOPPING, the watchdog keepalive
 docs/                  this brief, ADRs, plans, the project log
 scripts/tests/setup/   shared qdb-test-setup (qdbd as a service; copied from qdb-nats-connector)
 tests/e2e/             e2e harness (make + shell + curl + one Go tool + one Java file, live qdbd; runs in Buildkite)

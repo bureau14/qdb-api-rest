@@ -31,3 +31,10 @@ Scope: the binary's entry point. Packages it wires together live under
   listener failure before the drain, so readiness answers 503 on both
   paths. Flight takes the process context itself, because its
   interceptors splice the values onto each call's own context.
+- The binary speaks systemd's notify protocol through `internal/notify`:
+  `READY=1` once `newListeners` has returned, which is once every port
+  is bound, `STOPPING=1` right after the process context's end and
+  before the drain, and `WATCHDOG=1` on the process context between the
+  two. Nothing is sent when `NOTIFY_SOCKET` is unset, and a failed send
+  is one warning. The HTTP servers bind in `newHTTPServer`, before
+  serving, so that `READY=1` is true when sent.

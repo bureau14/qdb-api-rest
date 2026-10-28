@@ -153,6 +153,9 @@ decisions are in `docs/adr/`.
 - The Flight SQL server lives in `internal/flightsql`. Open
   `internal/flightsql/AGENTS.md` before touching an interceptor, the
   Handshake or the listener.
+- The systemd notify protocol lives in `internal/notify`, and the
+  binary's entry point alone calls it. The package reads the variables
+  systemd sets and has no configuration key.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), and not a bare
   `Stats`. A bare `Stats` exists only as the type that composes every
