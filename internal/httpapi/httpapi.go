@@ -105,6 +105,9 @@ func registerPprofRoutes(mux *http.ServeMux, cfg config.Debug) {
 // keychain and the metrics from the request context, which the server
 // derives from the process context.
 func NewHandler(metrics config.Metrics, debug config.Debug) http.Handler {
+	// The switches are the two configuration blocks. Two bare bools were
+	// rejected, because the call site would not say which is which, and
+	// the whole config.Config, because the handler reads two keys.
 	mux := http.NewServeMux()
 	// The unauthenticated routes sit together, before the data routes.
 	registerStatusRoutes(mux)
