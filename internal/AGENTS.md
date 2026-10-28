@@ -155,7 +155,9 @@ decisions are in `docs/adr/`.
   Handshake or the listener.
 - The systemd notify protocol lives in `internal/notify`, and the
   binary's entry point alone calls it. The package reads the variables
-  systemd sets and has no configuration key.
+  systemd sets and has no configuration key for the socket or the
+  interval, because systemd sets `NOTIFY_SOCKET`, `WATCHDOG_USEC` and
+  `WATCHDOG_PID` and nothing else would set a key.
 - A statistics snapshot is named after what it describes, `FooStats`
   (`ClusterStats`, the binding's `SessionPoolStats`), and not a bare
   `Stats`. A bare `Stats` exists only as the type that composes every
