@@ -188,9 +188,11 @@ through a decoder of the same package.
 - `e2etool diff [--table NAME] GENERATED READ`: decodes both CSV files
   through the package's CSV decoder, typed as `tocsv` types a body, and
   matches the rows by `$timestamp`, which the generator draws strictly
-  ascending. It writes the two row counts, the missing timestamps and
-  the extra rows to stdout, each extra row marked unknown or duplicate,
-  and exits non-zero when it finds a difference. When the rows are
+  ascending. It writes the two row counts, the missing timestamps, the
+  extra rows, each marked unknown or duplicate, the changed cells, and
+  the read rows whose timestamp is below the previous row's to stdout,
+  and exits non-zero when it finds a difference. A changed cell carries
+  arrow's text for the generated and the read value. When the rows are
   equal after decoding, it says so, because the two files then differ
   in their bytes only. The timestamps are written as UTC RFC 3339 with
   nanoseconds. The report is read by a person and never compared.

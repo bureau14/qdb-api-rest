@@ -28,6 +28,20 @@ type extraRow struct {
 	duplicate bool
 }
 
+// changedCell is one cell of a matched row whose values differ. The
+// values are arrow's text for each cell.
+type changedCell struct {
+	ts        arrow.Timestamp
+	column    string
+	want, got string
+}
+
+// orderBreak is one read row whose timestamp is below the previous row's.
+type orderBreak struct {
+	row      int
+	prev, ts arrow.Timestamp
+}
+
 // rowDiff is what a read answered against the generated rows, keyed by
 // $timestamp. The zero value is no difference.
 type rowDiff struct {
@@ -39,11 +53,18 @@ type rowDiff struct {
 	// extra holds the read rows whose timestamp the generated rows lack
 	// or that repeat a timestamp, in read order.
 	extra []extraRow
+	// changed holds each cell that differs on a matched row.
+	changed []changedCell
+	// breaks holds each read row whose timestamp is below the previous
+	// row's. A repeated timestamp is not a break, because it is already
+	// an extra row, so each kind of change is reported once.
+	breaks []orderBreak
 }
 
 // empty reports whether the diff found nothing.
 func (d rowDiff) empty() bool {
-	return d.wantRows == d.gotRows && len(d.missing) == 0 && len(d.extra) == 0
+	return d.wantRows == d.gotRows && len(d.missing) == 0 && len(d.extra) == 0 &&
+		len(d.changed) == 0 && len(d.breaks) == 0
 }
 
 // diffRows compares a read with the generated rows. Both batches are in
@@ -58,10 +79,13 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 	//
 	//  1. Index the generated rows by timestamp. The fixture draws
 	//     $timestamp strictly ascending, so a timestamp names one row.
-	//  2. Walk the read rows.
+	//  2. Walk the read rows. A row whose timestamp is below the previous
+	//     row's is an order break, and the walk goes on to classify it.
 	//  3. A timestamp the generated rows lack is an extra row, and so is
 	//     one the walk has already matched, marked as a duplicate.
-	//  4. The generated timestamps the walk never matched are missing, in
+	//  4. A matched row compares each data column, and each cell that
+	//     differs is recorded with arrow's text for both values.
+	//  5. The generated timestamps the walk never matched are missing, in
 	//     generated order.
 	d := rowDiff{wantRows: int(want.NumRows()), gotRows: int(got.NumRows())}
 	wantTS := want.Column(0).(*array.Timestamp)
@@ -77,6 +101,9 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 	matched := make([]bool, d.wantRows)
 	for j := range d.gotRows {
 		ts := gotTS.Value(j)
+		if j > 0 && ts < gotTS.Value(j-1) {
+			d.breaks = append(d.breaks, orderBreak{row: j, prev: gotTS.Value(j - 1), ts: ts})
+		}
 
 		// 3. an unknown timestamp, or one already answered
 		i, ok := index[ts]
@@ -85,9 +112,20 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 			continue
 		}
 		matched[i] = true
+
+		// 4. The fixture draws no NaN, so exact equality holds for
+		// doubles, and SliceEqual treats two nulls as equal.
+		for c := 1; c < int(want.NumCols()); c++ {
+			w, g := want.Column(c), got.Column(c)
+			if !array.SliceEqual(w, int64(i), int64(i+1), g, int64(j), int64(j+1)) {
+				d.changed = append(d.changed, changedCell{
+					ts: ts, column: want.ColumnName(c), want: w.ValueStr(i), got: g.ValueStr(j),
+				})
+			}
+		}
 	}
 
-	// 4. the generated rows the read never answered
+	// 5. the generated rows the read never answered
 	for i, m := range matched {
 		if !m {
 			d.missing = append(d.missing, wantTS.Value(i))
@@ -97,7 +135,8 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 }
 
 // writeDiff writes the report as plain lines: the two row counts, then
-// one line per missing timestamp and extra row. An empty diff writes one
+// one line per missing timestamp, extra row, changed cell and order
+// break. An empty diff writes one
 // line saying that the rows are equal after decoding, which means the
 // two files differ in their bytes only.
 func writeDiff(w io.Writer, d rowDiff, unit arrow.TimeUnit) error {
@@ -124,6 +163,12 @@ func writeDiff(w io.Writer, d rowDiff, unit arrow.TimeUnit) error {
 			kind = "duplicate"
 		}
 		line("extra row %d: %s, %s", e.row, ts(e.ts), kind)
+	}
+	for _, c := range d.changed {
+		line("changed %s %s: generated %q, read %q", ts(c.ts), c.column, c.want, c.got)
+	}
+	for _, b := range d.breaks {
+		line("order break at read row %d: %s after %s", b.row, ts(b.ts), ts(b.prev))
 	}
 	return err
 }
