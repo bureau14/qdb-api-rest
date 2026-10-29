@@ -1,6 +1,6 @@
 # Diagnosable round trip -- plan
 
-Status: draft
+Status: approved
 
 ## Outcome
 
