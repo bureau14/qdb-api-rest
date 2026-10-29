@@ -50,33 +50,23 @@ In flight: none.
 
 Next:
 
-1. Make a failed round trip comparison diagnosable from CI, so the
-   Handoff item that starts "The round trip's DuckDB read-back" can be
-   investigated (owner, 2026-10-29). Three parts:
-   1. A keyed diff in the tool. `e2etool diff` decodes the generated
-      CSV and the read CSV through the server's CSV decoder and the
-      round trip schema, matches rows by `$timestamp`, which the
-      generator draws strictly ascending, and reports the row counts,
-      the missing timestamps, the extra timestamps (duplicates of a
-      generated row apart from unknown ones), the changed cells as
-      timestamp, column, generated and read, and any break in the
-      order. `compare_csv` in `tests/e2e/common.sh` calls it on a
-      mismatch in place of its diff of the first 4096 bytes, so the
-      stress gets it too.
-   2. The failing run's files as a CI artifact. On a failed round trip,
-      `scripts/cicd/40.test-e2e.sh` packs `tests/e2e/actual/round-trip`
-      into one archive, and the `bureau14/qdb-test-report` plugin in
-      `.buildkite/steps/_build.yml` uploads it through its
-      `job.artifacts` list to R2. quasardb's
-      `.buildkite/steps/_test.yml` uploads its query server logs the
-      same way. A green run writes no archive, and the plugin only
-      warns about a missing input.
-   3. The row count in the server's log. The M7 query log line carries
-      the row count of every query, so the dumped `rest.log` shows how
-      many rows DuckDB answered for the failing request.
-2. Investigate the flaky DuckDB read-back of the round trip with those
-   in place, the Handoff item that starts "The round trip's DuckDB
-   read-back" (owner, 2026-10-29).
+1. Query capture on both planes, as the M7 criteria say: every query
+   logs one line with the engine, the plane, the duration, the row
+   count and the outcome at `info`, and the statement text, truncated,
+   at `debug`. Nothing logs a query today (`internal/query/query.go`,
+   `Run`). The row count in the dumped `rest.log` shows how many rows
+   DuckDB answered for a failing request of the round trip, which item
+   2 needs (owner, 2026-10-29). The table reader does not go through
+   `query.Run`, and whether its reads count as queries is this unit's
+   question.
+2. Investigate the flaky DuckDB read-back of the round trip, the
+   Handoff item that starts "The round trip's DuckDB read-back", with
+   the keyed diff and the failing run's archive (`docs/e2e.md`, The
+   tool and In Buildkite) and the row count of item 1 (owner,
+   2026-10-29).
+3. The remaining M7 exit criteria, in the order of the criteria: the
+   series of Goal 9 on both planes with the pool, breaker and retry
+   state, then the stress's budget step (owner, 2026-10-29).
 
 Handoff to M7 and M8:
 
@@ -104,8 +94,9 @@ Handoff to M7 and M8:
   draws `$timestamp` strictly ascending), and overlapping scan ranges or
   borrowed string memory in qdb-duck's scan. It has not failed locally,
   on macOS or in the linux-aarch64 builder image against a Linux qdbd.
-  No run shows which rows differ, because `compare_csv` diffs only the
-  first 4096 bytes, so Next item 1 comes first (owner, 2026-10-29).
+  A failing comparison writes a keyed diff next to its body, and a
+  failed CI run uploads its files (`docs/e2e.md`, The tool and In
+  Buildkite).
 - Two flaky failures on the `#sql` path are observed in CI and not
   understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
@@ -139,6 +130,12 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-10-29 -- diagnosable-round-trip-plan.md deleted
+
+- Facts moved to `docs/e2e.md`, `tests/e2e/AGENTS.md`,
+  `scripts/cicd/AGENTS.md` and the comments of e2etool, `common.sh`,
+  `40.test-e2e.sh` and `_build.yml`.
 
 ## 2026-10-29 -- the DuckDB binding heap fault is reported upstream
 
