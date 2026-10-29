@@ -85,9 +85,13 @@ func allocNames(names []string) nameListAlloc {
 		blobSize += C.size_t(len(s)) + 1
 	}
 
-	arrMem := unsafe.Pointer(C.duckdb_malloc(C.size_t(n) * charSize))
+	// This local patch applies the fix from https://github.com/duckdb/duckdb-go-bindings/pull/121.
+	// The released binding leaves these pointer slots uninitialized, and Go's
+	// write barrier may read their old contents during a GC mark phase.
+	// Remove this patch when a released binding includes the upstream fix.
+	arrMem := unsafe.Pointer(C.calloc(C.size_t(n), charSize))
 	if arrMem == nil {
-		panic("duckdb-go-bindings: duckdb_malloc name array returned nil")
+		panic("duckdb-go-bindings: calloc name array returned nil")
 	}
 	arr := (**C.char)(arrMem)
 

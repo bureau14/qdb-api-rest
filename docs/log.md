@@ -46,27 +46,18 @@ entries, detaches it, and reads the cluster and one node, each compared
 against what it created; the Handoff item naming the table cores is
 deleted.
 
-In flight: none.
+In flight: the temporary vendored DuckDB bindings fix for the Go heap fault.
 
 Next:
 
-1. Priority, before any other item: the intermittent Go runtime fault
-   `found bad pointer in Go heap`, raised inside arrow-go's C data
-   import of a string column while the 2.0.0 binding converts a DuckDB
-   chunk, under `TestStatement` of `internal/flightsql` on the secure
-   cluster (Linux haswell, qdb-api-rest build 188, passed on retry).
-   The owner marked it the next unit on 2026-10-29, and `/rr-start-next`
-   picks it regardless of the milestone's criteria. It is the first
-   such fault on the 2.0.0 line, the Go side of the path is unchanged
-   across the bump, and `Instance.Query` consumes each batch
-   synchronously, so the suspects are the binding's C layer, the
-   library, and a Flight sink that retains a batch past the reader's
-   next `Next`. Reproduce locally in the CI image
-   (`bureau14/builder:rhel7`, Linux amd64, the image
-   `.buildkite/pipeline.py` applies to every Linux step) with the test
-   in a loop under the race detector and `GODEBUG=invalidptr=1`, and
-   bisect by copying each batch in `lent` once. The unit's commits are
-   the reproduction script, the finding, and the fix or the pin.
+1. Priority: verify the temporary vendored `allocNames` fix against the
+   affected Flight SQL test in CI. The upstream report is
+   [duckdb-go-bindings issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120),
+   and the fix is [PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121).
+   Keep the dependency pinned to v0.20000.0 while the PR is open, and
+   reapply the local patch after any interim `go mod vendor`. When a
+   released bindings version includes the fix, bump the dependency,
+   regenerate `vendor/` and remove the local patch.
 
 Handoff to M7 and M8:
 
@@ -108,6 +99,12 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-29 -- the DuckDB binding heap fault is reported upstream
+
+- The owner opened [issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120)
+  and [PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121).
+  Current state, Next, item 1 tracks the temporary vendored fix.
 
 ## 2026-10-29 -- the Go heap fault under the 2.0.0 binding is the next unit
 
