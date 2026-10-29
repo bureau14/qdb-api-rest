@@ -93,23 +93,19 @@ Handoff to M7 and M8:
   2026-10-26 as the M7 criteria say). Nothing logs query text today;
   the HTTP and Flight access lines carry no query.
 - The round trip's DuckDB read-back (`duckdb_back` in
-  `tests/e2e/round-trip.sh`) fails intermittently in CI with
-  `[FAIL] <table>.duckdb.<format>.<coding>: CSV differs from rows.csv
-(generated vs read)`. It failed on builds 164, 182, 183, 184, 185,
-  198 and 202, only on Linux agents (core2, haswell and aarch64), each
-  time on a different table, format and coding, and on build 202 on
-  both clusters. Build 164 predates the move to DuckDB 2.0.0, and build
-  202 carries the vendored allocNames patch. The failing read is
-  usually not the first DuckDB read of its table in the run, and the
-  other cluster passes the same seed, so the same query over the same
-  rows answers differently. On build 202 the access log shows each
-  failing body larger than the passing answer to the same query, and
-  the server logged no cut stream. `compare_csv` in
-  `tests/e2e/common.sh` diffs only the first 4096 bytes of a CSV of
-  10000 rows, so its diff prints nothing and no run shows which rows
-  differ. The round trip has not failed locally, on macOS or in the
-  linux-aarch64 builder image. The owner marked it the next
-  investigation (owner, 2026-10-29).
+  `tests/e2e/round-trip.sh`) fails intermittently in CI, because
+  `compare_csv` finds the CSV different from the generated rows, on
+  builds 164, 182 to 185, 198 and 202, Linux agents only. Found: the same query over the same rows answers differently,
+  because earlier DuckDB reads of the table in the run pass and the
+  other cluster passes the same seed, and on build 202 each failing
+  body is larger than the passing one with no cut stream logged. Ruled
+  out: DuckDB 2.0.0 (build 164 predates it), the allocNames heap fault
+  (build 202 carries the patch), ties in the `ORDER BY` (the generator
+  draws `$timestamp` strictly ascending), and overlapping scan ranges or
+  borrowed string memory in qdb-duck's scan. It has not failed locally,
+  on macOS or in the linux-aarch64 builder image against a Linux qdbd.
+  No run shows which rows differ, because `compare_csv` diffs only the
+  first 4096 bytes, so Next item 1 comes first (owner, 2026-10-29).
 - Two flaky failures on the `#sql` path are observed in CI and not
   understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
@@ -133,13 +129,14 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   refresh after expiry is the suspected path of the column-not-found
   failure.
 
-Blocked on: the bump of `duckdb-go-bindings` waits for the first
-release that carries
+Blocked on: the bump of `duckdb-go-bindings` waits for the next
+maintenance release.
 [PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121), the
 fix for
-[issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120).
-The bump removes the vendored patch with the re-vendor
-(`internal/AGENTS.md`, Building).
+[issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120),
+is merged into the binding's `master`, so that release carries it
+(owner, 2026-10-29). The bump removes the vendored patch with the
+re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
 
