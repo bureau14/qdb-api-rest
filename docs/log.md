@@ -48,7 +48,11 @@ deleted.
 
 In flight: none.
 
-Next: none.
+Next:
+
+1. Investigate the flaky DuckDB read-back of the round trip, the
+   Handoff item that starts "The round trip's DuckDB read-back" (owner,
+   2026-10-29).
 
 Handoff to M7 and M8:
 
@@ -64,6 +68,15 @@ Handoff to M7 and M8:
 - Query capture on both planes is M7's (owner, 2026-10-20, shaped
   2026-10-26 as the M7 criteria say). Nothing logs query text today;
   the HTTP and Flight access lines carry no query.
+- The round trip's DuckDB read-back (`duckdb_back` in
+  `tests/e2e/round-trip.sh`) fails intermittently in CI with
+  `[FAIL] <table>.duckdb.<format>.<coding>: CSV differs from rows.csv
+(generated vs read)`. It failed on builds 183 (linux-core2), 185 (linux-aarch64), 198
+  (linux-haswell) and 202 (linux-core2), each time on a different
+  table, format and coding, and on build 202 on both clusters. The diff that
+  `compare_csv` in `tests/e2e/common.sh` prints does not appear in the
+  job log, so no run shows which rows differ. The owner marked it the
+  next investigation (owner, 2026-10-29).
 - Two flaky failures on the `#sql` path are observed in CI and not
   understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
