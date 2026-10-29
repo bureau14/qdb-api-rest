@@ -181,10 +181,19 @@ decisions are in `docs/adr/`.
   upstream, then bump the version in `go.mod` (`go get ...@<commit>`, a
   commit on upstream `master`; a branch commit lives only as long as
   the work that needs it), and re-run `go mod tidy` and `go mod
-vendor`. Nothing under `vendor/` is written by hand. A branch commit
+vendor`. Nothing under `vendor/` is written by hand, except the one
+  binding file of the next bullet. A branch commit
   of a PR that is squash-merged does not reach `master`, so the work
   that vendored it re-points `go.mod` at the squash commit before it
   merges.
+- `vendor/github.com/duckdb/duckdb-go-bindings/alloc.go` carries one
+  hand-written patch (owner, 2026-10-29). `allocNames` takes its array
+  of name pointers from `calloc` instead of `duckdb_malloc`, which is
+  the fix of the binding's PR #121 for the Go heap fault of its issue
+  #120. A `go mod vendor` overwrites the file, so the commit that
+  re-vendors reapplies the patch. The binding stays at v0.20000.0 until
+  a release carries the fix, and the bump to that release removes the
+  patch.
 - grpc-go and protobuf are vendored at the versions arrow-go requires,
   and nothing pins them on their own. Bumping arrow-go is what moves
   them, through `go mod tidy` and `go mod vendor` (owner, 2026-10-20).
