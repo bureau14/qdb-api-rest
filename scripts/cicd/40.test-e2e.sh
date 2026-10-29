@@ -141,7 +141,9 @@ E2E_ARCHIVE="${BASE_DIR}/e2e-round-trip.tar.gz"
 # REST logs into E2E_ARCHIVE. gzip is the coding, because every agent
 # carries gunzip and none carries zstd. Neither a missing path nor a tar
 # failure ends the step, so the step still exits with the round trip's
-# failure.
+# failure. Uploading actual/round-trip as a directory was rejected,
+# because every green build would upload about a thousand files, and an
+# archive written by e2etool was rejected, because tar does the job.
 pack_e2e_failure_files() {
     local path paths=()
 
