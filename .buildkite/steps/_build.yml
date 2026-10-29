@@ -42,6 +42,11 @@ plugins:
       job:
         variant: {slug}
         junit_input_path: "test-reports/*.xml"
+        # 40.test-e2e.sh writes the archive only when the round trip
+        # fails, and the plugin only warns when it is missing.
+        artifacts:
+          - name: "e2e round trip files"
+            input_path: "e2e-round-trip.tar.gz"
 
 timeout_in_minutes: 60
 
