@@ -50,9 +50,33 @@ In flight: none.
 
 Next:
 
-1. Investigate the flaky DuckDB read-back of the round trip, the
-   Handoff item that starts "The round trip's DuckDB read-back" (owner,
-   2026-10-29).
+1. Make a failed round trip comparison diagnosable from CI, so the
+   Handoff item that starts "The round trip's DuckDB read-back" can be
+   investigated (owner, 2026-10-29). Three parts:
+   1. A keyed diff in the tool. `e2etool diff` decodes the generated
+      CSV and the read CSV through the server's CSV decoder and the
+      round trip schema, matches rows by `$timestamp`, which the
+      generator draws strictly ascending, and reports the row counts,
+      the missing timestamps, the extra timestamps (duplicates of a
+      generated row apart from unknown ones), the changed cells as
+      timestamp, column, generated and read, and any break in the
+      order. `compare_csv` in `tests/e2e/common.sh` calls it on a
+      mismatch in place of its diff of the first 4096 bytes, so the
+      stress gets it too.
+   2. The failing run's files as a CI artifact. On a failed round trip,
+      `scripts/cicd/40.test-e2e.sh` packs `tests/e2e/actual/round-trip`
+      into one archive, and the `bureau14/qdb-test-report` plugin in
+      `.buildkite/steps/_build.yml` uploads it through its
+      `job.artifacts` list to R2. quasardb's
+      `.buildkite/steps/_test.yml` uploads its query server logs the
+      same way. A green run writes no archive, and the plugin only
+      warns about a missing input.
+   3. The row count in the server's log. The M7 query log line carries
+      the row count of every query, so the dumped `rest.log` shows how
+      many rows DuckDB answered for the failing request.
+2. Investigate the flaky DuckDB read-back of the round trip with those
+   in place, the Handoff item that starts "The round trip's DuckDB
+   read-back" (owner, 2026-10-29).
 
 Handoff to M7 and M8:
 
@@ -71,12 +95,21 @@ Handoff to M7 and M8:
 - The round trip's DuckDB read-back (`duckdb_back` in
   `tests/e2e/round-trip.sh`) fails intermittently in CI with
   `[FAIL] <table>.duckdb.<format>.<coding>: CSV differs from rows.csv
-(generated vs read)`. It failed on builds 183 (linux-core2), 185 (linux-aarch64), 198
-  (linux-haswell) and 202 (linux-core2), each time on a different
-  table, format and coding, and on build 202 on both clusters. The diff that
-  `compare_csv` in `tests/e2e/common.sh` prints does not appear in the
-  job log, so no run shows which rows differ. The owner marked it the
-  next investigation (owner, 2026-10-29).
+(generated vs read)`. It failed on builds 164, 182, 183, 184, 185,
+  198 and 202, only on Linux agents (core2, haswell and aarch64), each
+  time on a different table, format and coding, and on build 202 on
+  both clusters. Build 164 predates the move to DuckDB 2.0.0, and build
+  202 carries the vendored allocNames patch. The failing read is
+  usually not the first DuckDB read of its table in the run, and the
+  other cluster passes the same seed, so the same query over the same
+  rows answers differently. On build 202 the access log shows each
+  failing body larger than the passing answer to the same query, and
+  the server logged no cut stream. `compare_csv` in
+  `tests/e2e/common.sh` diffs only the first 4096 bytes of a CSV of
+  10000 rows, so its diff prints nothing and no run shows which rows
+  differ. The round trip has not failed locally, on macOS or in the
+  linux-aarch64 builder image. The owner marked it the next
+  investigation (owner, 2026-10-29).
 - Two flaky failures on the `#sql` path are observed in CI and not
   understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
