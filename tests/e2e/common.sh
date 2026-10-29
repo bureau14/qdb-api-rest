@@ -320,7 +320,7 @@ compare_csv() {
             || { log_error "[FAIL] $name: e2etool tocsv failed"; return 1; }
         body="$out/$name.csv"
     fi
-    if ! cmp -s "$csv" /dev/null; then
+    if ! cmp -s "$csv" "$body"; then
         log_error "[FAIL] $name: CSV differs from $(basename "$csv") (generated vs read)"
         "$tool" diff --table "$table" "$csv" "$body" > "$out/$name.diff" 2>&1 || true
         head -n "$DIFF_HEAD" "$out/$name.diff" >&2
