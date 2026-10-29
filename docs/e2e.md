@@ -194,8 +194,8 @@ through a decoder of the same package.
   and exits non-zero when it finds a difference. A changed cell carries
   arrow's text for the generated and the read value. When the rows are
   equal after decoding, it says so, because the two files then differ
-  in their bytes only. The timestamps are written as UTC RFC 3339 with
-  nanoseconds. The report is read by a person and never compared.
+  in their bytes only. The timestamps are written in the CSV encoder's
+  layout, so a reported timestamp can be found in `rows.csv` with grep. The report is read by a person and never compared.
 - `e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]`:
   one statement through arrow-adbc's Go Flight SQL driver, the URI
   passed to the driver as it is, its result on stdout through the

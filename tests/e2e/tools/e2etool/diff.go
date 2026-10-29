@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -19,6 +18,11 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
+
+// timestampLayout is the CSV encoder's timestamp layout
+// (internal/encoding, timestampLayout), which the package does not
+// export.
+const timestampLayout = "2006-01-02T15:04:05.000000000Z"
 
 // extraRow is one read row that matches no generated row. duplicate says
 // that its timestamp names a generated row the read already answered.
@@ -140,9 +144,10 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 // line saying that the rows are equal after decoding, which means the
 // two files differ in their bytes only.
 func writeDiff(w io.Writer, d rowDiff, unit arrow.TimeUnit) error {
-	// The timestamps are written as UTC RFC 3339 with nanoseconds, so a
-	// line can be matched by eye against rows.csv.
-	ts := func(t arrow.Timestamp) string { return t.ToTime(unit).UTC().Format(time.RFC3339Nano) }
+	// The timestamps are written in the layout of the CSV encoder, UTC
+	// with nine fractional digits, so a reported timestamp can be found
+	// in rows.csv with grep.
+	ts := func(t arrow.Timestamp) string { return t.ToTime(unit).UTC().Format(timestampLayout) }
 	var err error
 	line := func(format string, args ...any) {
 		if err == nil {
