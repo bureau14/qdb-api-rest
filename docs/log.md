@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-29
+Last updated: 2026-10-30
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -54,17 +54,9 @@ Next:
    logs one line with the engine, the plane, the duration, the row
    count and the outcome at `info`, and the statement text, truncated,
    at `debug`. Nothing logs a query today (`internal/query/query.go`,
-   `Run`). The row count in the dumped `rest.log` shows how many rows
-   DuckDB answered for a failing request of the round trip, which item
-   2 needs (owner, 2026-10-29). The table reader does not go through
-   `query.Run`, and whether its reads count as queries is this unit's
-   question.
-2. Investigate the flaky DuckDB read-back of the round trip, the
-   Handoff item that starts "The round trip's DuckDB read-back", with
-   the keyed diff and the failing run's archive (`docs/e2e.md`, The
-   tool and In Buildkite) and the row count of item 1 (owner,
-   2026-10-29).
-3. The remaining M7 exit criteria, in the order of the criteria: the
+   `Run`). The table reader does not go through `query.Run`, and
+   whether its reads count as queries is this unit's question.
+2. The remaining M7 exit criteria, in the order of the criteria: the
    series of Goal 9 on both planes with the pool, breaker and retry
    state, then the stress's budget step (owner, 2026-10-29).
 
@@ -82,43 +74,20 @@ Handoff to M7 and M8:
 - Query capture on both planes is M7's (owner, 2026-10-20, shaped
   2026-10-26 as the M7 criteria say). Nothing logs query text today;
   the HTTP and Flight access lines carry no query.
-- The round trip's DuckDB read-back (`duckdb_back` in
-  `tests/e2e/round-trip.sh`) fails intermittently in CI, because
-  `compare_csv` finds the CSV different from the generated rows, on
-  builds 164, 182 to 185, 198 and 202, Linux agents only. Found: the same query over the same rows answers differently,
-  because earlier DuckDB reads of the table in the run pass and the
-  other cluster passes the same seed, and on build 202 each failing
-  body is larger than the passing one with no cut stream logged. Ruled
-  out: DuckDB 2.0.0 (build 164 predates it), the allocNames heap fault
-  (build 202 carries the patch), ties in the `ORDER BY` (the generator
-  draws `$timestamp` strictly ascending), and overlapping scan ranges or
-  borrowed string memory in qdb-duck's scan. It has not failed locally,
-  on macOS or in the linux-aarch64 builder image against a Linux qdbd.
-  A failing comparison writes a keyed diff next to its body, and a
-  failed CI run uploads its files (`docs/e2e.md`, The tool and In
-  Buildkite).
-- Two flaky failures on the `#sql` path are observed in CI and not
-  understood (owner, 2026-10-22). Both come from qdb-duck's own qdbd
+- A flaky failure on the `#sql` path is observed in CI and not
+  understood (owner, 2026-10-22). It comes from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
   sessions, and a retry of the same commit passes: `Catalog Error:
 Cannot get shards for table ...: The handle is invalid.` (the Go
-  tests on macOS, builds 158 and 165) and `Catalog Error: Failed to
-fetch data from Quasar: The timeseries does not contain this
-column.` (the e2e round trip on Windows, builds 164 and 165). The
-  REST pool discards a bad session and retries a read once; whether
-  qdb-duck does either is unknown. The owner now owns qdb-duck and
-  investigates there, and suspects qdb-duck's table cache TTL, which
-  upstream takes as a parameter (`docs/brief.md`, Risks, 5), for the
-  second failure (owner, 2026-10-26). No milestone claims the
-  investigation yet. The TTL is `duckdb.quasar.table_cache_ttl`, and a
-  disabled cache is not the experiment: with the cache off, the C
-  API's `qdb_ts_get_metadata` answers a multi-column table's first data
-  column with an empty name, on every call, so every `#sql` read of
-  such a table fails. With the cache on it answers the name. The owner
-  holds a standalone C API reproduction for a qdbd story, and both
-  test harnesses keep the default TTL (owner, 2026-10-28). The cache's
-  refresh after expiry is the suspected path of the column-not-found
-  failure.
+  tests on macOS, builds 158 and 165). The REST pool discards a bad
+  session and retries a read once, and whether qdb-duck does either is
+  unknown. The owner owns qdb-duck and investigates there. No milestone
+  claims the investigation. QDB-20070 (quasardb `e70c633a22`) fixed
+  the C API's table metadata, which pointed into a freed response
+  buffer, and it may also have fixed the flaky `Catalog Error: Failed
+to fetch data from Quasar: The timeseries does not contain this
+column.` of the round trip on Windows (builds 164 and 165) (owner,
+  2026-10-30).
 
 Blocked on: the bump of `duckdb-go-bindings` waits for the next
 maintenance release.
@@ -130,6 +99,11 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-10-30 -- the round trip's flaky DuckDB read-back is closed
+
+- Owner decision. The C API's table metadata pointed into a freed
+  response buffer, and QDB-20070 (quasardb `e70c633a22`) fixed it.
 
 ## 2026-10-29 -- diagnosable-round-trip-plan.md deleted
 
