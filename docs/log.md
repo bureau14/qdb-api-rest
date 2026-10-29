@@ -46,18 +46,9 @@ entries, detaches it, and reads the cluster and one node, each compared
 against what it created; the Handoff item naming the table cores is
 deleted.
 
-In flight: the temporary vendored DuckDB bindings fix for the Go heap fault.
+In flight: none.
 
-Next:
-
-1. Priority: verify the temporary vendored `allocNames` fix against the
-   affected Flight SQL test in CI. The upstream report is
-   [duckdb-go-bindings issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120),
-   and the fix is [PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121).
-   Keep the dependency pinned to v0.20000.0 while the PR is open, and
-   reapply the local patch after any interim `go mod vendor`. When a
-   released bindings version includes the fix, bump the dependency,
-   regenerate `vendor/` and remove the local patch.
+Next: none.
 
 Handoff to M7 and M8:
 
@@ -96,7 +87,13 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
   refresh after expiry is the suspected path of the column-not-found
   failure.
 
-Blocked on: none.
+Blocked on: the bump of `duckdb-go-bindings` waits for the first
+release that carries
+[PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121), the
+fix for
+[issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120).
+The bump removes the vendored patch with the re-vendor
+(`internal/AGENTS.md`, Building).
 
 ## Entries
 
