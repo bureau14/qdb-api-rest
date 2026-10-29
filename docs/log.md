@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -50,16 +50,23 @@ In flight: none.
 
 Next:
 
-1. Investigate the intermittent Go runtime fault `found bad pointer in
-Go heap`, raised inside arrow-go's C data import of a string column
-   while the 2.0.0 binding converts a DuckDB chunk, under the flightsql
-   statement test on the secure cluster (Linux haswell, qdb-api-rest
-   build 188, passed on retry). It is the first such fault on the 2.0.0
-   line, the Go side of the path is unchanged across the bump, and the
-   repository's code on it consumes each batch synchronously, so the
-   suspects are the binding's C layer and the library. First step: the
-   test in a loop under the race detector and `GODEBUG=invalidptr=1`
-   on Linux amd64.
+1. Priority, before any other item: the intermittent Go runtime fault
+   `found bad pointer in Go heap`, raised inside arrow-go's C data
+   import of a string column while the 2.0.0 binding converts a DuckDB
+   chunk, under `TestStatement` of `internal/flightsql` on the secure
+   cluster (Linux haswell, qdb-api-rest build 188, passed on retry).
+   The owner marked it the next unit on 2026-10-29, and `/rr-start-next`
+   picks it regardless of the milestone's criteria. It is the first
+   such fault on the 2.0.0 line, the Go side of the path is unchanged
+   across the bump, and `Instance.Query` consumes each batch
+   synchronously, so the suspects are the binding's C layer, the
+   library, and a Flight sink that retains a batch past the reader's
+   next `Next`. Reproduce locally in the CI image
+   (`bureau14/builder:rhel7`, Linux amd64, the image
+   `.buildkite/pipeline.py` applies to every Linux step) with the test
+   in a loop under the race detector and `GODEBUG=invalidptr=1`, and
+   bisect by copying each batch in `lent` once. The unit's commits are
+   the reproduction script, the finding, and the fix or the pin.
 
 Handoff to M7 and M8:
 
@@ -101,6 +108,11 @@ column.` (the e2e round trip on Windows, builds 164 and 165). The
 Blocked on: none.
 
 ## Entries
+
+## 2026-10-29 -- the Go heap fault under the 2.0.0 binding is the next unit
+
+- Owner decision. Current state, Next, item 1 is marked priority and
+  names the local reproduction in the CI image.
 
 ## 2026-10-28 -- duck-tuning-plan.md deleted
 
