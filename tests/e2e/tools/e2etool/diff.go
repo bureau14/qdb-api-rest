@@ -1,6 +1,7 @@
-// The diff subcommand explains a failed round trip comparison. It sits in
-// its own file beside main.go, so its property test sits beside the code
-// it tests.
+// The diff subcommand explains a failed round trip comparison. It matches
+// rows by $timestamp, because a line diff of the CSV text shifts every
+// line after one missing row. It sits in its own file beside main.go, so
+// its property test sits beside the code it tests.
 
 package main
 
@@ -33,7 +34,8 @@ type extraRow struct {
 }
 
 // changedCell is one cell of a matched row whose values differ. The
-// values are arrow's text for each cell.
+// values are arrow's text for each cell, because the report is read by a
+// person and never compared, so no encoder is needed.
 type changedCell struct {
 	ts        arrow.Timestamp
 	column    string
@@ -79,7 +81,8 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 	// The read is walked once, in its own order. A map from timestamp to
 	// generated row replaces a merge of the two sorted sides, because a
 	// merge assumes the read is ordered, and a disorder is one of the
-	// things the diff looks for.
+	// things the diff looks for. The function takes decoded batches and
+	// not files, so the property test needs no files and no cluster.
 	//
 	//  1. Index the generated rows by timestamp. The fixture draws
 	//     $timestamp strictly ascending, so a timestamp names one row.
@@ -101,7 +104,8 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 		index[wantTS.Value(i)] = i
 	}
 
-	// 2. the read rows, in read order
+	// 2. the read rows, in read order. A row below its predecessor is
+	// an order break and is still classified below.
 	matched := make([]bool, d.wantRows)
 	for j := range d.gotRows {
 		ts := gotTS.Value(j)
@@ -140,9 +144,8 @@ func diffRows(want, got arrow.RecordBatch) rowDiff {
 
 // writeDiff writes the report as plain lines: the two row counts, then
 // one line per missing timestamp, extra row, changed cell and order
-// break. An empty diff writes one
-// line saying that the rows are equal after decoding, which means the
-// two files differ in their bytes only.
+// break. An empty diff writes one line saying that the rows are equal
+// after decoding, which means the two files differ in their bytes only.
 func writeDiff(w io.Writer, d rowDiff, unit arrow.TimeUnit) error {
 	// The timestamps are written in the layout of the CSV encoder, UTC
 	// with nine fractional digits, so a reported timestamp can be found
