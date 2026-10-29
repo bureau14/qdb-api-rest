@@ -331,6 +331,13 @@ when it is green. The script follows qdb-nats-connector's
 where `qdb_rest` and `e2etool` are both built, and a dump of the two
 REST servers' and both qdbd clusters' logs on failure. `curl`, `jq` and
 `gunzip` are what that pipeline already requires on the same agents.
+On a failure the step also packs `tests/e2e/actual/round-trip` and both
+REST logs into `e2e-round-trip.tar.gz` at the repository root, and the
+`bureau14/qdb-test-report` plugin uploads it to R2 through its
+`job.artifacts` list, as quasardb uploads its query server logs. A
+green run writes no archive, and the plugin only warns about a missing
+input and records it in its `summary.json`. The plugin runs as a
+`post-command` hook, so it runs after a failed command too.
 
 ## Stress definition
 

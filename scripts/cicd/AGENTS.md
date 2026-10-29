@@ -25,7 +25,11 @@ in `.buildkite/` (see its `AGENTS.md`).
   the step would duplicate its start, trap and stop. On Windows it
   co-locates the qdb DLLs into `bin/`, where `qdb_rest` and `e2etool`
   are both built, because the agent's service context skips the
-  PATH-based DLL search.
+  PATH-based DLL search. On a failed round trip it packs the round trip's
+  files and both REST logs into `e2e-round-trip.tar.gz` at the
+  repository root, and the test-report plugin in
+  `.buildkite/steps/_build.yml` uploads it. Both files spell the
+  archive's name, and a change to one changes the other.
 - `20.build.sh` composes the same `-ldflags` as the root Makefile's
   build target (VERSION file, git SHA, build time, build mode, GOAMD64).
   The `-X` targets are `internal/build`'s variables. When one changes,

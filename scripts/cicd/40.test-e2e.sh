@@ -19,8 +19,9 @@
 # 4. On Windows, copy the qdb DLLs into bin/, because the service
 #    context skips the PATH-based DLL search and both cgo binaries the
 #    round trip runs live in bin/.
-# 5. Run make test-round-trip with the built binary, and dump the logs
-#    when it fails.
+# 5. Run make test-round-trip with the built binary. When it fails, dump
+#    the logs and pack the failing run's files into one archive, which
+#    the test-report plugin in .buildkite/steps/_build.yml uploads.
 
 set -euo pipefail
 
@@ -106,8 +107,8 @@ esac
 # logs are the harness's (tests/e2e/Makefile, REST_LOG and
 # REST_LOG_SECURE). The qdbd files sit at the repo root, because
 # start-services.sh resolves its paths against the directory it ran
-# from (scripts/tests/setup/config.sh). These files are not Buildkite
-# artifacts.
+# from (scripts/tests/setup/config.sh). The printed logs are tails, and
+# the archive pack_e2e_failure_files writes carries the REST logs whole.
 dump_e2e_failure_logs() {
     local cluster log_dir
 
@@ -132,11 +133,42 @@ dump_e2e_failure_logs() {
     done
 }
 
+# E2E_ARCHIVE is the failing run's archive. .buildkite/steps/_build.yml
+# names the same path in the test-report plugin's artifacts list.
+E2E_ARCHIVE="${BASE_DIR}/e2e-round-trip.tar.gz"
+
+# pack_e2e_failure_files packs the round trip's working files and both
+# REST logs into E2E_ARCHIVE. gzip is the coding, because every agent
+# carries gunzip and none carries zstd. Neither a missing path nor a tar
+# failure ends the step, so the step still exits with the round trip's
+# failure.
+pack_e2e_failure_files() {
+    local path paths=()
+
+    # A failure before the servers start leaves no logs and no actual/
+    # directory, so only the paths that exist are packed.
+    for path in actual/round-trip rest.log rest-secure.log; do
+        [[ -e "${BASE_DIR}/tests/e2e/${path}" ]] && paths+=("${path}")
+    done
+    if [[ ${#paths[@]} -eq 0 ]]; then
+        echo "test-e2e: nothing to pack"
+        return 0
+    fi
+
+    echo "+++ e2e failed -- packing ${paths[*]} into $(basename "${E2E_ARCHIVE}")"
+    tar -czf "${E2E_ARCHIVE}" -C "${BASE_DIR}/tests/e2e" "${paths[@]}" \
+        || echo "test-e2e: WARNING packing the failing run's files failed"
+}
+
 # 5. The round trip. The Makefile builds e2etool, starts one server per
 #    cluster from QDB_REST_BIN, runs the driver and stops the servers on
-#    exit (tests/e2e/Makefile, test-round-trip).
+#    exit (tests/e2e/Makefile, test-round-trip). The archive of an
+#    earlier build is removed first, because a reused checkout would
+#    otherwise upload it after a green run.
+rm -f "${E2E_ARCHIVE}"
 echo "+++ Run the v2 round trip"
 if ! "${MAKE_BIN}" -C "${BASE_DIR}/tests/e2e" test-round-trip QDB_REST_BIN="${BASE_DIR}/bin/qdb_rest${SUFFIX}"; then
     dump_e2e_failure_logs
+    pack_e2e_failure_files
     exit 1
 fi
