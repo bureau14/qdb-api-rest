@@ -1,11 +1,13 @@
 // Command e2etool is the Go tool of the v2 e2e round trip (docs/e2e.md,
 // "The tool"). gen writes the rows the round trip ingests in every body
-// format. tocsv turns a response into CSV. adbc runs one statement
-// through arrow-adbc's Flight SQL driver. The tool may import any
-// package of this repository, the cgo binding included (ADR-0014).
+// format. tocsv turns a response into CSV. diff explains a failed
+// comparison row by row. adbc runs one statement through arrow-adbc's
+// Flight SQL driver. The tool may import any package of this repository,
+// the cgo binding included (ADR-0014).
 //
 //	e2etool gen --rows N --seed S --out DIR [--table NAME]      write DIR/rows.{csv,ndjson,arrow,json}, print the row count
 //	e2etool tocsv --format csv|json|ndjson|arrow [--table NAME] stdin to CSV on stdout
+//	e2etool diff [--table NAME] GENERATED READ                  the keyed diff of a read against the generated rows on stdout
 //	e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]
 //	                                                            the statement's result on stdout
 package main
@@ -467,6 +469,7 @@ func main() {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, "usage: e2etool gen --rows N --seed S --out DIR [--table NAME]")
 		fmt.Fprintln(os.Stderr, "       e2etool tocsv --format csv|json|ndjson|arrow [--table NAME]")
+		fmt.Fprintln(os.Stderr, "       e2etool diff [--table NAME] GENERATED READ")
 		fmt.Fprintln(os.Stderr, "       e2etool adbc --uri grpc+tls://HOST:PORT --query Q [--username U --secret S] [--format arrow|csv]")
 		os.Exit(2)
 	}
@@ -479,6 +482,8 @@ func main() {
 		err = gen(os.Args[2:])
 	case "tocsv":
 		err = tocsv(os.Args[2:])
+	case "diff":
+		err = diff(os.Args[2:])
 	case "adbc":
 		err = adbc(os.Args[2:])
 	default:
