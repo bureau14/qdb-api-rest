@@ -27,7 +27,11 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   and writes every body file through the server's encoders, and every
   response that is not the reader's CSV is decoded through
   `tools/e2etool tocsv` and the server's decoders, so the tool formats
-  and parses no cell of its own. The mechanics are `docs/e2e.md`, "The
+  and parses no cell of its own. On a mismatch `compare_csv` keeps the keyed
+  report of `tools/e2etool diff` as `<name>.diff` next to the body. The
+  report prints cells through arrow's text, which is the one place the
+  tool writes a cell that does not come from an encoder, because nothing
+  compares the report. The mechanics are `docs/e2e.md`, "The
   v2 round trip". A wire change that breaks the round trip is fixed in
   the tool or the driver in the same commit, never by storing a
   response. Error rows are Go tests in `internal/httpapi`, never round
