@@ -146,11 +146,9 @@ func (a Auth) LogValue() slog.Value {
 		slog.Duration("refresh_ttl", a.RefreshTTL))
 }
 
-// Quasar tunes the qdb-duck sessions behind one DuckDB instance, which
-// the instance sets as qdb-duck's quasar_* globals before its attach. A
-// zero wait or size leaves the C API default. The TTL and the pool size
-// have no zero rule: 0 is a value for the TTL (no cache) and refused
-// for the pool size.
+// Quasar tunes the qdb-duck sessions behind one DuckDB instance, set as
+// qdb-duck's quasar_* globals before the attach. A zero wait or size
+// means the C API default.
 type Quasar struct {
 	MaxPoolSize          int           `yaml:"max_pool_size" help:"qdbd sessions qdb-duck pools behind one instance, 1 to 1024"`
 	TableCacheTTL        time.Duration `yaml:"table_cache_ttl" help:"how long a qdb-duck session caches a table's metadata; 0 disables the cache"`
@@ -160,11 +158,7 @@ type Quasar struct {
 	LoadBalancing        bool          `yaml:"load_balancing" help:"spread a qdb-duck session's requests across the nodes instead of pinning it to one"`
 }
 
-// DuckDB governs every DuckDB instance the server opens, one per user:
-// the memory and the worker threads one instance may take, where it may
-// spill and how much, and how many instances may be live at once. The
-// sizes are in bytes. Quasar holds what qdb-duck reads, apart from what
-// DuckDB reads.
+// DuckDB bounds the per-user DuckDB instances. Sizes are in bytes.
 type DuckDB struct {
 	MemoryLimit    int64  `yaml:"memory_limit" help:"memory one DuckDB instance may use, in bytes"`
 	Threads        int    `yaml:"threads" help:"worker threads of one DuckDB instance"`
