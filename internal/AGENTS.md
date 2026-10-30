@@ -226,8 +226,17 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   `observe.Err(err)`. Add a key to `observe` before using it in a second
   package.
 - Edges enrich and handlers do not: HTTP middleware and gRPC
-  interceptors tag the ctx (request id, user, session), and the code
-  below them only logs.
+  interceptors tag the ctx (request id, plane, user, session), and the
+  code below them only logs.
+- Each plane's edge tags its logger with `observe.PlaneAttr`,
+  `PlaneHTTP` or `PlaneFlight`, beside the request id, so every line
+  below names its plane. The plane, the engine and the outcome are
+  `observe`'s named types, and a line writes them through their
+  constructors only.
+- Every query writes one `query` line at info through `query.Logged`:
+  engine, plane, `duration_ms`, rows, outcome and the error. `query.Run`
+  writes it for both engines. `query.Logged` says what each outcome
+  means.
 - Any type that holds a secret implements `slog.LogValuer`, so it can
   never print one.
 - The metrics travel in the context like the logger:

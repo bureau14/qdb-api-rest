@@ -6,10 +6,13 @@ package query
 
 import (
 	"context"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 
+	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
@@ -57,28 +60,121 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
+// countRows answers the batches unchanged and adds the rows of every
+// batch the consumer pulled to n. A batch the consumer never pulled is
+// not counted.
+func countRows(b qdb.Batches, n *int64) qdb.Batches {
+	return func(yield func(arrow.RecordBatch, error) bool) {
+		for rec, err := range b {
+			// An error element carries no batch and passes through
+			// uncounted. A batch is counted before yield, because it is
+			// lent and may be released once yield returns.
+			if err == nil {
+				*n += rec.NumRows()
+			}
+			if !yield(rec, err) {
+				return
+			}
+		}
+	}
+}
+
+// Logged runs call with a sink that wraps sink, then writes one info
+// line with the engine, the duration, the rows the sink pulled, the
+// outcome and the attrs. It returns call's error unchanged. The line
+// inherits the plane, the request id and the user from the ctx's logger.
+// The outcome is ok when call succeeded, abandoned when the ctx ended,
+// cut when the sink failed, and error when call failed before the sink
+// ran.
+func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) error) error, sink func(qdb.Batches) error, attrs ...slog.Attr) error {
+	// The function wraps the sink to see the rows and the sink's own
+	// error, runs the call, and then names the outcome from what it saw:
+	//
+	//  1. wrap the sink so it counts rows and keeps its own error apart
+	//     from call's;
+	//  2. run the call and time it;
+	//  3. name the outcome;
+	//  4. write the line at info, whatever the outcome.
+
+	// 1. wrap the sink. Counting in each plane's sink was rejected, because
+	//    each plane would copy the counter. The sink's error is kept apart,
+	//    because a sink failure and an engine failure are different
+	//    outcomes.
+	var rows int64
+	var sinkErr error
+	wrapped := func(b qdb.Batches) error {
+		sinkErr = sink(countRows(b, &rows))
+		return sinkErr
+	}
+
+	// 2. run the call, timed in milliseconds as both access lines time a
+	//    request
+	start := time.Now()
+	err := call(wrapped)
+	elapsed := time.Since(start).Milliseconds()
+
+	// 3. name the outcome. Every error other than the sink's arrives
+	//    before the sink runs, so an error that is not the sink's is the
+	//    engine's refusal. The ctx check comes before the sink check,
+	//    because a caller who leaves mid-stream makes the sink fail too,
+	//    and no answer reached a caller who left, whichever failed.
+	var o observe.Outcome
+	switch {
+	case err == nil:
+		o = observe.OutcomeOK
+	case ctx.Err() != nil:
+		o = observe.OutcomeAbandoned
+	case sinkErr != nil:
+		o = observe.OutcomeCut
+	default:
+		o = observe.OutcomeError
+	}
+
+	// 4. write the line at info, with the error under KeyError, because
+	//    the brief puts every query line at info. Warn for a failed query
+	//    was rejected for that reason, and because the access line
+	//    already carries the status.
+	line := append([]slog.Attr{
+		observe.EngineAttr(e),
+		slog.Int64("duration_ms", elapsed),
+		slog.Int64(observe.KeyRows, rows),
+		observe.OutcomeAttr(o),
+		observe.Err(err),
+	}, attrs...)
+	observe.Logger(ctx).LogAttrs(ctx, slog.LevelInfo, "query", line...)
+	return err
+}
+
 // Run runs a query as the user and streams the result into the sink. A
 // query that starts with #sql runs on the user's DuckDB instance without
 // the prefix, and any other query runs on the native engine as written.
 // The cluster comes from the context. Every error other than the sink's
 // comes before the sink runs, so a caller can pick a status before
-// writing. The sink's error is returned unchanged.
+// writing. The sink's error is returned unchanged. Every run writes one
+// query line through Logged.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
 	// Both engines hand the sink the same lent Batches, so a caller reads a
 	// result one way. The native engine gets one read retry, because the
 	// query completes before the sink runs and nothing has been sent. A
-	// DuckDB query is never retried.
+	// DuckDB query is never retried. Logged names the engine split chose.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
 	if duck {
-		return c.Duck(ctx, u, text, sink)
+		return Logged(ctx, observe.EngineDuckDB, func(s func(qdb.Batches) error) error {
+			return c.Duck(ctx, u, text, s)
+		}, sink)
 	}
-	return c.Query(ctx, u, text, sink, qdb.WithReadRetry())
+	return Logged(ctx, observe.EngineNative, func(s func(qdb.Batches) error) error {
+		return c.Query(ctx, u, text, s, qdb.WithReadRetry())
+	}, sink)
 }
 
 // Describe answers the schema of a query's result without running it, on
 // the engine Run would pick. The errors are those of qdb.Cluster.Describe
-// and qdb.Cluster.DuckDescribe.
+// and qdb.Cluster.DuckDescribe. It writes no query line, because it runs
+// nothing: the Flight server's DoGet runs the query and writes the line,
+// and a line per describe would count a client's describe and run as two
+// queries.
 func Describe(ctx context.Context, u qdb.User, q string) (*arrow.Schema, error) {
 	// The native describe takes the read retry, as Run's native query
 	// does.
