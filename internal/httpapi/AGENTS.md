@@ -76,7 +76,9 @@ This file, Handlers, holds the table reader's.
   only when named. Without `?columns` it answers every column, the two
   first. `?start=&end=` are RFC 3339, both or neither, and the range is
   `[start, end)`, with the pair judged by the binding. `Accept` is
-  negotiated as the query's. The read runs inside the sink. The status
+  negotiated as the query's. The read goes through `query.Logged`,
+  which writes the query line with engine `bulk reader`, the table and
+  the range. The read runs inside the sink. The status
   is decided before the sink runs: 404 on `qdb.IsTableNotFound`, and 400
   for a bad range, an unknown column and anything else the cluster
   answered, through `writeClusterError`. The sink sets `Content-Type`

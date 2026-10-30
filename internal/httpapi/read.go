@@ -10,6 +10,7 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/query"
 )
 
 // parseTime reads one URL parameter as RFC 3339 with any fraction, which
@@ -46,6 +47,21 @@ func readOptions(params url.Values) (qdb.ReadOptions, error) {
 	return o, nil
 }
 
+// readAttrs are the attributes of a table read's query line: the table,
+// and the start and the end that the read sets, in RFC 3339 and UTC as
+// the parameters take them. A read without a range has no bounds to name,
+// so the line carries neither.
+func readAttrs(name string, o qdb.ReadOptions) []slog.Attr {
+	attrs := []slog.Attr{slog.String(observe.KeyTable, name)}
+	if !o.Start.IsZero() {
+		attrs = append(attrs, slog.String(observe.KeyStart, o.Start.UTC().Format(time.RFC3339Nano)))
+	}
+	if !o.End.IsZero() {
+		attrs = append(attrs, slog.String(observe.KeyEnd, o.End.UTC().Format(time.RFC3339Nano)))
+	}
+	return attrs
+}
+
 // handleReadTable streams the table the path names, batch by batch, in
 // the negotiated format, as the bearer's user.
 func handleReadTable(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +72,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	//
 	//  1. read the parameters. A bad time is the caller's 400, answered
 	//     here;
-	//  2. read the table, with the encoder streaming inside the sink;
+	//  2. read the table through query.Logged, with the encoder streaming
+	//     inside the sink;
 	//  3. a stream failure is 500 while no byte has gone out. After the
 	//     first byte the stream is cut and the failure is only logged;
 	//  4. a call failure arrives before the sink runs. An unknown table is
@@ -70,14 +87,20 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	}
 	enc := negotiate(r.Header.Get("Accept"))
 	cw := &countingWriter{w: w}
-	// 2. the read. The sink keeps its own error and also returns it, so
-	// the breaker and the pool hear of a fetch that found the cluster gone.
+	// 2. the read, through query.Logged, which writes the query line with
+	//    engine bulk reader, the table and the range, because a table read
+	//    is a data read like a query. The sink keeps its own error and also
+	//    returns it, so the breaker and the pool hear of a fetch that found
+	//    the cluster gone.
+	name := r.PathValue("name")
 	var streamErr error
-	err = qdb.ClusterFrom(ctx).Read(ctx, caller(r), r.PathValue("name"), o, func(batches qdb.Batches) error {
+	err = query.Logged(ctx, observe.EngineBulkReader, func(sink func(qdb.Batches) error) error {
+		return qdb.ClusterFrom(ctx).Read(ctx, caller(r), name, o, sink)
+	}, func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
 		streamErr = enc.EncodeStream(ctx, cw, batches)
 		return streamErr
-	})
+	}, readAttrs(name, o)...)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:
