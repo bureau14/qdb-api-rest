@@ -221,7 +221,8 @@ func Default() Config {
 		// binary and then kills it waits longer than this before the kill.
 		Listen: Listen{HTTPS: ":40443", Flight: ":40493", ShutdownGrace: 8 * time.Second},
 		// The kibibyte of statement is not measured. A statement of that
-		// size is several lines of SQL.
+		// size is several lines of SQL. The length is a key rather than a
+		// constant in the code, so an operator tunes it without a build.
 		Log: Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",
