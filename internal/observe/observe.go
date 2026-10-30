@@ -43,6 +43,10 @@ func newHandler(format string, opts *slog.HandlerOptions, w io.Writer) (slog.Han
 // truncateStatement keeps at most max bytes of a statement and ends a
 // truncated one in "...". A max of 0 keeps the statement whole.
 func truncateStatement(s string, max int) string {
+	// The operation is a truncation. "Trim" was rejected as its name,
+	// because strings.Trim removes a set of characters from both ends. The
+	// whole length is not written into the text, because KeyStatementBytes
+	// carries it as a number.
 	if max == 0 || len(s) <= max {
 		return s
 	}
