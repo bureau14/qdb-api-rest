@@ -12,12 +12,13 @@ import (
 )
 
 // accessContext tags the call's context with a request id minted for
-// the call, so its log lines join on the id as the HTTP lines do.
+// the call and with the plane, so its log lines join on the id and name
+// the plane as the HTTP lines do.
 func (s *Server) accessContext(ctx context.Context) context.Context {
 	// The id is minted on every call and never read from the metadata.
 	// Honoring an inbound id was rejected, because it would move httpapi's
 	// validation of an id into observe.
-	return observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String())
+	return observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String(), observe.PlaneAttr(observe.PlaneFlight))
 }
 
 // accessLine writes one line per RPC with the method, the gRPC code and

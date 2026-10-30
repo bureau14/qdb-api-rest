@@ -31,7 +31,8 @@ attributes" need an explicit carrier.
 - Enrichment happens once per request at the edge. The HTTP middleware
   tags the ctx with `request_id` (the inbound `X-Request-Id` when
   well-formed, minted otherwise, always echoed) and with `plane`, and
-  writes one access line. Auth adds user and session the same way, and handlers never
+  writes one access line. The Flight interceptor does the same, with a
+  `request_id` minted per call. Auth adds user and session the same way, and handlers never
   re-tag.
 - Shared attribute names and `observe.Err` live in `internal/observe`,
   and any type holding a secret implements `slog.LogValuer`.
