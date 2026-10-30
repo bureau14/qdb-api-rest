@@ -161,9 +161,10 @@ This file, Handlers, holds the table reader's.
   access line counts bytes on the wire. The request side is
   `newDecompressor`, the inverse of `newCompressor`, with zstd at
   concurrency one so a request spawns no goroutines.
-- The edge enriches and handlers do not. `requireBearer` places the
-  claims on the ctx and tags the logger with `observe.KeyUser` (the
-  username as the token carries it, empty for anonymous) and
+- The edge enriches and handlers do not. `withRequestLogging` tags the
+  logger with the request id and `observe.PlaneHTTP`. `requireBearer`
+  places the claims on the ctx and tags the logger with `observe.KeyUser`
+  (the username as the token carries it, empty for anonymous) and
   `observe.KeySession` (the `sid` claim).
 
 ## Tests

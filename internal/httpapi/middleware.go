@@ -66,15 +66,14 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 }
 
 // withRequestLogging puts the request id on the request context and on
-// the response, and logs one access line when the handler returns. The
-// id is the only attribute it adds to the context, and log lines join
-// on it.
+// the response, tags the context with the plane, and logs one access line
+// when the handler returns. Log lines join on the id.
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		id := requestID(r)
 		w.Header().Set(requestIDHeader, id)
-		ctx := observe.WithAttrs(r.Context(), observe.KeyRequestID, id)
+		ctx := observe.WithAttrs(r.Context(), observe.KeyRequestID, id, observe.PlaneAttr(observe.PlaneHTTP))
 		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r.WithContext(ctx))
 		observe.Logger(ctx).InfoContext(ctx, "request",
