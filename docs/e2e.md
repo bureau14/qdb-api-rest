@@ -136,6 +136,11 @@ is timed.
    presence only, never a value). The `process_` series are not
    asserted, because the client reads procfs for them and FreeBSD does
    not mount it. A later unit's series joins the list with its commit.
+10. The query lines. The driver greps each server's log for one query
+    line per engine and plane the round trip drove: native, DuckDB and
+    the bulk reader over HTTP, native and DuckDB over Flight
+    (`QUERY_LINES` in the driver). A server given as a URL has no log
+    and the step is skipped for it.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format

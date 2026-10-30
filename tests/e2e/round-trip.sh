@@ -302,6 +302,38 @@ check_log() {
     log_info "[OK] $name: the plain-text warning is $want in the log"
 }
 
+# QUERY_LINES: one plane and engine pair, as plane:engine, per engine and
+# plane the round trip drives. The server writes one query line per query
+# and per table read, and the JSON handler writes the logger's attrs
+# (the plane) before the line's own (the engine), as "plane":"http" and
+# "engine":"bulk reader". A change to the line's message or a key changes
+# this list.
+QUERY_LINES=("http:native" "http:duckdb" "http:bulk reader" "flight:native" "flight:duckdb")
+
+# check_query_lines <name> <log_file>: every pair of QUERY_LINES is on one
+# line of the server's log, by two chained fixed-string greps, plane first
+# and then engine. An empty log file path skips the step with a line
+# saying so, as check_log skips it, and fixed strings are used for
+# check_log's reason.
+check_query_lines() {
+    local name="$1" log_file="$2" pair plane engine failed=0
+    if [[ -z "$log_file" ]]; then
+        log_info "$name: no log file, the query line step is skipped"
+        return 0
+    fi
+    # One grep pair per entry, each a [FAIL] line naming the pair, so one
+    # run reports every missing line.
+    for pair in "${QUERY_LINES[@]}"; do
+        plane="${pair%%:*}"; engine="${pair#*:}"
+        if ! grep -F "\"plane\":\"$plane\"" "$log_file" | grep -qF "\"engine\":\"$engine\""; then
+            log_error "[FAIL] $name: no query line with plane $plane and engine $engine in $log_file"
+            failed=1
+        fi
+    done
+    (( failed == 0 )) || return 1
+    log_info "[OK] $name: a query line per plane and engine is in the log"
+}
+
 # METRIC_SERIES: the series every platform exposes, asserted by name on
 # each server's scrape: the build-info series this binary names, under
 # the default metrics.namespace because the Makefile passes no metrics
@@ -399,11 +431,13 @@ main() {
     # The insecure server also serves HTTP, so an unconditional warning
     # fails here.
     check_log insecure "$INSECURE_LOG" absent || failed=$((failed + 1))
+    check_query_lines insecure "$INSECURE_LOG" || failed=$((failed + 1))
     run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
     # The secure server serves HTTP on a cluster with a public key, which
     # is the one case the warning is for.
     check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
-    (( failed == 0 )) || die "v2 round trip: $failed of 4 checks FAILED, two clusters and two logs (seed=$SEED)"
+    check_query_lines secure "$SECURE_LOG" || failed=$((failed + 1))
+    (( failed == 0 )) || die "v2 round trip: $failed of 6 checks FAILED, two clusters, two warning steps and two query line steps (seed=$SEED)"
     log_info "v2 round trip: both clusters passed (seed=$SEED)"
 }
 

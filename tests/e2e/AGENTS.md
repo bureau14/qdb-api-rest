@@ -49,6 +49,10 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   (`PLAINTEXT_WARNING`) and in `cmd/qdb_rest/main.go`, and a change to
   one changes the other. A server given as a URL has no log, and the
   step is skipped for it.
+- The driver greps each server's log for one query line per plane and
+  engine the round trip drives (`QUERY_LINES` in `round-trip.sh`). A
+  unit that changes the line's message or a key changes the list in the
+  same commit.
 - The driver scrapes `/metrics` on each server after the format loop
   and greps each name of `METRIC_SERIES` at the start of a line. A
   unit that adds a series adds its name there in the same commit, and
