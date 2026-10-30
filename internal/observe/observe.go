@@ -64,7 +64,76 @@ const (
 	KeyUser = "user"
 	// KeySession is the REST session id claim.
 	KeySession = "session"
+	KeyPlane   = "plane"
+	KeyEngine  = "engine"
+	KeyOutcome = "outcome"
+	KeyRows    = "rows"
+	// KeyStatement is a query's text.
+	KeyStatement = "statement"
+	// KeyStatementBytes is the length of the whole statement.
+	KeyStatementBytes = "statement_bytes"
+	KeyTable          = "table"
+	KeyStart          = "start"
+	KeyEnd            = "end"
 )
+
+// The plane, the engine and the outcome each take one of a closed set of
+// values. Each is a named string type with typed constants and one
+// attribute constructor, so a call site cannot write a free string under
+// the key, and the compiler refuses one vocabulary where another is
+// expected. Untyped string constants beside the keys were rejected,
+// because a free string would still compile. A line struct was rejected
+// too: slog reads no struct tags, and a LogValuer would nest the
+// attributes under one group key and change every grep of the log.
+
+// Plane names the listener a request came in on. The edge of each plane
+// tags the request's logger with it, so every line of the request names
+// its plane, the access line included. A plane argument on query.Run was
+// rejected, because it would change a signature both planes call, and
+// the table reader would need it as well.
+type Plane string
+
+const (
+	// PlaneHTTP is the HTTP and the HTTPS listener, which serve one mux.
+	PlaneHTTP   Plane = "http"
+	PlaneFlight Plane = "flight"
+)
+
+// PlaneAttr is the plane under KeyPlane.
+func PlaneAttr(p Plane) slog.Attr { return slog.String(KeyPlane, string(p)) }
+
+// Engine names what ran a query. EngineBulkReader is the table reader,
+// which reads a whole table through Cluster.Read and runs no statement.
+// It has a word of its own because a table read is a data read like a
+// query, and the line must tell the two apart. Logging a table read
+// under EngineNative was rejected for that reason.
+type Engine string
+
+const (
+	EngineNative     Engine = "native"
+	EngineDuckDB     Engine = "duckdb"
+	EngineBulkReader Engine = "bulk reader"
+)
+
+// EngineAttr is the engine under KeyEngine.
+func EngineAttr(e Engine) slog.Attr { return slog.String(KeyEngine, string(e)) }
+
+// Outcome is how a query ended, one value per case a call can tell apart
+// without the plane's status, so a dashboard counts failures by kind
+// without parsing messages. query.Logged says when each applies. A bare
+// ok or error was rejected, because a cut stream and an engine's refusal
+// would look alike.
+type Outcome string
+
+const (
+	OutcomeOK        Outcome = "ok"
+	OutcomeError     Outcome = "error"
+	OutcomeCut       Outcome = "cut"
+	OutcomeAbandoned Outcome = "abandoned"
+)
+
+// OutcomeAttr is the outcome under KeyOutcome.
+func OutcomeAttr(o Outcome) slog.Attr { return slog.String(KeyOutcome, string(o)) }
 
 // Err renders the error under KeyError. A nil error yields an empty
 // attribute, which handlers omit.
