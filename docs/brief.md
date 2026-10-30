@@ -785,7 +785,7 @@ defaults by test.
 ### Observability and logging
 
 - Structured logging goes through the stdlib `slog`, with the JSON
-  handler by default and the pretty console handler for interactive use.
+  handler by default and the text handler (key=value) for interactive use.
   The application logs to stdout and does not manage its own log files.
   journald and systemd own capture on Linux, and the container runtime
   owns it in Docker and k8s.

@@ -34,7 +34,7 @@ func newHandler(format string, opts *slog.HandlerOptions, w io.Writer) (slog.Han
 	switch format {
 	case "json":
 		return slog.NewJSONHandler(w, opts), nil
-	case "console":
+	case "text":
 		return slog.NewTextHandler(w, opts), nil
 	}
 	return nil, fmt.Errorf("unknown log format %q", format)

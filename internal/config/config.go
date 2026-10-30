@@ -58,7 +58,7 @@ type TLS struct {
 // a debug line keeps.
 type Log struct {
 	Level             string `yaml:"level" help:"debug | info | warn | error"`
-	Format            string `yaml:"format" help:"json | console"`
+	Format            string `yaml:"format" help:"json | text"`
 	StatementMaxBytes int    `yaml:"statement_max_bytes" help:"bytes of a query's statement a debug line keeps; 0 keeps it whole"`
 }
 
@@ -273,7 +273,7 @@ func Default() Config {
 // against it, and the tests draw from it.
 var vocab = map[string][]string{
 	"log.level":           {"debug", "info", "warn", "error"},
-	"log.format":          {"json", "console"},
+	"log.format":          {"json", "text"},
 	"cluster.compression": {"none", "balanced"},
 	"cluster.encryption":  {"none", "aes"},
 }

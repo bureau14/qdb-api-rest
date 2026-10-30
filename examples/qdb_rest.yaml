@@ -35,7 +35,7 @@ log:
   # debug | info | warn | error
   level: "info"
   # json (one object per line, for journald and container runtimes) |
-  # console (human-readable, for interactive use)
+  # text (key=value, for interactive use)
   format: "json"
   # Bytes of a query's statement that a debug line keeps. Longer statements
   # are truncated and end in "...". 0 keeps every statement whole.
