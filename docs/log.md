@@ -50,13 +50,7 @@ In flight: none.
 
 Next:
 
-1. Query capture on both planes, as the M7 criteria say: every query
-   logs one line with the engine, the plane, the duration, the row
-   count and the outcome at `info`, and the statement text, truncated,
-   at `debug`. Nothing logs a query today (`internal/query/query.go`,
-   `Run`). The table reader does not go through `query.Run`, and
-   whether its reads count as queries is this unit's question.
-2. The remaining M7 exit criteria, in the order of the criteria: the
+1. The remaining M7 exit criteria, in the order of the criteria: the
    series of Goal 9 on both planes with the pool, breaker and retry
    state, then the stress's budget step (owner, 2026-10-29).
 
@@ -71,9 +65,6 @@ Handoff to M7 and M8:
 - `Cluster.Tables` and `Cluster.TableSchemas` (`internal/AGENTS.md`,
   Code) are the cores `GET /api/v2/tables` and
   `GET /api/v2/tables/{name}` wrap. M8's.
-- Query capture on both planes is M7's (owner, 2026-10-20, shaped
-  2026-10-26 as the M7 criteria say). Nothing logs query text today;
-  the HTTP and Flight access lines carry no query.
 - A flaky failure on the `#sql` path is observed in CI and not
   understood (owner, 2026-10-22). It comes from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
@@ -99,6 +90,14 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-10-30 -- query-capture-plan.md deleted
+
+- Facts moved to `internal/AGENTS.md`, `internal/httpapi/AGENTS.md`,
+  `internal/flightsql/AGENTS.md`, ADR-0002, `docs/e2e.md`,
+  `tests/e2e/AGENTS.md` and the comments of `internal/query`,
+  `internal/observe`, `internal/config`, `internal/httpapi` and
+  `round-trip.sh`.
 
 ## 2026-10-30 -- the round trip's flaky DuckDB read-back is closed
 
