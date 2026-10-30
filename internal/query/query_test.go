@@ -108,15 +108,14 @@ func drain(b qdb.Batches) error {
 // errSink is the error of a sink that fails on purpose.
 var errSink = errors.New("sink failed")
 
-// captured is what one call wrote: its statement line, nil when it wrote
-// none, and its query line.
+// captured is the statement line (nil if none) and the query line of one
+// call.
 type captured struct {
 	statement, query map[string]any
 }
 
-// capture runs call with an empty log and answers its statement line and
-// its query line. Each must appear at most once, the query line exactly
-// once, and a statement line must come before the query line.
+// capture runs call on an empty log and returns its lines. It fails
+// unless there is one query line, preceded by at most one statement line.
 func capture(t *rapid.T, log *bytes.Buffer, call func()) captured {
 	t.Helper()
 	log.Reset()
@@ -166,33 +165,17 @@ func checkStatement(t *rapid.T, c captured, text string) {
 	}
 }
 
-// TestQueryLines: on each cluster, every call writes one query line with
-// its engine, its outcome and the rows its sink pulled. A native query, a
-// #sql query and a table read are ok. A refused query is error, a sink
-// that fails is cut, and a caller that leaves is abandoned. A query
-// writes its statement line at debug first, and a table read writes the
-// table and its range instead. The test is where countRows is proven,
-// over real rows and an early stop. The handler and the Flight server
-// only pass their calls through Logged and Run, and the e2e round trip
-// covers that glue on both planes.
+// TestQueryLines: every call writes one query line with its engine,
+// outcome and rows pulled. It is where countRows is proven, and the e2e
+// round trip covers the call sites on both planes.
 func TestQueryLines(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
-		// The ctx carries a JSON logger at debug into a buffer, so the
-		// statement line is written, and the fixture's cluster.
+		// At debug, so the statement line is written.
 		var log bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		ctx := qdb.WithCluster(observe.WithLogger(context.Background(), logger), f.Cluster)
 
 		rapid.Check(t, func(rt *rapid.T) {
-			// Each iteration draws one table and runs six calls against it
-			// in order, each checked against the lines it wrote:
-			//
-			//  1. a native query reads the whole table;
-			//  2. a #sql query reads it on DuckDB;
-			//  3. a table read through Logged reads it;
-			//  4. the engine refuses a query of an unknown table;
-			//  5. a sink fails after one batch;
-			//  6. a sink's caller leaves.
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, f.Cluster, f.User, tbl)
 
@@ -205,8 +188,7 @@ func TestQueryLines(t *testing.T) {
 			checkQuery(rt, c, observe.EngineNative, observe.OutcomeOK, tbl.Rows())
 			checkStatement(rt, c, tbl.Select())
 
-			// 2. a #sql query reads it on DuckDB, and the statement line
-			//    carries the text without the prefix
+			// 2. a #sql query, logged without the prefix
 			c = capture(rt, &log, func() {
 				if err := Run(ctx, f.User, "#sql "+tbl.SelectSQL(), drain); err != nil {
 					rt.Fatalf("duckdb: %v", err)
@@ -215,8 +197,7 @@ func TestQueryLines(t *testing.T) {
 			checkQuery(rt, c, observe.EngineDuckDB, observe.OutcomeOK, tbl.Rows())
 			checkStatement(rt, c, tbl.SelectSQL())
 
-			// 3. a table read under the table's span writes the attrs it is
-			//    given and no statement line
+			// 3. a table read: its attrs and no statement line
 			start, end := tbl.Range()
 			c = capture(rt, &log, func() {
 				err := Logged(ctx, observe.EngineBulkReader, func(sink func(qdb.Batches) error) error {
@@ -234,8 +215,7 @@ func TestQueryLines(t *testing.T) {
 				rt.Fatalf("table read lines %v, want no statement and the table and its range", c)
 			}
 
-			// 4. the engine refuses a query of an unknown table before the
-			//    sink runs
+			// 4. an unknown table
 			c = capture(rt, &log, func() {
 				if err := Run(ctx, f.User, "SELECT * FROM "+tbl.Name+"_missing", drain); err == nil {
 					rt.Fatalf("a query of an unknown table succeeded")
@@ -246,8 +226,7 @@ func TestQueryLines(t *testing.T) {
 				rt.Fatalf("refused query line %v, want the error", c.query)
 			}
 
-			// 5. a sink that fails after one batch counts that batch alone,
-			//    because countRows counts what the sink pulled
+			// 5. a sink that fails after one batch counts that batch alone
 			var pulled int
 			c = capture(rt, &log, func() {
 				err := Run(ctx, f.User, tbl.Select(), func(b qdb.Batches) error {
@@ -266,8 +245,7 @@ func TestQueryLines(t *testing.T) {
 			})
 			checkQuery(rt, c, observe.EngineNative, observe.OutcomeCut, pulled)
 
-			// 6. a sink whose caller leaves returns the ctx's error, and the
-			//    ended ctx makes the outcome abandoned
+			// 6. the caller leaves
 			left, leave := context.WithCancel(ctx)
 			defer leave()
 			c = capture(rt, &log, func() {

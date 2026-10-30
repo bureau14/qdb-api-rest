@@ -60,15 +60,12 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
-// countRows answers the batches unchanged and adds the rows of every
-// batch the consumer pulled to n. A batch the consumer never pulled is
-// not counted.
+// countRows passes the batches through and adds the rows of each batch
+// the consumer pulls to n.
 func countRows(b qdb.Batches, n *int64) qdb.Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		for rec, err := range b {
-			// An error element carries no batch and passes through
-			// uncounted. A batch is counted before yield, because it is
-			// lent and may be released once yield returns.
+			// Count before yield, because the batch is released after it.
 			if err == nil {
 				*n += rec.NumRows()
 			}
@@ -79,27 +76,12 @@ func countRows(b qdb.Batches, n *int64) qdb.Batches {
 	}
 }
 
-// Logged runs call with a sink that wraps sink, then writes one info
-// line with the engine, the duration, the rows the sink pulled, the
-// outcome and the attrs. It returns call's error unchanged. The line
-// inherits the plane, the request id and the user from the ctx's logger.
-// The outcome is ok when call succeeded, abandoned when the ctx ended,
-// cut when the sink failed, and error when call failed before the sink
-// ran.
+// Logged runs call with a wrapped sink and writes one info line with the
+// engine, duration, rows pulled, outcome and attrs. It returns call's
+// error unchanged. The outcome is ok on success, abandoned when the ctx
+// ended, cut when the sink failed, and error otherwise.
 func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) error) error, sink func(qdb.Batches) error, attrs ...slog.Attr) error {
-	// The function wraps the sink to see the rows and the sink's own
-	// error, runs the call, and then names the outcome from what it saw:
-	//
-	//  1. wrap the sink so it counts rows and keeps its own error apart
-	//     from call's;
-	//  2. run the call and time it;
-	//  3. name the outcome;
-	//  4. write the line at info, whatever the outcome.
-
-	// 1. wrap the sink. Counting in each plane's sink was rejected, because
-	//    each plane would copy the counter. The sink's error is kept apart,
-	//    because a sink failure and an engine failure are different
-	//    outcomes.
+	// The sink's error is kept apart from call's to tell cut from error.
 	var rows int64
 	var sinkErr error
 	wrapped := func(b qdb.Batches) error {
@@ -107,18 +89,12 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 		return sinkErr
 	}
 
-	// 2. run the call, timed in milliseconds as both access lines time a
-	//    request
 	start := time.Now()
 	err := call(wrapped)
 	elapsed := time.Since(start).Milliseconds()
 
-	// 3. name the outcome. Every error other than the sink's arrives
-	//    before the sink runs, so an error that is not the sink's means
-	//    the call failed before any row. The ctx check comes before the
-	//    sink check, because a caller who leaves mid-stream makes the sink
-	//    fail too, and no answer reached a caller who left, whichever
-	//    failed.
+	// The ctx goes first, because a caller who leaves makes the sink fail
+	// too.
 	var o observe.Outcome
 	switch {
 	case err == nil:
@@ -131,10 +107,8 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 		o = observe.OutcomeError
 	}
 
-	// 4. write the line at info, with the error under KeyError, because
-	//    the brief puts every query line at info. Warn for a failed query
-	//    was rejected for that reason, and because the access line
-	//    already carries the status.
+	// Info whatever the outcome, as the brief fixes it. The access line
+	// already carries the status.
 	line := append([]slog.Attr{
 		observe.EngineAttr(e),
 		slog.Int64("duration_ms", elapsed),
@@ -151,22 +125,17 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 // the prefix, and any other query runs on the native engine as written.
 // The cluster comes from the context. Every error other than the sink's
 // comes before the sink runs, so a caller can pick a status before
-// writing. The sink's error is returned unchanged. Every run writes one
-// query line through Logged, preceded by a debug line with the
-// statement.
+// writing. The sink's error is returned unchanged. Every run logs the
+// statement at debug and one query line through Logged.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
 	// Both engines hand the sink the same lent Batches, so a caller reads a
 	// result one way. The native engine gets one read retry, because the
 	// query completes before the sink runs and nothing has been sent. A
-	// DuckDB query is never retried. Logged names the engine split chose.
+	// DuckDB query is never retried.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
-	// The statement line is written before the run, because a crash in
-	// DuckDB is a crash of the binary, and a line written after the run
-	// would be lost with it. It carries the text the engine runs, without
-	// the #sql prefix, because the query line's engine names DuckDB
-	// already. The text goes whole with its length, and the process logger
-	// truncates the text.
+	// Logged before the run, so a statement that crashes DuckDB, and the
+	// binary with it, is in the log.
 	observe.Logger(ctx).DebugContext(ctx, "query statement",
 		slog.String(observe.KeyStatement, text), slog.Int(observe.KeyStatementBytes, len(text)))
 	if duck {
@@ -182,9 +151,7 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 // Describe answers the schema of a query's result without running it, on
 // the engine Run would pick. The errors are those of qdb.Cluster.Describe
 // and qdb.Cluster.DuckDescribe. It writes no query line, because it runs
-// nothing: the Flight server's DoGet runs the query and writes the line,
-// and a line per describe would count a client's describe and run as two
-// queries.
+// nothing.
 func Describe(ctx context.Context, u qdb.User, q string) (*arrow.Schema, error) {
 	// The native describe takes the read retry, as Run's native query
 	// does.
