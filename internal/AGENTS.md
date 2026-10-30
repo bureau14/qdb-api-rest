@@ -235,7 +235,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   constructors only.
 - Every query writes one `query` line at info through `query.Logged`:
   engine, plane, `duration_ms`, rows, outcome and the error. `query.Run`
-  writes it for both engines. `query.Logged` says what each outcome
+  writes it for both engines. A `query statement` line at debug comes
+  before the run with the statement, which the process logger truncates
+  at `log.statement_max_bytes`. `query.Logged` says what each outcome
   means.
 - Any type that holds a secret implements `slog.LogValuer`, so it can
   never print one.

@@ -151,7 +151,8 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 // The cluster comes from the context. Every error other than the sink's
 // comes before the sink runs, so a caller can pick a status before
 // writing. The sink's error is returned unchanged. Every run writes one
-// query line through Logged.
+// query line through Logged, preceded by a debug line with the
+// statement.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
 	// Both engines hand the sink the same lent Batches, so a caller reads a
 	// result one way. The native engine gets one read retry, because the
@@ -159,6 +160,14 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 	// DuckDB query is never retried. Logged names the engine split chose.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
+	// The statement line is written before the run, because a crash in
+	// DuckDB is a crash of the binary, and a line written after the run
+	// would be lost with it. It carries the text the engine runs, without
+	// the #sql prefix, because the query line's engine names DuckDB
+	// already. The text goes whole with its length, and the process logger
+	// truncates the text.
+	observe.Logger(ctx).DebugContext(ctx, "query statement",
+		slog.String(observe.KeyStatement, text), slog.Int(observe.KeyStatementBytes, len(text)))
 	if duck {
 		return Logged(ctx, observe.EngineDuckDB, func(s func(qdb.Batches) error) error {
 			return c.Duck(ctx, u, text, s)
