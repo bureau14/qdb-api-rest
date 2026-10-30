@@ -302,33 +302,22 @@ check_log() {
     log_info "[OK] $name: the plain-text warning is $want in the log"
 }
 
-# QUERY_LINES: one plane and engine pair, as plane:engine, per engine and
-# plane the round trip drives. The server writes one query line per query
-# and per table read, and the JSON handler writes the logger's attrs
-# (the plane) before the line's own (the engine), as "plane":"http" and
-# "engine":"bulk reader". A change to the line's message or a key changes
-# this list.
+# QUERY_LINES: the plane:engine pairs the round trip drives, each of
+# which must appear on a query line.
 QUERY_LINES=("http:native" "http:duckdb" "http:bulk reader" "flight:native" "flight:duckdb")
 
-# check_query_lines <name> <log_file>: every pair of QUERY_LINES is on one
-# line of the server's log, by two chained fixed-string greps, plane first
-# and then engine. An empty log file path skips the step with a line
-# saying so, as check_log skips it, and fixed strings are used for
-# check_log's reason.
+# check_query_lines <name> <log_file>: every pair of QUERY_LINES is on
+# one line of the log, by two fixed-string greps as check_log greps. A
+# server without a log is skipped.
 check_query_lines() {
     local name="$1" log_file="$2" pair plane engine failed=0
     if [[ -z "$log_file" ]]; then
         log_info "$name: no log file, the query line step is skipped"
         return 0
     fi
-    # One grep pair per entry, each a [FAIL] line naming the pair, so one
-    # run reports every missing line.
     for pair in "${QUERY_LINES[@]}"; do
         plane="${pair%%:*}"; engine="${pair#*:}"
-        # The second grep reads to the end and drops its output, and -q was
-        # rejected: -q exits at the first match, the first grep then dies
-        # of SIGPIPE while it still writes a large log, and pipefail
-        # (common.sh) fails the pipeline.
+        # Not -q: it would SIGPIPE the first grep, which pipefail fails.
         if ! grep -F "\"plane\":\"$plane\"" "$log_file" | grep -F "\"engine\":\"$engine\"" > /dev/null; then
             log_error "[FAIL] $name: no query line with plane $plane and engine $engine in $log_file"
             failed=1
