@@ -114,10 +114,11 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 	elapsed := time.Since(start).Milliseconds()
 
 	// 3. name the outcome. Every error other than the sink's arrives
-	//    before the sink runs, so an error that is not the sink's is the
-	//    engine's refusal. The ctx check comes before the sink check,
-	//    because a caller who leaves mid-stream makes the sink fail too,
-	//    and no answer reached a caller who left, whichever failed.
+	//    before the sink runs, so an error that is not the sink's means
+	//    the call failed before any row. The ctx check comes before the
+	//    sink check, because a caller who leaves mid-stream makes the sink
+	//    fail too, and no answer reached a caller who left, whichever
+	//    failed.
 	var o observe.Outcome
 	switch {
 	case err == nil:

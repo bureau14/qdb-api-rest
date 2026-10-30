@@ -184,6 +184,15 @@ func TestQueryLines(t *testing.T) {
 		ctx := qdb.WithCluster(observe.WithLogger(context.Background(), logger), f.Cluster)
 
 		rapid.Check(t, func(rt *rapid.T) {
+			// Each iteration draws one table and runs six calls against it
+			// in order, each checked against the lines it wrote:
+			//
+			//  1. a native query reads the whole table;
+			//  2. a #sql query reads it on DuckDB;
+			//  3. a table read through Logged reads it;
+			//  4. the engine refuses a query of an unknown table;
+			//  5. a sink fails after one batch;
+			//  6. a sink's caller leaves.
 			tbl := table.Generate(rt)
 			table.CreateAs(rt, f.Cluster, f.User, tbl)
 
