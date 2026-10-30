@@ -1,10 +1,21 @@
 package query
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"pgregory.net/rapid"
+
+	"github.com/bureau14/qdb-api-rest/internal/observe"
+	"github.com/bureau14/qdb-api-rest/internal/qdb"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
+	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
 )
 
 // asciiSpaces are the bytes the prefix rule reads as whitespace.
@@ -81,5 +92,185 @@ func TestSplit(t *testing.T) {
 		if got != duck || text != want {
 			t.Fatalf("split(%q) = %q, %v; want %q, %v", q, text, got, want, duck)
 		}
+	})
+}
+
+// drain is a sink that pulls every batch.
+func drain(b qdb.Batches) error {
+	for _, err := range b {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// errSink is the error of a sink that fails on purpose.
+var errSink = errors.New("sink failed")
+
+// captured is what one call wrote: its statement line, nil when it wrote
+// none, and its query line.
+type captured struct {
+	statement, query map[string]any
+}
+
+// capture runs call with an empty log and answers its statement line and
+// its query line. Each must appear at most once, the query line exactly
+// once, and a statement line must come before the query line.
+func capture(t *rapid.T, log *bytes.Buffer, call func()) captured {
+	t.Helper()
+	log.Reset()
+	call()
+	var c captured
+	for _, raw := range bytes.Split(bytes.TrimSpace(log.Bytes()), []byte("\n")) {
+		var line map[string]any
+		if err := json.Unmarshal(raw, &line); err != nil {
+			t.Fatalf("log line %q: %v", raw, err)
+		}
+		switch line[slog.MessageKey] {
+		case "query statement":
+			if c.statement != nil || c.query != nil {
+				t.Fatalf("a statement line after another line of the call: %s", log)
+			}
+			c.statement = line
+		case "query":
+			if c.query != nil {
+				t.Fatalf("two query lines: %s", log)
+			}
+			c.query = line
+		}
+	}
+	if c.query == nil {
+		t.Fatalf("no query line: %s", log)
+	}
+	return c
+}
+
+// checkQuery fails unless the query line names the engine, the outcome
+// and the rows.
+func checkQuery(t *rapid.T, c captured, e observe.Engine, o observe.Outcome, rows int) {
+	t.Helper()
+	q := c.query
+	if q[observe.KeyEngine] != string(e) || q[observe.KeyOutcome] != string(o) || q[observe.KeyRows] != float64(rows) {
+		t.Fatalf("query line %v, want engine %s, outcome %s, rows %d", q, e, o, rows)
+	}
+}
+
+// checkStatement fails unless the statement line carries the text and
+// its length.
+func checkStatement(t *rapid.T, c captured, text string) {
+	t.Helper()
+	st := c.statement
+	if st == nil || st[observe.KeyStatement] != text || st[observe.KeyStatementBytes] != float64(len(text)) {
+		t.Fatalf("statement line %v, want %q", st, text)
+	}
+}
+
+// TestQueryLines: on each cluster, every call writes one query line with
+// its engine, its outcome and the rows its sink pulled. A native query, a
+// #sql query and a table read are ok. A refused query is error, a sink
+// that fails is cut, and a caller that leaves is abandoned. A query
+// writes its statement line at debug first, and a table read writes the
+// table and its range instead. The test is where countRows is proven,
+// over real rows and an early stop. The handler and the Flight server
+// only pass their calls through Logged and Run, and the e2e round trip
+// covers that glue on both planes.
+func TestQueryLines(t *testing.T) {
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		// The ctx carries a JSON logger at debug into a buffer, so the
+		// statement line is written, and the fixture's cluster.
+		var log bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		ctx := qdb.WithCluster(observe.WithLogger(context.Background(), logger), f.Cluster)
+
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+
+			// 1. a native query reads the whole table
+			c := capture(rt, &log, func() {
+				if err := Run(ctx, f.User, tbl.Select(), drain); err != nil {
+					rt.Fatalf("native: %v", err)
+				}
+			})
+			checkQuery(rt, c, observe.EngineNative, observe.OutcomeOK, tbl.Rows())
+			checkStatement(rt, c, tbl.Select())
+
+			// 2. a #sql query reads it on DuckDB, and the statement line
+			//    carries the text without the prefix
+			c = capture(rt, &log, func() {
+				if err := Run(ctx, f.User, "#sql "+tbl.SelectSQL(), drain); err != nil {
+					rt.Fatalf("duckdb: %v", err)
+				}
+			})
+			checkQuery(rt, c, observe.EngineDuckDB, observe.OutcomeOK, tbl.Rows())
+			checkStatement(rt, c, tbl.SelectSQL())
+
+			// 3. a table read under the table's span writes the attrs it is
+			//    given and no statement line
+			start, end := tbl.Range()
+			c = capture(rt, &log, func() {
+				err := Logged(ctx, observe.EngineBulkReader, func(sink func(qdb.Batches) error) error {
+					return f.Cluster.Read(ctx, f.User, tbl.Name, qdb.ReadOptions{Start: start, End: end}, sink)
+				}, drain,
+					slog.String(observe.KeyTable, tbl.Name),
+					slog.String(observe.KeyStart, start.Format(time.RFC3339Nano)),
+					slog.String(observe.KeyEnd, end.Format(time.RFC3339Nano)))
+				if err != nil {
+					rt.Fatalf("read: %v", err)
+				}
+			})
+			checkQuery(rt, c, observe.EngineBulkReader, observe.OutcomeOK, tbl.Rows())
+			if c.statement != nil || c.query[observe.KeyTable] != tbl.Name || c.query[observe.KeyStart] == nil || c.query[observe.KeyEnd] == nil {
+				rt.Fatalf("table read lines %v, want no statement and the table and its range", c)
+			}
+
+			// 4. the engine refuses a query of an unknown table before the
+			//    sink runs
+			c = capture(rt, &log, func() {
+				if err := Run(ctx, f.User, "SELECT * FROM "+tbl.Name+"_missing", drain); err == nil {
+					rt.Fatalf("a query of an unknown table succeeded")
+				}
+			})
+			checkQuery(rt, c, observe.EngineNative, observe.OutcomeError, 0)
+			if c.query[observe.KeyError] == nil {
+				rt.Fatalf("refused query line %v, want the error", c.query)
+			}
+
+			// 5. a sink that fails after one batch counts that batch alone,
+			//    because countRows counts what the sink pulled
+			var pulled int
+			c = capture(rt, &log, func() {
+				err := Run(ctx, f.User, tbl.Select(), func(b qdb.Batches) error {
+					for rec, err := range b {
+						if err != nil {
+							return err
+						}
+						pulled = int(rec.NumRows())
+						return errSink
+					}
+					return errSink
+				})
+				if !errors.Is(err, errSink) {
+					rt.Fatalf("cut: %v, want the sink's error", err)
+				}
+			})
+			checkQuery(rt, c, observe.EngineNative, observe.OutcomeCut, pulled)
+
+			// 6. a sink whose caller leaves returns the ctx's error, and the
+			//    ended ctx makes the outcome abandoned
+			left, leave := context.WithCancel(ctx)
+			defer leave()
+			c = capture(rt, &log, func() {
+				err := Run(left, f.User, tbl.Select(), func(qdb.Batches) error {
+					leave()
+					return left.Err()
+				})
+				if !errors.Is(err, context.Canceled) {
+					rt.Fatalf("abandoned: %v, want the ctx's error", err)
+				}
+			})
+			checkQuery(rt, c, observe.EngineNative, observe.OutcomeAbandoned, 0)
+		})
 	})
 }
