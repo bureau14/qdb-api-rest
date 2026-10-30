@@ -228,11 +228,8 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
 - Edges enrich and handlers do not: HTTP middleware and gRPC
   interceptors tag the ctx (request id, plane, user, session), and the
   code below them only logs.
-- Each plane's edge tags its logger with `observe.PlaneAttr`,
-  `PlaneHTTP` or `PlaneFlight`, beside the request id, so every line
-  below names its plane. The plane, the engine and the outcome are
-  `observe`'s named types, and a line writes them through their
-  constructors only.
+- The plane, the engine and the outcome are `observe`'s named types,
+  written through their constructors only.
 - Every query writes one `query` line at info through `query.Logged`:
   engine, plane, `duration_ms`, rows, outcome and the error. `query.Run`
   writes it for both engines, and the table reader writes it with

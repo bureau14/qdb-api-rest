@@ -47,10 +47,8 @@ func readOptions(params url.Values) (qdb.ReadOptions, error) {
 	return o, nil
 }
 
-// readAttrs are the attributes of a table read's query line: the table,
-// and the start and the end that the read sets, in RFC 3339 and UTC as
-// the parameters take them. A read without a range has no bounds to name,
-// so the line carries neither.
+// readAttrs are the table and, when set, the range of a table read's
+// query line.
 func readAttrs(name string, o qdb.ReadOptions) []slog.Attr {
 	attrs := []slog.Attr{slog.String(observe.KeyTable, name)}
 	if !o.Start.IsZero() {
@@ -87,9 +85,7 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	}
 	enc := negotiate(r.Header.Get("Accept"))
 	cw := &countingWriter{w: w}
-	// 2. the read, through query.Logged, which writes the query line with
-	//    engine bulk reader, the table and the range, because a table read
-	//    is a data read like a query. The sink keeps its own error and also
+	// 2. the read, logged as a query. The sink keeps its own error and also
 	//    returns it, so the breaker and the pool hear of a fetch that found
 	//    the cluster gone.
 	name := r.PathValue("name")
