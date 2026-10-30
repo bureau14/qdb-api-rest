@@ -120,18 +120,13 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 	return err
 }
 
-// Run runs a query as the user and streams the result into the sink. A
-// query that starts with #sql runs on the user's DuckDB instance without
-// the prefix, and any other query runs on the native engine as written.
-// The cluster comes from the context. Every error other than the sink's
-// comes before the sink runs, so a caller can pick a status before
-// writing. The sink's error is returned unchanged. Every run logs the
-// statement at debug and one query line through Logged.
+// Run runs q as u on the engine split picks and streams the result into
+// sink. Every error but the sink's arrives before the sink runs, so a
+// caller can pick a status before writing. Each run logs its statement
+// at debug and one query line.
 func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error) error {
-	// Both engines hand the sink the same lent Batches, so a caller reads a
-	// result one way. The native engine gets one read retry, because the
-	// query completes before the sink runs and nothing has been sent. A
-	// DuckDB query is never retried.
+	// Only the native engine is retried, once: nothing has been sent when
+	// its query completes.
 	text, duck := split(q)
 	c := qdb.ClusterFrom(ctx)
 	// Logged before the run, so a statement that crashes DuckDB, and the
