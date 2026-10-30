@@ -1,6 +1,6 @@
 # Query capture -- plan
 
-Status: draft
+Status: approved
 
 ## Outcome
 
