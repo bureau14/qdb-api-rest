@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"unicode/utf8"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 )
@@ -29,8 +30,7 @@ func parseLevel(level string) (slog.Level, error) {
 
 // newHandler picks the output shape: JSON for machines (the default),
 // text for humans at a terminal.
-func newHandler(format string, level slog.Level, w io.Writer) (slog.Handler, error) {
-	opts := &slog.HandlerOptions{Level: level}
+func newHandler(format string, opts *slog.HandlerOptions, w io.Writer) (slog.Handler, error) {
 	switch format {
 	case "json":
 		return slog.NewJSONHandler(w, opts), nil
@@ -40,14 +40,50 @@ func newHandler(format string, level slog.Level, w io.Writer) (slog.Handler, err
 	return nil, fmt.Errorf("unknown log format %q", format)
 }
 
+// truncateStatement keeps at most max bytes of a statement and ends a
+// truncated one in "...". A max of 0 keeps the statement whole.
+func truncateStatement(s string, max int) string {
+	if max == 0 || len(s) <= max {
+		return s
+	}
+	// The end moves back to the start of a UTF-8 rune, so a multi-byte
+	// character is never split into an invalid byte sequence that the JSON
+	// handler would print as a replacement character. A rune is at most
+	// four bytes, so a valid statement backs off at most three. The loop
+	// stops there for an invalid one too, because the query routes pass
+	// the body's bytes unchanged and need not send UTF-8.
+	end := max
+	for end > 0 && max-end < utf8.UTFMax-1 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[:end] + "..."
+}
+
 // NewLogger builds the process logger. The caller places it in the root
-// context with WithLogger, and nothing installs it as a global.
+// context with WithLogger, and nothing installs it as a global. The
+// logger truncates every top-level KeyStatement attribute at
+// cfg.StatementMaxBytes.
 func NewLogger(cfg config.Log, w io.Writer) (*slog.Logger, error) {
 	level, err := parseLevel(cfg.Level)
 	if err != nil {
 		return nil, err
 	}
-	handler, err := newHandler(cfg.Format, level, w)
+	// The handler truncates the statement, so no call site carries the
+	// length and nothing new travels in the ctx. The length in the ctx
+	// and an argument on query.Run were rejected, because both plumb a
+	// setting through code that only logs. Only a top-level string
+	// attribute is truncated, because no caller puts the statement in a
+	// group.
+	opts := &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) == 0 && a.Key == KeyStatement && a.Value.Kind() == slog.KindString {
+				a.Value = slog.StringValue(truncateStatement(a.Value.String(), cfg.StatementMaxBytes))
+			}
+			return a
+		},
+	}
+	handler, err := newHandler(cfg.Format, opts, w)
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +104,11 @@ const (
 	KeyEngine  = "engine"
 	KeyOutcome = "outcome"
 	KeyRows    = "rows"
-	// KeyStatement is a query's text.
+	// KeyStatement is a query's text, truncated by the process logger at
+	// log.statement_max_bytes.
 	KeyStatement = "statement"
-	// KeyStatementBytes is the length of the whole statement.
+	// KeyStatementBytes is the length of the whole statement, before the
+	// truncation.
 	KeyStatementBytes = "statement_bytes"
 	KeyTable          = "table"
 	KeyStart          = "start"
