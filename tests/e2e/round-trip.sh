@@ -325,7 +325,11 @@ check_query_lines() {
     # run reports every missing line.
     for pair in "${QUERY_LINES[@]}"; do
         plane="${pair%%:*}"; engine="${pair#*:}"
-        if ! grep -F "\"plane\":\"$plane\"" "$log_file" | grep -qF "\"engine\":\"$engine\""; then
+        # The second grep reads to the end and drops its output, and -q was
+        # rejected: -q exits at the first match, the first grep then dies
+        # of SIGPIPE while it still writes a large log, and pipefail
+        # (common.sh) fails the pipeline.
+        if ! grep -F "\"plane\":\"$plane\"" "$log_file" | grep -F "\"engine\":\"$engine\"" > /dev/null; then
             log_error "[FAIL] $name: no query line with plane $plane and engine $engine in $log_file"
             failed=1
         fi
