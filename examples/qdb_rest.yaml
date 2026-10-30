@@ -37,6 +37,9 @@ log:
   # json (one object per line, for journald and container runtimes) |
   # console (human-readable, for interactive use)
   format: "json"
+  # Bytes of a query's statement that a debug line keeps. Longer statements
+  # are truncated and end in "...". 0 keeps every statement whole.
+  statement_max_bytes: 1024
 
 cluster:
   # Cluster URI. Several nodes form a comma-separated list.

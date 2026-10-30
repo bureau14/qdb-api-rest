@@ -54,10 +54,12 @@ type TLS struct {
 	PrivateKey  string `yaml:"private_key" help:"PEM private key for the HTTPS listener"`
 }
 
-// Log selects the log output shape.
+// Log selects the log output shape and how much of a query's statement
+// a debug line keeps.
 type Log struct {
-	Level  string `yaml:"level" help:"debug | info | warn | error"`
-	Format string `yaml:"format" help:"json | console"`
+	Level             string `yaml:"level" help:"debug | info | warn | error"`
+	Format            string `yaml:"format" help:"json | console"`
+	StatementMaxBytes int    `yaml:"statement_max_bytes" help:"bytes of a query's statement a debug line keeps; 0 keeps it whole"`
 }
 
 // Cluster binds the process to one cluster. It holds the cluster URI, the
@@ -202,7 +204,8 @@ type Config struct {
 //
 //   - the HTTPS and Flight listeners on their customary ports, and eight
 //     seconds to drain on SIGTERM
-//   - JSON logs at info
+//   - JSON logs at info, with a query's statement truncated at a
+//     kibibyte on debug lines
 //   - the local insecure cluster, with the C API knobs at their defaults
 //   - the pool sized for one gateway in front of one cluster
 //   - no token passphrases, so an ephemeral key per start
@@ -217,7 +220,9 @@ func Default() Config {
 		// Eight seconds of grace is not measured. Anything that stops the
 		// binary and then kills it waits longer than this before the kill.
 		Listen: Listen{HTTPS: ":40443", Flight: ":40493", ShutdownGrace: 8 * time.Second},
-		Log:    Log{Level: "info", Format: "json"},
+		// The kibibyte of statement is not measured. A statement of that
+		// size is several lines of SQL.
+		Log: Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",
 			Compression: "none",
@@ -748,6 +753,9 @@ func validate(cfg Config) error {
 	}
 	if err := oneOf("log.format", cfg.Log.Format); err != nil {
 		return err
+	}
+	if cfg.Log.StatementMaxBytes < 0 {
+		return fmt.Errorf("log.statement_max_bytes must not be negative, got %d", cfg.Log.StatementMaxBytes)
 	}
 	if err := validateCluster(cfg.Cluster); err != nil {
 		return err
