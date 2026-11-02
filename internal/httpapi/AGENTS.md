@@ -127,7 +127,9 @@ This file, Handlers, holds the table reader's.
 - There is no flushing writer, because the encoder's own buffer and
   `net/http`'s chunking already stream. The handler wraps the response
   in a byte counter only, so an encode error with zero bytes out is a
-  problem response and one with bytes out is a log line.
+  problem response and one with bytes out is a log line. The counter
+  also records the time to the first byte, and the handler adds its
+  count to the format's byte total when the stream ends.
 - `Accept` is matched by media type alone. The first listed match wins,
   and JSON is the default. `q` weights are not read.
 - `GET /metrics` serves the registry the request context carries
@@ -177,8 +179,9 @@ This file, Handlers, holds the table reader's.
 
 - The handler tests run through `NewHandler` with a context carrying a
   discarding logger, a metrics registry, a fixture cluster and a
-  keychain. The fixtures place the metrics on their context
-  (`observeContext`), because `MetricsFrom` panics without them. The
+  keychain. The fixtures place the metrics and the HTTP plane on their
+  context (`observeContext`), because `MetricsFrom` and
+  `observe.PlaneOf` panic without them. The
   two switches have one table, `TestOperationalRoutes`
   (`metrics_test.go`), run without a cluster. `newServer` takes
   a `cluster.Fixture` and acts as its user, every handler test that
