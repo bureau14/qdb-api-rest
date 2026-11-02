@@ -77,8 +77,8 @@ func TestRejectedQueryReusesSession(t *testing.T) {
 		if s := c.poolFor(u).Stats(); s.Idle != 1 {
 			t.Fatalf("rejected query did not return the session: %+v", s)
 		}
-		if st, n := c.breaker.state, c.breaker.failures; st != breakerClosed || n != 0 {
-			t.Fatalf("rejected query fed the breaker: state %d, failures %d", st, n)
+		if st, n := c.breaker.state(), c.breaker.failures; st != breakerClosed || n != 0 {
+			t.Fatalf("rejected query fed the breaker: state %s, failures %d", st, n)
 		}
 	})
 }

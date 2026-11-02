@@ -20,6 +20,18 @@ const (
 	breakerHalfOpen
 )
 
+// String answers the state's label value on the breaker_state series.
+func (s breakerState) String() string {
+	switch s {
+	case breakerOpen:
+		return "open"
+	case breakerHalfOpen:
+		return "half_open"
+	default:
+		return "closed"
+	}
+}
+
 // breaker fails fast for a cluster that stops answering. It opens after
 // threshold consecutive failures that are evidence the cluster is
 // unreachable or too busy to answer. It half-opens after openFor to
@@ -28,7 +40,7 @@ const (
 // answer: the cluster is healthy and the caller was wrong.
 type breaker struct {
 	mu        sync.Mutex
-	state     breakerState
+	pos       breakerState
 	failures  int
 	openUntil time.Time
 	threshold int
@@ -37,7 +49,14 @@ type breaker struct {
 }
 
 func newBreaker(threshold int, openFor time.Duration, now func() time.Time) *breaker {
-	return &breaker{state: breakerClosed, threshold: threshold, openFor: openFor, now: now}
+	return &breaker{pos: breakerClosed, threshold: threshold, openFor: openFor, now: now}
+}
+
+// state returns the breaker's position without admitting a call.
+func (b *breaker) state() breakerState {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pos
 }
 
 // allow reports whether a call may proceed and, when it may not, how long
@@ -45,7 +64,7 @@ func newBreaker(threshold int, openFor time.Duration, now func() time.Time) *bre
 func (b *breaker) allow() (time.Duration, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	switch b.state {
+	switch b.pos {
 	case breakerOpen:
 		if remaining := b.openUntil.Sub(b.now()); remaining > 0 {
 			// The breaker is still open, so the call fails fast and the
@@ -53,7 +72,7 @@ func (b *breaker) allow() (time.Duration, bool) {
 			return remaining, false
 		}
 		// The window has passed, so this caller becomes the probe.
-		b.state = breakerHalfOpen
+		b.pos = breakerHalfOpen
 		return 0, true
 	case breakerHalfOpen:
 		// A probe is in flight, so everyone else keeps failing fast. The
@@ -71,7 +90,7 @@ func (b *breaker) allow() (time.Duration, bool) {
 func (b *breaker) recordSuccess() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.state = breakerClosed
+	b.pos = breakerClosed
 	b.failures = 0
 }
 
@@ -79,10 +98,10 @@ func (b *breaker) recordSuccess() {
 func (b *breaker) recordFailure() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.state == breakerHalfOpen {
+	if b.pos == breakerHalfOpen {
 		// The probe failed, so the breaker reopens for another window. The
 		// streak is already past the threshold and stays as it is.
-		b.state = breakerOpen
+		b.pos = breakerOpen
 		b.openUntil = b.now().Add(b.openFor)
 		return
 	}
@@ -91,7 +110,7 @@ func (b *breaker) recordFailure() {
 		// The streak reached the threshold, so the breaker opens for the
 		// window. A failure that lands while the breaker is already open
 		// only lengthens the streak.
-		b.state = breakerOpen
+		b.pos = breakerOpen
 		b.openUntil = b.now().Add(b.openFor)
 	}
 }
