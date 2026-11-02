@@ -18,9 +18,10 @@ Each rule below names the function whose comments carry its reason.
 - The access line is one `request` line per RPC with the method, the
   gRPC code and the duration, in the HTTP line's vocabulary, under a
   request id minted per call and never read from the metadata, and
-  under `observe.PlaneFlight` (`accessContext`).
-- The call context gets the process values (the logger, the cluster and
-  the keychain) through `callContext`, one explicit line per value,
+  under `observe.PlaneFlight` (`accessContext`). `accessLine` records
+  the same duration in the RPC histogram.
+- The call context gets the process values (the logger, the metrics,
+  the cluster and the keychain) through `callContext`, one explicit line per value,
   because grpc-go has no `BaseContext` as `net/http` has.
 - The server embeds `flightsql.BaseServer`, so a command this package
   does not implement answers `UNIMPLEMENTED` without a line of code
