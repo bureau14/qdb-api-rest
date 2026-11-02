@@ -202,7 +202,9 @@ func WithAttrs(ctx context.Context, attrs ...any) context.Context {
 type planeKey struct{}
 
 // WithPlane tags ctx with the plane, both as the logger's attribute and
-// as a value PlaneOf reads.
+// as a value PlaneOf reads. WithAttrs alone would not do, because code
+// cannot read a logger's attributes back, and the query histogram
+// labels by plane.
 func WithPlane(ctx context.Context, p Plane) context.Context {
 	return context.WithValue(WithAttrs(ctx, PlaneAttr(p)), planeKey{}, p)
 }
