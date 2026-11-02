@@ -993,16 +993,18 @@ starts.
   the standard library and silent when the variable is unset, and the
   `WATCHDOG=1` keepalive at half of `WATCHDOG_USEC`, tied to the
   serving loop), and the drain step of the stress, green by hand.
-- **M7 -- Observability**: `/metrics` behind `observability.metrics.enabled`, with
-  the series of Goal 9 and the pool, breaker and retry state, on both
-  planes where the plane has the concept, a user label on the pool
-  gauges only; query capture, one line per query on both planes with
-  the engine, the plane, the duration, the row count and the outcome at
-  `info` and the statement text, truncated, at `debug`; the Go runtime
-  profiler (`net/http/pprof`) on the same mux behind `observability.pprof`,
-  false by default, for goroutine, heap and CPU profiles of a live
-  instance; the round-trip step that scrapes `/metrics` and checks the
-  series exist; and the budget step of the stress, green by hand.
+- **M7 -- Observability**: `/metrics` behind
+  `observability.metrics.enabled`, with the series of Goal 9 and the
+  pool, breaker and retry state, on both planes where the plane has the
+  concept, and on a secure cluster a user label on the pool gauges and
+  the query duration histogram; query capture, one line per query on
+  both planes with the engine, the plane, the duration, the row count
+  and the outcome at `info` and the statement text, truncated, at
+  `debug`; the Go runtime profiler (`net/http/pprof`) on the same mux
+  behind `observability.pprof`, false by default, for goroutine, heap
+  and CPU profiles of a live instance; the round-trip step that scrapes
+  `/metrics` and checks the series exist; and the budget step of the
+  stress, green by hand.
 - **M8 -- Exploration**: `GET /api/v2/tables` and
   `GET /api/v2/tables/{name}` over the existing table cores, the tag
   routes (list, entries of a tag, attach and detach) over a find core
