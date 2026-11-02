@@ -34,7 +34,7 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 
 // observeContext carries a discarding logger so handlers can log, and
 // a fresh metrics registry, because MetricsFrom panics without one and
-// every later unit's middleware records into it.
+// the data routes record into it.
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	ctx := observe.WithLogger(context.Background(), logger)

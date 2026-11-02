@@ -119,5 +119,5 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 // registerReadRoutes serves the table reader behind the bearer
 // middleware. The mux pattern fixes method and path.
 func registerReadRoutes(mux *http.ServeMux) {
-	mux.Handle("GET "+tablesPath+"/{name}/rows", withCompression(requireBearer(http.HandlerFunc(handleReadTable))))
+	handleData(mux, "GET "+tablesPath+"/{name}/rows", withCompression(requireBearer(http.HandlerFunc(handleReadTable))))
 }

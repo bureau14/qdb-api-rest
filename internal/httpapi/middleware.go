@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 	"uuid"
 
@@ -81,4 +82,24 @@ func withRequestLogging(next http.Handler) http.Handler {
 			"status", rec.status, "bytes", rec.bytes,
 			"duration_ms", time.Since(start).Milliseconds())
 	})
+}
+
+// withRequestMetrics records the duration of a data route under its
+// method, its route and the status it answered.
+func withRequestMetrics(pattern string, next http.Handler) http.Handler {
+	// The method and the route come from the registration's pattern, so
+	// the label set is bounded where the raw path is not.
+	method, route, _ := strings.Cut(pattern, " ")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		observe.MetricsFrom(r.Context()).ObserveRequest(method, route, rec.status, time.Since(start))
+	})
+}
+
+// handleData registers a data route on the mux under pattern, wrapped so
+// its duration is recorded under the same pattern.
+func handleData(mux *http.ServeMux, pattern string, h http.Handler) {
+	mux.Handle(pattern, withRequestMetrics(pattern, h))
 }

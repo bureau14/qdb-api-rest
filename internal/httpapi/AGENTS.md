@@ -137,6 +137,10 @@ This file, Handlers, holds the table reader's.
 - `/debug/pprof/` serves the stdlib profiler's handlers, registered by
   hand on this mux, when `observability.pprof` is true, and is not registered
   when it is false. It is not a metrics source.
+- A data route registers through `handleData`, which records its
+  duration under the registration's method and path. The probes,
+  `/metrics` and pprof register on the mux directly and are not
+  recorded, because probe traffic would dilute the series.
 - Unknown paths and wrong methods keep the stdlib mux's plain-text 404
   and 405.
 
