@@ -22,8 +22,8 @@ so settle its shape before writing. From what you read, decide:
 
 The plan is written after this report, and it carries the approach the
 owner wants, not the approach the documents happen to record. So before
-the report, put the choices to the owner through the question tool
-(AskUserQuestion), while the context is loaded and nothing is written.
+the report, put the choices to the owner through the question tool,
+while the context is loaded and nothing is written.
 
 What gets a question. A choice the unit's code rests on that is:
 
@@ -40,9 +40,12 @@ the tree settles; a choice that belongs to a later unit or milestone; a
 choice between wordings. A question whose answer would not change a
 commit of this unit is not asked.
 
-How to ask. One question per choice, at most four per call, at most
-two calls; what remains goes under Open questions in the report, and
-the owner answers it in the conversation before opening the plan stage.
+How to ask. One `:::question` block per choice, at most four per
+message, at most two messages for the unit, in the unit's Inbox thread
+as `/rr-workflow`, The Inbox, says. The first message names the thread.
+End your turn after each message; the report waits for the answers.
+What remains goes under Open questions in the report, and the owner
+answers it before opening the plan stage.
 
 The owner reads the question cold: the context you loaded is not in
 front of them, and a name from the code means nothing until the
@@ -57,14 +60,15 @@ explains it, in parentheses, so the owner can find it in the code. The
 question runs three to six sentences; a one-line question is a sign
 the context was left out.
 
-The options follow the same rule. The label says the choice in plain
-words, not in identifiers ("one signing path for login and refresh",
-not "MintPair(user, secret) over pair(base)"). The description says
-what the option does, then what it costs and what it keeps open, and
-names an identifier only after saying what it is. The options are: the
-approach the sources record, named by its path; the simplest
-alternative; a third where a real one exists. Put the option you would
-take first, marked "(Recommended)", and say in one clause why. The
+The choices follow the same rule. Each choice is one line,
+`- [ ] label -- what it does, what it costs and what it keeps open`.
+The label says the choice in plain words, not in identifiers ("one
+signing path for login and refresh", not "MintPair(user, secret) over
+pair(base)"), and the rest names an identifier only after saying what
+it is. The choices are: the approach the sources record, named by its
+path; the simplest alternative; a third where a real one exists. Keep
+them in that order. After them, a `Recommended: <label>` line names the
+choice you would take, and a `Why:` line says why in one clause. The
 owner can always answer "Other" with text. An answer is the decision;
 it is not argued with.
 
@@ -82,7 +86,7 @@ that answers it. The question says: the query endpoint answers a
 table; today nothing produces it; this unit adds the first handler, so
 the shape every later client parses is fixed now; the brief sketches
 each row as an array of values in column order; should rows be arrays
-or objects keyed by column name? The options are "arrays in column
+or objects keyed by column name? The choices are "arrays in column
 order (the brief's sketch)" and "objects keyed by column", each with
 what it costs. The owner picks arrays; the Decisions entry says
 `settled by owner, <date>`, and the plan's Rationale repeats it.
@@ -91,6 +95,8 @@ Incorrect: the sketch is followed because it is in the brief, and the
 owner learns the shape from the diff. Or: the question is "How should
 Tokens mint the login's pair?" and the options are signatures, so the
 owner has to open the package to learn what minting is and what the
-pair is before answering. Or: eight questions go out in one call, three
-of them about the milestone after this one. Or: the owner picks objects
+pair is before answering. Or: eight questions go out in one message,
+three of them about the milestone after this one. Or: the brief's
+sketch is listed first with "(Recommended)" in its label, so the order
+says which one you want before the owner has read the alternatives. Or: the owner picks objects
 and the plan says arrays "as the brief prescribes".

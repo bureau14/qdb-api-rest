@@ -13,8 +13,9 @@ at 1. Two sections belong to steps only `/rr-start-next` runs; a
 section whose step did not run in this seed is omitted, not written as
 "none".
 
-- `# Workflow` -- one line acknowledging the workflow and the feature
-  branch name you will use (`sc-19567/rr-<slug>`), not yet created.
+- `# Workflow` -- one line acknowledging the workflow, the feature
+  branch name you will use (`sc-19567/rr-<slug>`), not yet created, and
+  the unit's Inbox thread name, which the plan's `Thread:` line copies.
 - `# Position` -- at most five lines: milestone, what is in flight,
   what the log says comes next, how the unit relates to that.
 - `# Candidates` (Choose the unit ran) -- a table, one row per
