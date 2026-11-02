@@ -1,6 +1,6 @@
 ---
 name: doc-discipline
-description: Enforce this project's documentation discipline. Moves knowledge out of the documentation folder and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives complex functions narrative comments (process overview at the top of the body, intent comments per step). Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative, read), an optional "check" flag for report-only, optional paths, and optionally a plan document whose promised comments the code is reconciled against. Run "read" before writing code or a plan in this shape.
+description: Enforce this project's documentation discipline. Moves knowledge out of the documentation folder and AGENTS.md files into comments next to the code it describes while keeping it discoverable, and gives functions short contract doc comments, one-line reasons at the lines that need them, and an overview only where the order of steps is not obvious. Rewrites comments that read as patches on an earlier version, or that record plans and conversations, from the current code. Use when asked to apply or check documentation discipline, tidy docs, fix comment quality, or after a change that added non-trivial logic. Accepts a mode (all, placement, narrative, read), an optional "check" flag for report-only, optional paths, and optionally a plan document whose promised comments the code is reconciled against. Run "read" before writing code or a plan in this shape.
 argument-hint: "[all|placement|narrative|read] [check] [paths...] [plan.md]"
 ---
 
@@ -19,7 +19,7 @@ Parse the arguments as words, in any order:
 | Word        | Meaning                                                               |
 | ----------- | --------------------------------------------------------------------- |
 | `placement` | Only knowledge placement. Follow `placement.md`.                      |
-| `narrative` | Only narrative comments in complex functions. Follow `narrative.md`.  |
+| `narrative` | Only comments inside functions. Follow `narrative.md`.                |
 | `all`       | Both, placement first. This is the default when no mode is given.     |
 | `read`      | Load the policy and both references, change nothing, report one line. |
 | `check`     | Change nothing. Produce the report with proposed changes only.        |
@@ -51,9 +51,13 @@ about them lives, but it only moves knowledge that concerns the given paths.
    passage being moved, or a commit. The evidence stays in the plan; it does
    not go into the comment.
 3. A wrong comment is worse than none. Verify every existing comment you touch
-   against the code. Fix or delete stale ones; never leave one you know is
-   wrong.
-4. Do not add comments to code that does not need them. Coverage is not a goal.
+   against the code. Fix or delete stale ones, and never leave one you know
+   is wrong. A comment that reads as a patch on an earlier version, or that
+   mentions a plan, a review, an issue or the conversation, counts as wrong
+   even when each clause is true. It is rewritten whole from the code.
+4. Do not add comments to code that does not need them. Coverage is not a
+   goal. Deleting a comment that fails the cut pass in `narrative.md` is as
+   much the job as writing one.
 5. ASCII only. Match the comment syntax, doc-comment convention and line width
    of the surrounding file.
 6. Moving is cut-and-paste, not copy. After a move the knowledge exists once,
@@ -91,33 +95,40 @@ written while the reasons were still in context; the code says what they
 became. The gap between the two is where reasons get lost, because the plan
 is deleted once its work lands. When a plan path is given:
 
-1. Collect every promise the plan makes about prose: each doc comment and
-   numbered overview in its design section, each row of its rationale or
-   decision table, each landing place in its knowledge section (a function,
-   an `AGENTS.md` row, a document).
-2. For each promise, find where it landed: the comment on that function, the
-   row in that file, the document. A changed wording is fine when every claim
-   survives; a claim that is gone, or a rationale row with no home in any
-   comment or document, is a finding.
-3. Each finding becomes one row of the narrative or placement plan table,
+1. Collect every promise the plan makes about prose: each claim in the
+   sketches of its design section, and each row of its rationale table with
+   the landing place its knowledge section gives it (an ADR, an `AGENTS.md`
+   row, a code comment, or `plan only`).
+2. Skip the `plan only` rows. The plan drops them on purpose.
+3. Hold every other promise to the cut pass in `narrative.md` before
+   looking for it. A promise that fails the cut pass is not written, even
+   when the plan asks for it: it repeats the code, it names a rejected
+   alternative no reader of that line would propose, or it records the
+   conversation. List it under "Dropped on purpose".
+4. For each remaining promise, find where it landed. A changed wording is
+   fine when the claim survives. A claim that is gone is a finding.
+5. Each finding becomes one row of the narrative or placement plan table,
    with the plan as its why-evidence, so executing the plan writes the
    missing reason where the plan said it would go. A promise the code
-   contradicts (the design changed while building) is not written; it goes
+   contradicts (the design changed while building) is not written. It goes
    under "Needs a human" with both versions quoted.
-4. Report them under "Unlanded from the plan", one line each: the promise,
-   where the plan said it would land, what is there instead.
+6. Report the findings under "Unlanded from the plan", one line each: the
+   promise, where the plan said it would land, what is there instead.
 
 ## Report
 
 Keep it short; list, do not narrate.
 
 - **Moved**: from -> to, one line each.
-- **Narrated**: functions that received or had their narrative comments fixed.
-- **Removed**: stale or duplicate comments and doc passages.
+- **Commented**: functions whose comments were written or rewritten.
+- **Removed**: stale, duplicate, historical or noise comments and doc
+  passages.
 - **Discoverability**: `AGENTS.md` Map rows added or changed.
 - **Rationale unknown**: places where the why could not be verified.
 - **Unlanded from the plan**: reasons the plan document promised that no
   comment or document states; "none" when a plan was given and all landed.
+- **Dropped on purpose**: plan promises that failed the cut pass, one line
+  each with the defect.
 - **Needs a human**: code-level findings outside this skill's limits (split
   candidates, misleading names, dead or commented-out code, doc budget
   overruns that cannot be fixed by moving).

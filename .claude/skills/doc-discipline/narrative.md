@@ -1,39 +1,62 @@
-# Narrative comments in complex functions
+# Comments inside functions
 
-Goal: a reader can understand a complex function by reading only its comments,
-top to bottom, and then confirm each claim against the code directly below it.
+Goal: a colleague can change a function safely after reading its doc comment
+and the few comments at the lines that need them. The comments are short,
+they sit where the question arises, and they describe the code as it is
+today.
 
-## Which functions qualify
+The rules are "Code comments" and "Prose" in the root `AGENTS.md`. This file
+says how to apply them and shows examples. The examples are illustrations of
+shape. Do not copy their wording or their semantics.
 
-A function qualifies when explaining it to a colleague takes more than one
-sentence. Typically it:
+## Which level a function gets
 
-- captures business logic: rules a domain expert would recognize, policies,
-  precedence, defaults;
-- is an algorithm: several steps whose order matters, or a loop or data layout
-  shaped by a performance concern;
-- has non-obvious control flow: early exits, state machines, branches that
-  "cannot happen";
-- relies on an invariant established elsewhere.
+Decide in this order. The first rule that applies wins.
 
-Functions that do not qualify get no narrative: forwarders, accessors,
-constructors that assign, glue whose name and body already say everything.
-Leave them bare. Comment density should track complexity, not line count.
+1. **Bare.** The function forwards, accesses, assigns or converts in one
+   obvious step, or its name and body already say everything a reader needs.
+   It gets no comments inside its body, and a doc comment only where the
+   language's convention for public items wants one.
+2. **Overview and inline.** The function's steps must run in an order the
+   code does not make obvious, or it is an algorithm whose strategy no single
+   line shows. It gets a doc comment, an overview of one numbered line per
+   step, and an inline reason at each step or line that needs one.
+3. **Inline.** The function has at least one line a colleague would stop at
+   and ask "why?". It gets a doc comment and one inline comment at each such
+   line. This is the common case, and it includes handlers, middleware and
+   tests.
+4. **Bare**, for anything else.
 
-Decide in this order; the first rule that applies wins:
+Branch count and length never qualify a function. A function with five
+obvious branches is bare, and a function with one surprising line gets one
+comment.
 
-1. It forwards, accesses, assigns or converts in one obvious step: bare.
-2. Its name plus its body already say everything a reader needs: bare.
-3. It encodes a domain rule, is an algorithm, has non-obvious control flow, or
-   depends on an invariant established elsewhere: narrate. Three or more
-   decision points (branches, early returns, error paths) are non-obvious
-   control flow by this rule, and a handler or middleware is not exempt
-   because its steps are each simple; the sequence is what needs telling.
-4. Anything else: bare.
+Record the decision for every function in scope as one row of the plan before
+changing anything:
 
-Length alone never qualifies a function, and the default is bare.
+| function (file:symbol) | level | lines that need a why | why-evidence |
+| ---------------------- | ----- | --------------------- | ------------ |
 
-INCORRECT, a forwarder narrated out of habit:
+**why-evidence** lists, for each reason you intend to write, where you
+verified it: a `file:line`, a test, a doc passage or a commit. A reason
+without evidence is not written. The function goes under "Rationale unknown"
+instead.
+
+## Budgets
+
+- A doc comment is one to three sentences of contract.
+- An inline comment is one line, two at most.
+- An overview is one line per step and carries no reasons.
+- Comments stay well under half of a function body's lines.
+
+A comment that needs more room is usually explaining several things. Split
+it, and move each part to the line it explains.
+
+## Examples
+
+### A forwarder
+
+INCORRECT:
 
 ```
 /// Fills masked values using the default null value.
@@ -47,7 +70,7 @@ filled(a) -> array
 }
 ```
 
-CORRECT, the same function:
+CORRECT:
 
 ```
 filled(a) -> array
@@ -56,162 +79,168 @@ filled(a) -> array
 }
 ```
 
-Every comment in the first version repeats what the line below it already
-says. Removing them loses nothing, which is the test.
+Every comment in the first version repeats the line below it.
 
-Record the decision for every function in scope as one row of the narrative
-plan before changing anything:
+### An algorithm, in pseudocode
 
-| function (file:symbol) | qualifies | reason (rule 1-4) | why-evidence |
-| ---------------------- | --------- | ----------------- | ------------ |
-
-**why-evidence** lists, for each reason you intend to state in a comment, where
-you verified it: a `file:line`, a test, a doc passage, a commit. A reason
-without evidence is not written; the comment states the "what" instead and the
-function goes under "Rationale unknown".
-
-## The shape
-
-**1. Doc comment above the function: the contract.** What it does and returns
-for a caller, preconditions, what it mirrors or is compatible with. No
-implementation detail. If an existing doc comment explains how the function
-works, move that part inside the body.
-
-**2. Overview comment at the top of the body: the process.** Before the first
-statement of real work, describe how the function goes about its job and why
-it is shaped this way: the strategy, the constraint that forced it, the fast
-and slow paths. When the process is a sequence, write it as a numbered list.
-Preconditions checked by assertions come before it, each with a line saying
-what is being required.
-
-**3. Step comments: one per step, as the code proceeds.** A single line where
-it fits, several where it does not. When the overview is numbered, the step
-comments carry the same numbers and wording, so the overview works as a table
-of contents. Numbers must be unique and in order.
-
-A step comment says what the step achieves or why it is done this way. It does
-not paraphrase syntax.
-
-The reason that is local to a step lives at the step: the guard, the
-threshold, the ordering constraint, the failure policy, the alternative
-rejected there. The overview carries the strategy and the sequence; the step
-comment repeats the number and the heading and adds the step's own why, so a
-reader standing at the step never scrolls up to learn why the line below it
-is there. A bare heading (`// 3. stage`) is enough only for a step whose code
-already says everything; a step that needed a sentence in the overview needs
-that sentence here, not a pointer to it.
-
-| Instead of                | Write                                                  |
-| ------------------------- | ------------------------------------------------------ |
-| `// loop over the chunks` | `// Exit early once the mask is known to be mixed`     |
-| `// allocate buffer`      | `// Worst case: every code point takes 4 bytes`        |
-| `// check if null`        | `// Null counts as missing, not as a coercion failure` |
-
-**4. Honesty markers, where they apply:**
-
-- a constant or threshold says where it came from, including "not measured";
-- a branch that should be impossible says why, and what it would mean if hit;
-- a hot path or a deliberately odd construct says so and says what was
-  rejected: `XXX(name): ...`;
-- known shortcomings: `TODO(name): [topic] ...`;
-- surprising side effects (allocation ownership, caching, I/O) get a `Note:`.
-
-**5. Assertions are part of the narrative.** Where a comment claims an
-invariant that can be checked cheaply, an assertion next to it is better than
-the claim alone. Adding one changes code, so in this skill report it under
-"Needs a human" rather than adding it.
-
-## Example
-
-Language-neutral pseudocode. The function decides whether one condition of a
-rule matches a record.
-It illustrates comment shape only; the semantics shown are not the
-specification (the conformance fixtures are).
+The function decides whether one condition of a rule matches a record. Its
+steps must run in order, so it gets an overview.
 
 ```
-/// Whether condition `c` matches record `r`.
-///
-/// Never raises on bad data: what happens on a missing field or an
-/// uncoercible value is decided by the policies carried on `c`.
+/// Whether condition `c` matches record `r`. Never raises on bad data: the
+/// policies on `c` decide missing fields and uncoercible values.
 condition_matches(c, r) -> bool
 {
-    // A condition is decided in three stages, and the order matters because
-    // each stage has its own policy for giving up:
-    //
-    //  1. resolve the field path to zero or more candidate values;
-    //  2. coerce each candidate to the declared field type;
-    //  3. compare, where ANY candidate satisfying the operator is a match.
-    //
-    // Missing (stage 1) and uncoercible (stage 2) are different failures with
-    // different policies. Null is treated as missing, never as uncoercible.
+    // 1. resolve the field path to candidate values
+    // 2. coerce each candidate to the field type
+    // 3. compare, matching when any candidate satisfies the operator
 
-    ////
-    // 1. resolve the field path
-    //
-    // Wildcards make this a set of values rather than one. An empty array
-    // under a wildcard resolves to nothing, which counts as missing.
+    // 1. A wildcard over an empty array resolves to nothing, which counts
+    //    as missing.
     candidates = resolve(c.path, r)
-
     if is_empty(candidates) or all_null(candidates)
     {
         return apply_policy(c.on_missing_field)
     }
 
-    ////
-    // 2. coerce each candidate, 3. compare
-    //
-    // Interleaved rather than two passes so that the first match can exit
-    // without coercing the remaining candidates.
+    // 2. and 3. share one loop, so the first match skips the remaining
+    //    coercions.
     any_coerced = false
-
     for v in candidates
     {
-        // A null among non-null candidates is skipped, not failed: the other
-        // elements can still decide the condition.
+        // A null or uncoercible candidate is skipped, because the others
+        // can still decide the condition.
         if is_null(v) { continue }
-
         x = coerce(v, c.field_type)
         if is_failure(x) { continue }
-
         any_coerced = true
-
-        // First match wins; evaluation order is unspecified, the result is not.
         if compare(c.op, x, c.value) { return true }
     }
 
-    // Nothing matched. If that is because nothing could even be coerced, the
-    // coercion policy decides; otherwise it is an ordinary non-match.
+    // When no candidate coerced, the coercion policy decides.
     return any_coerced ? false : apply_policy(c.on_coercion_fail)
 }
 ```
 
-Note what is absent: no comment on `continue`, none restating the signature,
-none on the final `return` beyond the one reason it is not simply `false`.
+The overview lists the steps and gives no reasons. Each reason sits at the
+line it explains. Nothing comments the `continue`, the signature or the
+loop.
+
+### A doc comment that explains the implementation, in Go
+
+INCORRECT:
+
+```go
+// Call runs f on a session authenticated as the user. The breaker gates
+// the call. The user's pool leases a session, dialing one on demand, and
+// runs f. The binding's IsBadSession and Lease.Done decide from f's error
+// whether the pool keeps the session. This layer adds two decisions, both
+// per cluster. Only errors that are evidence about the cluster
+// (IsClusterUnavailable) feed the breaker. An idempotent read can opt in
+// to one retry after a retryable failure, and a refused credential is
+// never retried. A retry after a bad session runs on a fresh session,
+// because the pool discarded the old one. A retry after any other
+// retryable failure may run on the same session.
+func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
+```
+
+CORRECT:
+
+```go
+// Call runs f on a session authenticated as u. It returns a
+// *BreakerOpenError while the cluster is unreachable. WithReadRetry allows
+// one retry of an idempotent read.
+func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
+	...
+		// The caller's own cancellation says nothing about the cluster.
+		if callerLeft(err) {
+			return err
+		}
+		c.feedBreaker(err)
+		// A second dial with refused credentials is refused the same way.
+		if !cc.retry || !qdbapi.IsRetryable(err) || errors.Is(err, ErrCredentialsRefused) {
+```
+
+The first version tells callers how the pool and the breaker work, and each
+change to `Call` added a clause to it. The second version gives callers the
+contract and puts each reason at the line it explains. The facts about the
+pool belong to the pool's own comments.
+
+### A change, in Rust
+
+The code before the change:
+
+```rust
+/// Readiness: the instance may receive traffic. `ok` as soon as the
+/// listener is up.
+async fn readyz() -> &'static str {
+    // TODO(store): probe the store.
+    "ok"
+}
+```
+
+The change adds a store probe. INCORRECT, the old comment patched:
+
+```rust
+/// Readiness: the instance may receive traffic. `ok` as soon as the
+/// listener is up, and now also once the store answers.
+async fn readyz(State(s): State<Store>) -> StatusCode {
+    // The store probe replaces the earlier unconditional `ok`.
+    s.ping().await.map_or(StatusCode::SERVICE_UNAVAILABLE, |()| StatusCode::OK)
+}
+```
+
+CORRECT, the comment written from the new code:
+
+```rust
+/// Readiness: the instance may receive traffic. 200 once the store answers
+/// a ping, 503 while it does not.
+async fn readyz(State(s): State<Store>) -> StatusCode {
+    s.ping().await.map_or(StatusCode::SERVICE_UNAVAILABLE, |()| StatusCode::OK)
+}
+```
+
+The patched version keeps the sentence about the listener, adds "now", and
+explains the history in the body. The rewritten version reads as if the
+function had always probed the store.
 
 ## Applying it to existing code
 
-1. Decide whether the function qualifies, using the ordered rules above. If
-   it does not, remove only noise comments that paraphrase syntax, and stop.
-   Commented-out code is reported under "Needs a human", not deleted.
-2. Read the whole function and its callers' expectations before writing.
-   Write the overview last, after the steps are understood.
-3. Keep existing comments that are correct, and fold them into the shape. The
-   author's wording, tags and names stay.
+1. Decide the level with the ordered rules above. A bare function loses its
+   noise comments, and nothing else changes. Commented-out code is reported
+   under "Needs a human" and stays in place.
+2. Read the whole function and what its callers expect before writing.
+3. Write the function's comments from the code, before you reread the
+   existing ones. Then compare with the existing comments and carry over
+   only what the code cannot show: a verified reason, a `TODO(name)` or
+   `XXX(name)` tag, a name a reader searches for. Existing wording does not
+   survive because it is there. A comment that reads as a patch on an
+   earlier version is rewritten whole, even when every clause is true.
 4. When the why cannot be verified, write the what, and list the function
-   under "Rationale unknown". Do not guess at performance motives or history.
+   under "Rationale unknown". Do not guess at performance motives or
+   history.
 5. When the overview needs more than about seven steps, or the steps do not
-   form one story, the function is a split candidate. Narrate it as it is and
-   list it under "Needs a human"; small composable functions are this
-   project's preference, but refactoring is outside this skill.
-6. After writing a function's comments, read them back top to bottom as a
-   list of separate claims and check each one against the code directly below
-   it. Fix or delete any claim the code does not bear out. Check that step
-   numbers are unique, in order, and match the overview. Then cover the code
-   and read the comments alone, as a reader who has never seen the plan, the
-   review or the conversation that shaped this function: can they say what
-   it does, why the steps come in this order, what happens on each failure
-   path, and what was tried and rejected? Each question the comments cannot
-   answer is a missing comment, written now from its evidence, or a question
-   to the owner; never a guess.
-7. New code written elsewhere in this project follows the same shape from the
-   start; this skill is the repair path, not the primary one.
+   form one sequence, the function is a split candidate. Comment it as it is
+   and list it under "Needs a human".
+6. Read the comments back in three passes, in this order:
+   1. **Truth.** Read each comment as a separate claim and check it against
+      the code directly below it. Fix or delete any claim the code does not
+      bear out. Check that the step numbers are unique, in order, and match
+      the overview.
+   2. **Cut.** Delete or rewrite every comment that does one of the
+      following:
+      - repeats what the line below it says;
+      - repeats another comment, including the overview;
+      - mentions an earlier version, a plan, a review, an issue or the
+        conversation;
+      - explains implementation in a doc comment;
+      - names a rejected alternative that a reader of that line would not
+        propose;
+      - reads like one of the "Written" sentences in the root `AGENTS.md`,
+        "Prose".
+   3. **Gaps.** Cover the code and read the comments alone. Ask one
+      question: could a colleague change this function safely? Each line
+      they would have to puzzle over is a missing inline comment. Write it
+      from its evidence, or ask the owner. Never guess.
+7. New code elsewhere in this project follows the same rules from the start.
+   This skill is the repair path.

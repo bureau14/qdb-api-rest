@@ -11,12 +11,12 @@ Place knowledge on the lowest rung that covers its subject. Lower wins.
 | The knowledge is about ...                    | It lives in ...                                         |
 | --------------------------------------------- | ------------------------------------------------------- |
 | one expression, branch, constant or step      | an inline comment at that line                          |
-| how one function goes about its job           | the overview comment at the top of that function's body |
+| the order of one function's steps             | the overview comment at the top of that function's body |
 | what one function promises to callers         | the doc comment above that function                     |
 | one type, or one file as a whole              | the comment on the type, or the file header comment     |
 | several files in one directory                | that directory's `AGENTS.md` (Invariants, Why, How to)  |
 | several components                            | the documentation folder, per its `AGENTS.md`           |
-| what something looked like before, or history | nowhere. Delete it; git keeps history                   |
+| history, a plan, a review or the conversation | nowhere. Delete it; git keeps history                   |
 
 Executable forms beat all prose rungs: if an assertion, a type, a schema or a
 test fixture can state it, prefer that and keep at most one line of prose
@@ -61,16 +61,16 @@ anything:
 ## Moving
 
 1. Rewrite for the destination. A paragraph from a design document does not
-   become a good comment by pasting it. Keep the facts and the reasons, drop
-   the framing, and phrase it as a statement about the code directly below it.
+   become a good comment by pasting it. Keep the facts and the reasons a
+   reader of that code needs, drop the rest, and phrase each as a statement
+   about the line it explains. A reason usually lands as one inline comment.
 2. Verify against the code while moving. Documentation that describes
    behavior the code does not have is not moved; it is reported under "Needs a
    human" with both versions quoted, because either could be the wrong one.
 3. Delete the source passage. If the source needs to keep the topic visible,
    leave a pointer of one line at most: what, and which file.
-4. If the destination function then qualifies as complex, shape the result per
-   `narrative.md` even in `placement` mode. Do not leave a wall of text above
-   a function.
+4. Shape the result per `narrative.md` even in `placement` mode, within its
+   budgets. Do not leave a wall of text above a function.
 5. After writing the destination comment, read it back as a list of separate
    claims and check each one against the code directly below it. Fix or
    delete any claim the code does not bear out.
