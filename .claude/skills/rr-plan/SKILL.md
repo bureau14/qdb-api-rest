@@ -1,6 +1,6 @@
 ---
 name: rr-plan
-description: Open the plan stage of the current unit -- create the feature branch, write and commit the plan document as the unit's first commit, explain it to the owner as a page, and when that session has closed yield the plan through the plannotator gate. Invoked by the owner after the seed report; the invocation is the gate.
+description: Open the plan stage of the current unit -- create the feature branch, write and commit the plan document as the unit's first commit, and put it to the owner in one Inbox review. Invoked by the owner after the seed report; the invocation is the gate.
 disable-model-invocation: true
 ---
 
@@ -32,68 +32,64 @@ feature branch is the owner's decision before anything else.
 
 When the current branch is already the unit's `sc-19567/rr-<slug>`,
 its last commit is the plan's `docs(plan)` commit and the plan says
-`Status: draft`, the branch and the plan exist and the gate has not
-approved: skip to step 5 and gate the committed plan. A seed report is
-not required in that case; the plan is the input.
+`Status: draft`, the branch and the plan exist and the owner has not
+approved it: skip to step 5. A seed report is not required in that
+case; the plan is the input. Read the plan's thread with `read_thread`
+first. When the thread's latest message is this plan's review and
+shows `ack`, the owner has approved it: commit the status. When it is
+this plan's review without an answer, end your turn and wait. Else
+send the plan.
 
 ## Step by step
 
 1. Create `sc-19567/rr-<slug>` from the up-to-date base, clean tree.
 2. `/doc-discipline read`.
-3. Read `plan-shape.md` and write `docs/<slug>-plan.md` in that shape.
+3. Read `plan-shape.md` and write `docs/<slug>-plan.md` in that shape,
+   with the seed report's thread name on its `Thread:` line.
 4. Commit it alone: `docs(plan): <slug>-plan.md, <one-line subject>`.
    This is commit 1 of the unit, the one the seed report promised.
-5. Explain the committed plan: read `../rr-explain-plan/SKILL.md` and
-   run its steps, scoping round included, with this plan as the
-   argument, as if the owner had invoked it. Its annotation session
-   must have exited before step 6 starts. Plannotator runs one session
-   at a time, and a gate opened while the explainer's session is up
-   comes back `dismissed`, so the two never overlap: the explainer
-   runs to its close, then the gate opens.
-6. Yield through the review tool, never through a typed question:
+5. Put the committed plan to the owner in one Inbox message, with
+   `send_message` in the unit's thread, as `/rr-workflow`, The Inbox,
+   says. `attachments` holds `docs/<slug>-plan.md`, and the body says
+   in one line what the unit delivers and names the plan commit's sha.
+   The message carries no question block, so the owner can mark it
+   "Looks good". Then end your turn.
 
-   ```
-   plannotator annotate docs/<slug>-plan.md --gate --json
-   ```
-
-   Run it in the background; it blocks until the owner decides in the
-   browser, and the harness wakes you when it exits. Do nothing while it
-   runs. Its stdout is one JSON decision:
-   - `approved` (with optional `feedback`): the owner's yes on the plan,
-     and on the plan alone. Change the plan's `Status:` line from
-     `draft` to `approved` and commit that alone as
+   The owner's answer is one of three, by The Inbox's table:
+   - "Looks good" on this message: the owner's yes on the plan, and on
+     the plan alone. Change the plan's `Status:` line from `draft` to
+     `approved` and commit that alone as
      `docs(plan): <slug>-plan.md is approved`, so a session seeded
-     fresh from the tree reads the plan as approved instead of a
-     draft still under review. Then post the plan-stage message and
-     wait; the build stage opens when the owner invokes `/rr-build`.
-   - annotations: the owner's redirect. Fold every annotation into the
+     fresh from the tree reads the plan as approved instead of a draft
+     still under review. Then post the plan-stage message and wait.
+     The build stage opens when the owner invokes `/rr-build`.
+   - A reply: the owner's redirect, also when its words sound like a
+     yes. Fold every annotation and every point of the reply into the
      plan, commit the revision as a further `docs(plan)` commit, and
-     gate again from step 6; the explainer does not run again unless
-     the owner invokes it. Never start code on an annotated plan.
-   - `dismissed`, or a non-zero exit without a decision: stop and
-     report; the owner decides in the conversation.
+     send the plan again from step 5, with `reply_to` set to the
+     reply's id. Never start code on a plan the owner redirected.
+   - The thread resolved without a "Looks good": stop and report. The
+     owner decides in the conversation.
 
 The plan-stage message, posted on approval, is exactly: the branch name
 and the plan's path; `git show <sha>` for the plan commit and the
-sha of the approval commit; the owner's
-`feedback` quoted, if any, with how the build will honor it; the open
-questions the plan recorded, each with the recommendation the approval
-has now settled; one line saying the build waits for
-`/rr-build`.
+sha of the approval commit; the open questions the plan recorded,
+each with the recommendation the approval has now settled; one line
+saying the build waits for `/rr-build`. The message goes to the
+conversation, not to the Inbox thread.
 
-Correct: you branch, read the skill, write the plan, commit it, run the
-explainer and wait for its session to close, run the gate, wait; the
-decision is `approved`; you set the status, commit it, post the message
-and wait; the owner invokes `/rr-build`; commit 2 starts there.
+Correct: you branch, read the skill, write the plan, commit it, send
+it to the Inbox and end your turn. The owner marks it "Looks good"; you
+set the status, commit it, post the message and wait; the owner invokes
+`/rr-build`; commit 2 starts there.
 
-Incorrect: the gate returns `approved` and you start commit 2 because
-the plan is approved. Or: the gate returns `approved`, you post the
-message, and the plan in the tree still says `Status: draft`, so the
-next seed reads it as unreviewed. Or: you commit the plan and ask "Approve the plan,
-redirect it, or stop?" in the conversation instead of running the gate.
-Or: the gate returns annotations and you start code while addressing
-them. Or: you start the gate while the explainer's session is still
-open, and the gate comes back `dismissed`.
+Incorrect: the owner marks the plan "Looks good" and you start commit 2
+because the plan is approved. Or: the owner marks it "Looks good", you
+post the message, and the plan in the tree still says `Status: draft`,
+so the next seed reads it as unreviewed. Or: you add an "Approve the
+plan?" question to the message, so the owner cannot mark it "Looks
+good". Or: the owner replies with annotations and you start code while
+addressing them.
 
 ## Before committing the plan
 
