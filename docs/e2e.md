@@ -131,11 +131,13 @@ is timed.
    secure server's, absent from the insecure server's. A server given
    as a URL has no log and the step is skipped for it.
 9. The scrape. `GET /metrics` on each server, after every other step,
-   answers 200 with `text/plain` and a body naming the build-info
-   series and the Go runtime series (`METRIC_SERIES` in the driver,
-   presence only, never a value). The `process_` series are not
-   asserted, because the client reads procfs for them and FreeBSD does
-   not mount it. A later unit's series joins the list with its commit.
+   answers 200 with `text/plain` and a body naming every series of
+   `METRIC_SERIES` in the driver, presence only and never a value:
+   `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`
+   and `retries_total` under the `qdb_rest_` namespace, and the Go
+   runtime series. The `process_` series are not asserted, because the
+   client reads procfs for them and FreeBSD does not mount it. A new
+   series joins the list with its commit.
 10. The query lines. The driver greps each server's log for one query
     line per engine and plane the round trip drove: native, DuckDB and
     the bulk reader over HTTP, native and DuckDB over Flight
@@ -350,15 +352,16 @@ The stress is shell and curl (`stress.sh`), run by hand through
 `make test-stress`, asserted as behaviour and never as a timing or a
 measured number (ADR-0015). It runs on both clusters, one server after
 the other, the secure one under the key files, and each server starts
-with a long `listen.shutdown_grace` and a budget of two sessions. It
-ingests one table, `e2e_stress`, through `e2etool gen` and
+with a long `listen.shutdown_grace` and a budget of two sessions. Each
+step ingests its own table through `e2etool gen` and
 `POST /api/v2/rows` as CSV, the way the round trip does, and reads it
 back as CSV only, because the formats are the round trip's question.
-It has two steps, each a milestone's.
+It has two steps, each a milestone's. The budget step runs first on
+each server, because the drain step ends it.
 
-The drain step (the hardening milestone) starts one slow read of the
-table (`curl --limit-rate`, so the server's write blocks on the client
-and the stream is in flight), sends the server one SIGTERM once the
+The drain step (the hardening milestone) starts one slow read of its
+table, `e2e_stress` (`curl --limit-rate`, so the server's write blocks
+on the client and the stream is in flight), sends the server one SIGTERM once the
 first byte has arrived, and asserts, in this order, that a new
 connection to the HTTP listener is refused while the read is still
 open and the server still alive, that the read ends with 200 and a body
@@ -372,10 +375,13 @@ connect that still succeeds in the moment after the signal is retried,
 not failed. The step ends the server it was given, so the Makefile
 starts one per cluster and the stress has no URL form.
 
-The budget step (the observability milestone) runs N clients, more than
-the budget, through `xargs -P` and curl while it polls the budget gauge
-on `/metrics`, and asserts that the gauge never exceeds the budget and
-that every client's body compares equal to the rows.
+The budget step (the observability milestone) reads its table,
+`e2e_stress_budget`, from `STRESS_CLIENTS` clients at once, three times
+the budget, through `xargs -P` and curl. While they read, it polls
+`qdb_rest_budget_sessions{state="in_use"}` on `/metrics` and fails on a
+poll that reads more than `qdb_rest_budget_sessions{state="max"}`. Once
+the reads end, it asserts that every client answered 200 with a body
+that compares byte for byte with the generated rows.
 
 The parameters and their reasons are written in the Makefile: the row
 count, sized so the CSV body outgrows the socket buffers and the read
@@ -390,8 +396,7 @@ small, which is why the stress runs by hand.
 scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...); qdbd up
 tests/e2e/
   Makefile                services-check | e2etool | jdbc | test-round-trip | clean
-                          test-stress (by hand; the drain step, and the budget step
-                          with the observability milestone)
+                          test-stress (by hand; the budget step, then the drain step)
   common.sh               helpers: log_*, pidfile/start_server/stop_server/wait_for_exit,
                           the request, login, create, ingest and compare helpers both
                           drivers share, qdbsh wrapper

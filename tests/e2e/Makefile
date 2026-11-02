@@ -159,11 +159,14 @@ test-round-trip: services-check e2etool jdbc
 # expires cuts the stream by process exit and fails the body assertion,
 # and STRESS_EXIT_WINDOW sits above the grace. The budget is two
 # sessions, the smallest that leaves the ingest and the read one each.
+# STRESS_CLIENTS is three times the budget, not measured, so the budget
+# step's clients queue for sessions.
 STRESS_ROWS        ?= 200000
 STRESS_SEED        ?= $(shell date +%s)
 STRESS_LIMIT_RATE  ?= 500k
 STRESS_GRACE       ?= 60s
 STRESS_EXIT_WINDOW ?= 70
+STRESS_CLIENTS     ?= 6
 STRESS_FLAGS       := --listen-shutdown-grace $(STRESS_GRACE) --pool-max-sessions 2 --pool-per-user-max 2
 STRESS_PID         := $(E2E_DIR)/stress.pid
 STRESS_LOG         := $(E2E_DIR)/stress.log
@@ -172,14 +175,14 @@ STRESS_LOG_SECURE  := $(E2E_DIR)/stress-secure.log
 STRESS_OUT         := $(E2E_DIR)/actual/stress
 STRESS             := $(E2E_DIR)/stress.sh
 
-# The stress always starts its servers, because the step ends the server
-# with SIGTERM, so no URL form exists. The round trip's ports are reused,
-# because the two suites never run at once on one machine, and a clash
-# fails the bind loudly. Own pidfiles and logs, because the log is
-# asserted. One cluster after the other, each server started here and
-# ended by the step, which waits for the exit itself; the trap covers a
-# failed step, where stop_server finds a dead pid or a server it may
-# kill.
+# The stress always starts its servers, because the drain step ends the
+# server with SIGTERM, so no URL form exists. The round trip's ports are
+# reused, because the two suites never run at once on one machine, and a
+# clash fails the bind loudly. Own pidfiles and logs, because the log is
+# asserted. One cluster after the other: each server is started here,
+# runs the budget step and then the drain step, which ends it and waits
+# for the exit itself. The trap covers a failed step, where stop_server
+# finds a dead pid or a server it may kill.
 test-stress: services-check e2etool
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
@@ -188,15 +191,21 @@ test-stress: services-check e2etool
 	trap 'stop_server $(STRESS_PID); stop_server $(STRESS_PID_SECURE)' EXIT; \
 	rm -rf $(STRESS_OUT); \
 	start_server $(STRESS_PID) $(STRESS_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS) $(STRESS_FLAGS); \
+	$(STRESS) budget --name insecure --http http://127.0.0.1:$(REST_PORT) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure/budget --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --clients $(STRESS_CLIENTS); \
 	$(STRESS) drain --name insecure --http http://127.0.0.1:$(REST_PORT) --pid-file $(STRESS_PID) --log $(STRESS_LOG) \
-	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure/drain --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
 	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW); \
 	start_server $(STRESS_PID_SECURE) $(STRESS_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE) $(STRESS_FLAGS); \
+	$(STRESS) budget --name secure --http http://127.0.0.1:$(REST_PORT_SECURE) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/secure/budget --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --clients $(STRESS_CLIENTS) --login-body $(REPO_ROOT)/user_private.key; \
 	$(STRESS) drain --name secure --http http://127.0.0.1:$(REST_PORT_SECURE) --pid-file $(STRESS_PID_SECURE) --log $(STRESS_LOG_SECURE) \
-	    --tool $(E2ETOOL) --out $(STRESS_OUT)/secure --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
+	    --tool $(E2ETOOL) --out $(STRESS_OUT)/secure/drain --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
 	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW) \
 	    --login-body $(REPO_ROOT)/user_private.key; \
-	log_info "stress drain step: both clusters passed (seed=$(STRESS_SEED))"
+	log_info "stress budget and drain steps: both clusters passed (seed=$(STRESS_SEED))"
 
 # ------------------------------------------------------------------ cleanup
 

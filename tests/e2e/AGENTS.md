@@ -58,8 +58,9 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   unit that adds a series adds its name there in the same commit, and
   nothing asserts a value.
 - The stress (`stress.sh`, `make test-stress`, `docs/e2e.md`, Stress
-  definition) runs by hand and never in CI. One call is one cluster,
-  and the step ends the server it was given: it sends the one SIGTERM
+  definition) runs by hand and never in CI. One call is one step on one
+  cluster's server. The budget step runs first, and the drain step ends
+  the server it was given: it sends the one SIGTERM
   and waits for the exit with `wait_for_exit`. Never send a draining
   server a second SIGTERM, and never `stop_server` it: the binary
   releases its signal handler once the serve loop ends, and the second
