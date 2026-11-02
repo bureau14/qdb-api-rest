@@ -40,34 +40,45 @@ History is git's job and appears in no document or comment.
 
 ## Code comments
 
-Comment density tracks complexity. Trivial functions get none. A function
-that captures business logic or is an algorithm is written so that its
-comments alone tell the story:
+A comment says what the code cannot say for itself. Most functions need a
+short doc comment and a few inline comments, and many need none at all.
 
-1. The doc comment above the function is the contract for callers. No
-   implementation detail.
-2. The top of the body describes the process: the strategy, why it is
-   shaped this way, and the steps, numbered when they form a sequence.
-3. Each step in the code has a comment stating what it achieves or why,
-   in one line where that fits. Never a paraphrase of the syntax.
-4. Constants say where they came from, impossible branches say why they
-   are impossible, hot or odd constructs say what was rejected.
-5. Only state what is known. When the owner is in the session, an unknown
+1. The doc comment above a function is the contract for callers, in one to
+   three sentences: what it does, what it returns and how it fails. It holds
+   no implementation detail.
+2. A reason sits inline at the line it explains, and it appears once. An
+   inline comment is one line, two at most. Every line that would make a
+   colleague stop and ask "why?" gets one, in any function, tests included.
+3. A function whose steps must run in an order the code does not make
+   obvious starts its body with an overview that lists the steps, one
+   numbered line each. The overview carries no reasons. The reasons sit at
+   the steps, and each step comment starts with the step's number.
+4. Constants say where they came from, and impossible branches say why they
+   are impossible. A construct that looks wrong says which alternative was
+   rejected, but only where a reader of that line would propose the
+   alternative. Other rejected alternatives belong in `docs/adr/` or nowhere.
+5. A comment describes the code as it is. When code changes, rewrite every
+   comment block the change touches from the new code, as if the code had
+   always worked this way. Write the new block before rereading the old one,
+   then carry over only the facts the code cannot show. A comment never
+   mentions an earlier version, a plan, a review, a unit of work or the
+   conversation that shaped it.
+6. Delete a comment that an experienced developer in the language would not
+   miss. Comments stay well under half of a function body's lines.
+7. Only state what is known. When the owner is in the session, an unknown
    reason, or a function you cannot place under the rules above, is a
-   question to the owner through the question tool, asked before the
-   commit that needs it. Never invent a reason and never drop one
-   silently.
-6. After writing a function's comments, read them back top to bottom as
-   separate claims and check each against the code below it. Fix or
-   delete any claim the code does not bear out.
+   question to the owner through the question tool, asked before the commit
+   that needs it. Never invent a reason.
+8. After writing a function's comments, read them back top to bottom as
+   separate claims and check each against the code below it. Fix or delete
+   any claim the code does not bear out.
 
-`Session.ingest` in `internal/qdb/ingest.go` is the shape. This is the
-primary path, and new code is written this way. `/doc-discipline read`
-loads the shape before new code or a plan is written. `/doc-discipline
-[all|placement|narrative] [check] [paths...] [plan.md]` is the repair
-path. It applies or checks all of the above after the fact, reconciles
-the code against the plan that promised its comments when one is
-given, and its worked example is in
+`Cluster.Call` in `internal/qdb/cluster.go` is the shape. This is the
+primary path: new code is written this way. `/doc-discipline
+[all|placement|narrative|read] [check] [paths...] [plan.md]` is the repair
+path. It applies or checks all of the above after the fact, `read` loads the
+shape before code or a plan is written, and a plan path reconciles the code
+against the reasons the plan promised. Its worked examples are in
 `.claude/skills/doc-discipline/narrative.md`.
 
 ## Prose
@@ -91,5 +102,14 @@ plain sentences. The rules:
    proof".
 
 Read every comment or paragraph back as a colleague would say it
-aloud. A sentence that no one would say is rewritten. The facts it
-carried are kept, and nothing is added.
+aloud. A sentence that no one would say is rewritten. The rewrite keeps the
+facts a reader needs and drops the facts the code already shows. These
+sentences came out of review, each next to what a colleague would write:
+
+| Written                                                    | A colleague writes                                                                 |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| The dial is the credential check.                          | Opening a session with the user's credentials is how we check them.                |
+| A create is never retried, because it is not a read.       | CreateTable does not retry, because only reads are safe to run twice.              |
+| DuckDB runs q as u on u's own DuckDB instance.             | Runs the query on the user's own DuckDB instance.                                  |
+| A nil batch is read as no table, not dereferenced.         | A statement without a result set returns a nil batch, which means no tables exist. |
+| The trace layer wraps every route; the order is the point. | Add the trace layer last, so it also wraps `/openapi.json`.                        |

@@ -12,7 +12,8 @@ decisions are in `docs/adr/`.
   parameter of anything that does I/O, logs, or can be cancelled.
 - Small composable functions with descriptive names, and explicit over
   implicit. Comments follow the root `AGENTS.md`, "Code comments": the
-  Go doc comment is the contract, and the narrative lives in the body.
+  Go doc comment is the contract, and each reason sits at the line it
+  explains.
   A negation belongs in a comment only where it records a rejected
   alternative or an invariant. A comment does not correct what an
   earlier version claimed.
@@ -254,9 +255,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   `internal/qdb/read_test.go` (`package qdb_test`) and
   `internal/olap/olap_test.go` (`package olap_test`). Both need the
   table fixture, which imports `internal/qdb`, and `internal/qdb`
-  imports `internal/olap`. Test bodies carry step
-  comments (root `AGENTS.md`, "Code comments") wherever a step's
-  purpose is not evident from the assertion.
+  imports `internal/olap`. Test bodies carry inline comments (root
+  `AGENTS.md`, "Code comments") wherever a line's purpose is not
+  evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`).
   Wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
 - The tests are not in the business of testing the C API, which offers
