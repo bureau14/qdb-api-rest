@@ -63,6 +63,7 @@ func readAttrs(name string, o qdb.ReadOptions) []slog.Attr {
 // handleReadTable streams the table the path names, batch by batch, in
 // the negotiated format, as the bearer's user.
 func handleReadTable(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	ctx := r.Context()
 	// The read runs inside the cluster call's sink, which holds a session
 	// for as long as the client reads. A stream failure and a call failure
@@ -71,7 +72,7 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	//  1. read the parameters. A bad time is the caller's 400, answered
 	//     here;
 	//  2. read the table through query.Logged, with the encoder streaming
-	//     inside the sink;
+	//     inside the sink through a counter that also feeds the metrics;
 	//  3. a stream failure is 500 while no byte has gone out. After the
 	//     first byte the stream is cut and the failure is only logged;
 	//  4. a call failure arrives before the sink runs. An unknown table is
@@ -84,7 +85,7 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enc := negotiate(r.Header.Get("Accept"))
-	cw := &countingWriter{w: w}
+	cw := newCountingWriter(ctx, w, enc, start)
 	// 2. the read, logged as a query. The sink keeps its own error and also
 	//    returns it, so the breaker and the pool hear of a fetch that found
 	//    the cluster gone.
@@ -97,6 +98,7 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 		streamErr = enc.EncodeStream(ctx, cw, batches)
 		return streamErr
 	}, readAttrs(name, o)...)
+	observe.MetricsFrom(ctx).AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:

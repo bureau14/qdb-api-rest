@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/query"
@@ -49,15 +50,45 @@ func isQueryText(contentType string) bool {
 	return err == nil && (mt == "text/plain" || mt == "application/sql")
 }
 
+// formatOf names the encoder's wire format for the metrics.
+func formatOf(enc encoding.Encoder) observe.Format {
+	switch enc.ContentType() {
+	case encoding.NDJSONContentType:
+		return observe.FormatNDJSON
+	case encoding.CSVContentType:
+		return observe.FormatCSV
+	case encoding.ArrowContentType:
+		return observe.FormatArrow
+	default:
+		// JSON, because negotiate answers only the four encoders.
+		return observe.FormatJSON
+	}
+}
+
 // countingWriter counts the bytes that reached the response, so the
-// handler knows whether a problem body may still be written.
+// handler knows whether a problem body may still be written, and
+// records the time to the first of them.
 type countingWriter struct {
-	w io.Writer
-	n int64
+	w     io.Writer
+	n     int64
+	start time.Time
+	first func(time.Duration)
+}
+
+// newCountingWriter counts what the handler writes to w and records the
+// time from start to the first byte under the encoder's format.
+func newCountingWriter(ctx context.Context, w io.Writer, enc encoding.Encoder, start time.Time) *countingWriter {
+	m := observe.MetricsFrom(ctx)
+	return &countingWriter{w: w, start: start, first: func(d time.Duration) {
+		m.ObserveFirstByte(observe.PlaneHTTP, formatOf(enc), d)
+	}}
 }
 
 func (c *countingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
+	if c.n == 0 && n > 0 {
+		c.first(time.Since(c.start))
+	}
 	c.n += int64(n)
 	return n, err
 }
@@ -107,6 +138,7 @@ func writeClusterError(ctx context.Context, w http.ResponseWriter, err error, an
 // DuckDB, and any other body on the native engine. The status is decided
 // before the first byte.
 func handleQuery(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	ctx := r.Context()
 	// The encoder streams inside the sink, and every error of the run
 	// arrives before the sink runs, so the status is decided before the
@@ -114,7 +146,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	//
 	//  1. read the body as query text;
 	//  2. run the query through query.Run, with the encoder streaming
-	//     inside the sink;
+	//     inside the sink through a counter that also feeds the metrics;
 	//  3. a stream failure is 500 while no byte has gone out, which is
 	//     where a column type no encoder writes lands. After the first
 	//     byte the stream is cut and the failure is only logged;
@@ -132,7 +164,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enc := negotiate(r.Header.Get("Accept"))
-	cw := &countingWriter{w: w}
+	cw := newCountingWriter(ctx, w, enc, start)
 	// 2. the query. query.Run retries the native engine once and DuckDB
 	//    never, so the handler retries nothing itself.
 	var streamErr error
@@ -141,6 +173,7 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		streamErr = enc.EncodeStream(ctx, cw, batches)
 		return streamErr
 	})
+	observe.MetricsFrom(ctx).AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:
