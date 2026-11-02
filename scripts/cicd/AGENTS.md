@@ -14,8 +14,8 @@ in `.buildkite/` (see its `AGENTS.md`).
   root Makefile, whose PATH `cicd_setup_go_toolchain` has already
   prepended.
 - `10.lint.sh` delegates to `make lint`, a Linux-only step with GNU make
-  available, so the golangci-lint version pin has one writer, the root
-  Makefile. The per-platform scripts that compile call `${GO}` directly
+  available, so the golangci-lint install, at its latest release, has
+  one writer, the root Makefile. The per-platform scripts that compile call `${GO}` directly
   instead of make because FreeBSD ships BSD make and the Windows agents
   none.
 - `40.test-e2e.sh` is the one per-platform script that uses make. It

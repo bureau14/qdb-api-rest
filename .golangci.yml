@@ -1,5 +1,5 @@
-# golangci-lint v2 configuration. The version is pinned in the Makefile
-# (GOLANGCI_LINT_VERSION); `make lint` installs and runs it.
+# golangci-lint v2 configuration. `make lint` installs the latest
+# release and runs it (the root Makefile says why).
 version: "2"
 
 linters:
