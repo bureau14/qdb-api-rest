@@ -1,6 +1,6 @@
 ---
 name: rr-build
-description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code in plannotator, and post the build-stage message. The plan is derived from the branch; an argument overrides it. Invoked by the owner after the plan-stage message; the invocation is the gate.
+description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code as a guided review in the Inbox, and post the build-stage message. The plan is derived from the branch; an argument overrides it. Invoked by the owner after the plan-stage message; the invocation is the gate.
 disable-model-invocation: true
 argument-hint: "[docs/<slug>-plan.md, only when the branch does not name it]"
 ---
@@ -15,7 +15,8 @@ $ARGUMENTS
 
 This stage may run in a session that has none of the seed or plan
 conversation. The plan is the whole input: read it whole before the
-first commit.
+first commit, and keep its `Thread:` name, because the code review goes
+into that thread after the plan is deleted.
 
 ## The plan
 
@@ -52,9 +53,9 @@ Last commits on this branch:
 The current branch is the plan's `sc-19567/rr-<slug>`, the tree is
 clean, the plan's last commit is a `docs(plan)` commit, and the plan's
 `Status:` line says `approved`, which the plan stage sets in its own
-commit when the gate approves. Anything else is the owner's decision
-before anything else. A plan still at `draft` means the gate has not
-approved it, or the plan stage skipped the status commit; say which
+commit when the owner approves the plan. Anything else is the owner's
+decision before anything else. A plan still at `draft` means the owner
+has not approved it, or the plan stage skipped the status commit; say which
 you cannot tell, and the owner decides.
 
 ## The commits
@@ -135,25 +136,27 @@ than after it. So once the checks above are clean, in this order:
    ensure a build of its head: the `buildkite` skill, "Ensuring and
    watching a build", with the parameters in `/rr-workflow`, Tools.
    Run the watcher in the background; do not block on it.
-2. Open the code review, in the background as well, with a long
-   timeout:
+2. Write a guided review of the pushed head and send it, as
+   `/rr-workflow`, The Inbox, says:
+   - `get_guide_brief`, then the patch
+     `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`.
+   - `submit_guide` with that exact patch, in the unit's thread. The
+     body names the head's SHA, because the owner's "Looks good"
+     approves that head and no other.
 
-   ```
-   plannotator review --base sc-19567/rest-rewrite --json
-   ```
-
-   It blocks until the owner decides in the browser, and the harness
-   wakes you when it exits. Do nothing else while both run. Its stdout
-   is one JSON record; classify it by `decision` alone:
-   - `approved`: the owner's yes on the code. Notes in `message` are
-     guidance, quoted in the build-stage message, not a change request.
-   - `annotated`: the owner's change requests. Address every annotation
+   Then end your turn. A watcher that exits wakes the session too:
+   handle it as step 3 says, report it in the conversation, and end
+   your turn again. The owner's answer is one of three, by The Inbox's
+   table:
+   - "Looks good" on the guide's message: the owner's yes on this head.
+   - A reply: the owner's change requests, also when its words sound
+     like a yes. Address every annotation and every point of the reply
      with further small commits on this branch, push, create a new
-     build for the new head, and open the review again from step 2.
-     The build of the superseded head is reported as superseded, not
-     waited for.
-   - `dismissed`, or a non-zero exit without a decision: stop and
-     report; the owner decides in the conversation.
+     build for the new head, and send a new guide for the new head from
+     step 2, with `reply_to` set to the reply's id. The build of the
+     superseded head is reported as superseded, not waited for.
+   - The thread resolved without a "Looks good": stop and report. The
+     owner decides in the conversation.
 
 3. Wait for the build of the reviewed head. The watcher's exit says
    what comes next:
@@ -176,27 +179,29 @@ than after it. So once the checks above are clean, in this order:
      stage cannot end without a build.
 
 The stage is over only when the reviewed head is the built head, the
-review is `approved` and the build is green. Local tests passing is
+owner marked its guide "Looks good" and the build is green. Local tests passing is
 not the end of the stage, however small the change.
 
-Correct: the checks are clean; you push, create build 412, open the
-review; the owner annotates two comments; you fix them in two commits,
-push, create build 413, open the review again; it returns `approved`;
-build 413 goes green; the build-stage message names 413 and says 412
-was superseded.
+Correct: the checks are clean; you push, create build 412, send the
+guide; the owner replies with two annotations; you fix them in two
+commits, push, create build 413, send a new guide; the owner marks it
+"Looks good"; build 413 goes green; the build-stage message names 413
+and says 412 was superseded.
 
-Incorrect: the review returns `approved` and the build-stage message is
-posted while the build is still running. Or: the build goes red, you
-fix it and wait for green without reopening the review, so the owner
-merges a commit they never saw.
+Incorrect: the owner marks the guide "Looks good" and the build-stage
+message is posted while the build is still running. Or: build 412 goes
+green while the guide waits, and you post that into the unit's thread,
+so the owner cannot mark the guide. Or: the build goes red, you fix it
+and wait for green without sending a new guide, so the owner merges a
+commit they never saw.
 
 ## The build-stage message
 
 Exactly: the branch name; a summary of the change in plain words; each
 deviation from the plan with the reason the code forced it; the
 doc-discipline check's report, or "clean"; the plan's deletion commit
-by its sha; the review's decision with
-its notes quoted, if any; the Buildkite build number and its state,
+by its sha; the review's outcome, with the Inbox message id the owner
+marked; the Buildkite build number and its state,
 and any superseded build numbers; the command
 `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`; one line saying
 the merge waits for `/rr-merge`.
