@@ -28,6 +28,14 @@ Before working inside a folder, read its `AGENTS.md` if one exists.
 | `scripts/cicd/`        | Buildkite step scripts (lint, build, unit tests)                     | touching CI step scripts or the shared `00.common.sh` helpers                 |
 | `.buildkite/`          | pipeline generator, step templates, qdb-cicd-tools submodule         | touching the CI pipeline or platform matrix                                   |
 
+## Workflow
+
+The owner is the repository's maintainer, the only person who opens a
+stage or answers a question. "The question tool" is a `:::question`
+block sent to the Plannotator Inbox in the unit's thread. After sending
+it, you end your turn until the reply arrives.
+`.claude/skills/rr-workflow/SKILL.md`, "The Inbox", says how.
+
 ## Documentation strategy
 
 Knowledge lives next to the code that implements it: a comment for one
