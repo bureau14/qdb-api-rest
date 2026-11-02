@@ -327,15 +327,21 @@ check_query_lines() {
     log_info "[OK] $name: a query line per plane and engine is in the log"
 }
 
-# METRIC_SERIES: the series every platform exposes, asserted by name on
-# each server's scrape: the build-info series this binary names, under
-# the default observability.metrics.namespace because the Makefile
-# passes no metrics flag, and two of the client's Go runtime series. The
-# process_ series are not listed,
-# because the client reads procfs for them and FreeBSD, in the matrix,
-# does not mount it. A later unit's series joins this list with its
-# commit.
-METRIC_SERIES=(qdb_rest_build_info go_goroutines go_info)
+# METRIC_SERIES: the series asserted by name on each server's scrape.
+# The binary's own series carry the default namespace, qdb_rest_,
+# because the Makefile passes no metrics flag. Two of the client's Go
+# runtime series follow. The process_ series are left out, because the
+# client reads procfs for them and FreeBSD, in the matrix, does not
+# mount it.
+METRIC_SERIES=(
+    qdb_rest_build_info
+    qdb_rest_budget_sessions
+    qdb_rest_breaker_state
+    qdb_rest_pool_sessions
+    qdb_rest_retries_total
+    go_goroutines
+    go_info
+)
 
 # scrape_metrics <out_dir> <url>: GET /metrics is 200, text/plain, and
 # the body names every series of METRIC_SERIES at the start of a line.
