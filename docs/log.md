@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-10-30
+Last updated: 2026-11-02
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -51,9 +51,10 @@ In flight: none.
 
 Next:
 
-1. The remaining M7 exit criteria, in the order of the criteria: the
-   series of Goal 9 on both planes with the pool, breaker and retry
-   state, then the stress's budget step (owner, 2026-10-29).
+1. The remaining M7 series: rows streamed per format, qdb call
+   durations, and query latency per engine without a user.
+2. The stress's budget step, green by hand on both clusters, which is
+   the owner's run. M7 closes on it.
 
 Handoff to M7 and M8:
 
@@ -91,6 +92,13 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-02 -- metrics-series-plan.md deleted
+
+- Facts moved to `internal/AGENTS.md`, `docs/e2e.md`, `docs/brief.md`,
+  ADR-0019 and the comments of `internal/config`, `internal/observe`,
+  `internal/qdb`, `internal/httpapi`, `internal/flightsql`,
+  `internal/query`, `cmd/qdb_rest` and `tests/e2e`.
 
 ## 2026-10-30 -- query-capture-plan.md deleted
 
