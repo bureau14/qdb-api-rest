@@ -339,6 +339,11 @@ METRIC_SERIES=(
     qdb_rest_breaker_state
     qdb_rest_pool_sessions
     qdb_rest_retries_total
+    qdb_rest_http_request_duration_seconds
+    qdb_rest_flight_rpc_duration_seconds
+    qdb_rest_first_byte_seconds
+    qdb_rest_response_bytes_total
+    qdb_rest_query_duration_seconds
     go_goroutines
     go_info
 )

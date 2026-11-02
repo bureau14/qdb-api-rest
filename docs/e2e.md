@@ -133,9 +133,11 @@ is timed.
 9. The scrape. `GET /metrics` on each server, after every other step,
    answers 200 with `text/plain` and a body naming every series of
    `METRIC_SERIES` in the driver, presence only and never a value:
-   `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`
-   and `retries_total` under the `qdb_rest_` namespace, and the Go
-   runtime series. The `process_` series are not asserted, because the
+   `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`,
+   `retries_total`, `http_request_duration_seconds`,
+   `flight_rpc_duration_seconds`, `first_byte_seconds`,
+   `response_bytes_total` and `query_duration_seconds` under the
+   `qdb_rest_` namespace, and the Go runtime series. The `process_` series are not asserted, because the
    client reads procfs for them and FreeBSD does not mount it. A new
    series joins the list with its commit.
 10. The query lines. The driver greps each server's log for one query
