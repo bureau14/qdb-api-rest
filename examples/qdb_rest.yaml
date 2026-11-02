@@ -155,6 +155,12 @@ observability:
     # series of the Go client keep their names. A name of letters, digits,
     # underscores and colons, not starting with a digit, and not empty.
     namespace: "qdb_rest"
+    # Buckets of every duration histogram: count upper bounds, the first
+    # at start and each next one double the one before. The default runs
+    # from 32ms to 16.4s, and a minute needs a count of 12.
+    duration_buckets:
+      start: "32ms"
+      count: 10
   # Serve the Go runtime profiler under /debug/pprof/ on the HTTP and
   # HTTPS listeners, outside authentication, for goroutine, heap and
   # CPU profiles of a live instance. Off unless a profile is wanted.

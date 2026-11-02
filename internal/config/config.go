@@ -168,10 +168,19 @@ type DuckDB struct {
 	Quasar         Quasar `yaml:"quasar"`
 }
 
-// Metrics switches the Prometheus exposition and names its series.
+// DurationBuckets cuts every duration histogram: Count boundaries, the
+// first at Start and each next one double the last.
+type DurationBuckets struct {
+	Start time.Duration `yaml:"start" help:"upper bound of the first bucket of every duration histogram"`
+	Count int           `yaml:"count" help:"buckets of every duration histogram, each bound double the one before"`
+}
+
+// Metrics switches the Prometheus exposition, names its series and cuts
+// its histograms.
 type Metrics struct {
-	Enabled   bool   `yaml:"enabled" help:"serve the Prometheus exposition at GET /metrics on the HTTP listeners"`
-	Namespace string `yaml:"namespace" help:"prefix of every series this binary names, so several exporters on one host do not collide"`
+	Enabled         bool            `yaml:"enabled" help:"serve the Prometheus exposition at GET /metrics on the HTTP listeners"`
+	Namespace       string          `yaml:"namespace" help:"prefix of every series this binary names, so several exporters on one host do not collide"`
+	DurationBuckets DurationBuckets `yaml:"duration_buckets"`
 }
 
 // Observability groups what the process tells an operator about itself:
@@ -207,7 +216,8 @@ type Config struct {
 //     qdb-duck's own defaults
 //   - JSON logs at info, with a query's statement truncated at a
 //     kibibyte on debug lines, the Prometheus exposition on under the
-//     qdb_rest namespace, and the runtime profiler off
+//     qdb_rest namespace with duration buckets from 32 ms doubling ten
+//     times, and the runtime profiler off
 func Default() Config {
 	return Config{
 		// Eight seconds of grace is not measured. Anything that stops the
@@ -257,8 +267,14 @@ func Default() Config {
 		Observability: Observability{
 			// The kibibyte of statement is not measured. It holds several
 			// lines of SQL.
-			Log:     Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
-			Metrics: Metrics{Enabled: true, Namespace: "qdb_rest"},
+			Log: Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
+			Metrics: Metrics{
+				Enabled:   true,
+				Namespace: "qdb_rest",
+				// 32 ms and ten buckets are the owner's choice for a gateway,
+				// and a deployment sets its own.
+				DurationBuckets: DurationBuckets{Start: 32 * time.Millisecond, Count: 10},
+			},
 		},
 	}
 }
@@ -719,14 +735,21 @@ func validateDuckDB(d DuckDB) error {
 // namespace must fit because it is the head of every series name.
 var metricName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 
-// validateMetrics requires a namespace that fits the name grammar. An
-// empty one is refused rather than read as no prefix, because the
-// prefix is what keeps the series apart from every other Go service a
-// host scrapes (ADR-0019), and the client panics at registration on a
-// name outside the grammar.
+// validateMetrics requires a namespace that fits the name grammar and
+// buckets that the client can build: a positive start and at least one
+// bucket.
 func validateMetrics(m Metrics) error {
+	// The grammar refuses an empty namespace, because the prefix keeps the
+	// series apart from every other Go service a host scrapes (ADR-0019).
 	if !metricName.MatchString(m.Namespace) {
 		return fmt.Errorf("observability.metrics.namespace must match %s, got %q", metricName, m.Namespace)
+	}
+	// The client panics at startup on either bound, without naming the key.
+	if err := positive("observability.metrics.duration_buckets.start", m.DurationBuckets.Start); err != nil {
+		return err
+	}
+	if m.DurationBuckets.Count < 1 {
+		return fmt.Errorf("observability.metrics.duration_buckets.count must be at least 1, got %d", m.DurationBuckets.Count)
 	}
 	return nil
 }
