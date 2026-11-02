@@ -32,13 +32,15 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 	return resp
 }
 
-// observeContext carries a discarding logger so handlers can log, and
-// a fresh metrics registry, because MetricsFrom panics without one and
-// the data routes record into it.
+// observeContext carries a discarding logger so handlers can log, a
+// fresh metrics registry and the HTTP plane, because the data routes
+// record into the registry and a direct query.Run records under the
+// plane, which only the middleware tags on a request.
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	ctx := observe.WithLogger(context.Background(), logger)
-	return observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Observability.Metrics, false))
+	ctx = observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Observability.Metrics, false))
+	return observe.WithPlane(ctx, observe.PlaneHTTP)
 }
 
 // TestReadinessOKAgainstLiveCluster: each reachable cluster answers 200

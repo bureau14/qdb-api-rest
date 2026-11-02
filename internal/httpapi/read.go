@@ -91,8 +91,9 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	//    the cluster gone.
 	name := r.PathValue("name")
 	var streamErr error
-	err = query.Logged(ctx, observe.EngineBulkReader, func(sink func(qdb.Batches) error) error {
-		return qdb.ClusterFrom(ctx).Read(ctx, caller(r), name, o, sink)
+	u := caller(r)
+	err = query.Logged(ctx, observe.EngineBulkReader, u, func(sink func(qdb.Batches) error) error {
+		return qdb.ClusterFrom(ctx).Read(ctx, u, name, o, sink)
 	}, func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
 		streamErr = enc.EncodeStream(ctx, cw, batches)

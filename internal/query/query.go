@@ -76,11 +76,12 @@ func countRows(b qdb.Batches, n *int64) qdb.Batches {
 	}
 }
 
-// Logged runs call with a wrapped sink and writes one info line with the
-// engine, duration, rows pulled, outcome and attrs. It returns call's
-// error unchanged. The outcome is ok on success, abandoned when the ctx
-// ended, cut when the sink failed, and error otherwise.
-func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) error) error, sink func(qdb.Batches) error, attrs ...slog.Attr) error {
+// Logged runs call with a wrapped sink, writes one info line with the
+// engine, duration, rows pulled, outcome and attrs, and records the
+// duration in the query histogram under the context's plane and u. It
+// returns call's error unchanged. The outcome is ok on success, abandoned
+// when the ctx ended, cut when the sink failed, and error otherwise.
+func Logged(ctx context.Context, e observe.Engine, u qdb.User, call func(func(qdb.Batches) error) error, sink func(qdb.Batches) error, attrs ...slog.Attr) error {
 	// The sink's error is kept apart from call's to tell cut from error.
 	var rows int64
 	var sinkErr error
@@ -91,7 +92,7 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 
 	start := time.Now()
 	err := call(wrapped)
-	elapsed := time.Since(start).Milliseconds()
+	elapsed := time.Since(start)
 
 	// The ctx goes first, because a caller who leaves makes the sink fail
 	// too.
@@ -111,12 +112,14 @@ func Logged(ctx context.Context, e observe.Engine, call func(func(qdb.Batches) e
 	// already carries the status.
 	line := append([]slog.Attr{
 		observe.EngineAttr(e),
-		slog.Int64("duration_ms", elapsed),
+		slog.Int64("duration_ms", elapsed.Milliseconds()),
 		slog.Int64(observe.KeyRows, rows),
 		observe.OutcomeAttr(o),
 		observe.Err(err),
 	}, attrs...)
 	observe.Logger(ctx).LogAttrs(ctx, slog.LevelInfo, "query", line...)
+	// Every outcome is recorded, as every outcome logs a line.
+	observe.MetricsFrom(ctx).ObserveQuery(observe.PlaneOf(ctx), e, u.Username, elapsed)
 	return err
 }
 
@@ -134,11 +137,11 @@ func Run(ctx context.Context, u qdb.User, q string, sink func(qdb.Batches) error
 	observe.Logger(ctx).DebugContext(ctx, "query statement",
 		slog.String(observe.KeyStatement, text), slog.Int(observe.KeyStatementBytes, len(text)))
 	if duck {
-		return Logged(ctx, observe.EngineDuckDB, func(s func(qdb.Batches) error) error {
+		return Logged(ctx, observe.EngineDuckDB, u, func(s func(qdb.Batches) error) error {
 			return c.Duck(ctx, u, text, s)
 		}, sink)
 	}
-	return Logged(ctx, observe.EngineNative, func(s func(qdb.Batches) error) error {
+	return Logged(ctx, observe.EngineNative, u, func(s func(qdb.Batches) error) error {
 		return c.Query(ctx, u, text, s, qdb.WithReadRetry())
 	}, sink)
 }

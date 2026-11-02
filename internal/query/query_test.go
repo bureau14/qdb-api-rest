@@ -12,6 +12,7 @@ import (
 
 	"pgregory.net/rapid"
 
+	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
@@ -174,6 +175,8 @@ func TestQueryLines(t *testing.T) {
 		var log bytes.Buffer
 		logger := slog.New(slog.NewJSONHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		ctx := qdb.WithCluster(observe.WithLogger(context.Background(), logger), f.Cluster)
+		// Logged records into the metrics under the context's plane.
+		ctx = observe.WithPlane(observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Observability.Metrics, false)), observe.PlaneHTTP)
 
 		rapid.Check(t, func(rt *rapid.T) {
 			tbl := table.Generate(rt)
@@ -200,7 +203,7 @@ func TestQueryLines(t *testing.T) {
 			// 3. a table read: its attrs and no statement line
 			start, end := tbl.Range()
 			c = capture(rt, &log, func() {
-				err := Logged(ctx, observe.EngineBulkReader, func(sink func(qdb.Batches) error) error {
+				err := Logged(ctx, observe.EngineBulkReader, f.User, func(sink func(qdb.Batches) error) error {
 					return f.Cluster.Read(ctx, f.User, tbl.Name, qdb.ReadOptions{Start: start, End: end}, sink)
 				}, drain,
 					slog.String(observe.KeyTable, tbl.Name),
