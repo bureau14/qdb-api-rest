@@ -3,6 +3,7 @@ package flightsql
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/flight"
@@ -25,6 +26,17 @@ import (
 func userOf(ctx context.Context) qdb.User {
 	c := auth.ClaimsFrom(ctx)
 	return qdb.User{Username: c.Username, SecretKey: c.SecretKey}
+}
+
+// countingStream counts the bytes of the IPC messages the writer sends.
+type countingStream struct {
+	flight.FlightService_DoGetServer
+	n int64
+}
+
+func (s *countingStream) Send(d *flight.FlightData) error {
+	s.n += int64(len(d.DataHeader) + len(d.DataBody))
+	return s.FlightService_DoGetServer.Send(d)
 }
 
 // describe answers a query's schema, and whether it has one. A DuckDB
@@ -132,6 +144,7 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 	//  3. run the query, with the Flight writer inside the sink;
 	//  4. on a failed stream, answer INTERNAL or the context's code;
 	//  5. on a run that failed before the sink, answer statusOf's code.
+	start := time.Now()
 	ctx := stream.Context()
 
 	// 1. decode the ticket. A ticket that is not a statement goes to the
@@ -150,17 +163,22 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 	//    the last batch, because it writes the schema when no batch did, so
 	//    an empty result reaches the client too. A batch of no rows is
 	//    skipped, as the Arrow encoder skips it, so a statement without a
-	//    result set streams a schema with no fields and no batch.
+	//    result set streams a schema with no fields and no batch. The sink
+	//    records the time to the first record batch, and the counting
+	//    stream adds the bytes of every message under format arrow.
+	m := observe.MetricsFrom(ctx)
+	cs := &countingStream{FlightService_DoGetServer: stream}
 	var streamErr error
 	err = query.Run(ctx, u, string(ticket.GetStatementHandle()), func(batches qdb.Batches) error {
 		var w *flight.Writer
+		sent := false
 		for rec, err := range batches {
 			if err != nil {
 				streamErr = err
 				return err
 			}
 			if w == nil {
-				w = flight.NewRecordWriter(stream, ipc.WithSchema(rec.Schema()))
+				w = flight.NewRecordWriter(cs, ipc.WithSchema(rec.Schema()))
 			}
 			if err := ctx.Err(); err != nil {
 				streamErr = err
@@ -173,12 +191,16 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 				streamErr = err
 				return err
 			}
+			if !sent {
+				m.ObserveFirstByte(observe.PlaneFlight, observe.FormatArrow, time.Since(start))
+				sent = true
+			}
 		}
 		// The sequence is never empty (the Batches contract), so the writer
 		// is open. If it were not, Close on a nil writer would panic, so an
 		// empty schema is streamed and the client still reads a stream.
 		if w == nil {
-			w = flight.NewRecordWriter(stream, ipc.WithSchema(arrow.NewSchema(nil, nil)))
+			w = flight.NewRecordWriter(cs, ipc.WithSchema(arrow.NewSchema(nil, nil)))
 		}
 		if err := w.Close(); err != nil {
 			streamErr = err
@@ -186,6 +208,7 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 		}
 		return nil
 	})
+	m.AddBytes(observe.PlaneFlight, observe.FormatArrow, cs.n)
 	switch {
 	// 4. the client sees only the closing status, so the error goes to the
 	//    log in one warning line, and the status says the server failed:
