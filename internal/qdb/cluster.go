@@ -363,16 +363,9 @@ func (c *Cluster) feedBreaker(err error) {
 	c.breaker.recordSuccess()
 }
 
-// Call runs f on a session authenticated as the user. The breaker gates
-// the call. The user's pool leases a session, dialing one on demand, and
-// runs f. The binding's IsBadSession and Lease.Done decide from f's error
-// whether the pool keeps the session. This layer adds two decisions, both
-// per cluster. Only errors that are evidence about the cluster
-// (IsClusterUnavailable) feed the breaker. An idempotent read can opt in
-// to one retry after a retryable failure, and a refused credential is
-// never retried. A retry after a bad session runs on a fresh session,
-// because the pool discarded the old one. A retry after any other
-// retryable failure may run on the same session.
+// Call runs f on a session authenticated as u. It returns a
+// *BreakerOpenError while the cluster is unreachable. WithReadRetry allows
+// one retry of an idempotent read.
 func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
@@ -385,13 +378,13 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
 		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error { return f(newSession(s)) })
+		// The caller's own cancellation says nothing about the cluster.
 		if callerLeft(err) {
 			return err
 		}
 		c.feedBreaker(err)
-		// A refusal is not retried although the binding calls
-		// ErrInvalidReply retryable, because a second dial with the same
-		// credentials is refused the same way.
+		// A second dial with refused credentials is refused the same way,
+		// although the binding calls the refusal's ErrInvalidReply retryable.
 		if !cc.retry || !qdbapi.IsRetryable(err) || errors.Is(err, ErrCredentialsRefused) {
 			return err
 		}
