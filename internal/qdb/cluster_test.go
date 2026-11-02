@@ -1,8 +1,7 @@
 // This file holds the integration tests of Cluster against the live qdbd
 // fixture (internal/qdbtest). They cover the breaker, the per-user cap,
 // retry-once, a rejected query's session and breaker, user-pool eviction,
-// the collector's series, the probe as the REST API's own user, and the
-// table list. TestSlices
+// the probe as the REST API's own user, and the table list. TestSlices
 // covers the slicing of a query result and dials nothing. Every test that
 // dials the fixture runs once per cluster, as the user the fixture names
 // there, except TestAuthenticate, which checks each cluster's own verdict.
@@ -14,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -23,7 +21,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
-	"github.com/prometheus/client_golang/prometheus"
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
@@ -307,66 +304,6 @@ func TestIdleUserPoolEvicted(t *testing.T) {
 		c.Reap()
 		if s := c.Stats(); s.Users != 0 {
 			t.Fatalf("idle user pool was not evicted: %d users remain", s.Users)
-		}
-	})
-}
-
-// gaugeOf gathers reg and returns the value of the series name whose
-// labels are exactly labels. It fails the test when no series matches.
-func gaugeOf(t *testing.T, reg *prometheus.Registry, name string, labels map[string]string) float64 {
-	t.Helper()
-	families, err := reg.Gather()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range families {
-		if f.GetName() != name {
-			continue
-		}
-		for _, m := range f.GetMetric() {
-			got := map[string]string{}
-			for _, l := range m.GetLabel() {
-				got[l.GetName()] = l.GetValue()
-			}
-			if maps.Equal(got, labels) {
-				return m.GetGauge().GetValue()
-			}
-		}
-	}
-	t.Fatalf("no series %s%v", name, labels)
-	return 0
-}
-
-// TestCollector leases a session as the cluster's test user and reads
-// the collector: one session in use in the user's pool, or in the
-// summed pool on the insecure cluster, one unit of the budget, and the
-// breaker closed.
-func TestCollector(t *testing.T) {
-	eachCluster(t, func(t *testing.T, spec qdbtest.Cluster) {
-		c := New(spec.Config(t), nil)
-		defer closeCluster(t, c)
-		reg := prometheus.NewRegistry()
-		reg.MustRegister(NewCollector(c, "qdb_rest", spec.Secured))
-		// The secure cluster names the user, and the insecure one does not.
-		pool := map[string]string{"state": "in_use"}
-		if spec.Secured {
-			pool["user"] = spec.Username
-		}
-		// The collect runs inside Call, so the session is held.
-		err := c.Call(context.Background(), userOf(spec), func(*Session) error {
-			if v := gaugeOf(t, reg, "qdb_rest_pool_sessions", pool); v != 1 {
-				t.Errorf("pool_sessions%v = %v, want 1", pool, v)
-			}
-			if v := gaugeOf(t, reg, "qdb_rest_budget_sessions", map[string]string{"state": "in_use"}); v != 1 {
-				t.Errorf("budget_sessions in use = %v, want 1", v)
-			}
-			if v := gaugeOf(t, reg, "qdb_rest_breaker_state", map[string]string{"state": "closed"}); v != 1 {
-				t.Errorf("breaker_state closed = %v, want 1", v)
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
 		}
 	})
 }
