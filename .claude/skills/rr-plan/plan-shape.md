@@ -6,8 +6,12 @@ The build stage may run in another session, by an agent that has none
 of this conversation: not the seed report, not the owner's answers, not
 what was tried and dropped. The plan document is the only thing that
 crosses that boundary, and it is deleted when the unit lands
-(`docs/AGENTS.md`, Plans), so a reason it carries that never reaches a
-comment or a document is lost twice. Write it for that reader: an
+(`docs/AGENTS.md`, Plans), so a reason it carries is lost unless it
+lands in a comment, a document or an ADR. Most of the plan's reasons
+should land. Some should not: an answer the owner gave in the
+conversation, or an alternative no reader of the code would propose.
+The plan marks those `plan only`, and they die with it on purpose.
+Write it for that reader: an
 executor who writes every commit, every comment and every document row
 from the plan alone, without guessing and without asking, and who could
 defend each choice to the owner the way you can now.
@@ -19,11 +23,23 @@ The skill's vocabulary names the shapes; the plan is still read by
 someone who has not loaded it, so every shape and reason is said in
 plain words.
 
+## Header
+
+The document is `docs/<slug>-plan.md`. Below its title it carries two
+header lines, then a blank line, then the sections:
+
+```
+Thread: <the unit's Inbox thread name, from the seed report>
+Status: draft | approved
+```
+
+`Status:` stays `draft` until the owner marks the plan "Looks good" and
+the plan stage commits `approved`. `Thread:` is how a later session
+finds the unit's Inbox thread (`/rr-workflow`, The Inbox).
+
 ## Sections
 
-The document is `docs/<slug>-plan.md`, `Status: draft` until the gate
-approves it and the plan stage commits `Status: approved`, and carries
-these sections in this order. A section with nothing to say says
+These sections, in this order. A section with nothing to say says
 "none"; it is never dropped.
 
 1. **Outcome.** What is true in the tree when the unit lands, and what
@@ -44,10 +60,12 @@ these sections in this order. A section with nothing to say says
    things fail on the way"). A rule number may follow in parentheses
    and never replaces the reason. Below it, one claim per `//` bullet,
    each ending with its evidence in brackets (`path:line`, a test, a
-   Rationale row): the contract facts in the doc comment, the strategy
-   and each step's why in the overview, and the guard, threshold,
-   ordering constraint or rejected alternative at the step or line it
-   belongs to. Where step comments will sit, the bullets are numbered
+   Rationale row): one to three contract facts in the doc comment, the
+   steps in an overview only when their order is not obvious, and each
+   why inline at the step or line it explains. A why is a guard, a
+   threshold or an ordering constraint. A rejected alternative appears
+   at a line only when a reader of that line would propose it. Where
+   step comments will sit, the bullets are numbered
    (`// 1.`, `// 2.`). A pseudo-code statement may anchor a step
    (`schema, err := schemaOf(name)`) and is illustrative: the code
    commit follows the signature and the claims, not the sketch's
@@ -57,8 +75,10 @@ these sections in this order. A section with nothing to say says
    The sketch is the shape and the claims, not the wording. The
    executor rewrites every comment in the project's prose at build
    time, with the code in view, in the shape `/doc-discipline read`
-   loads; it keeps every bullet as a claim and drops the evidence
-   brackets, which stay in the plan. Document rows (an `AGENTS.md`
+   loads. It keeps every bullet as a claim and drops the evidence
+   brackets, which stay in the plan. Where the unit changes existing
+   code, the sketch names the comment blocks the change touches, and
+   the build rewrites them whole from the new code. Document rows (an `AGENTS.md`
    bullet, a specification paragraph) are sketched the same way: a
    fenced block of bullets under the heading they will join. Tests are
    designed the same way.
@@ -75,12 +95,17 @@ these sections in this order. A section with nothing to say says
    show: a dependency's defect, an owner preference, a reversal of an
    earlier rule, a constraint from a milestone handoff.
 5. **Knowledge.** Per commit, where each why of sections 3 and 4
-   lands: the narrated functions with the why-evidence of every
-   overview claim; the `AGENTS.md` rows and documents the commit
-   changes, named by the routing table of `docs/AGENTS.md`; every fact
-   with no home yet, with the home it gets and the commit that gives
-   it. Every Rationale row has at least one landing place here, or it
-   dies with the plan.
+   lands: the commented functions with the why-evidence of every
+   claim; the `AGENTS.md` rows and documents the commit changes, named
+   by the routing table of `docs/AGENTS.md`; every fact with no home
+   yet, with the home it gets and the commit that gives it. Every
+   Rationale row names its landing place here, which is one of four. A
+   decision that shapes more than one component lands in an ADR in
+   `docs/adr/`. One that shapes a folder lands in its `AGENTS.md`. A
+   reason that explains one line lands as an inline comment at that
+   line. A reason the code will not raise again, such as an owner's
+   answer in the conversation or an alternative no reader would
+   propose, is marked `plan only` and dies with the plan.
 6. **How the knowledge lands.** One line: the build stage is
    `/rr-build`, which writes every comment and
    document row from sections 3 and 5 in the same commit as the code
@@ -108,15 +133,15 @@ two styles named on the first body line:
 // <contract claim> [evidence]
 // <contract claim> [evidence]
 func <name>(<params>) (<results>) {
-	// style: doc comment + numbered overview + step comments
+	// style: doc comment + overview + inline notes
 	// because: <reason for this style in plain words>
 	//
-	// <strategy claim> [evidence]
+	// 1. <step> [evidence]
+	// 2. <step> [evidence]
+	// 3. <step> [evidence]
 	//
-	// 1. <what the step achieves> because <its why> [evidence]
-	// 2. <what the step achieves> because <its why> [evidence]
-	//    - rejected: <alternative>, because <what sank it> [Rationale row]
-	// 3. <what the step achieves> [evidence]
+	// 1. <the step's why> [evidence]
+	// 2. <the step's why> [evidence]
 	//    <pseudo-code anchor, illustrative>
 }
 ```
@@ -124,27 +149,28 @@ func <name>(<params>) (<results>) {
 ```go
 // <contract claim> [evidence]
 func <name>(<params>) (<results>) {
-	// style: doc comment alone
+	// style: doc comment + inline notes
 	// because: <reason, e.g. one type switch like csvAppender>
 	//
 	// at <branch or constant>: <local claim> [evidence]
 }
 ```
 
-The style line is one of: `doc comment alone`; `doc comment + numbered
-overview + step comments`; either with `+ inline note at <line>` or
-`+ Note: on <ownership | caching | I/O>`. The Rationale row behind a
-rejected alternative is cited at the step that rejects it; and a
-question the plan cannot answer is asked before the plan is committed,
-never written as a claim.
+The style line is one of `doc comment alone`, `doc comment + inline
+notes` and `doc comment + overview + inline notes`, and any of them may
+add `+ Note: on <ownership | caching | I/O>`. A rejected alternative at
+a line cites its Rationale row. A question the plan cannot answer is
+asked before the plan is committed, never written as a claim.
 
 Incorrect: the plan pastes the comments as finished Go text and tells
 the build to type them in, so the wording is frozen before the function
 exists; or it describes the comments in prose ("a doc comment and a
 numbered overview; claims: ...; ...;"), so a reviewer rebuilds the
 function in their head to see what is covered; or the style line says
-"narrated (rule 3)" and nothing else; or the Rationale says what was
-chosen and not what lost, so the next unit tries the loser again.
+"commented (rule 3)" and nothing else; or the Rationale says what was
+chosen and not what lost, so the next unit tries the loser again. Or
+every step carries a rejected alternative and the overview repeats each
+step's reason, so the code reads like the planning session.
 
 ## The plan deletes itself
 
