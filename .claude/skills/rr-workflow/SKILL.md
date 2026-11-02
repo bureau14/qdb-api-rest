@@ -18,8 +18,9 @@ user-invocable: false
   conventional-commit line, `type(scope): subject`, no body, no
   trailers, no AI attribution. Prefer many small commits over one big
   one; each commit builds and passes lint.
-- The owner reviews by diffing the branch against the base
-  (`git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`).
+- The owner reviews the plan and the code in the Plannotator Inbox
+  (The Inbox, below). The code review's patch is
+  `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`.
 - No GitHub pull requests, no stacked branches, no history rewriting on
   the base.
 
@@ -38,12 +39,19 @@ takes these values from this repository:
 | Branch         | the feature branch, `sc-19567/rr-<slug>`                                                  |
 | Commit         | the full SHA of the head, `git rev-parse HEAD`                                            |
 | `MESSAGE`      | `rr-<slug>`, so the pipeline's build list reads by unit                                   |
-| `CHECKPOINT`   | `7200`, because the watcher runs beside a plannotator review that can take hours          |
+| `CHECKPOINT`   | `7200`, because the watcher runs beside the owner's code review, which can take hours     |
 | Control branch | `sc-19567/rest-rewrite`, when the skill says to check a failure against an unchanged base |
 
 The builds of a head, with their states, are read with the skill's
 one-liner in "Inspecting builds and jobs". `/rr-merge` quotes it in its
 entry check because the harness evaluates that check at load time.
+
+The reviews go through the `plannotator_inbox` tool:
+
+| Review      | Calls                                     | Values here                                                                             |
+| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| Plan review | `send_message`, the plan in `attachments` | `docs/<slug>-plan.md`, one message                                                      |
+| Code review | `get_guide_brief`, then `submit_guide`    | patch `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`, the head's SHA in the body |
 
 The `quasardb-workflow` skill does not apply on this branch, and
 neither does the `github` skill: the whole rewrite is one Shortcut
@@ -59,28 +67,66 @@ Incorrect: the owner's message says "build", the origin is under
 bureau14, and the session opens `quasardb-workflow`, which would create
 a story and a pull request for one unit of the rewrite.
 
+## The Inbox
+
+The owner answers questions and reviews in the Plannotator Inbox,
+through the `plannotator_inbox` tool. Each unit has one thread, and
+every question and review of the unit goes into it. The first message
+of the unit names the thread with `thread`, in a few words saying what
+the work is. The seed report and the plan's `Thread:` line record the
+name, and every later message passes it. After you send something whose
+answer the next step needs, end your turn. The owner's reply wakes the
+session as a message headed `Plannotator Inbox: <title> (<reply id>)`,
+and you answer into the thread with `reply_to` set to that id.
+
+A question is a `:::question` block, or `:::question-multi` for a pick
+of several, with its choices in natural order and your pick on a
+`Recommended:` line after them, never in a label.
+
+A review message carries the plan or the guide and no question block,
+because the owner can mark a message "Looks good" only when it has no
+open question. The owner can also mark only the latest message of a
+thread, so while a review waits you post nothing else into that thread.
+Reports during the wait, such as a watcher's exit, go to the
+conversation.
+
+| The owner                                  | Means                                      |
+| ------------------------------------------ | ------------------------------------------ |
+| marks the review message "Looks good"      | approved                                   |
+| replies, in words or with annotations      | changes requested, whatever the words say  |
+| resolves the thread without a "Looks good" | stop and report; the owner decides in chat |
+
+The wake for a "Looks good" names the message it marks. It approves a
+review only when that id is the review message's id. An earlier
+approval is read back with `read_thread`, which shows `ack` on the
+marked message, never from memory of having seen it.
+
+Correct: you send the plan as one message, end your turn, and the owner
+marks it "Looks good". The wake names that message's id, and you commit
+the approved status.
+
+Incorrect: a watcher exits while the code review waits, and you post its
+result into the unit's thread, so the review message is no longer the
+latest and the owner cannot mark it "Looks good". Or: the owner replies
+"fine, go ahead" and you treat it as an approval, because it reads like
+one.
+
 ## Lifecycle: four stages, three gates
 
 Every unit of work moves through these stages in order. Each stage is a
 skill the owner invokes; the invocation is the gate. A chat message
 ("go", "ok", "yes", "proceed", "looks good", a thumbs up) opens no
 stage, whatever its wording: it answers a question inside the current
-stage, or it is a review comment on what the current stage produced.
+stage, or it is a review comment on what the current stage produced. A
+"Looks good" on an Inbox review message approves that review, as The
+Inbox says, and opens no stage either.
 
-| Stage    | Opened by                              | You produce                                                                                                                                                                              | You never                                                                                                                  | Ends with                                                                                                                                                            |
-| -------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Seed  | `/rr-start <task>` or `/rr-start-next` | the seed report                                                                                                                                                                          | write, branch, commit                                                                                                      | a wait for `/rr-plan`                                                                                                                                                |
-| 2. Plan  | `/rr-plan`                             | the branch, one commit with the plan document, the explainer's page on it, and on approval one commit setting its status to approved                                                     | touch code, tests, config, ADRs or any other document; open the gate while the explainer's session is up                   | the explainer's session, then the plannotator gate on the committed plan; on approval, the plan-stage message, then a wait for `/rr-build`                           |
-| 3. Build | `/rr-build`                            | the small commits the approved plan lists, the doc-discipline runs, the plan's deletion commit, the push, the Buildkite build and the plannotator code review, the last two side by side | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | the build-stage message: branch, summary, the check's report, the review's decision, the build number and state, the `git diff` command, then a wait for `/rr-merge` |
-| 4. Merge | `/rr-merge`                            | the fast-forward merge, the branch deletion                                                                                                                                              | merge without the owner having invoked `/rr-merge` on a green, approved build; merge a branch that still carries its plan  | one line: what merged                                                                                                                                                |
-
-Beside the stages, `/rr-explain-plan` draws the plan on the tree as a
-page for the owner to read. The plan stage runs it once, between the
-plan commit and the gate, and the owner invokes it at any time after
-the plan commit. It is not a stage and opens no gate, and it changes
-nothing in the tree, the plan included. Plannotator runs one session
-at a time, so the explainer's session and the gate never overlap: the
-explainer closes first, then the gate opens.
+| Stage    | Opened by                              | You produce                                                                                                                                                                        | You never                                                                                                                  | Ends with                                                                                                                                                            |
+| -------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Seed  | `/rr-start <task>` or `/rr-start-next` | the seed report                                                                                                                                                                    | write, branch, commit                                                                                                      | a wait for `/rr-plan`                                                                                                                                                |
+| 2. Plan  | `/rr-plan`                             | the branch, one commit with the plan document, its Inbox review, and on approval one commit setting its status to approved                                                         | touch code, tests, config, ADRs or any other document                                                                      | the Inbox review of the committed plan; on approval, the plan-stage message, then a wait for `/rr-build`                                                             |
+| 3. Build | `/rr-build`                            | the small commits the approved plan lists, the doc-discipline runs, the plan's deletion commit, the push, the Buildkite build and the Inbox code review, the last two side by side | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | the build-stage message: branch, summary, the check's report, the review's decision, the build number and state, the `git diff` command, then a wait for `/rr-merge` |
+| 4. Merge | `/rr-merge`                            | the fast-forward merge, the branch deletion                                                                                                                                        | merge without the owner having invoked `/rr-merge` on a green, approved build; merge a branch that still carries its plan  | one line: what merged                                                                                                                                                |
 
 A session may begin at any stage from the tree. `/rr-start` with a
 plan path reads the unit's stage and names the next gate; it opens
@@ -89,14 +135,14 @@ as their whole input and need no seed or plan conversation.
 
 Open questions the owner left unanswered are not answered by a stage
 opening either; the plan records your recommendation for each, and the
-plan's approval in the plannotator gate is what settles them.
+owner's "Looks good" on the plan review is what settles them.
 
 Correct: the seed report is posted and the owner writes "looks good".
 You answer that you are waiting for `/rr-plan`, and do nothing else.
 
 Incorrect: the seed report is posted, the owner writes "go", and you
 create the branch and commit the plan, because "go" sounded like the
-gate. Or: the plannotator gate returns `approved` and you start the
-first code commit, because the plan is approved. A small change and a
+gate. Or: the owner marks the plan review "Looks good" and you start
+the first code commit, because the plan is approved. A small change and a
 settled design do not shorten the lifecycle; each gate exists so the
 owner reviews one stage's output on its own.
