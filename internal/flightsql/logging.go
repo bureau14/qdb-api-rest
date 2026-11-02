@@ -22,13 +22,16 @@ func (s *Server) accessContext(ctx context.Context) context.Context {
 }
 
 // accessLine writes one line per RPC with the method, the gRPC code and
-// the duration, in the HTTP access line's vocabulary.
+// the duration, in the HTTP access line's vocabulary, and records the
+// duration in the RPC histogram.
 func accessLine(ctx context.Context, method string, start time.Time, err error) {
 	// The code comes from status.Code, so a handler's error and a refused
 	// call log the same way, and a nil error is OK.
+	code, elapsed := status.Code(err), time.Since(start)
 	observe.Logger(ctx).InfoContext(ctx, "request",
-		"method", method, "code", status.Code(err).String(),
-		"duration_ms", time.Since(start).Milliseconds())
+		"method", method, "code", code.String(),
+		"duration_ms", elapsed.Milliseconds())
+	observe.MetricsFrom(ctx).ObserveRPC(method, code, elapsed)
 }
 
 // accessUnary writes one access line per unary call.
