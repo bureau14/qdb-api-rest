@@ -113,6 +113,5 @@ func (k *Collector) Collect(ch chan<- prometheus.Metric) {
 		pool(sumPools(byUser))
 	}
 
-	// 4.
 	ch <- prometheus.MustNewConstMetric(k.retries, prometheus.CounterValue, float64(k.c.retries.Load()))
 }
