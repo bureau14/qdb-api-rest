@@ -42,9 +42,11 @@ import (
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
 
-// observeContext is a context with a discarding logger.
+// observeContext is a context with a discarding logger and a fresh
+// metrics registry, because callContext copies both onto every call.
 func observeContext() context.Context {
-	return observe.WithLogger(context.Background(), slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	ctx := observe.WithLogger(context.Background(), slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	return observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Observability.Metrics, false))
 }
 
 // tokensAt builds a keychain whose clock is fixed at now. It uses the

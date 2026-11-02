@@ -108,7 +108,7 @@ func (s *Server) Shutdown(ctx context.Context) {
 }
 
 // callContext gives a call's context the process values: the logger, the
-// cluster and the keychain. Each is copied explicitly, so a reader sees
+// metrics, the cluster and the keychain. Each is copied explicitly, so a reader sees
 // what a handler may read.
 func (s *Server) callContext(ctx context.Context) context.Context {
 	// grpc-go has no BaseContext as net/http has, so the interceptors
@@ -117,6 +117,7 @@ func (s *Server) callContext(ctx context.Context) context.Context {
 	// from the call was rejected as more code and less explicit about what
 	// a handler may read.
 	ctx = observe.WithLogger(ctx, observe.Logger(s.root))
+	ctx = observe.WithMetrics(ctx, observe.MetricsFrom(s.root))
 	ctx = qdb.WithCluster(ctx, qdb.ClusterFrom(s.root))
 	return auth.WithTokens(ctx, auth.TokensFrom(s.root))
 }
