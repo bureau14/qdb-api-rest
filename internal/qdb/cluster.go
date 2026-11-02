@@ -56,7 +56,7 @@ type Cluster struct {
 	// and calls that find the cluster unavailable feed it. The readiness
 	// probe does not feed it.
 	breaker *breaker
-	// retries counts the second attempts of Call.
+	// retries counts the second attempts of Call. The collector reads it.
 	retries atomic.Int64
 
 	mu    sync.Mutex           // protects users, instances and every duckIn

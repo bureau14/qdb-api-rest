@@ -249,6 +249,14 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   or a package that records places `observe.NewMetrics()` on its
   context. Every series this binary names carries `observability.metrics.namespace`
   as its prefix, `qdb_rest_` by default (ADR-0019).
+- The cluster's collector (`qdb.Collector`) reads the budget, the
+  breaker, the user pools and the retry count at scrape time. Main
+  registers it on the registry once the cluster exists, and
+  `internal/qdb` reads no metrics from the context.
+- A per-user series carries the `user` label on a secure cluster only,
+  because an insecure cluster accepts any username and the label would
+  be unbounded. `observe.NewMetrics` decides it once from the cluster's
+  security (`Metrics.PerUser`), and an insecure cluster sums its pools.
 
 ## Tests
 
