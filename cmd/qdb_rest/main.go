@@ -248,27 +248,31 @@ func main() {
 
 	// 2. Build the process logger and the metrics registry and place both
 	//    in the root context. The registry is built once here, so every
-	//    listener and later every package records into one registry, and
-	//    before the cluster, because the next unit's pool gauges read the
-	//    cluster from a collector registered here. The root context also
-	//    ends on SIGINT or SIGTERM, which stops serving below.
+	//    listener and every package records into one registry. The
+	//    per-user flag is the cluster's security, because a user label is
+	//    bounded only where the cluster checks who the user is. The root
+	//    context also ends on SIGINT or SIGTERM, which stops serving below.
 	logger, err := observe.NewLogger(cfg.Observability.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
 		os.Exit(2)
 	}
-	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics(cfg.Observability.Metrics, false))
+	metrics := observe.NewMetrics(cfg.Observability.Metrics, cfg.Cluster.PublicKeyFile != "")
+	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), metrics)
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,
 		"qdb_api_version", qdb.APIVersion())
 
-	// 3. Bind the cluster. The binding's own logger is routed into the
-	//    process logger before anything can dial. The cluster dials
-	//    nothing at startup, and it travels in the context so handlers
-	//    reach it there.
+	// 3. Bind the cluster and register its collector. The binding's own
+	//    logger is routed into the process logger before anything can
+	//    dial. The cluster dials nothing at startup, and it travels in the
+	//    context so handlers reach it there. The collector is registered
+	//    once the cluster exists, so a scrape reads the cluster's state
+	//    (ADR-0004).
 	qdb.InstallLogger(logger)
 	cluster := qdb.New(cfg, time.Now)
+	metrics.Registry.MustRegister(qdb.NewCollector(cluster, metrics.Namespace, metrics.PerUser))
 	ctx = qdb.WithCluster(ctx, cluster)
 
 	// 4. Derive the token keychain once from the configured passphrases.
