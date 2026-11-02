@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -55,6 +56,8 @@ type Cluster struct {
 	// and calls that find the cluster unavailable feed it. The readiness
 	// probe does not feed it.
 	breaker *breaker
+	// retries counts the second attempts of Call.
+	retries atomic.Int64
 
 	mu    sync.Mutex           // protects users, instances and every duckIn
 	users map[string]*userPool // one session pool per user, keyed by username
@@ -389,6 +392,9 @@ func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts
 			return err
 		}
 		cc.retry = false
+		// The cluster counts the retry, because internal/qdb reads no
+		// metrics from the context.
+		c.retries.Add(1)
 	}
 	return err
 }
