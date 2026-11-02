@@ -10,41 +10,35 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 )
 
-// Metrics is the process's instrument registry: every series this
-// binary exposes is registered on it, and GET /metrics serves it. It is
-// built once by main and travels in the context like the logger
-// (ADR-0019).
+// Metrics is the process's instrument registry and the instruments this
+// binary records into. main builds it once and it travels in the
+// context (ADR-0019).
 type Metrics struct {
-	// Note: the registry is this process's own and not the client's
-	// global default registry, because the brief forbids package-level
-	// mutable state, and the global would make a second server in one
-	// test binary register twice.
+	// Registry is the process's own registry and not the client's global
+	// one, because a second server in one test binary would register
+	// twice on the global.
 	Registry *prometheus.Registry
+	// Namespace is the prefix the cluster's collector names its series
+	// under (ADR-0019).
+	Namespace string
+	// PerUser says whether a per-user series carries the user label,
+	// which is true on a secure cluster.
+	PerUser bool
+	buckets []float64
 }
 
-// NewMetrics builds the registry with the series every instance
-// exposes: build info, the Go runtime and the process. Every series this
-// binary names carries cfg.Namespace as its prefix, so a host scraping
-// several exporters does not collide, and the client's own go_ and
-// process_ series keep their conventional names (ADR-0019). Later units
-// register their instruments on it.
-func NewMetrics(cfg config.Metrics) *Metrics {
-	// Three registrations, each with a choice of its own:
-	//
-	//  1. the build-info series, <namespace>_build_info at 1, labelled with
-	//     what main's starting line logs, so a dashboard reads what the
-	//     log says;
-	//  2. the Go runtime collector;
-	//  3. the process collector.
-	//
-	// MustRegister, because the three names are fixed and a collision is
-	// a programming error.
+// NewMetrics builds the registry with the series every instance exposes.
+// perUser decides once whether per-user series carry the user label.
+func NewMetrics(cfg config.Metrics, perUser bool) *Metrics {
+	// 1. the build-info series
+	// 2. the Go runtime and process collectors
+	// 3. the duration buckets from the config
 	reg := prometheus.NewRegistry()
 
 	// 1. The labels are version, commit and build_mode from internal/build,
-	//    the three of main's starting line. The client's own build-info
-	//    collector was rejected, because it reports the Go module version
-	//    and not the ldflags-injected one.
+	//    the three of main's starting line, so a dashboard reads what the
+	//    log says. The client's own build-info collector reports the Go
+	//    module version and not the ldflags-injected one.
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: cfg.Namespace,
 		Name:      "build_info",
@@ -52,12 +46,20 @@ func NewMetrics(cfg config.Metrics) *Metrics {
 	}, []string{"version", "commit", "build_mode"})
 	buildInfo.WithLabelValues(build.Version, build.Commit, build.BuildMode).Set(1)
 
-	// 2. The Go runtime collector, because the brief asks for the runtime
-	//    series.
-	// 3. The process collector, which emits nothing where it cannot read
-	//    the process (FreeBSD without procfs), so no platform fails.
+	// 2. The process collector emits nothing where it cannot read the
+	//    process (FreeBSD without procfs), so no platform fails.
+	//    MustRegister, because the names are fixed and a collision is a
+	//    programming error.
 	reg.MustRegister(buildInfo, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	return &Metrics{Registry: reg}
+
+	// 3. In seconds, the unit of every _seconds series.
+	b := cfg.DurationBuckets
+	return &Metrics{
+		Registry:  reg,
+		Namespace: cfg.Namespace,
+		PerUser:   perUser,
+		buckets:   prometheus.ExponentialBuckets(b.Start.Seconds(), 2, b.Count),
+	}
 }
 
 // metricsKey is the context key for the metrics. It is unexported so

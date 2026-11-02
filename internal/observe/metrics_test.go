@@ -12,7 +12,7 @@ import (
 // its three labels, because the name and the labels are the wire shape
 // dashboards read, and the e2e scrape sees only the name.
 func TestNewMetricsExposesBuildInfo(t *testing.T) {
-	families, err := NewMetrics(config.Metrics{Namespace: "qdb_rest"}).Registry.Gather()
+	families, err := NewMetrics(config.Default().Observability.Metrics, false).Registry.Gather()
 	if err != nil {
 		t.Fatal(err)
 	}
