@@ -103,11 +103,14 @@ When the whole candidate is under 5 commits, small and medium coincide;
 say so, and offer the following candidate as large only when both share
 a subject and the owner would review them as one change anyway.
 
-Put the three to the owner through the question tool (AskUserQuestion),
-in one question, medium first and marked "(Recommended)". Each option's
-label is the scope in a few words and its commit count. Each option's
-description says, in two or three sentences, what the owner will have
-to review: the packages and files touched, whether the code is new or
+Put the three to the owner through the question tool, in one
+`:::question` block, in the order small, medium, large, with a
+`Recommended: medium` line after the choices. This is the unit's first
+Inbox message, so it names the thread (`/rr-workflow`, The Inbox). End
+your turn until the owner's pick arrives. Each choice is
+`- [ ] label -- description`. The label is the scope in a few words and
+its commit count. The description says, in two or three sentences, what
+the owner will have to review: the packages and files touched, whether the code is new or
 edited, how much of it is handlers, library code, tests, fixtures or
 documents, and what reading the diff amounts to. The owner's pick is
 the unit. The slices the pick leaves are listed in the report, one line
@@ -124,6 +127,7 @@ adds the second case and the e2e step, review is two handlers, the
 goldens and the round trip". The owner picks medium; the report lists
 the other three slices.
 
-Incorrect: the same item, offered whole as the only option; or three
-options that differ in commit granularity rather than in scope; or
-descriptions that give a commit count and nothing about the code.
+Incorrect: the same item, offered whole as the only choice; or three
+choices that differ in commit granularity rather than in scope; or
+descriptions that give a commit count and nothing about the code; or
+medium listed first with "(Recommended)" in its label.

@@ -31,8 +31,8 @@ step runs:
   `sc-19567/rr-<slug>` named by the plan's slug, the unit is in flight
   and its seed and plan stages have run. Step 3 below reports its
   stage. `/rr-seed` is not run: the plan already carries the
-  decisions the seed would have put to the owner, and the plannotator
-  gate settled them.
+  decisions the seed would have put to the owner, and the owner's
+  approval of the plan settled them.
 
 A plan path whose branch does not exist, or whose file sits on the
 base, is a leftover (see Repository state), and the owner decides.
@@ -85,18 +85,27 @@ it is the unit, and its stage is read under Resume.
 
 ## Resume: read the stage from the tree
 
-For a plan path, the tree says what stage the unit is in. Read the
-plan's `Status:` line and `git log --oneline sc-19567/rest-rewrite..`
-on the unit's branch, nothing more; the plan is the next stage's whole
-input and is not re-read here.
+For a plan path, the tree and the unit's Inbox thread say what stage
+the unit is in. Read the plan's `Status:` and `Thread:` lines and
+`git log --oneline sc-19567/rest-rewrite..` on the unit's branch; the
+plan is the next stage's whole input and is not re-read here. Once the
+build stage has deleted the plan, its header is read from the parent of
+the deletion commit, `git show <deletion sha>^:docs/<slug>-plan.md`.
 
-| the branch shows                                                    | stage                   | next                                                |
-| ------------------------------------------------------------------- | ----------------------- | --------------------------------------------------- |
-| one `docs(plan)` commit, `Status: draft`                            | plan, gate not approved | `/rr-plan`, which resumes at the gate               |
-| the `docs(plan) ... is approved` commit last, no code commit after  | build waits             | `/rr-build`                                         |
-| code commits after the approval commit, plan still in the tree      | build, partly landed    | owner decides: `/rr-build` stops on its entry check |
-| the plan's deletion commit, build-stage message not in this session | build done, merge waits | `/rr-merge`, after the owner reads the diff         |
-| the plan on the base, or no `sc-19567/rr-<slug>` branch             | leftover                | owner decides                                       |
+| the branch shows                                                      | stage                     | next                                                |
+| --------------------------------------------------------------------- | ------------------------- | --------------------------------------------------- |
+| one `docs(plan)` commit, `Status: draft`                              | plan, review not approved | `/rr-plan`, which resumes at the review             |
+| the `docs(plan) ... is approved` commit last, no code commit after    | build waits               | `/rr-build`                                         |
+| code commits after the approval commit, plan still in the tree        | build, partly landed      | owner decides: `/rr-build` stops on its entry check |
+| the plan's deletion commit, no guide for the head marked "Looks good" | build, checks and review  | owner decides: `/rr-build` stops on its entry check |
+| the plan's deletion commit, the head's guide marked "Looks good"      | build done, merge waits   | `/rr-merge`, after the owner reads the diff         |
+| the plan on the base, or no `sc-19567/rr-<slug>` branch               | leftover                  | owner decides                                       |
+
+A review decision lives in the unit's Inbox thread, not in the tree.
+Read it with `read_thread`: the owner's "Looks good" shows as `ack` on
+the guide's message, and it approves the head that message names.
+Without such a message for the branch's current head, the stage is
+"build, checks and review".
 
 Reply with exactly three sections, each a `# Name` heading:
 
