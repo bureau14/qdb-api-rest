@@ -31,16 +31,6 @@ tls:
   private_key: ""
   # private_key: "${QDB_REST_TLS_KEY_PATH}"
 
-log:
-  # debug | info | warn | error
-  level: "info"
-  # json (one object per line, for journald and container runtimes) |
-  # text (key=value, for interactive use)
-  format: "json"
-  # Bytes of a query's statement that a debug line keeps. Longer statements
-  # are truncated and end in "...". 0 keeps every statement whole.
-  statement_max_bytes: 1024
-
 cluster:
   # Cluster URI. Several nodes form a comma-separated list.
   uri: "qdb://127.0.0.1:2836"
@@ -145,18 +135,26 @@ duckdb:
     # to one.
     load_balancing: false
 
-metrics:
-  # Serve the Prometheus exposition at GET /metrics on the HTTP and
-  # HTTPS listeners, outside authentication. The scrape reads counters
-  # held in this process and never touches the cluster.
-  enabled: true
-  # Prefix of every series this binary names (qdb_rest_build_info), so
-  # several exporters on one host do not collide. The go_ and process_
-  # series of the Go client keep their names. A name of letters, digits,
-  # underscores and colons, not starting with a digit, and not empty.
-  namespace: "qdb_rest"
-
-debug:
+observability:
+  log:
+    # debug | info | warn | error
+    level: "info"
+    # json (one object per line, for journald and container runtimes) |
+    # text (key=value, for interactive use)
+    format: "json"
+    # Bytes of a query's statement that a debug line keeps. Longer statements
+    # are truncated and end in "...". 0 keeps every statement whole.
+    statement_max_bytes: 1024
+  metrics:
+    # Serve the Prometheus exposition at GET /metrics on the HTTP and
+    # HTTPS listeners, outside authentication. The scrape reads counters
+    # held in this process and never touches the cluster.
+    enabled: true
+    # Prefix of every series this binary names (qdb_rest_build_info), so
+    # several exporters on one host do not collide. The go_ and process_
+    # series of the Go client keep their names. A name of letters, digits,
+    # underscores and colons, not starting with a digit, and not empty.
+    namespace: "qdb_rest"
   # Serve the Go runtime profiler under /debug/pprof/ on the HTTP and
   # HTTPS listeners, outside authentication, for goroutine, heap and
   # CPU profiles of a live instance. Off unless a profile is wanted.

@@ -25,7 +25,7 @@ The owner settled the three on 2026-10-28.
    and `observe.MetricsFrom`, which panics on a context without one, as
    `observe.Logger` does (ADR-0002). `main` places it once, right after
    the logger, and every listener and every package records into it.
-3. Every series this binary names carries the `metrics.namespace` key
+3. Every series this binary names carries the `observability.metrics.namespace` key
    as its prefix, `qdb_rest_` by default. The key is never empty, so
    the prefix never disappears, and it fits the Prometheus name
    grammar, which `internal/config` checks at startup. The client's

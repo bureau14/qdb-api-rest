@@ -16,20 +16,19 @@ import (
 // cluster, because neither route reads one.
 func TestOperationalRoutes(t *testing.T) {
 	rows := []struct {
-		name    string
-		metrics config.Metrics
-		debug   config.Debug
-		path    string
-		status  int
-		media   string // the Content-Type's media type, before its parameters
-		body    string // a substring the body carries
+		name   string
+		cfg    config.Observability
+		path   string
+		status int
+		media  string // the Content-Type's media type, before its parameters
+		body   string // a substring the body carries
 	}{
-		{"metrics on", config.Metrics{Enabled: true}, config.Debug{}, "/metrics", http.StatusOK, "text/plain", "\nqdb_rest_build_info{"},
+		{"metrics on", config.Observability{Metrics: config.Metrics{Enabled: true}}, "/metrics", http.StatusOK, "text/plain", "\nqdb_rest_build_info{"},
 		// Off, the route is not registered, so the body is the mux's
 		// plain text, as every unknown path answers.
-		{"metrics off", config.Metrics{}, config.Debug{}, "/metrics", http.StatusNotFound, "text/plain", "404 page not found"},
-		{"pprof on", config.Metrics{}, config.Debug{Pprof: true}, "/debug/pprof/", http.StatusOK, "text/html", "Types of profiles available"},
-		{"pprof off", config.Metrics{}, config.Debug{}, "/debug/pprof/", http.StatusNotFound, "text/plain", "404 page not found"},
+		{"metrics off", config.Observability{}, "/metrics", http.StatusNotFound, "text/plain", "404 page not found"},
+		{"pprof on", config.Observability{Pprof: true}, "/debug/pprof/", http.StatusOK, "text/html", "Types of profiles available"},
+		{"pprof off", config.Observability{}, "/debug/pprof/", http.StatusNotFound, "text/plain", "404 page not found"},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
@@ -37,7 +36,7 @@ func TestOperationalRoutes(t *testing.T) {
 			// because the probes are not requested.
 			req := httptest.NewRequestWithContext(observeContext(), http.MethodGet, row.path, nil)
 			resp := httptest.NewRecorder()
-			NewHandler(row.metrics, row.debug).ServeHTTP(resp, req)
+			NewHandler(row.cfg).ServeHTTP(resp, req)
 			if resp.Code != row.status {
 				t.Fatalf("%s = %d, want %d: %s", row.path, resp.Code, row.status, resp.Body.String())
 			}

@@ -236,7 +236,7 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   writes it for both engines, and the table reader writes it with
   engine `bulk reader`, the table and the range. A `query statement` line at debug comes
   before the run with the statement, which the process logger truncates
-  at `log.statement_max_bytes`. `query.Logged` says what each outcome
+  at `observability.log.statement_max_bytes`. `query.Logged` says what each outcome
   means.
 - Any type that holds a secret implements `slog.LogValuer`, so it can
   never print one.
@@ -244,7 +244,7 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   `observe.MetricsFrom(ctx)` is the registry, placed once by main, and
   it panics on a context without one, so a test that reaches a route
   or a package that records places `observe.NewMetrics()` on its
-  context. Every series this binary names carries `metrics.namespace`
+  context. Every series this binary names carries `observability.metrics.namespace`
   as its prefix, `qdb_rest_` by default (ADR-0019).
 
 ## Tests

@@ -800,11 +800,11 @@ defaults by test.
   Windows Event Log (the native facility monitoring agents collect from),
   and the application log stream goes to a self-rotating file through
   `natefinch/lumberjack` (the ecosystem-standard rotation writer, vendored
-  unmodified). An optional `log.file` config key exposes the same sink on
+  unmodified). An optional `observability.log.file` config key exposes the same sink on
   any platform for users who want it.
 - `/metrics` (Prometheus exposition) as described under Goals, and the
   Go runtime profiler (`net/http/pprof`, under `/debug/pprof/`) on the
-  same mux outside the bearer edge when `debug.pprof` is true, false by
+  same mux outside the bearer edge when `observability.pprof` is true, false by
   default. The profiler is the way into a live instance that leaks
   sessions or holds a stuck stream, and it is not a metrics source.
 - The status probes are `GET /api/status/liveness` and
@@ -993,13 +993,13 @@ starts.
   the standard library and silent when the variable is unset, and the
   `WATCHDOG=1` keepalive at half of `WATCHDOG_USEC`, tied to the
   serving loop), and the drain step of the stress, green by hand.
-- **M7 -- Observability**: `/metrics` behind `metrics.enabled`, with
+- **M7 -- Observability**: `/metrics` behind `observability.metrics.enabled`, with
   the series of Goal 9 and the pool, breaker and retry state, on both
   planes where the plane has the concept, a user label on the pool
   gauges only; query capture, one line per query on both planes with
   the engine, the plane, the duration, the row count and the outcome at
   `info` and the statement text, truncated, at `debug`; the Go runtime
-  profiler (`net/http/pprof`) on the same mux behind `debug.pprof`,
+  profiler (`net/http/pprof`) on the same mux behind `observability.pprof`,
   false by default, for goroutine, heap and CPU profiles of a live
   instance; the round-trip step that scrapes `/metrics` and checks the
   series exist; and the budget step of the stress, green by hand.

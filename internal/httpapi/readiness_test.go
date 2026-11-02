@@ -28,7 +28,7 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 	ctx := qdb.WithCluster(observeContext(), c)
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/status/readiness", nil)
 	resp := httptest.NewRecorder()
-	NewHandler(config.Metrics{Enabled: true}, config.Debug{}).ServeHTTP(resp, req)
+	NewHandler(config.Observability{Metrics: config.Metrics{Enabled: true}}).ServeHTTP(resp, req)
 	return resp
 }
 
@@ -38,7 +38,7 @@ func probe(t *testing.T, cfg config.Config) *httptest.ResponseRecorder {
 func observeContext() context.Context {
 	logger := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 	ctx := observe.WithLogger(context.Background(), logger)
-	return observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Metrics))
+	return observe.WithMetrics(ctx, observe.NewMetrics(config.Default().Observability.Metrics))
 }
 
 // TestReadinessOKAgainstLiveCluster: each reachable cluster answers 200

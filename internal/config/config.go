@@ -174,32 +174,30 @@ type Metrics struct {
 	Namespace string `yaml:"namespace" help:"prefix of every series this binary names, so several exporters on one host do not collide"`
 }
 
-// Debug switches the runtime profiler. The block exists for that one
-// key, because the brief spells it debug.pprof.
-type Debug struct {
-	Pprof bool `yaml:"pprof" help:"serve the Go runtime profiler under /debug/pprof/ on the HTTP listeners"`
+// Observability groups what the process tells an operator about itself:
+// its log, its metrics and the runtime profiler.
+type Observability struct {
+	Log     Log     `yaml:"log"`
+	Metrics Metrics `yaml:"metrics"`
+	Pprof   bool    `yaml:"pprof" help:"serve the Go runtime profiler under /debug/pprof/ on the HTTP listeners"`
 }
 
 // Config is the full server configuration.
 type Config struct {
-	Listen  Listen  `yaml:"listen"`
-	TLS     TLS     `yaml:"tls"`
-	Log     Log     `yaml:"log"`
-	Cluster Cluster `yaml:"cluster"`
-	Pool    Pool    `yaml:"pool"`
-	Status  Status  `yaml:"status"`
-	Auth    Auth    `yaml:"auth"`
-	DuckDB  DuckDB  `yaml:"duckdb"`
-	Metrics Metrics `yaml:"metrics"`
-	Debug   Debug   `yaml:"debug"`
+	Listen        Listen        `yaml:"listen"`
+	TLS           TLS           `yaml:"tls"`
+	Cluster       Cluster       `yaml:"cluster"`
+	Pool          Pool          `yaml:"pool"`
+	Status        Status        `yaml:"status"`
+	Auth          Auth          `yaml:"auth"`
+	DuckDB        DuckDB        `yaml:"duckdb"`
+	Observability Observability `yaml:"observability"`
 }
 
 // Default returns the configuration used when nothing is specified:
 //
 //   - the HTTPS and Flight listeners on their customary ports, and eight
 //     seconds to drain on SIGTERM
-//   - JSON logs at info, with a query's statement truncated at a
-//     kibibyte on debug lines
 //   - the local insecure cluster, with the C API knobs at their defaults
 //   - the pool sized for one gateway in front of one cluster
 //   - no token passphrases, so an ephemeral key per start
@@ -207,16 +205,14 @@ type Config struct {
 //   - one DuckDB instance per user at one gibibyte and four threads,
 //     with no spilling and at most sixteen instances at once, over
 //     qdb-duck's own defaults
-//   - the Prometheus exposition on under the qdb_rest namespace, and
-//     the runtime profiler off
+//   - JSON logs at info, with a query's statement truncated at a
+//     kibibyte on debug lines, the Prometheus exposition on under the
+//     qdb_rest namespace, and the runtime profiler off
 func Default() Config {
 	return Config{
 		// Eight seconds of grace is not measured. Anything that stops the
 		// binary and then kills it waits longer than this before the kill.
 		Listen: Listen{HTTPS: ":40443", Flight: ":40493", ShutdownGrace: 8 * time.Second},
-		// The kibibyte of statement is not measured. It holds several lines
-		// of SQL.
-		Log: Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
 		Cluster: Cluster{
 			URI:         "qdb://127.0.0.1:2836",
 			Compression: "none",
@@ -258,17 +254,22 @@ func Default() Config {
 			MaxInstances: 16,
 			Quasar:       Quasar{MaxPoolSize: 100, TableCacheTTL: time.Minute},
 		},
-		Metrics: Metrics{Enabled: true, Namespace: "qdb_rest"},
+		Observability: Observability{
+			// The kibibyte of statement is not measured. It holds several
+			// lines of SQL.
+			Log:     Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
+			Metrics: Metrics{Enabled: true, Namespace: "qdb_rest"},
+		},
 	}
 }
 
 // vocab lists the words each enumerated key accepts. validate checks
 // against it, and the tests draw from it.
 var vocab = map[string][]string{
-	"log.level":           {"debug", "info", "warn", "error"},
-	"log.format":          {"json", "text"},
-	"cluster.compression": {"none", "balanced"},
-	"cluster.encryption":  {"none", "aes"},
+	"observability.log.level":  {"debug", "info", "warn", "error"},
+	"observability.log.format": {"json", "text"},
+	"cluster.compression":      {"none", "balanced"},
+	"cluster.encryption":       {"none", "aes"},
 }
 
 // A key is one leaf of Config: its dotted path (from the yaml tags), the
@@ -358,8 +359,9 @@ func parseValue(k key, text string) (any, error) {
 	case reflect.TypeFor[bool]():
 		// ParseBool, so the file, the variable and the flag take the same
 		// words. Every flag is a string flag, so a bool is spelled
-		// --metrics-enabled=false, and a bare --metrics-enabled is refused
-		// by the flag package for want of an argument.
+		// --observability-metrics-enabled=false, and the flag package
+		// refuses a bare --observability-metrics-enabled for want of an
+		// argument.
 		b, err := strconv.ParseBool(text)
 		if err != nil {
 			return nil, fmt.Errorf("want true or false, got %q", text)
@@ -724,7 +726,7 @@ var metricName = regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
 // name outside the grammar.
 func validateMetrics(m Metrics) error {
 	if !metricName.MatchString(m.Namespace) {
-		return fmt.Errorf("metrics.namespace must match %s, got %q", metricName, m.Namespace)
+		return fmt.Errorf("observability.metrics.namespace must match %s, got %q", metricName, m.Namespace)
 	}
 	return nil
 }
@@ -742,14 +744,15 @@ func validate(cfg Config) error {
 	if err := positive("listen.shutdown_grace", cfg.Listen.ShutdownGrace); err != nil {
 		return err
 	}
-	if err := oneOf("log.level", cfg.Log.Level); err != nil {
+	log := cfg.Observability.Log
+	if err := oneOf("observability.log.level", log.Level); err != nil {
 		return err
 	}
-	if err := oneOf("log.format", cfg.Log.Format); err != nil {
+	if err := oneOf("observability.log.format", log.Format); err != nil {
 		return err
 	}
-	if cfg.Log.StatementMaxBytes < 0 {
-		return fmt.Errorf("log.statement_max_bytes must not be negative, got %d", cfg.Log.StatementMaxBytes)
+	if log.StatementMaxBytes < 0 {
+		return fmt.Errorf("observability.log.statement_max_bytes must not be negative, got %d", log.StatementMaxBytes)
 	}
 	if err := validateCluster(cfg.Cluster); err != nil {
 		return err
@@ -760,7 +763,7 @@ func validate(cfg Config) error {
 	if err := validateDuckDB(cfg.DuckDB); err != nil {
 		return err
 	}
-	if err := validateMetrics(cfg.Metrics); err != nil {
+	if err := validateMetrics(cfg.Observability.Metrics); err != nil {
 		return err
 	}
 	if cfg.Status.ReadinessQuery == "" {

@@ -252,12 +252,12 @@ func main() {
 	//    before the cluster, because the next unit's pool gauges read the
 	//    cluster from a collector registered here. The root context also
 	//    ends on SIGINT or SIGTERM, which stops serving below.
-	logger, err := observe.NewLogger(cfg.Log, os.Stdout)
+	logger, err := observe.NewLogger(cfg.Observability.Log, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err) // unreachable while config validates the vocabulary
 		os.Exit(2)
 	}
-	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics(cfg.Metrics))
+	ctx := observe.WithMetrics(observe.WithLogger(context.Background(), logger), observe.NewMetrics(cfg.Observability.Metrics))
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger.InfoContext(ctx, "starting", "version", build.Version, "commit", build.Commit, "build_mode", build.BuildMode,
@@ -284,11 +284,11 @@ func main() {
 
 	// 5. Build the listeners over the root context, so every request
 	//    inherits the logger, the metrics, the cluster and the keychain.
-	//    The handler takes metrics.enabled and debug.pprof as arguments,
+	//    The handler takes the observability block as an argument,
 	//    because configuration does not travel in the context. Loading
 	//    the TLS material and binding any of the three ports can fail
 	//    here.
-	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler(cfg.Metrics, cfg.Debug))
+	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler(cfg.Observability))
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)

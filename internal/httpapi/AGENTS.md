@@ -132,10 +132,10 @@ This file, Handlers, holds the table reader's.
   and JSON is the default. `q` weights are not read.
 - `GET /metrics` serves the registry the request context carries
   (`observe.MetricsFrom`), built per scrape through the client's
-  handler, when `metrics.enabled` is true; off, the route is not
+  handler, when `observability.metrics.enabled` is true; off, the route is not
   registered and the path is the mux's 404, per ADR-0004.
 - `/debug/pprof/` serves the stdlib profiler's handlers, registered by
-  hand on this mux, when `debug.pprof` is true, and is not registered
+  hand on this mux, when `observability.pprof` is true, and is not registered
   when it is false. It is not a metrics source.
 - Unknown paths and wrong methods keep the stdlib mux's plain-text 404
   and 405.

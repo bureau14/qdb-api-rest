@@ -64,8 +64,9 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerMetricsRoute serves GET /metrics beside the probes, outside
-// the bearer edge and the compression wrapper, when the exposition is
-// on. Off, the route is not registered and the path is the mux's 404.
+// the bearer edge and the compression wrapper, when
+// observability.metrics.enabled is true. Off, the route is not
+// registered and the path is the mux's 404.
 func registerMetricsRoute(mux *http.ServeMux, cfg config.Metrics) {
 	// A registered route answering 404 itself was rejected, because
 	// ADR-0004 says the key disables the endpoint and nothing else
@@ -77,10 +78,11 @@ func registerMetricsRoute(mux *http.ServeMux, cfg config.Metrics) {
 }
 
 // registerPprofRoutes serves the Go runtime profiler under
-// /debug/pprof/ on this mux when debug.pprof is true, for goroutine,
-// heap and CPU profiles of a live instance. It is not a metrics source.
-func registerPprofRoutes(mux *http.ServeMux, cfg config.Debug) {
-	if !cfg.Pprof {
+// /debug/pprof/ on this mux when observability.pprof is true, for
+// goroutine, heap and CPU profiles of a live instance. It is not a
+// metrics source.
+func registerPprofRoutes(mux *http.ServeMux, on bool) {
+	if !on {
 		return
 	}
 	// Index, Cmdline, Profile, Symbol and Trace are registered by hand on
@@ -95,21 +97,18 @@ func registerPprofRoutes(mux *http.ServeMux, cfg config.Debug) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }
 
-// NewHandler returns the root handler, which serves every route behind
-// the request middleware. It takes the two switches of the
-// unauthenticated operational routes, because configuration does not
-// travel in the context. The handlers take the logger, the cluster, the
-// keychain and the metrics from the request context, which the server
-// derives from the process context.
-func NewHandler(metrics config.Metrics, debug config.Debug) http.Handler {
-	// The switches are the two configuration blocks. Two bare bools were
-	// rejected, because the call site would not say which is which, and
-	// the whole config.Config, because the handler reads two keys.
+// NewHandler builds the HTTP handler: the v2 routes, the probes, and
+// /metrics and /debug/pprof/ when the observability block switches them
+// on. The handlers read the logger, the cluster, the keychain and the
+// metrics from the request context.
+func NewHandler(cfg config.Observability) http.Handler {
+	// The handler takes the observability block, because configuration
+	// does not travel in the context and the block holds both switches.
 	mux := http.NewServeMux()
 	// The unauthenticated routes sit together, before the data routes.
 	registerStatusRoutes(mux)
-	registerMetricsRoute(mux, metrics)
-	registerPprofRoutes(mux, debug)
+	registerMetricsRoute(mux, cfg.Metrics)
+	registerPprofRoutes(mux, cfg.Pprof)
 	registerAuthRoutes(mux)
 	registerQueryRoutes(mux)
 	registerTableRoutes(mux)

@@ -23,7 +23,7 @@ Last updated: 2026-10-30
 
 M7 criteria. Entry: M6 closed. Exit: `GET /metrics` serves the
 Prometheus exposition on the HTTP and HTTPS mux outside the bearer edge,
-switched by `metrics.enabled` with true as the default (ADR-0004), with
+switched by `observability.metrics.enabled` with true as the default (ADR-0004), with
 request and query latency, rows and bytes streamed per format, time to
 first byte, pool and breaker state, retry counts, qdb call durations, Go
 runtime and build info, on both planes where the plane has the concept,
@@ -31,7 +31,7 @@ and a user label on the pool gauges only; every query on both planes
 logs one line with the engine, the plane, the duration, the row count
 and the outcome at `info`, and the statement text, truncated, at
 `debug`; `net/http/pprof` serves under `/debug/pprof/` on the same mux
-when `debug.pprof` is true and is absent when false, false the default;
+when `observability.pprof` is true and is absent when false, false the default;
 the round trip scrapes `/metrics` after its requests and asserts that
 every expected series exists; the stress's budget step is green by hand
 on both clusters.

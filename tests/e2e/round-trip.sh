@@ -329,8 +329,9 @@ check_query_lines() {
 
 # METRIC_SERIES: the series every platform exposes, asserted by name on
 # each server's scrape: the build-info series this binary names, under
-# the default metrics.namespace because the Makefile passes no metrics
-# flag, and two of the client's Go runtime series. The process_ series are not listed,
+# the default observability.metrics.namespace because the Makefile
+# passes no metrics flag, and two of the client's Go runtime series. The
+# process_ series are not listed,
 # because the client reads procfs for them and FreeBSD, in the matrix,
 # does not mount it. A later unit's series joins this list with its
 # commit.
