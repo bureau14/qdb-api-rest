@@ -272,6 +272,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   evident from the assertion.
 - Data-shaped behaviour gets property tests (`pgregory.net/rapid`).
   Wire-shaped behaviour gets the e2e harness (`tests/e2e/`).
+- The metrics have no Go tests, because such a test adds bloat and
+  little value (owner, 2026-11-02). The round trip's scrape asserts each
+  series by name, and the stress's budget step reads the budget gauge.
 - The tests are not in the business of testing the C API, which offers
   no way to mock an error or a stall. Never add a listener that stalls
   `connect`, and never mock the binding.
