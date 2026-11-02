@@ -1,7 +1,7 @@
 # Metrics series -- plan
 
 Thread: M7 metrics series
-Status: draft
+Status: approved
 
 ## Outcome
 
