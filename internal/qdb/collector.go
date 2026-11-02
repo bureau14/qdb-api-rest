@@ -113,5 +113,6 @@ func (k *Collector) Collect(ch chan<- prometheus.Metric) {
 		pool(sumPools(byUser))
 	}
 
+	// 4. The retry count only grows, so it is a counter and not a gauge.
 	ch <- prometheus.MustNewConstMetric(k.retries, prometheus.CounterValue, float64(k.c.retries.Load()))
 }
