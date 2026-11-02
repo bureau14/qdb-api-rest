@@ -41,7 +41,7 @@ The owner settled the three on 2026-10-28.
   scraping agent or a collector, and a later OTLP reader sits beside
   the registry.
 - Every test fixture that builds a context for a route or a package
-  that records places `observe.NewMetrics()` on it, because
+  that records places `observe.NewMetrics(...)` on it, because
   `MetricsFrom` panics without one.
 - A series name is a wire shape: the prefix, the name and the label set
   are read by dashboards, and a change to one is a change to the

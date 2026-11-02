@@ -246,8 +246,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
 - The metrics travel in the context like the logger:
   `observe.MetricsFrom(ctx)` is the registry, placed once by main, and
   it panics on a context without one, so a test that reaches a route
-  or a package that records places `observe.NewMetrics()` on its
-  context. Every series this binary names carries `observability.metrics.namespace`
+  or a package that records places `observe.NewMetrics(...)` on its
+  context, and a test that calls `query.Run` or `query.Logged`
+  directly places a plane with `observe.WithPlane`. Every series this binary names carries `observability.metrics.namespace`
   as its prefix, `qdb_rest_` by default (ADR-0019).
 - The cluster's collector (`qdb.Collector`) reads the budget, the
   breaker, the user pools and the retry count at scrape time. Main
