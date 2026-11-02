@@ -229,6 +229,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
 - Edges enrich and handlers do not: HTTP middleware and gRPC
   interceptors tag the ctx (request id, plane, user, session), and the
   code below them only logs.
+- The plane is also a context value, which the edges set with
+  `observe.WithPlane` beside its log attribute, and which code below
+  them reads with `observe.PlaneOf` for a metric's label.
 - The plane, the engine and the outcome are `observe`'s named types,
   written through their constructors only.
 - Every query writes one `query` line at info through `query.Logged`:

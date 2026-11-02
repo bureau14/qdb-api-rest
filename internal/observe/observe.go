@@ -108,7 +108,7 @@ const (
 // free string, or one vocabulary in place of another, from compiling.
 
 // Plane names the listener a request came in on. Each plane's edge tags
-// the request's logger with it.
+// the request's context with it through WithPlane.
 type Plane string
 
 const (
@@ -184,4 +184,24 @@ func Logger(ctx context.Context) *slog.Logger {
 // where the child context goes out of scope.
 func WithAttrs(ctx context.Context, attrs ...any) context.Context {
 	return WithLogger(ctx, Logger(ctx).With(attrs...))
+}
+
+// planeKey is the context key for the plane. It is unexported so only
+// WithPlane and PlaneOf touch it.
+type planeKey struct{}
+
+// WithPlane tags ctx with the plane, both as the logger's attribute and
+// as a value PlaneOf reads.
+func WithPlane(ctx context.Context, p Plane) context.Context {
+	return context.WithValue(WithAttrs(ctx, PlaneAttr(p)), planeKey{}, p)
+}
+
+// PlaneOf returns the plane an edge tagged ctx with. A context without
+// one is a programming error, and PlaneOf panics on it, as Logger does.
+func PlaneOf(ctx context.Context) Plane {
+	p, ok := ctx.Value(planeKey{}).(Plane)
+	if !ok {
+		panic("observe: no plane in context")
+	}
+	return p
 }

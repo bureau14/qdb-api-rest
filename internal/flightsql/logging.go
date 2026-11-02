@@ -18,7 +18,7 @@ func (s *Server) accessContext(ctx context.Context) context.Context {
 	// The id is minted on every call and never read from the metadata.
 	// Honoring an inbound id was rejected, because it would move httpapi's
 	// validation of an id into observe.
-	return observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String(), observe.PlaneAttr(observe.PlaneFlight))
+	return observe.WithPlane(observe.WithAttrs(s.callContext(ctx), observe.KeyRequestID, uuid.NewV7().String()), observe.PlaneFlight)
 }
 
 // accessLine writes one line per RPC with the method, the gRPC code and

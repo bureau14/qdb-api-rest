@@ -73,7 +73,7 @@ func withRequestLogging(next http.Handler) http.Handler {
 		start := time.Now()
 		id := requestID(r)
 		w.Header().Set(requestIDHeader, id)
-		ctx := observe.WithAttrs(r.Context(), observe.KeyRequestID, id, observe.PlaneAttr(observe.PlaneHTTP))
+		ctx := observe.WithPlane(observe.WithAttrs(r.Context(), observe.KeyRequestID, id), observe.PlaneHTTP)
 		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r.WithContext(ctx))
 		observe.Logger(ctx).InfoContext(ctx, "request",
