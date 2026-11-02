@@ -70,10 +70,15 @@ wording, in the shape the root `AGENTS.md`, "Code comments",
 prescribes, and every claim the specification lists is present once, in
 the same commit as the code. A claim is written as a claim, without the
 plan's evidence brackets. A claim the code contradicts is not written;
-it is reported in the build-stage message with both versions.
+it is reported in the build-stage message with both versions. Where a
+commit changes code that already has comments, the blocks it touches
+are rewritten whole from the new code, as the root `AGENTS.md`, "Code
+comments", rule 5, prescribes. They are never patched with another
+clause.
 
-A reason that arises while building (a rejected alternative, a
-threshold, an ordering constraint) and is not in the plan is written
+A reason that arises while building (a threshold, an ordering
+constraint, or a rejected alternative a reader of that line would
+propose) and is not in the plan is written
 where it is decided, with its evidence. One you would have to invent
 is asked through the question tool before the commit that needs it,
 never written as a guess and never left out silently.
@@ -94,12 +99,14 @@ branch touched> <plan path>`, which reconciles the code against the
 plan and reports every reason the plan promised that the code and
 documents do not state. Its "Unlanded from the plan" findings are
 fixed with a further small commit each, or reported with the reason
-each was dropped. The build-stage message quotes the check's report,
-or says it was clean.
+each was dropped. Its "Dropped on purpose" findings are listed in the
+build-stage message and get no commit. The build-stage message quotes
+the check's report, or says it was clean.
 
-Incorrect: the plan's Rationale says the schema cache was rejected, no
-comment or document says so, and the plan is deleted with that reason
-in it.
+Incorrect: the plan lands the rejection of the schema cache in an ADR,
+the branch is pushed without that ADR, and the reason dies with the
+plan. Or: every step comment names an alternative the plan rejected,
+and the code reads like the planning session.
 
 ## The plan's deletion
 
