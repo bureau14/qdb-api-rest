@@ -100,7 +100,7 @@ func TestPerUserCapAndSharing(t *testing.T) {
 				// The cap is checked while the session is held, so the check runs
 				// inside Call, because Query has already returned the session by
 				// the time it answers.
-				err := c.Call(context.Background(), u, "test", func(s *Session) error {
+				err := c.Call(context.Background(), u, OpQuery, func(s *Session) error {
 					rec, err := s.fetch("SELECT 1")
 					if rec != nil {
 						rec.Release()
@@ -135,11 +135,11 @@ func TestBreakerOpensOnUnreachable(t *testing.T) {
 	ctx := context.Background()
 	noop := func(*Session) error { return nil }
 	for range cfg.Pool.Breaker.Failures {
-		if err := c.Call(ctx, anonymous, "test", noop); err == nil {
+		if err := c.Call(ctx, anonymous, OpQuery, noop); err == nil {
 			t.Fatal("want a dial error against an unreachable cluster")
 		}
 	}
-	err := c.Call(ctx, anonymous, "test", noop)
+	err := c.Call(ctx, anonymous, OpQuery, noop)
 	var open *BreakerOpenError
 	if !errors.As(err, &open) {
 		t.Fatalf("breaker did not open: %v", err)
@@ -157,7 +157,7 @@ func TestRetryOnceOnRetryableFailure(t *testing.T) {
 		defer closeCluster(t, c)
 
 		attempts := 0
-		err := c.Call(context.Background(), userOf(spec), "test", func(*Session) error {
+		err := c.Call(context.Background(), userOf(spec), OpQuery, func(*Session) error {
 			attempts++
 			return qdbapi.ErrConnectionReset // retryable
 		}, WithReadRetry())

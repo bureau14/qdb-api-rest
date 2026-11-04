@@ -389,13 +389,29 @@ func (c *Cluster) feedBreaker(err error) {
 	c.breaker.recordSuccess()
 }
 
+// Operation names the Cluster method that holds a session for one call.
+// It is the operation label of the call histogram. Its closure may make
+// several C API calls, as TableSchemas and Ingest do.
+type Operation string
+
+const (
+	OpQuery        Operation = "query"
+	OpDescribe     Operation = "describe"
+	OpIngest       Operation = "ingest"
+	OpRead         Operation = "read"
+	OpCreateTable  Operation = "create_table"
+	OpRemoveTable  Operation = "remove_table"
+	OpTables       Operation = "tables"
+	OpTableSchemas Operation = "table_schemas"
+)
+
 // observeCall records one run of operation op as u.
-func (c *Cluster) observeCall(op string, u User, d time.Duration, err error) {
+func (c *Cluster) observeCall(op Operation, u User, d time.Duration, err error) {
 	o := observe.OutcomeOK
 	if err != nil {
 		o = observe.OutcomeError
 	}
-	labels := []string{op, string(o)}
+	labels := []string{string(op), string(o)}
 	// The user label exists on a secure cluster only, as newCallHistogram
 	// built it.
 	if c.Secured() {
@@ -408,7 +424,7 @@ func (c *Cluster) observeCall(op string, u User, d time.Duration, err error) {
 // records each run under op in the call histogram. It returns a
 // *BreakerOpenError while the cluster is unreachable. WithReadRetry
 // allows one retry of an idempotent read.
-func (c *Cluster) Call(ctx context.Context, u User, op string, f func(*Session) error, opts ...CallOption) error {
+func (c *Cluster) Call(ctx context.Context, u User, op Operation, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -490,7 +506,7 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 
 	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
-	err := c.Call(ctx, u, "query", func(s *Session) error {
+	err := c.Call(ctx, u, OpQuery, func(s *Session) error {
 		var err error
 		rec, err = s.fetch(q)
 		return err
@@ -529,7 +545,7 @@ func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOp
 	// The read retry is as safe here as in Query, because the validate
 	// holds a session for one round trip and sends nothing to the caller.
 	var sc *arrow.Schema
-	err := c.Call(ctx, u, "describe", func(s *Session) error {
+	err := c.Call(ctx, u, OpDescribe, func(s *Session) error {
 		var err error
 		sc, err = s.describe(q)
 		return err

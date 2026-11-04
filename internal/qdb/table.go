@@ -77,14 +77,14 @@ func (c *Cluster) CreateTable(ctx context.Context, u User, name string, shard ti
 	if err != nil {
 		return err
 	}
-	return c.Call(ctx, u, "create_table", func(s *Session) error { return s.CreateTable(name, shard, infos...) })
+	return c.Call(ctx, u, OpCreateTable, func(s *Session) error { return s.CreateTable(name, shard, infos...) })
 }
 
 // RemoveTable removes the table as the user. It leaves the
 // table's symtable in place, because a symtable is its own entry and
 // other tables may share it.
 func (c *Cluster) RemoveTable(ctx context.Context, u User, name string) error {
-	return c.Call(ctx, u, "remove_table", func(s *Session) error { return s.RemoveTable(name) })
+	return c.Call(ctx, u, OpRemoveTable, func(s *Session) error { return s.RemoveTable(name) })
 }
 
 // tables lists the names of the cluster's tables on the held session, in
@@ -136,7 +136,7 @@ func (s *Session) tables() ([]string, error) {
 func (c *Cluster) Tables(ctx context.Context, u User) ([]string, error) {
 	var names []string
 	// The read retry, because a listing is a read.
-	err := c.Call(ctx, u, "tables", func(s *Session) error {
+	err := c.Call(ctx, u, OpTables, func(s *Session) error {
 		var err error
 		names, err = s.tables()
 		return err
@@ -248,7 +248,7 @@ func (c *Cluster) TableSchemas(ctx context.Context, u User) ([]TableSchema, erro
 	var out []TableSchema
 	// A listing is a read, and a retry re-runs the whole closure on a
 	// fresh session after a bad one.
-	err := c.Call(ctx, u, "table_schemas", func(s *Session) error {
+	err := c.Call(ctx, u, OpTableSchemas, func(s *Session) error {
 		// 1. the listing Tables answers
 		names, err := s.tables()
 		if err != nil {

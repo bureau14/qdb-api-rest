@@ -170,5 +170,5 @@ func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) err
 func (c *Cluster) Read(ctx context.Context, u User, name string, o ReadOptions, sink func(Batches) error) error {
 	// One call, so its duration spans every fetch and the client's
 	// consumption of the stream.
-	return c.Call(ctx, u, "read", func(s *Session) error { return s.Read(name, o, sink) })
+	return c.Call(ctx, u, OpRead, func(s *Session) error { return s.Read(name, o, sink) })
 }
