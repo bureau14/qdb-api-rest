@@ -112,6 +112,7 @@ func NewHandler(cfg config.Observability) http.Handler {
 	registerAuthRoutes(mux)
 	registerQueryRoutes(mux)
 	registerTableRoutes(mux)
+	registerTagRoutes(mux)
 	registerReadRoutes(mux)
 	registerRowsRoutes(mux)
 	return withRequestLogging(mux)
