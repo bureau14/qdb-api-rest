@@ -7,8 +7,10 @@
 // against its create body, and reads them empty. It ingests them in one
 // body of a drawn format under a drawn request coding. It reads them,
 // queries them, and reads them through DuckDB behind #sql on the query
-// route, each in every format. It deletes them, re-creates them over
-// what the delete leaves behind, and deletes them again. Each response
+// route, each in every format. It tags them, reads the tag's entries
+// and each table's tags, and detaches the tag. It deletes them,
+// re-creates them over what the delete leaves behind, and deletes them
+// again. Each response
 // equals the encoder run directly over the cluster, and each direct read
 // passes table.Check against the rows generated. So the bytes on the
 // wire carry the rows written, and the DuckDB path and the native path
@@ -492,7 +494,45 @@ func TestRoundtrip(t *testing.T) {
 				s.checkFlight(rt, tbl, "#sql "+tbl.SelectSQL())
 			}
 
-			// 7. delete each (204), which leaves the symtables. The same create
+			// 7. tag each table with one drawn tag, removed on cleanup, attached
+			// twice (204 both times). The tag's entries are the tables, compared
+			// as a set because the find answers in the cluster's order, and each
+			// table body lists the tag. A detach twice (204 both times) leaves
+			// the tag on no entry, which is 404
+			tag := "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "tag")
+			table.RemoveTagOnCleanupAs(rt, s.c, s.user, tag)
+			names := make([]string, len(tables))
+			for i, tbl := range tables {
+				names[i] = tbl.Name
+				for range 2 {
+					if resp := s.attachTag(tbl.Name, tag); resp.Code != http.StatusNoContent {
+						rt.Fatalf("attach %s to %s: status %d: %s", tag, tbl.Name, resp.Code, resp.Body.String())
+					}
+				}
+			}
+			resp := s.tagged(tag)
+			var entries entriesResponse
+			if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &entries) != nil {
+				rt.Fatalf("tagged %s: status %d: %s", tag, resp.Code, resp.Body.String())
+			}
+			if got, want := slices.Sorted(slices.Values(entries.Entries)), slices.Sorted(slices.Values(names)); !slices.Equal(got, want) {
+				rt.Fatalf("tagged %s: %v, want %v", tag, got, want)
+			}
+			for _, tbl := range tables {
+				if got, want := s.getTable(rt, tbl.Name), tableResponseOfCreate(createBodyOf(tbl), []string{tag}); !reflect.DeepEqual(got, want) {
+					rt.Fatalf("get %s tagged: %+v, want %+v", tbl.Name, got, want)
+				}
+				for range 2 {
+					if resp := s.detachTag(tbl.Name, tag); resp.Code != http.StatusNoContent {
+						rt.Fatalf("detach %s from %s: status %d: %s", tag, tbl.Name, resp.Code, resp.Body.String())
+					}
+				}
+			}
+			if resp := s.tagged(tag); resp.Code != http.StatusNotFound {
+				rt.Fatalf("tagged %s after the detach: status %d: %s", tag, resp.Code, resp.Body.String())
+			}
+
+			// 8. delete each (204), which leaves the symtables. The same create
 			// is accepted again over them (201), and a second delete is 404
 			for _, tbl := range tables {
 				if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNoContent || resp.Body.Len() != 0 {
