@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
@@ -124,9 +125,46 @@ func handleDeleteTable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// tablesResponse is the list body. The names sit under a key, so a field
+// can join them later without a break.
+type tablesResponse struct {
+	Tables []string `json:"tables"`
+}
+
+// withPrefix answers the names that start with the prefix, in their
+// order, and an empty list when none does. The empty prefix keeps every
+// name.
+func withPrefix(names []string, prefix string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if strings.HasPrefix(n, prefix) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// handleListTables answers the table names as the caller sees them, under
+// ?prefix= when given. Any cluster error is the caller's 400.
+func handleListTables(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	names, err := qdb.ClusterFrom(ctx).Tables(ctx, caller(r))
+	if err != nil {
+		writeClusterError(ctx, w, err, http.StatusBadRequest)
+		return
+	}
+	// The prefix is applied in Go, because show tables takes none.
+	names = withPrefix(names, r.URL.Query().Get("prefix"))
+	w.Header().Set("Content-Type", "application/json")
+	// withPrefix answers an empty list and never nil, so a list without
+	// names encodes as [] and never as null.
+	_ = json.NewEncoder(w).Encode(tablesResponse{Tables: names})
+}
+
 // registerTableRoutes serves the table collection behind the bearer
 // middleware. The mux patterns fix method and path.
 func registerTableRoutes(mux *http.ServeMux) {
+	handleData(mux, "GET "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleListTables))))
 	handleData(mux, "POST "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleCreateTable))))
 	handleData(mux, "DELETE "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleDeleteTable))))
 }
