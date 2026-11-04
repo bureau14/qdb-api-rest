@@ -3,11 +3,15 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/apache/arrow-go/v18/arrow"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
@@ -19,12 +23,12 @@ const tablesPath = "/api/v2/tables"
 // maxShardSize is the largest shard_size a time.Duration can carry.
 const maxShardSize = math.MaxInt64 / int64(time.Millisecond)
 
-// columnRequest is one column of the create body, in the schema
-// vocabulary. symtable belongs to a symbol column only.
+// columnRequest is one column of the create body and of the table body,
+// in the schema vocabulary. symtable belongs to a symbol column only.
 type columnRequest struct {
 	Name     string `json:"name"`
 	Type     string `json:"type"`
-	Symtable string `json:"symtable"`
+	Symtable string `json:"symtable,omitempty"`
 }
 
 // createTableRequest is the create body. shard_size is in milliseconds,
@@ -161,10 +165,89 @@ func handleListTables(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(tablesResponse{Tables: names})
 }
 
+// tableResponse is the table body: the create body's fields with
+// $timestamp as the first column, plus the TTL and the tags. Both
+// durations are integer milliseconds.
+type tableResponse struct {
+	Name      string          `json:"name"`
+	ShardSize int64           `json:"shard_size"`
+	TTL       int64           `json:"ttl"`
+	Columns   []columnRequest `json:"columns"`
+	Tags      []string        `json:"tags"`
+}
+
+// millisOf answers the schema metadata under the key as an integer count
+// of milliseconds, or fails when the key is absent or does not parse.
+func millisOf(md arrow.Metadata, key string) (int64, error) {
+	v, ok := md.GetValue(key)
+	if !ok {
+		return 0, fmt.Errorf("table schema has no %s", key)
+	}
+	return strconv.ParseInt(v, 10, 64)
+}
+
+// tableResponseOf renders the table in the create vocabulary. It fails
+// only on a schema Cluster.Table did not build: a field ColumnOfField
+// cannot name, or a duration that is not integer milliseconds.
+func tableResponseOf(t qdb.TableInfo) (tableResponse, error) {
+	// The shard size and the TTL travel on the schema's metadata.
+	md := t.Schema.Metadata()
+	shard, err := millisOf(md, qdb.MetaShardSize)
+	if err != nil {
+		return tableResponse{}, err
+	}
+	ttl, err := millisOf(md, qdb.MetaTTL)
+	if err != nil {
+		return tableResponse{}, err
+	}
+	// $timestamp is the schema's first field and stays the first column,
+	// because every query returns it.
+	cols := make([]columnRequest, 0, t.Schema.NumFields())
+	for _, f := range t.Schema.Fields() {
+		c, err := qdb.ColumnOfField(f)
+		if err != nil {
+			return tableResponse{}, err
+		}
+		cols = append(cols, columnRequest{Name: c.Name, Type: c.Type, Symtable: c.Symtable})
+	}
+	// A table without tags encodes [] and never null.
+	tags := t.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return tableResponse{Name: t.Name, ShardSize: shard, TTL: ttl, Columns: cols, Tags: tags}, nil
+}
+
+// handleGetTable answers the table the path names, its columns and its
+// tags. A name the cluster does not know is 404, and anything else the
+// cluster answered is the caller's 400.
+func handleGetTable(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	t, err := qdb.ClusterFrom(ctx).Table(ctx, caller(r), r.PathValue("name"))
+	switch {
+	case qdb.IsTableNotFound(err):
+		writeProblem(w, http.StatusNotFound, err.Error())
+		return
+	case err != nil:
+		writeClusterError(ctx, w, err, http.StatusBadRequest)
+		return
+	}
+	body, err := tableResponseOf(t)
+	if err != nil {
+		// A schema the binding built and this process cannot render is this
+		// process's fault.
+		writeProblem(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(body)
+}
+
 // registerTableRoutes serves the table collection behind the bearer
 // middleware. The mux patterns fix method and path.
 func registerTableRoutes(mux *http.ServeMux) {
 	handleData(mux, "GET "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleListTables))))
+	handleData(mux, "GET "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleGetTable))))
 	handleData(mux, "POST "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleCreateTable))))
 	handleData(mux, "DELETE "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleDeleteTable))))
 }
