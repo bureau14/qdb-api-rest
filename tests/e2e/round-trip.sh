@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It drives the
 # built binary over HTTP like a client: it logs in, creates one table per
-# body format, ingests the generated rows into each in that format, reads
-# and queries them back in every format and coding, and then reads them
-# back through Arrow's stock Flight SQL drivers, ADBC and JDBC. Every
+# body format, lists each under its name and reads it against its create
+# body, ingests the generated rows into each in that format, reads and
+# queries them back in every format and coding, and then reads them back
+# through Arrow's stock Flight SQL drivers, ADBC and JDBC. Last it tags
+# every table, reads the tag's entries and each table's tags, and
+# detaches the tag. Every
 # step expects the generated input, so nothing is captured and nothing is
 # audited (ADR-0014). Error rows are Go tests and never steps here.
 #
@@ -159,6 +162,91 @@ duckdb_back() {
         "${enc[@]+"${enc[@]}"}" "$url/api/v2/query")
     expect 200 "$status" "$out" "$name" || return 1
     check_response "$out" "$name" "$format" "$type" "$coding" "$table" "$csv" tool
+}
+
+# list_back <out_dir> <url> <token> <table>: GET
+# /api/v2/tables?prefix=<table> answers {"tables":["<table>"]}, because no
+# other table of the cluster starts with a round trip table's name.
+list_back() {
+    local out="$1" url="$2" token="$3" table="$4" status got
+    local name="$table.list"
+    status=$(request "$out" "$name" -H "Authorization: Bearer $token" "$url/api/v2/tables?prefix=$table")
+    expect 200 "$status" "$out" "$name" || return 1
+    got=$(jq -c . "$out/$name.body")
+    [[ "$got" == "{\"tables\":[\"$table\"]}" ]] || { log_error "[FAIL] $name: $got, want the table alone"; return 1; }
+}
+
+# TABLE_OF_CREATE is the jq filter that turns a create body into the table
+# body GET /api/v2/tables/<table> answers for it: $timestamp as the first
+# column, no TTL and no tags.
+TABLE_OF_CREATE='.columns = [{"name":"$timestamp","type":"timestamp"}] + .columns | .ttl = 0 | .tags = []'
+
+# table_back <out_dir> <url> <token> <table>: GET /api/v2/tables/<table>
+# answers the table's create body put through TABLE_OF_CREATE. Both sides
+# go through jq -S, so the comparison ignores key order and whitespace.
+table_back() {
+    local out="$1" url="$2" token="$3" table="$4" status
+    local name="$table.table"
+    status=$(request "$out" "$name" -H "Authorization: Bearer $token" "$url/api/v2/tables/$table")
+    expect 200 "$status" "$out" "$name" || return 1
+    create_body "$table" | jq -S "$TABLE_OF_CREATE" > "$out/$name.want"
+    jq -S . "$out/$name.body" > "$out/$name.got"
+    if ! cmp -s "$out/$name.want" "$out/$name.got"; then
+        log_error "[FAIL] $name: the table body differs from its create body (want vs got)"
+        diff "$out/$name.want" "$out/$name.got" >&2 || true
+        return 1
+    fi
+}
+
+# TAG is the round trip's tag. It is fixed, so each run removes the tag
+# entry the previous run left.
+TAG=e2e_tag
+
+# remove_tag <tag> <qdbsh cluster options...>: removes the tag's entry
+# through the qdbsh wrapper, so the round trip starts from a clean state
+# as create_table does. A tag entry outlives its carriers, so neither a
+# detach nor a dropped table removes it. A tag that is already gone is
+# the clean state.
+remove_tag() {
+    local tag="$1" got
+    shift
+    got=$(qdbsh "$@" -c "remove $tag" 2>&1) && return 0
+    [[ "$got" == *"An entry matching the provided alias cannot be found."* ]] && return 0
+    log_error "[FAIL] remove $tag: $got"
+    return 1
+}
+
+# tag_back <out_dir> <url> <token> <tag> <tables...>: PUT the tag on each
+# table twice (204 both times). GET /api/v2/tags/<tag> lists the tables,
+# compared as a sorted set because the cluster answers in its own order,
+# and each table body lists the tag. DELETE the tag from each table twice
+# (204 both times), after which GET /api/v2/tags/<tag> is 404.
+tag_back() {
+    local out="$1" url="$2" token="$3" tag="$4" table status got want i
+    shift 4
+    for table in "$@"; do
+        for i in 1 2; do
+            status=$(request "$out" "$table.attach.$i" -X PUT -H "Authorization: Bearer $token" "$url/api/v2/tables/$table/tags/$tag")
+            expect 204 "$status" "$out" "$table.attach.$i" || return 1
+        done
+    done
+    status=$(request "$out" "$tag.tagged" -H "Authorization: Bearer $token" "$url/api/v2/tags/$tag")
+    expect 200 "$status" "$out" "$tag.tagged" || return 1
+    got=$(jq -c '.entries | sort' "$out/$tag.tagged.body")
+    want=$(printf '%s\n' "$@" | jq -R . | jq -sc sort)
+    [[ "$got" == "$want" ]] || { log_error "[FAIL] $tag.tagged: entries $got, want $want"; return 1; }
+    for table in "$@"; do
+        status=$(request "$out" "$table.tagged" -H "Authorization: Bearer $token" "$url/api/v2/tables/$table")
+        expect 200 "$status" "$out" "$table.tagged" || return 1
+        got=$(jq -c .tags "$out/$table.tagged.body")
+        [[ "$got" == "[\"$tag\"]" ]] || { log_error "[FAIL] $table.tagged: tags $got, want [\"$tag\"]"; return 1; }
+        for i in 1 2; do
+            status=$(request "$out" "$table.detach.$i" -X DELETE -H "Authorization: Bearer $token" "$url/api/v2/tables/$table/tags/$tag")
+            expect 204 "$status" "$out" "$table.detach.$i" || return 1
+        done
+    done
+    status=$(request "$out" "$tag.untagged" -H "Authorization: Bearer $token" "$url/api/v2/tags/$tag")
+    expect 404 "$status" "$out" "$tag.untagged"
 }
 
 # TYPES_QUERY is the #sql query of one row of DuckDB-only types (int32,
@@ -396,14 +484,17 @@ BODY_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vn
 READ_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
 CODINGS=("identity" "gzip")
 
-# run_cluster <name> <http_url> <flight_url> <login_body_file>: the round trip
-# against one server: login once, then per body format create the table,
-# ingest the generated rows in that format, read, query and read them
-# through DuckDB SQL back in every format and coding, and read them back
-# through the ADBC and the JDBC driver with the types query after each. The seed is in
-# every line, so a failure reproduces with --seed.
+# run_cluster <name> <http_url> <flight_url> <login_body_file> <qdbsh
+# cluster options...>: the round trip against one server: login once,
+# then per body format create the table, list it under its name, read it
+# against its create body, ingest the generated rows in that format,
+# read, query and read them through DuckDB SQL back in every format and
+# coding, and read them back through the ADBC and the JDBC driver with
+# the types query after each. Then tag every table and detach the tag
+# again. The seed is in every line, so a failure reproduces with --seed.
 run_cluster() {
     local name="$1" url="$2" flight="$3" body="$4" token rows entry fmt table type rentry coding
+    local -a cluster=("${@:5}") tables=()
     local out="$ACTUAL_DIR/$name"
     mkdir -p "$out"
     log_info "$name: $url, rows=$ROWS seed=$SEED"
@@ -415,6 +506,9 @@ run_cluster() {
         # driver would format a cell outside the encoders.
         rows=$("$TOOL" gen --rows "$ROWS" --seed "$SEED" --out "$out" --table "$table") || die "$name: e2etool gen failed"
         create_table "$out" "$url" "$token" "$table" || return 1
+        list_back "$out" "$url" "$token" "$table" || return 1
+        table_back "$out" "$url" "$token" "$table" || return 1
+        tables+=("$table")
         ingest "$out" "$url" "$token" "$table" "$type" "$out/rows.$fmt" "$rows" || return 1
         for rentry in "${READ_FORMATS[@]}"; do
             for coding in "${CODINGS[@]}"; do
@@ -431,6 +525,9 @@ run_cluster() {
         fi
         log_info "[OK] $name: $table, $rows rows in as $fmt, read, queried and read through DuckDB back as ${READ_FORMATS[*]%%:*} under ${CODINGS[*]}, byte for byte, and read back over ADBC${JDBC_OK} (seed=$SEED)"
     done
+    remove_tag "$TAG" "${cluster[@]}" || return 1
+    tag_back "$out" "$url" "$token" "$TAG" "${tables[@]}" || return 1
+    log_info "[OK] $name: ${tables[*]} listed, read against their create bodies, tagged $TAG and untagged"
     # The scrape follows every request of the round trip, as the M7
     # criterion says, so the series of later units are counted when it
     # runs.
@@ -442,12 +539,14 @@ main() {
     local failed=0
     mkdir -p "$ACTUAL_DIR"
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
-    run_cluster insecure "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" || failed=$((failed + 1))
+    run_cluster insecure "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" \
+        --cluster "$INSECURE_CLUSTER" || failed=$((failed + 1))
     # The insecure server also serves HTTP, so an unconditional warning
     # fails here.
     check_log insecure "$INSECURE_LOG" absent || failed=$((failed + 1))
     check_query_lines insecure "$INSECURE_LOG" || failed=$((failed + 1))
-    run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$REPO_ROOT/user_private.key" || failed=$((failed + 1))
+    run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$SECURE_USER_KEY" --cluster "$SECURE_CLUSTER" \
+        --cluster-public-key-file "$SECURE_CLUSTER_KEY" --user-security-file "$SECURE_USER_KEY" || failed=$((failed + 1))
     # The secure server serves HTTP on a cluster with a public key, which
     # is the one case the warning is for.
     check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
