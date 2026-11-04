@@ -98,6 +98,10 @@ func TestErrorRows(t *testing.T) {
 			"create: no token":                {http.MethodPost, tablesPath, `{}`, map[string]string{"Content-Type": "application/json"}, http.StatusUnauthorized, "Bearer"},
 			"delete: no token":                {http.MethodDelete, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized, "Bearer"},
 			"delete: no such table":           {http.MethodDelete, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound, ""},
+			// the table list and the table
+			"list: no token":       {http.MethodGet, tablesPath, "", nil, http.StatusUnauthorized, "Bearer"},
+			"table: no token":      {http.MethodGet, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized, "Bearer"},
+			"table: no such table": {http.MethodGet, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound, ""},
 			// the reader
 			"read: no token":         {http.MethodGet, read(a.Name, ""), "", nil, http.StatusUnauthorized, "Bearer"},
 			"read: no such table":    {http.MethodGet, read("qdbtest_read_none", ""), "", bearer, http.StatusNotFound, ""},
@@ -141,6 +145,8 @@ func TestErrorRows(t *testing.T) {
 				"ingest: anonymous on the secure cluster":     {http.MethodPost, ingest(""), csvHeader + "qdbtest_errors_a,2020-01-01T00:00:00Z,1\n", anonCSV, http.StatusUnauthorized, refused},
 				"create: anonymous on the secure cluster":     {http.MethodPost, tablesPath, `{"name":"qdbtest_err","shard_size":1000,"columns":[{"name":"c","type":"int64"}]}`, anonJSON, http.StatusUnauthorized, refused},
 				"delete: anonymous on the secure cluster":     {http.MethodDelete, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"list: anonymous on the secure cluster":       {http.MethodGet, tablesPath, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"table: anonymous on the secure cluster":      {http.MethodGet, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 			} {
 				rows[name] = row
 			}
