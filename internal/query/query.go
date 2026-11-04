@@ -60,9 +60,9 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
-// countRows passes the batches through and adds the rows of each batch
+// CountRows passes the batches through and adds the rows of each batch
 // the consumer pulls to n.
-func countRows(b qdb.Batches, n *int64) qdb.Batches {
+func CountRows(b qdb.Batches, n *int64) qdb.Batches {
 	return func(yield func(arrow.RecordBatch, error) bool) {
 		for rec, err := range b {
 			// Count before yield, because the batch is released after it.
@@ -86,7 +86,7 @@ func Logged(ctx context.Context, e observe.Engine, u qdb.User, call func(func(qd
 	var rows int64
 	var sinkErr error
 	wrapped := func(b qdb.Batches) error {
-		sinkErr = sink(countRows(b, &rows))
+		sinkErr = sink(CountRows(b, &rows))
 		return sinkErr
 	}
 

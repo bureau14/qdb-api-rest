@@ -167,7 +167,7 @@ func checkStatement(t *rapid.T, c captured, text string) {
 }
 
 // TestQueryLines: every call writes one query line with its engine,
-// outcome and rows pulled. It is where countRows is proven, and the e2e
+// outcome and rows pulled. It is where CountRows is proven, and the e2e
 // round trip covers the call sites on both planes.
 func TestQueryLines(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
