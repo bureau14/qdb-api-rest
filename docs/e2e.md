@@ -136,7 +136,8 @@ is timed.
    `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`,
    `retries_total`, `http_request_duration_seconds`,
    `flight_rpc_duration_seconds`, `first_byte_seconds`,
-   `response_bytes_total` and `query_duration_seconds` under the
+   `response_bytes_total`, `rows_total`, `qdb_call_duration_seconds`
+   and `query_duration_seconds` under the
    `qdb_rest_` namespace, and the Go runtime series. The `process_` series are not asserted, because the
    client reads procfs for them and FreeBSD does not mount it. A new
    series joins the list with its commit.
