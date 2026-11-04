@@ -21,6 +21,9 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
 - Nothing in this directory loads a dataset (ADR-0015). Every row a
   suite needs is drawn by `tools/e2etool gen`, and the suite creates
   its own `e2e_*` tables on both clusters and drops them first.
+- The round trip's tag is fixed, `e2e_tag`, and the driver removes its
+  entry through the `qdbsh` wrapper before the tag step, because a tag
+  entry outlives its carriers.
 - The v2 round trip (`round-trip.sh`, `make test-round-trip`, ADR-0014)
   captures nothing. The rows it ingests come from `tools/e2etool gen`,
   which draws them through the table fixture (`internal/qdbtest/table`)

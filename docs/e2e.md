@@ -77,7 +77,11 @@ is timed.
 2. `POST /api/v2/tables`: one table per body format, `e2e_csv`,
    `e2e_ndjson`, `e2e_arrow` and `e2e_json`, with one column of every
    type (`blob`, `double`, `int64`, `string`, `symbol`, `timestamp`),
-   dropped first so the round trip is idempotent.
+   dropped first so the round trip is idempotent. After its create,
+   `GET /api/v2/tables?prefix=<name>` answers `{"tables":["<name>"]}`,
+   and `GET /api/v2/tables/<name>` answers the create body with
+   `$timestamp` as the first column, `"ttl":0` and no tags. Both bodies
+   are compared through `jq -S`.
 3. `POST /api/v2/rows`: the generated rows, whose `$table` column names
    the table, as CSV into `e2e_csv`, as NDJSON into `e2e_ndjson`, as
    Arrow IPC into `e2e_arrow` and as columnar JSON into `e2e_json`,
@@ -124,24 +128,31 @@ is timed.
    handshakes with the cluster's user on the secure cluster and presents
    no token on the insecure one. "The Flight SQL smoke steps" below says
    what each driver asserts.
-8. The warning line. The server warns at startup when its HTTP listener
+8. The tag. Every table is tagged `e2e_tag` with
+   `PUT /api/v2/tables/<name>/tags/e2e_tag` twice, 204 both times.
+   `GET /api/v2/tags/e2e_tag` lists the four tables as a set, each table
+   body lists the tag, a `DELETE` on the same path twice is 204 both
+   times, and `GET /api/v2/tags/e2e_tag` is then 404. A tag entry
+   outlives its carriers, so the driver removes `e2e_tag` through
+   `qdbsh` before the step, and a missing entry is the clean state.
+9. The warning line. The server warns at startup when its HTTP listener
    serves a cluster with a public key, because access tokens then
    travel in plain text (`docs/brief.md`, Observability and logging).
    The driver greps each server's log for the message: present in the
    secure server's, absent from the insecure server's. A server given
    as a URL has no log and the step is skipped for it.
-9. The scrape. `GET /metrics` on each server, after every other step,
-   answers 200 with `text/plain` and a body naming every series of
-   `METRIC_SERIES` in the driver, presence only and never a value:
-   `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`,
-   `retries_total`, `http_request_duration_seconds`,
-   `flight_rpc_duration_seconds`, `first_byte_seconds`,
-   `response_bytes_total`, `rows_total`, `qdb_call_duration_seconds`
-   and `query_duration_seconds` under the
-   `qdb_rest_` namespace, and the Go runtime series. The `process_` series are not asserted, because the
-   client reads procfs for them and FreeBSD does not mount it. A new
-   series joins the list with its commit.
-10. The query lines. The driver greps each server's log for one query
+10. The scrape. `GET /metrics` on each server, after every other step,
+    answers 200 with `text/plain` and a body naming every series of
+    `METRIC_SERIES` in the driver, presence only and never a value:
+    `build_info`, `budget_sessions`, `breaker_state`, `pool_sessions`,
+    `retries_total`, `http_request_duration_seconds`,
+    `flight_rpc_duration_seconds`, `first_byte_seconds`,
+    `response_bytes_total`, `rows_total`, `qdb_call_duration_seconds`
+    and `query_duration_seconds` under the
+    `qdb_rest_` namespace, and the Go runtime series. The `process_` series are not asserted, because the
+    client reads procfs for them and FreeBSD does not mount it. A new
+    series joins the list with its commit.
+11. The query lines. The driver greps each server's log for one query
     line per engine and plane the round trip drove: native, DuckDB and
     the bulk reader over HTTP, native and DuckDB over Flight
     (`QUERY_LINES` in the driver). A server given as a URL has no log
@@ -149,10 +160,10 @@ is timed.
 
 The round trip tests nothing else. Each of the following has a Go test
 and no step here: the empty read of a table in every format
-(`TestRoundtrip`, step 3), zstd on the response wire
+(`TestRoundtrip`, step 4), zstd on the response wire
 (`internal/httpapi/compress_test.go`, because the agents carry `gunzip`
 and no zstd binary, see "In Buildkite"), request-body codings and push
-modes (`TestRoundtrip`, step 4), deduplication
+modes (`TestRoundtrip`, step 5), deduplication
 (`TestRoundtripDeduplicated`), several tables in one body
 (`internal/encoding/decode_test.go`), and the error rows of ADR-0010
 and ADR-0011 (`internal/httpapi`). Cross-format equivalence over
@@ -216,12 +227,17 @@ through a decoder of the same package.
 ### The driver
 
 `tests/e2e/round-trip.sh run --insecure-http <url> --insecure-flight <url>
---secure-http <url> --secure-flight <url> --tool <e2etool>
-[--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]` is
-a small option loop. Each server is named by its cluster and each plane
-by a URL in the form its client takes, `http://` for curl and
-`grpc+tls://` for the ADBC driver, so the script owns no scheme. The
-HTTPS listener has no option, because no step reads it. The Makefile is
+--secure-http <url> --secure-flight <url> --insecure-cluster <uri>
+--secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file>
+--tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>]
+[--secure-log <file>] [--rows N] [--seed S]` is a small option loop.
+Each server is named by its cluster and each plane by a URL in the form
+its client takes, `http://` for curl and `grpc+tls://` for the ADBC
+driver, so the script owns no scheme. Each cluster is also named by its
+URI, and the secure one by its public key file and its user's security
+file, because the driver removes the tag entry through `qdbsh`. The
+Makefile passes `QDB_URI`, `QDB_URI_SECURE` and the key files at the
+repo root. The HTTPS listener has no option, because no step reads it. The Makefile is
 the only source of URLs, ports and paths, and it passes the log of each
 server it started and nothing for a server given as a URL.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a
@@ -234,7 +250,8 @@ neither can be turned off and the two servers must not collide, and
 `.body` and one `.headers` file per request. The driver is one file
 over the request, status, login, create, ingest and compare helpers of
 `common.sh`, which the stress shares: one function per
-step kind (login, create, ingest, read back, query back, sql back) that
+step kind (login, create, list back, table back, ingest, read back,
+query back, sql back, tag back) that
 takes the table, the format and the coding as arguments, one
 `check_response` that the read, the query and the sql read share for the header assertions, the
 decoding and the comparison, and a matrix of body formats, response
