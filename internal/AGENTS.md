@@ -129,11 +129,21 @@ decisions are in `docs/adr/`.
   then the columns, the symtable on a symbol field and the shard size
   and TTL on the schema, under the `Meta*` keys of `table.go`, through
   one leased session, any failed lookup failing the listing;
-  `TableSchemas` and `schemaOfMetadata` say why. The shape and its keys
+  `TableSchemas` and `schemaOfMetadata` say why. `Cluster.Table` is one
+  table's schema in the same shape with its tags, through one leased
+  session. The shape and its keys
   live here and not in `internal/flightsql`, because both planes answer
   the same table: the Flight catalog reads both methods, and
   `GET /api/v2/tables` and `GET /api/v2/tables/{name}` wrap them
   (ADR-0018, Decision 11).
+- A tag is an entry of its own in qdbd, and it outlives its carriers: a
+  detach or a table removal leaves it. `Cluster.AttachTag` and
+  `DetachTag` are never retried. `Cluster.Find` is the find core, and a
+  find expression that matches nothing answers an empty list.
+  `Cluster.Tagged` builds the expression of one tag. It refuses a tag
+  holding a single quote (`ErrInvalidTag`), because the find grammar has
+  no escape for one, and it answers a tag no entry carries as
+  `IsTableNotFound`.
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
   or the classification of a failed DuckDB attach dialed. The
@@ -311,7 +321,8 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   `Table` it holds and writes no loader of its own. `Create` and
   `RemoveOnCleanup` run as the anonymous user, and `CreateAs` and
   `RemoveOnCleanupAs` take the user for a cluster that refuses the
-  anonymous user. A test that creates
+  anonymous user. A test that attaches a tag removes the tag's entry
+  with `RemoveTagOnCleanupAs`, because the entry outlives its carriers. A test that creates
   or pushes through its own door (an HTTP route) takes the blocks
   `Create` stacks on, which are `GenerateSchema`, `GenerateLike`
   (another table of the same columns) and `RemoveOnCleanup`. It does

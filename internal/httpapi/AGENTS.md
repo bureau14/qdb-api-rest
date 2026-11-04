@@ -46,6 +46,21 @@ This file, Handlers, holds the table reader's.
   symtable rule are `internal/qdb`'s (`ErrInvalidColumn`, found before a
   session is leased), and names and sizes are the C API's. A create or
   a delete is never retried.
+- The table list is `GET /api/v2/tables`, over `Cluster.Tables`, with
+  `?prefix=` applied in Go, answering `{"tables":[...]}`.
+- The table is `GET /api/v2/tables/{name}`, over `Cluster.Table`,
+  answering the create body's fields with `$timestamp` as the first
+  column, `ttl` and `tags`, durations in milliseconds. It is 404 on
+  `qdb.IsTableNotFound`.
+- The tag routes are PUT and DELETE on `/api/v2/tables/{name}/tags/{tag}`,
+  which answer 204. `IsTagAlreadySet` and `IsTagNotSet` are success,
+  because both methods are idempotent, and an unknown table is 404.
+  `GET /api/v2/tags/{tag}` answers `{"entries":[...]}` through
+  `Cluster.Tagged`, 404 for a tag no entry carries and 400 for
+  `qdb.ErrInvalidTag`. No route lists every tag, because qdbd has no tag
+  enumeration.
+- A list body is an object with a named array and never a bare array,
+  so a field can join the array later without a break.
 - The login proves credentials by `Cluster.Authenticate`, which is one
   direct dial outside the pools, and it mints only for credentials the
   cluster accepted. A refusal is 401 with no `WWW-Authenticate`, because
@@ -201,8 +216,10 @@ This file, Handlers, holds the table reader's.
   HTTP. The first is read empty in every format. All are ingested in one
   body of a drawn format, under a drawn request coding and a drawn push
   mode, read whole and under a drawn column subset, queried and read through DuckDB behind `#sql` on the query route
-  in every format, deleted, re-created over the
-  symtables the delete leaves, and deleted again. Under `async` the
+  in every format, tagged and untagged, deleted, re-created over the
+  symtables the delete leaves, and deleted again. Each table is also
+  listed under its own name and read against its create body when it is
+  created. Under `async` the
   read-back is the query's alone, because a query sees the rows at once
   and the bulk reader, which qdb-duck's scan reads through, only after
   the server's async flush. The oracle is
