@@ -500,6 +500,21 @@ func RemoveOnCleanupAs(t T, c *qdb.Cluster, u qdb.User, tbl Table) {
 	})
 }
 
+// RemoveTagOnCleanupAs removes the tag's entry on the test's cleanup as
+// the user, tolerating a tag that is already gone. A failed removal is
+// reported and never fatal, so a leak is visible.
+func RemoveTagOnCleanupAs(t T, c *qdb.Cluster, u qdb.User, tag string) {
+	t.Cleanup(func() {
+		// A tag entry outlives its carriers, so neither a detach nor the
+		// table's removal removes it. RemoveTable removes an entry of any
+		// type, as it removes a symtable.
+		err := call(c, u, func(s *qdb.Session) error { return s.RemoveTable(tag) })
+		if err != nil && !errors.Is(err, qdbapi.ErrAliasNotFound) {
+			t.Errorf("remove tag %s: %v", tag, err)
+		}
+	})
+}
+
 // Create creates the table in the cluster, pushes its batch through the
 // Arrow writer, and removes it on the test's cleanup. The cleanup is
 // registered as soon as the table exists, so a failed push leaves nothing
