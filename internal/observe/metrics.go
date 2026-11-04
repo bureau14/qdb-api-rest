@@ -45,6 +45,13 @@ func (m *Metrics) userLabels(names ...string) []string {
 	return names
 }
 
+// Buckets returns the boundaries of every duration histogram, in
+// seconds: b.Count bounds, the first at b.Start and each next double the
+// last.
+func Buckets(b config.DurationBuckets) []float64 {
+	return prometheus.ExponentialBuckets(b.Start.Seconds(), 2, b.Count)
+}
+
 // NewMetrics builds the registry with the series every instance exposes
 // and the instruments the listeners record into. perUser decides once
 // whether per-user series carry the user label.
@@ -73,8 +80,7 @@ func NewMetrics(cfg config.Metrics, perUser bool) *Metrics {
 	reg.MustRegister(buildInfo, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	// 3. In seconds, the unit of every _seconds series.
-	b := cfg.DurationBuckets
-	buckets := prometheus.ExponentialBuckets(b.Start.Seconds(), 2, b.Count)
+	buckets := Buckets(cfg.DurationBuckets)
 
 	// 4. The query histogram carries the user label only when perUser.
 	m := &Metrics{Registry: reg, Namespace: cfg.Namespace, PerUser: perUser}
