@@ -33,3 +33,19 @@ func (c *Cluster) AttachTag(ctx context.Context, u User, name, tag string) error
 func (c *Cluster) DetachTag(ctx context.Context, u User, name, tag string) error {
 	return c.ObservedCall(ctx, u, OpDetachTag, func(s *Session) error { return s.session.Table(name).DetachTag(tag) })
 }
+
+// Find answers the entry names a find expression matches, as the user, in
+// the cluster's order. An expression that matches nothing answers an empty
+// list. It is retried once on a retryable failure, as a read is.
+func (c *Cluster) Find(ctx context.Context, u User, expr string) ([]string, error) {
+	var names []string
+	err := c.ObservedCall(ctx, u, OpFind, func(s *Session) error {
+		var err error
+		names, err = s.session.Find().ExecuteString(expr)
+		return err
+	}, WithReadRetry())
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
+}
