@@ -1,7 +1,7 @@
 # M7 remaining series -- plan
 
 Thread: M7 remaining series
-Status: draft
+Status: approved
 
 ## Outcome
 
