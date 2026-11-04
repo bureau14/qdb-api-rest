@@ -30,8 +30,9 @@ Left for later:
 
 - `GET /api/v2/tags`, the list of every tag name, is not built, and no
   story is filed (owner, 2026-11-04). qdbd 3.15 has no tag enumeration
-  (Verified facts 1). Open question 1 asks whether the brief and the M8
-  criteria drop the route for good.
+  (Verified facts 1). The route leaves M8 for good, because it is not
+  valuable enough to work around qdbd for (owner, 2026-11-04). The brief's
+  sketch row goes, and the M8 criteria count seven routes.
 - The cluster and node statistics routes, `GET /api/v2/cluster` and
   `GET /api/v2/cluster/nodes/{id}`, are the next unit. They need a
   qdb-api-go fix first, because `HandleType.Statistics` never closes the
@@ -540,15 +541,22 @@ cluster options and `--jdbc-jar`. `tests/e2e/AGENTS.md` gains: the
 round trip's tag is fixed and removed through qdbsh first.
 
 `docs/brief.md`, the sketch row of `GET /api/v2/tables/{name}` becomes
-the create vocabulary with `$timestamp` first, and the `GET
-/api/v2/tags` row follows Open question 1. `docs/log.md`, M8 criteria,
-follow the same answer.
+the create vocabulary with `$timestamp` first. The `GET /api/v2/tags` row
+is removed, and the paragraph below the sketch says in one sentence that
+qdbd has no tag enumeration, so no route lists every tag. The Milestones
+line of M8 drops "list" from the tag routes.
+
+`docs/log.md`, Current state: M7 is done, closed 2026-11-04 (owner), and
+the stress budget step leaves the Next list. M8 is in progress. The M8
+exit criteria count seven exploration routes, and "lists the tag and its
+entries" becomes "lists the tag's entries". One dated entry records both
+milestone events as owner decisions, pointing at `docs/brief.md`.
 
 ## Rationale
 
 | decision                                                                                                                                  | why                                                                                                  | rejected, and why                                                                                                                                    | gained                                             | given up                                                  | settled by                                          |
 | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
-| 1. The unit is slices A and B, and `GET /api/v2/tags` is left out with no story filed                                                     | qdbd has no tag enumeration, and the owner chose not to file one                                     | a scan of every entry with a type lookup each, over 100000 round trips on the test cluster; a required `?prefix=` bound, which cannot list every tag | no slow route ships                                | the route, and M8's "lists the tag" as the brief wrote it | owner, 2026-11-04                                   |
+| 1. The unit is slices A and B, and `GET /api/v2/tags` leaves M8 for good with no story filed                                              | qdbd has no tag enumeration, and the route is not valuable enough to work around that                | a scan of every entry with a type lookup each, over 100000 round trips on the test cluster; a required `?prefix=` bound, which cannot list every tag | no slow route ships                                | the route, and M8's "lists the tag" as the brief wrote it | owner, 2026-11-04                                   |
 | 2. The table body is the create body's shape with `$timestamp` as the first column, plus `ttl` and `tags`, in the schema vocabulary       | the body lists every column a query returns                                                          | `$timestamp` implied as on create; Arrow schema JSON, where a symbol reads as utf8                                                                   | one vocabulary over HTTP, symbol a type of its own | the body does not post back into create unchanged         | owner, 2026-11-04                                   |
 | 3. List bodies are objects with a named array                                                                                             | a field can join later without a break                                                               | a bare array                                                                                                                                         | room for a count or a cursor                       | one key more to read                                      | owner, 2026-11-04                                   |
 | 4. Attach and detach answer 204 when nothing changes                                                                                      | PUT and DELETE are idempotent, so a retry after a lost answer succeeds                               | 409 for an attached tag and 404 for a missing one                                                                                                    | retries need no special case                       | a client cannot see whether its call changed anything     | owner, 2026-11-04                                   |
@@ -559,6 +567,8 @@ follow the same answer.
 | 9. Tests remove the tag entries they make: the Go fixture on cleanup, the shell driver through qdbsh at the start with one fixed tag name | it matches how the fixtures treat tables, and the server keeps qdbd's tag semantics                  | detach removing an unused tag entry, which races with another client's attach; leaving them                                                          | clean clusters                                     | the driver takes each cluster's URI and key files         | owner, 2026-11-04                                   |
 | 10. The tag routes accept any entry under `/tables/{name}`, with no type check                                                            | the binding tags any entry, and a check costs a round trip                                           | a metadata call before every attach                                                                                                                  | one call per request                               | a symtable can be tagged through a table route            | proposal                                            |
 | 11. New `Operation` values `table`, `attach_tag`, `detach_tag` and `find`, with no Go test                                                | every leased call is timed under its operation, and the metrics have no Go tests (owner, 2026-11-02) | reusing `OpTableSchemas` for one table                                                                                                               | the histogram tells the routes apart               | none                                                      | `internal/AGENTS.md`, Logging and metrics and Tests |
+| 12. M7 closes now and M8 opens with this unit                                                                                             | the owner closes M7 without waiting for the stress budget run                                        | landing this unit with M7 still in progress, or waiting for the run                                                                                  | M8's entry criterion holds                         | the budget step is no longer an M7 exit criterion         | owner, 2026-11-04                                   |
+| 13. The e2e documents commit adds the missing `--jdbc-jar` to `docs/e2e.md`, The driver                                                   | pragmatic, since the commit rewrites the driver's usage anyway                                       | a commit of its own                                                                                                                                  | one usage block matching the script                | none                                                      | owner, 2026-11-04                                   |
 
 ## Knowledge
 
@@ -578,8 +588,8 @@ follow the same answer.
   (Verified 2, 7; Rationale 8, 9).
 - Commit 20: `docs/e2e.md` and `tests/e2e/AGENTS.md` (Rationale 9;
   Verified 13, 14).
-- Commit 21: `docs/brief.md` and `docs/log.md` (Rationale 1, 2, and
-  Open question 1's answer).
+- Commit 21: `docs/brief.md` (Rationale 1, 2).
+- Commit 22: `docs/log.md`, Current state and one entry (Rationale 1, 12).
 - Rationale 1's rejected alternatives land in `internal/httpapi/AGENTS.md`
   as the one sentence above. Rationale 11 cites existing rules.
 
@@ -622,23 +632,15 @@ qdbapi.ErrAliasNotFound)`. If it does not, `Tagged`'s contract and
 18. `test(e2e): the round trip lists and reads each table and tags them under a fixed tag`
 19. `docs(agents): the httpapi and internal agents files name the table, the tag routes and their cores`
 20. `docs(e2e): the round trip's exploration steps and the driver's options`
-21. `docs(brief): the table route answers the create vocabulary, and the tag list follows the owner's answer`
-22. `/doc-discipline all internal/qdb internal/httpapi internal/qdbtest tests/e2e`, with any fixes as `docs(...)` commits
-23. `/doc-discipline check docs/exploration-tables-tags-plan.md`, with any fixes as `docs(...)` commits
-24. `docs(log): exploration-tables-tags-plan.md deleted, facts moved to internal/AGENTS.md, internal/httpapi/AGENTS.md, docs/e2e.md, tests/e2e/AGENTS.md, docs/brief.md and the comments of internal/qdb, internal/httpapi and internal/qdbtest`
-25. Verify: push `sc-19567/rr-exploration-tables-tags`, build its head in
+21. `docs(brief): the table route answers the create vocabulary, and no route lists every tag`
+22. `docs(log): M7 closed and M8 in progress over seven exploration routes`
+23. `/doc-discipline all internal/qdb internal/httpapi internal/qdbtest tests/e2e`, with any fixes as `docs(...)` commits
+24. `/doc-discipline check docs/exploration-tables-tags-plan.md`, with any fixes as `docs(...)` commits
+25. `docs(log): exploration-tables-tags-plan.md deleted, facts moved to internal/AGENTS.md, internal/httpapi/AGENTS.md, docs/e2e.md, tests/e2e/AGENTS.md, docs/brief.md and the comments of internal/qdb, internal/httpapi and internal/qdbtest`
+26. Verify: push `sc-19567/rr-exploration-tables-tags`, build its head in
     Buildkite, wait for the result. Green: report the build number. Red:
     fix with further small commits on this branch, push, build again.
 
 ## Open questions and recommendations
 
-1. Does `GET /api/v2/tags` leave M8 for good? Recommendation: yes. The
-   brief's sketch row is removed with one sentence saying qdbd has no tag
-   enumeration. The M8 criteria count seven routes, and "lists the tag"
-   becomes "lists the tag's entries".
-2. Does the e2e documents commit fix the missing `--jdbc-jar` in
-   `docs/e2e.md`, The driver (Verified 14)? Recommendation: yes, in
-   commit 20.
-3. M8's entry criterion is "M7 closed", and M7 waits on the owner's
-   stress budget run. Recommendation: the unit lands before that run,
-   and M8 is marked in progress when this plan merges.
+none
