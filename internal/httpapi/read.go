@@ -72,7 +72,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	//  1. read the parameters. A bad time is the caller's 400, answered
 	//     here;
 	//  2. read the table through query.Logged, with the encoder streaming
-	//     inside the sink through a counter that also feeds the metrics;
+	//     inside the sink through counters of bytes and rows that feed the
+	//     metrics;
 	//  3. a stream failure is 500 while no byte has gone out. After the
 	//     first byte the stream is cut and the failure is only logged;
 	//  4. a call failure arrives before the sink runs. An unknown table is
@@ -91,15 +92,20 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 	//    the cluster gone.
 	name := r.PathValue("name")
 	var streamErr error
+	var rows int64
 	u := caller(r)
 	err = query.Logged(ctx, observe.EngineBulkReader, u, func(sink func(qdb.Batches) error) error {
 		return qdb.ClusterFrom(ctx).Read(ctx, u, name, o, sink)
 	}, func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
-		streamErr = enc.EncodeStream(ctx, cw, batches)
+		// query.Logged keeps its own row count for the query line, so the
+		// sink counts the rows again for the row total.
+		streamErr = enc.EncodeStream(ctx, cw, query.CountRows(batches, &rows))
 		return streamErr
 	}, readAttrs(name, o)...)
-	observe.MetricsFrom(ctx).AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
+	m := observe.MetricsFrom(ctx)
+	m.AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
+	m.AddRows(observe.PlaneHTTP, formatOf(enc), observe.DirectionOut, rows)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:

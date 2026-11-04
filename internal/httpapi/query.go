@@ -146,7 +146,8 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	//
 	//  1. read the body as query text;
 	//  2. run the query through query.Run, with the encoder streaming
-	//     inside the sink through a counter that also feeds the metrics;
+	//     inside the sink through counters of bytes and rows that feed the
+	//     metrics;
 	//  3. a stream failure is 500 while no byte has gone out, which is
 	//     where a column type no encoder writes lands. After the first
 	//     byte the stream is cut and the failure is only logged;
@@ -168,12 +169,15 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 	// 2. the query. query.Run retries the native engine once and DuckDB
 	//    never, so the handler retries nothing itself.
 	var streamErr error
+	var rows int64
 	err := query.Run(ctx, caller(r), string(q), func(batches qdb.Batches) error {
 		w.Header().Set("Content-Type", enc.ContentType())
-		streamErr = enc.EncodeStream(ctx, cw, batches)
+		streamErr = enc.EncodeStream(ctx, cw, query.CountRows(batches, &rows))
 		return streamErr
 	})
-	observe.MetricsFrom(ctx).AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
+	m := observe.MetricsFrom(ctx)
+	m.AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
+	m.AddRows(observe.PlaneHTTP, formatOf(enc), observe.DirectionOut, rows)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:

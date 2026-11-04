@@ -129,7 +129,10 @@ This file, Handlers, holds the table reader's.
   in a byte counter only, so an encode error with zero bytes out is a
   problem response and one with bytes out is a log line. The counter
   also records the time to the first byte, and the handler adds its
-  count to the format's byte total when the stream ends.
+  count to the format's byte total when the stream ends. The query and
+  table-read sinks wrap their batches in `query.CountRows`, and the
+  handler adds the rows to the format's row total under direction
+  `out`.
 - `Accept` is matched by media type alone. The first listed match wins,
   and JSON is the default. `q` weights are not read.
 - `GET /metrics` serves the registry the request context carries
