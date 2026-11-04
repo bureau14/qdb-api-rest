@@ -144,6 +144,8 @@ test-round-trip: services-check e2etool jdbc
 	fi; \
 	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
 	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
+	    --insecure-cluster $(QDB_URI) --secure-cluster $(QDB_URI_SECURE) \
+	    --secure-cluster-key $(REPO_ROOT)/cluster_public.key --secure-user-key $(REPO_ROOT)/user_private.key \
 	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
 	    --insecure-log "$$insecure_log" --secure-log "$$secure_log"
 
