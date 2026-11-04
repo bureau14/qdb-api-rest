@@ -276,6 +276,45 @@ func (c *Cluster) TableSchemas(ctx context.Context, u User) ([]TableSchema, erro
 	return out, nil
 }
 
+// TableInfo is one table as GET /api/v2/tables/{name} answers it: its
+// schema, as TableSchemas builds it, and its tags.
+type TableInfo struct {
+	TableSchema
+	Tags []string
+}
+
+// tags answers the tags of the named entry on the held session, in the
+// cluster's order. The binding's error for an unknown entry passes
+// through unchanged, so IsTableNotFound classifies it.
+func (s *Session) tags(name string) ([]string, error) {
+	return s.session.Table(name).GetTags()
+}
+
+// Table answers the named table as the user: its schema and its tags,
+// through one leased session. An unknown table is IsTableNotFound. It is
+// retried once on a retryable failure, as a read is.
+func (c *Cluster) Table(ctx context.Context, u User, name string) (TableInfo, error) {
+	var t TableInfo
+	// The schema and the tags share one session, because one checkout per
+	// request is what the pool and the budget are built around.
+	err := c.ObservedCall(ctx, u, OpTable, func(s *Session) error {
+		schema, err := s.tableSchema(name)
+		if err != nil {
+			return err
+		}
+		tags, err := s.tags(name)
+		if err != nil {
+			return err
+		}
+		t = TableInfo{TableSchema: TableSchema{Name: name, Schema: schema}, Tags: tags}
+		return nil
+	}, WithReadRetry())
+	if err != nil {
+		return TableInfo{}, err
+	}
+	return t, nil
+}
+
 // IsTableExists reports whether err means the cluster refused a create
 // because the name is taken. The HTTP layer maps it to 409.
 func IsTableExists(err error) bool {

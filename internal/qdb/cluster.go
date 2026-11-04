@@ -403,6 +403,7 @@ const (
 	OpRemoveTable  Operation = "remove_table"
 	OpTables       Operation = "tables"
 	OpTableSchemas Operation = "table_schemas"
+	OpTable        Operation = "table"
 )
 
 // observeCall records one run of operation op as u.
