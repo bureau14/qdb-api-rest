@@ -420,11 +420,11 @@ func (c *Cluster) observeCall(op Operation, u User, d time.Duration, err error) 
 	c.calls.WithLabelValues(labels...).Observe(d.Seconds())
 }
 
-// Call runs f, the operation op, on a session authenticated as u, and
-// records each run under op in the call histogram. It returns a
-// *BreakerOpenError while the cluster is unreachable. WithReadRetry
-// allows one retry of an idempotent read.
-func (c *Cluster) Call(ctx context.Context, u User, op Operation, f func(*Session) error, opts ...CallOption) error {
+// Call runs f on a session authenticated as u. It returns a
+// *BreakerOpenError while the cluster is unreachable. WithReadRetry allows
+// one retry of an idempotent read. Call records no duration, and
+// ObservedCall is the variant that does.
+func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -435,14 +435,7 @@ func (c *Cluster) Call(ctx context.Context, u User, op Operation, f func(*Sessio
 		if !ok {
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
-		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error {
-			// The clock starts on the leased session, so the wait for a
-			// session stays out. time.Now and not c.now, which the tests fake.
-			start := time.Now()
-			err := f(newSession(s))
-			c.observeCall(op, u, time.Since(start), err)
-			return err
-		})
+		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error { return f(newSession(s)) })
 		// The caller's own cancellation says nothing about the cluster.
 		if callerLeft(err) {
 			return err
@@ -459,6 +452,19 @@ func (c *Cluster) Call(ctx context.Context, u User, op Operation, f func(*Sessio
 		c.retries.Add(1)
 	}
 	return err
+}
+
+// ObservedCall runs the operation op as Call runs f, and records each run
+// of f in the call histogram under op. A retried read records two runs.
+func (c *Cluster) ObservedCall(ctx context.Context, u User, op Operation, f func(*Session) error, opts ...CallOption) error {
+	return c.Call(ctx, u, func(s *Session) error {
+		// Call runs f on the leased session, so the wait for a session
+		// stays out. time.Now and not c.now, which the tests fake.
+		start := time.Now()
+		err := f(s)
+		c.observeCall(op, u, time.Since(start), err)
+		return err
+	}, opts...)
 }
 
 // slices cuts the batch into a sequence of slices of at most n rows, in
@@ -506,7 +512,7 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 
 	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
-	err := c.Call(ctx, u, OpQuery, func(s *Session) error {
+	err := c.ObservedCall(ctx, u, OpQuery, func(s *Session) error {
 		var err error
 		rec, err = s.fetch(q)
 		return err
@@ -545,7 +551,7 @@ func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOp
 	// The read retry is as safe here as in Query, because the validate
 	// holds a session for one round trip and sends nothing to the caller.
 	var sc *arrow.Schema
-	err := c.Call(ctx, u, OpDescribe, func(s *Session) error {
+	err := c.ObservedCall(ctx, u, OpDescribe, func(s *Session) error {
 		var err error
 		sc, err = s.describe(q)
 		return err

@@ -252,9 +252,12 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   as its prefix, `qdb_rest_` by default (ADR-0019).
 - The cluster's collector (`qdb.Collector`) reads the budget, the
   breaker, the user pools and the retry count at scrape time, and
-  forwards the call histogram the cluster records into. `Call` times
-  each run of an operation on its leased session, by operation and
-  outcome. Main registers the collector once the cluster exists, and
+  forwards the call histogram the cluster records into.
+  `Cluster.ObservedCall` times each run of an operation on its leased
+  session, by operation and outcome, and each `Cluster` method that
+  leases a session calls it under its own `qdb.Operation`. `Call` is the
+  same call untimed, for a caller whose duration no series wants, such as
+  the fixtures and the tests. Main registers the collector once the cluster exists, and
   `internal/qdb` reads no metrics from the context.
 - A per-user series carries the `user` label on a secure cluster only,
   because an insecure cluster accepts any username and the label would
