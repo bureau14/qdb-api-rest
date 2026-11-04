@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-02
+Last updated: 2026-11-04
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -51,9 +51,7 @@ In flight: none.
 
 Next:
 
-1. The remaining M7 series: rows streamed per format, qdb call
-   durations, and query latency per engine without a user.
-2. The stress's budget step, green by hand on both clusters, which is
+1. The stress's budget step, green by hand on both clusters, which is
    the owner's run. M7 closes on it.
 
 Handoff to M7 and M8:
@@ -92,6 +90,12 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-04 -- m7-remaining-series-plan.md deleted
+
+- Facts moved to `internal/AGENTS.md`, `internal/httpapi/AGENTS.md`,
+  `docs/e2e.md` and the comments of `internal/observe`, `internal/query`,
+  `internal/httpapi`, `internal/flightsql` and `internal/qdb`.
 
 ## 2026-11-02 -- metrics-series-plan.md deleted
 
