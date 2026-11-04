@@ -52,6 +52,7 @@ func TestErrorRows(t *testing.T) {
 		bearer := map[string]string{"Authorization": "Bearer " + s.token}
 		jsonBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": "application/json"}
 		csvBody := map[string]string{"Authorization": "Bearer " + s.token, "Content-Type": encoding.CSVContentType}
+		tagPath := func(name, tag string) string { return tablesPath + "/" + name + "/tags/" + tag }
 		read := func(name, params string) string { return tablesPath + "/" + name + "/rows?" + params }
 		ingest := func(params string) string { return rowsPath + "?" + params }
 		csvHeader := "$table,$timestamp,c0\n"
@@ -102,6 +103,13 @@ func TestErrorRows(t *testing.T) {
 			"list: no token":       {http.MethodGet, tablesPath, "", nil, http.StatusUnauthorized, "Bearer"},
 			"table: no token":      {http.MethodGet, tablesPath + "/qdbtest_err", "", nil, http.StatusUnauthorized, "Bearer"},
 			"table: no such table": {http.MethodGet, tablesPath + "/qdbtest_err", "", bearer, http.StatusNotFound, ""},
+			// the tags
+			"attach: no token":      {http.MethodPut, tagPath("qdbtest_err", "qdbtest_tag"), "", nil, http.StatusUnauthorized, "Bearer"},
+			"attach: no such table": {http.MethodPut, tagPath("qdbtest_err", "qdbtest_tag"), "", bearer, http.StatusNotFound, ""},
+			"detach: no such table": {http.MethodDelete, tagPath("qdbtest_err", "qdbtest_tag"), "", bearer, http.StatusNotFound, ""},
+			"tagged: no token":      {http.MethodGet, tagsPath + "/qdbtest_tag", "", nil, http.StatusUnauthorized, "Bearer"},
+			"tagged: no such tag":   {http.MethodGet, tagsPath + "/qdbtest_tag_none", "", bearer, http.StatusNotFound, ""},
+			"tagged: quote in tag":  {http.MethodGet, tagsPath + "/qdbtest_a'b", "", bearer, http.StatusBadRequest, ""},
 			// the reader
 			"read: no token":         {http.MethodGet, read(a.Name, ""), "", nil, http.StatusUnauthorized, "Bearer"},
 			"read: no such table":    {http.MethodGet, read("qdbtest_read_none", ""), "", bearer, http.StatusNotFound, ""},
@@ -147,6 +155,9 @@ func TestErrorRows(t *testing.T) {
 				"delete: anonymous on the secure cluster":     {http.MethodDelete, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 				"list: anonymous on the secure cluster":       {http.MethodGet, tablesPath, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 				"table: anonymous on the secure cluster":      {http.MethodGet, tablesPath + "/" + a.Name, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"attach: anonymous on the secure cluster":     {http.MethodPut, tagPath(a.Name, "qdbtest_tag"), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"detach: anonymous on the secure cluster":     {http.MethodDelete, tagPath(a.Name, "qdbtest_tag"), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"tagged: anonymous on the secure cluster":     {http.MethodGet, tagsPath + "/qdbtest_tag", "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 			} {
 				rows[name] = row
 			}
