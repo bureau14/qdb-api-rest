@@ -190,7 +190,6 @@ func millisOf(md arrow.Metadata, key string) (int64, error) {
 // only on a schema Cluster.Table did not build: a field ColumnOfField
 // cannot name, or a duration that is not integer milliseconds.
 func tableResponseOf(t qdb.TableInfo) (tableResponse, error) {
-	// The shard size and the TTL travel on the schema's metadata.
 	md := t.Schema.Metadata()
 	shard, err := millisOf(md, qdb.MetaShardSize)
 	if err != nil {
