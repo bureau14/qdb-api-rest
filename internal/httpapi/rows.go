@@ -13,6 +13,7 @@ import (
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
 	"github.com/bureau14/qdb-api-rest/internal/model"
+	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 )
 
@@ -32,16 +33,16 @@ var decoders = map[string]encoding.Decoder{
 	encoding.JSONContentType:   encoding.JSON{},
 }
 
-// decoderOf picks the decoder for a Content-Type by media type alone. A
-// charset parameter is neither honored nor checked. The second value is
+// decoderOf returns the media type of contentType and its decoder. The
+// charset parameter is neither honored nor checked. The last value is
 // false for a type the ingest does not accept.
-func decoderOf(contentType string) (encoding.Decoder, bool) {
+func decoderOf(contentType string) (string, encoding.Decoder, bool) {
 	mt, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return nil, false
+		return "", nil, false
 	}
 	d, ok := decoders[mt]
-	return d, ok
+	return mt, d, ok
 }
 
 // acceptedTypes lists the keys of decoders, sorted, for the 415 detail.
@@ -98,7 +99,7 @@ func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// 1. the body's type
-	dec, ok := decoderOf(r.Header.Get("Content-Type"))
+	mt, dec, ok := decoderOf(r.Header.Get("Content-Type"))
 	if !ok {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Content-Type must be one of "+acceptedTypes())
 		return
@@ -137,6 +138,8 @@ func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 	var tooLarge *http.MaxBytesError
 	switch {
 	case err == nil:
+		// A failed ingest adds no rows, because it pushed none.
+		observe.MetricsFrom(ctx).AddRows(observe.PlaneHTTP, formatOf(mt), observe.DirectionIn, int64(res.Rows))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ingestResponse{
 			Rows:    res.Rows,

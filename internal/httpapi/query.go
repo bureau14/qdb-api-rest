@@ -50,9 +50,9 @@ func isQueryText(contentType string) bool {
 	return err == nil && (mt == "text/plain" || mt == "application/sql")
 }
 
-// formatOf names the encoder's wire format for the metrics.
-func formatOf(enc encoding.Encoder) observe.Format {
-	switch enc.ContentType() {
+// formatOf names the wire format of a media type for the metrics.
+func formatOf(mediaType string) observe.Format {
+	switch mediaType {
 	case encoding.NDJSONContentType:
 		return observe.FormatNDJSON
 	case encoding.CSVContentType:
@@ -60,7 +60,8 @@ func formatOf(enc encoding.Encoder) observe.Format {
 	case encoding.ArrowContentType:
 		return observe.FormatArrow
 	default:
-		// JSON, because negotiate answers only the four encoders.
+		// JSON, because the encoders and the decoders know only the four
+		// media types.
 		return observe.FormatJSON
 	}
 }
@@ -80,7 +81,7 @@ type countingWriter struct {
 func newCountingWriter(ctx context.Context, w io.Writer, enc encoding.Encoder, start time.Time) *countingWriter {
 	m := observe.MetricsFrom(ctx)
 	return &countingWriter{w: w, start: start, first: func(d time.Duration) {
-		m.ObserveFirstByte(observe.PlaneHTTP, formatOf(enc), d)
+		m.ObserveFirstByte(observe.PlaneHTTP, formatOf(enc.ContentType()), d)
 	}}
 }
 
@@ -176,8 +177,8 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 		return streamErr
 	})
 	m := observe.MetricsFrom(ctx)
-	m.AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
-	m.AddRows(observe.PlaneHTTP, formatOf(enc), observe.DirectionOut, rows)
+	m.AddBytes(observe.PlaneHTTP, formatOf(enc.ContentType()), cw.n)
+	m.AddRows(observe.PlaneHTTP, formatOf(enc.ContentType()), observe.DirectionOut, rows)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:

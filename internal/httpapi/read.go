@@ -104,8 +104,8 @@ func handleReadTable(w http.ResponseWriter, r *http.Request) {
 		return streamErr
 	}, readAttrs(name, o)...)
 	m := observe.MetricsFrom(ctx)
-	m.AddBytes(observe.PlaneHTTP, formatOf(enc), cw.n)
-	m.AddRows(observe.PlaneHTTP, formatOf(enc), observe.DirectionOut, rows)
+	m.AddBytes(observe.PlaneHTTP, formatOf(enc.ContentType()), cw.n)
+	m.AddRows(observe.PlaneHTTP, formatOf(enc.ContentType()), observe.DirectionOut, rows)
 	switch {
 	// 3. the stream failed
 	case streamErr != nil:

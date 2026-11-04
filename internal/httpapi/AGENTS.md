@@ -132,7 +132,8 @@ This file, Handlers, holds the table reader's.
   count to the format's byte total when the stream ends. The query and
   table-read sinks wrap their batches in `query.CountRows`, and the
   handler adds the rows to the format's row total under direction
-  `out`.
+  `out`. The ingest adds its pushed rows under the request's format and
+  direction `in`.
 - `Accept` is matched by media type alone. The first listed match wins,
   and JSON is the default. `q` weights are not read.
 - `GET /metrics` serves the registry the request context carries
