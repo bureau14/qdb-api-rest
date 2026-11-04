@@ -366,10 +366,10 @@ func (c *Cluster) feedBreaker(err error) {
 	c.breaker.recordSuccess()
 }
 
-// Call runs f on a session authenticated as u. It returns a
-// *BreakerOpenError while the cluster is unreachable. WithReadRetry allows
-// one retry of an idempotent read.
-func (c *Cluster) Call(ctx context.Context, u User, f func(*Session) error, opts ...CallOption) error {
+// Call runs f, the operation op, on a session authenticated as u. It
+// returns a *BreakerOpenError while the cluster is unreachable.
+// WithReadRetry allows one retry of an idempotent read.
+func (c *Cluster) Call(ctx context.Context, u User, op string, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
 		opt(&cc)
@@ -444,7 +444,7 @@ func (c *Cluster) Query(ctx context.Context, u User, q string, sink func(Batches
 
 	// 1. fetch on a leased session
 	var rec arrow.RecordBatch
-	err := c.Call(ctx, u, func(s *Session) error {
+	err := c.Call(ctx, u, "query", func(s *Session) error {
 		var err error
 		rec, err = s.fetch(q)
 		return err
@@ -483,7 +483,7 @@ func (c *Cluster) Describe(ctx context.Context, u User, q string, opts ...CallOp
 	// The read retry is as safe here as in Query, because the validate
 	// holds a session for one round trip and sends nothing to the caller.
 	var sc *arrow.Schema
-	err := c.Call(ctx, u, func(s *Session) error {
+	err := c.Call(ctx, u, "describe", func(s *Session) error {
 		var err error
 		sc, err = s.describe(q)
 		return err

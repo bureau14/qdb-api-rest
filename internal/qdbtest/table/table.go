@@ -477,7 +477,7 @@ func entries(tbl Table) []string {
 
 // call runs f as the user.
 func call(c *qdb.Cluster, u qdb.User, f func(*qdb.Session) error) error {
-	return c.Call(context.Background(), u, f)
+	return c.Call(context.Background(), u, "fixture", f)
 }
 
 // RemoveOnCleanup removes the table and its symtables on the test's

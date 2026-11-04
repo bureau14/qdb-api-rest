@@ -164,7 +164,7 @@ func (c *Cluster) Ingest(ctx context.Context, u User, o PushOptions, decode Deco
 		return IngestResult{}, err
 	}
 	var res IngestResult
-	err = c.Call(ctx, u, func(s *Session) error {
+	err = c.Call(ctx, u, "ingest", func(s *Session) error {
 		var err error
 		res, err = s.ingest(decode, opts)
 		return err
