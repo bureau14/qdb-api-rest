@@ -3,6 +3,8 @@ package qdb
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
 )
@@ -46,6 +48,29 @@ func (c *Cluster) Find(ctx context.Context, u User, expr string) ([]string, erro
 	}, WithReadRetry())
 	if err != nil {
 		return nil, err
+	}
+	return names, nil
+}
+
+// Tagged answers the names of the entries that carry the tag, as the user,
+// through Find. A tag no entry carries is IsTableNotFound, and a tag
+// holding a single quote is ErrInvalidTag.
+func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, error) {
+	// The find grammar has no escape for a single quote, so such a tag
+	// cannot be named in an expression.
+	if strings.Contains(tag, "'") {
+		return nil, fmt.Errorf("%w: %q holds a single quote", ErrInvalidTag, tag)
+	}
+	// Find is the find core, which docs/brief.md also assigns to the v1
+	// find query.
+	names, err := c.Find(ctx, u, "find(tag='"+tag+"')")
+	if err != nil {
+		return nil, err
+	}
+	// The find answers an empty list for a tag no entry carries, whether or
+	// not the tag's entry exists, so the not-found is raised here.
+	if len(names) == 0 {
+		return nil, fmt.Errorf("%w: no entry carries tag %q", qdbapi.ErrAliasNotFound, tag)
 	}
 	return names, nil
 }

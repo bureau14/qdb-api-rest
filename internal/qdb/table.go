@@ -19,6 +19,11 @@ import (
 // found before any session is leased.
 var ErrInvalidColumn = errors.New("qdb: invalid column")
 
+// ErrInvalidTag is the error for a tag a find expression cannot carry,
+// one holding a single quote. It is the caller's error and is found
+// before any session is leased.
+var ErrInvalidTag = errors.New("qdb: invalid tag")
+
 // Column is one column of a table to create, in the schema vocabulary:
 // Type is one of blob, double, int64, string, symbol, timestamp, and
 // Symtable names the symbol table of a symbol column and of no other.
