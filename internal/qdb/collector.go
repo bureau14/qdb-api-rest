@@ -5,8 +5,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Collector exposes the cluster's session budget, breaker and user
-// pools to Prometheus, read at each scrape (ADR-0004).
+// Collector exposes the cluster's session budget, breaker, user pools
+// and retry count to Prometheus, read at each scrape (ADR-0004), and the
+// call histogram the cluster records into.
 type Collector struct {
 	c       *Cluster
 	perUser bool
@@ -36,12 +37,13 @@ func NewCollector(c *Cluster, namespace string, perUser bool) *Collector {
 	}
 }
 
-// Describe sends the four descriptors.
+// Describe sends the four descriptors and the call histogram's.
 func (k *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- k.budget
 	ch <- k.breaker
 	ch <- k.pools
 	ch <- k.retries
+	k.c.calls.Describe(ch)
 }
 
 // poolStats returns each user's pool statistics, keyed by username.
@@ -70,12 +72,13 @@ func sumPools(byUser map[string]qdbapi.SessionPoolStats) qdbapi.SessionPoolStats
 }
 
 // Collect sends one snapshot of the budget, the breaker, the pools and
-// the retry count.
+// the retry count, and the call histogram.
 func (k *Collector) Collect(ch chan<- prometheus.Metric) {
 	// 1. the budget, in use and max
 	// 2. the breaker, 1 on the current state and 0 on the others
 	// 3. the pools, per user or summed, read under c.mu
 	// 4. the retry count
+	// 5. the call histogram, which the cluster records into between scrapes
 	gauge := func(d *prometheus.Desc, v int, labels ...string) {
 		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, float64(v), labels...)
 	}
@@ -115,4 +118,6 @@ func (k *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// 4. The retry count only grows, so it is a counter and not a gauge.
 	ch <- prometheus.MustNewConstMetric(k.retries, prometheus.CounterValue, float64(k.c.retries.Load()))
+
+	k.c.calls.Collect(ch)
 }

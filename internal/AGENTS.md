@@ -251,13 +251,17 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   directly places a plane with `observe.WithPlane`. Every series this binary names carries `observability.metrics.namespace`
   as its prefix, `qdb_rest_` by default (ADR-0019).
 - The cluster's collector (`qdb.Collector`) reads the budget, the
-  breaker, the user pools and the retry count at scrape time. Main
-  registers it on the registry once the cluster exists, and
+  breaker, the user pools and the retry count at scrape time, and
+  forwards the call histogram the cluster records into. `Call` times
+  each run of an operation on its leased session, by operation and
+  outcome. Main registers the collector once the cluster exists, and
   `internal/qdb` reads no metrics from the context.
 - A per-user series carries the `user` label on a secure cluster only,
   because an insecure cluster accepts any username and the label would
-  be unbounded. `observe.NewMetrics` decides it once from the cluster's
-  security (`Metrics.PerUser`), and an insecure cluster sums its pools.
+  be unbounded. The per-user series are the pool gauges, the query
+  histogram and the call histogram. Both `observe.NewMetrics`
+  (`Metrics.PerUser`) and `qdb.New` decide it once from
+  `cluster.public_key_file`, and an insecure cluster sums its pools.
 
 ## Tests
 
