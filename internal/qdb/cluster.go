@@ -404,9 +404,10 @@ func (c *Cluster) observeCall(op string, u User, d time.Duration, err error) {
 	c.calls.WithLabelValues(labels...).Observe(d.Seconds())
 }
 
-// Call runs f, the operation op, on a session authenticated as u. It
-// returns a *BreakerOpenError while the cluster is unreachable.
-// WithReadRetry allows one retry of an idempotent read.
+// Call runs f, the operation op, on a session authenticated as u, and
+// records each run under op in the call histogram. It returns a
+// *BreakerOpenError while the cluster is unreachable. WithReadRetry
+// allows one retry of an idempotent read.
 func (c *Cluster) Call(ctx context.Context, u User, op string, f func(*Session) error, opts ...CallOption) error {
 	var cc callConfig
 	for _, opt := range opts {
