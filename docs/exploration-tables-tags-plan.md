@@ -1,7 +1,7 @@
 # Exploration: the table list, the table and its tags
 
 Thread: M8 exploration routes
-Status: draft
+Status: approved
 
 ## Outcome
 
