@@ -3,7 +3,8 @@
 // cluster as the cluster's user, who is anonymous on the insecure one.
 // The test logs in, refreshes, reads its session and logs out. Under the
 // refreshed token it then creates, over HTTP, generated tables that
-// share one column list, and reads them empty. It ingests them in one
+// share one column list, lists each under its name, reads each table
+// against its create body, and reads them empty. It ingests them in one
 // body of a drawn format under a drawn request coding. It reads them,
 // queries them, and reads them through DuckDB behind #sql on the query
 // route, each in every format. It deletes them, re-creates them over
@@ -24,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -425,15 +427,25 @@ func TestRoundtrip(t *testing.T) {
 			}
 			picked := rapid.Permutation(all).Draw(rt, "order")[:rapid.IntRange(1, len(all)).Draw(rt, "picked")]
 
-			// 3. create each table, which answers 201 with its Location
+			// 3. create each table, which answers 201 with its Location. Then each
+			// table's own name as a prefix lists that table alone, because every
+			// drawn name has the same length, and each table reads back as its
+			// create body promises, $timestamp first and no tags
 			for _, tbl := range tables {
 				table.RemoveOnCleanupAs(rt, s.c, s.user, tbl)
-				resp := s.createTable(rt, createBodyOf(tbl))
+				req := createBodyOf(tbl)
+				resp := s.createTable(rt, req)
 				if resp.Code != http.StatusCreated || resp.Body.Len() != 0 {
 					rt.Fatalf("create %s: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
 				}
 				if got := resp.Header().Get("Location"); got != tablesPath+"/"+tbl.Name {
 					rt.Fatalf("create %s: Location = %q", tbl.Name, got)
+				}
+				if got := s.listTables(rt, tbl.Name); !slices.Equal(got.Tables, []string{tbl.Name}) {
+					rt.Fatalf("list %s: %v", tbl.Name, got.Tables)
+				}
+				if got, want := s.getTable(rt, tbl.Name), tableResponseOfCreate(req, []string{}); !reflect.DeepEqual(got, want) {
+					rt.Fatalf("get %s: %+v, want %+v", tbl.Name, got, want)
 				}
 			}
 

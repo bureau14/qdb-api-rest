@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
@@ -59,4 +60,33 @@ func createBodyOf(tbl table.Table) createTableRequest {
 		cols[i] = columnRequest{Name: c.Name, Type: typeWords[c.Type], Symtable: c.Symtable}
 	}
 	return createTableRequest{Name: tbl.Name, ShardSize: &shard, Columns: cols}
+}
+
+// listTables gets the table list under the prefix and decodes it.
+func (s server) listTables(t table.T, prefix string) tablesResponse {
+	t.Helper()
+	resp := s.send(http.MethodGet, tablesPath+"?prefix="+url.QueryEscape(prefix), "", map[string]string{"Authorization": "Bearer " + s.token})
+	var got tablesResponse
+	if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &got) != nil {
+		t.Fatalf("list %s: status %d: %s", prefix, resp.Code, resp.Body.String())
+	}
+	return got
+}
+
+// getTable gets the named table and decodes it.
+func (s server) getTable(t table.T, name string) tableResponse {
+	t.Helper()
+	resp := s.send(http.MethodGet, tablesPath+"/"+name, "", map[string]string{"Authorization": "Bearer " + s.token})
+	var got tableResponse
+	if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &got) != nil {
+		t.Fatalf("get %s: status %d: %s", name, resp.Code, resp.Body.String())
+	}
+	return got
+}
+
+// tableResponseOfCreate is the table body the create body promises, with
+// $timestamp first, a TTL of 0 and the given tags.
+func tableResponseOfCreate(req createTableRequest, tags []string) tableResponse {
+	cols := append([]columnRequest{{Name: "$timestamp", Type: "timestamp"}}, req.Columns...)
+	return tableResponse{Name: req.Name, ShardSize: *req.ShardSize, TTL: 0, Columns: cols, Tags: tags}
 }
