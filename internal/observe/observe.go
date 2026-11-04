@@ -104,8 +104,9 @@ const (
 	KeyEnd            = "end"
 )
 
-// Plane, Engine, Outcome and Format are closed vocabularies. Named types keep a
-// free string, or one vocabulary in place of another, from compiling.
+// Plane, Engine, Outcome, Format and Direction are closed vocabularies.
+// Named types keep a free string, or one vocabulary in place of another,
+// from compiling.
 
 // Plane names the listener a request came in on. Each plane's edge tags
 // the request's context with it through WithPlane.
@@ -147,8 +148,8 @@ const (
 // OutcomeAttr is the outcome under KeyOutcome.
 func OutcomeAttr(o Outcome) slog.Attr { return slog.String(KeyOutcome, string(o)) }
 
-// Format names the wire format of a response body. It is the label of
-// the byte and first-byte series.
+// Format names the wire format of a response or request body. It is
+// the label of the byte, first-byte and row series.
 type Format string
 
 const (
@@ -156,6 +157,15 @@ const (
 	FormatNDJSON Format = "ndjson"
 	FormatCSV    Format = "csv"
 	FormatArrow  Format = "arrow"
+)
+
+// Direction says whether rows left the server in a response or arrived
+// in an ingest body. It is the direction label of the row series.
+type Direction string
+
+const (
+	DirectionOut Direction = "out"
+	DirectionIn  Direction = "in"
 )
 
 // Err renders the error under KeyError. A nil error yields an empty

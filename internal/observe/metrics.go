@@ -32,6 +32,7 @@ type Metrics struct {
 	rpc       *prometheus.HistogramVec
 	firstByte *prometheus.HistogramVec
 	bytes     *prometheus.CounterVec
+	rows      *prometheus.CounterVec
 	query     *prometheus.HistogramVec
 }
 
@@ -90,8 +91,13 @@ func NewMetrics(cfg config.Metrics, perUser bool) *Metrics {
 		Name:      "response_bytes_total",
 		Help:      "Bytes the encoders produced for response bodies, before compression.",
 	}, []string{"plane", "format"})
+	m.rows = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: cfg.Namespace,
+		Name:      "rows_total",
+		Help:      "Rows the response encoders consumed and the ingest pushed, by format.",
+	}, []string{"plane", "format", "direction"})
 	m.query = histogram("query_duration_seconds", "Duration of a query.", m.userLabels("plane", "engine")...)
-	reg.MustRegister(m.request, m.rpc, m.firstByte, m.bytes, m.query)
+	reg.MustRegister(m.request, m.rpc, m.firstByte, m.bytes, m.rows, m.query)
 	return m
 }
 
@@ -114,6 +120,12 @@ func (m *Metrics) ObserveFirstByte(p Plane, f Format, d time.Duration) {
 // AddBytes adds bytes an encoder produced to the format's total.
 func (m *Metrics) AddBytes(p Plane, f Format, n int64) {
 	m.bytes.WithLabelValues(string(p), string(f)).Add(float64(n))
+}
+
+// AddRows adds n rows of format f moving in direction d to the plane's
+// total.
+func (m *Metrics) AddRows(p Plane, f Format, d Direction, n int64) {
+	m.rows.WithLabelValues(string(p), string(f), string(d)).Add(float64(n))
 }
 
 // ObserveQuery records one query's duration as user ran it on engine e.
