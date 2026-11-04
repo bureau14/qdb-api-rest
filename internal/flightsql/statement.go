@@ -164,11 +164,13 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 	//    an empty result reaches the client too. A batch of no rows is
 	//    skipped, as the Arrow encoder skips it, so a statement without a
 	//    result set streams a schema with no fields and no batch. The sink
-	//    records the time to the first record batch, and the counting
-	//    stream adds the bytes of every message under format arrow.
+	//    records the time to the first record batch and counts the rows it
+	//    writes, and the counting stream adds the bytes of every message,
+	//    all under format arrow.
 	m := observe.MetricsFrom(ctx)
 	cs := &countingStream{FlightService_DoGetServer: stream}
 	var streamErr error
+	var rows int64
 	err = query.Run(ctx, u, string(ticket.GetStatementHandle()), func(batches qdb.Batches) error {
 		var w *flight.Writer
 		sent := false
@@ -191,6 +193,7 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 				streamErr = err
 				return err
 			}
+			rows += rec.NumRows()
 			if !sent {
 				m.ObserveFirstByte(observe.PlaneFlight, observe.FormatArrow, time.Since(start))
 				sent = true
@@ -209,6 +212,7 @@ func (v *service) DoGet(t *flight.Ticket, stream flight.FlightService_DoGetServe
 		return nil
 	})
 	m.AddBytes(observe.PlaneFlight, observe.FormatArrow, cs.n)
+	m.AddRows(observe.PlaneFlight, observe.FormatArrow, observe.DirectionOut, rows)
 	switch {
 	// 4. the client sees only the closing status, so the error goes to the
 	//    log in one warning line, and the status says the server failed:
