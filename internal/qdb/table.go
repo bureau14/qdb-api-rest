@@ -315,6 +315,35 @@ func (c *Cluster) Table(ctx context.Context, u User, name string) (TableInfo, er
 	return t, nil
 }
 
+// typeWords is the schema vocabulary of each column type, the inverse of
+// columnTypes.
+var typeWords = map[qdbapi.TsColumnType]string{
+	qdbapi.TsColumnBlob:      "blob",
+	qdbapi.TsColumnDouble:    "double",
+	qdbapi.TsColumnInt64:     "int64",
+	qdbapi.TsColumnString:    "string",
+	qdbapi.TsColumnSymbol:    "symbol",
+	qdbapi.TsColumnTimestamp: "timestamp",
+}
+
+// ColumnOfField answers a field of a TableSchema as a Column in the schema
+// vocabulary. A field carrying MetaSymtable is a symbol column of that
+// symtable.
+func ColumnOfField(f arrow.Field) (Column, error) {
+	kind, err := qdbapi.ColumnTypeOfArrow(f.Type)
+	// TableSchemas builds every field from the binding's own types, so a
+	// failure means the binding changed.
+	if err != nil {
+		return Column{}, fmt.Errorf("qdb: field %s: %w", f.Name, err)
+	}
+	// The symtable is the only mark of a symbol column, because a symbol
+	// reads as a string in Arrow.
+	if symtable, ok := f.Metadata.GetValue(MetaSymtable); ok {
+		return Column{Name: f.Name, Type: typeWords[qdbapi.TsColumnSymbol], Symtable: symtable}, nil
+	}
+	return Column{Name: f.Name, Type: typeWords[kind]}, nil
+}
+
 // IsTableExists reports whether err means the cluster refused a create
 // because the name is taken. The HTTP layer maps it to 409.
 func IsTableExists(err error) bool {
