@@ -168,5 +168,7 @@ func (s *Session) Read(name string, o ReadOptions, sink func(Batches) error) err
 // like any other call. A read is never retried, because the sink may have
 // written to the caller.
 func (c *Cluster) Read(ctx context.Context, u User, name string, o ReadOptions, sink func(Batches) error) error {
+	// One call, so its duration spans every fetch and the client's
+	// consumption of the stream.
 	return c.Call(ctx, u, "read", func(s *Session) error { return s.Read(name, o, sink) })
 }

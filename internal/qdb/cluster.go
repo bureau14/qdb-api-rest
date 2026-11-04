@@ -14,9 +14,11 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	qdbapi "github.com/bureau14/qdb-api-go/v3"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/model"
+	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
 )
 
@@ -58,6 +60,9 @@ type Cluster struct {
 	breaker *breaker
 	// retries counts the second attempts of Call. The collector reads it.
 	retries atomic.Int64
+	// calls times each run of an operation on a leased session. The
+	// collector exposes it.
+	calls *prometheus.HistogramVec
 
 	mu    sync.Mutex           // protects users, instances and every duckIn
 	users map[string]*userPool // one session pool per user, keyed by username
@@ -69,6 +74,23 @@ type Cluster struct {
 	// has ended. Close uses both, so no eviction pass races the drain.
 	evictStop chan struct{}
 	evictDone chan struct{}
+}
+
+// newCallHistogram builds the histogram of operation durations under
+// the namespace, with the user label when perUser.
+func newCallHistogram(cfg config.Metrics, perUser bool) *prometheus.HistogramVec {
+	labels := []string{"operation", "outcome"}
+	// An insecure cluster accepts any username, so a user label there
+	// would make the series unbounded.
+	if perUser {
+		labels = append(labels, "user")
+	}
+	return prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: cfg.Namespace,
+		Name:      "qdb_call_duration_seconds",
+		Help:      "Time an operation ran on a leased session, a retry counted apart. A table read includes the client's consumption of the stream.",
+		Buckets:   observe.Buckets(cfg.DurationBuckets),
+	}, labels)
 }
 
 // New builds the cluster from config. now defaults to time.Now, and the
@@ -86,6 +108,7 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		now:            now,
 		budget:         newBudget(cfg.Pool.MaxSessions),
 		breaker:        newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
+		calls:          newCallHistogram(cfg.Observability.Metrics, cfg.Cluster.PublicKeyFile != ""),
 		users:          map[string]*userPool{},
 		evictStop:      make(chan struct{}),
 		evictDone:      make(chan struct{}),
@@ -366,6 +389,21 @@ func (c *Cluster) feedBreaker(err error) {
 	c.breaker.recordSuccess()
 }
 
+// observeCall records one run of operation op as u.
+func (c *Cluster) observeCall(op string, u User, d time.Duration, err error) {
+	o := observe.OutcomeOK
+	if err != nil {
+		o = observe.OutcomeError
+	}
+	labels := []string{op, string(o)}
+	// The user label exists on a secure cluster only, as newCallHistogram
+	// built it.
+	if c.Secured() {
+		labels = append(labels, u.Username)
+	}
+	c.calls.WithLabelValues(labels...).Observe(d.Seconds())
+}
+
 // Call runs f, the operation op, on a session authenticated as u. It
 // returns a *BreakerOpenError while the cluster is unreachable.
 // WithReadRetry allows one retry of an idempotent read.
@@ -380,7 +418,14 @@ func (c *Cluster) Call(ctx context.Context, u User, op string, f func(*Session) 
 		if !ok {
 			return &BreakerOpenError{RetryAfter: remaining}
 		}
-		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error { return f(newSession(s)) })
+		err = c.poolFor(u).Do(ctx, func(s qdbapi.Session) error {
+			// The clock starts on the leased session, so the wait for a
+			// session stays out. time.Now and not c.now, which the tests fake.
+			start := time.Now()
+			err := f(newSession(s))
+			c.observeCall(op, u, time.Since(start), err)
+			return err
+		})
 		// The caller's own cancellation says nothing about the cluster.
 		if callerLeft(err) {
 			return err

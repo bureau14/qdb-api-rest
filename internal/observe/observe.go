@@ -135,7 +135,8 @@ const (
 // EngineAttr is the engine under KeyEngine.
 func EngineAttr(e Engine) slog.Attr { return slog.String(KeyEngine, string(e)) }
 
-// Outcome is how a query ended. query.Logged says when each applies.
+// Outcome is how a query or a cluster operation ended. query.Logged says
+// when each applies to a query, and a cluster operation ends ok or error.
 type Outcome string
 
 const (
