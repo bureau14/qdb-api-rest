@@ -74,6 +74,12 @@ re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
 
+## 2026-11-04 -- exploration-tables-tags-plan.md deleted
+
+- Facts moved to `internal/AGENTS.md`, `internal/httpapi/AGENTS.md`,
+  `docs/e2e.md`, `tests/e2e/AGENTS.md`, `docs/brief.md` and the comments
+  of `internal/qdb`, `internal/httpapi` and `internal/qdbtest`.
+
 ## 2026-11-04 -- M7 closed, M8 started
 
 - Owner decisions. M7 closes without the stress's budget step. M8 has
