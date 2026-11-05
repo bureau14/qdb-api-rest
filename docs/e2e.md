@@ -265,6 +265,9 @@ that client; a Go client would repeat `TestRoundtrip` in
 An endpoint lands with its step in the round trip, so the round trip
 grows with the milestones (`docs/brief.md`, Milestones). Refresh and
 session join the login step, and the exploration endpoints add steps.
+The cluster and node routes have no step in the driver. `TestRoundtrip`
+checks their status and the node's address and compares no statistic,
+because the counters move between two reads (owner, 2026-11-05).
 Flight SQL has no HTTP step in the round trip. Its tests are the Go
 property tests, driven by arrow-go's Flight SQL client through the
 Flight client fixture (`internal/qdbtest/flight`), `TestRoundtrip`
