@@ -1,7 +1,7 @@
 # v1 login over the v2 login endpoint
 
 Thread: M9 v1 drop-in compat
-Status: draft
+Status: approved
 
 ## Outcome
 
