@@ -26,6 +26,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/flightsql"
 	"github.com/bureau14/qdb-api-rest/internal/httpapi"
+	v1 "github.com/bureau14/qdb-api-rest/internal/httpapi/v1"
 	"github.com/bureau14/qdb-api-rest/internal/notify"
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 	"github.com/bureau14/qdb-api-rest/internal/olap"
@@ -288,12 +289,13 @@ func main() {
 
 	// 5. Build the listeners over the root context, so every request
 	//    inherits the logger, the metrics, the cluster and the keychain.
-	//    The v2 router is wrapped once in the request logging, so every
-	//    request writes one access line. The router takes the
+	//    The handler is the v2 router nested in the v1 router, wrapped
+	//    once in the request logging, so every request writes one access
+	//    line whichever router answers it. The v2 router takes the
 	//    observability block as an argument, because configuration does
 	//    not travel in the context. Loading the TLS material and binding
 	//    any of the three ports can fail here.
-	handler := httpapi.WithRequestLogging(httpapi.NewHandler(cfg.Observability))
+	handler := httpapi.WithRequestLogging(v1.NewHandler(httpapi.NewHandler(cfg.Observability)))
 	listeners, err := newListeners(ctx, cfg, handler)
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
