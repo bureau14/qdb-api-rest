@@ -407,6 +407,7 @@ const (
 	OpAttachTag    Operation = "attach_tag"
 	OpDetachTag    Operation = "detach_tag"
 	OpFind         Operation = "find"
+	OpStatistics   Operation = "statistics"
 )
 
 // observeCall records one run of operation op as u.
