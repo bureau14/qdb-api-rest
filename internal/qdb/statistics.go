@@ -12,6 +12,10 @@ import (
 // $qdb.statistics., with the binding's JSON tags.
 type NodeStats qdbapi.Statistics
 
+// ErrNodeNotFound means no endpoint of the cluster has the address
+// asked for.
+var ErrNodeNotFound = errors.New("qdb: no such node")
+
 // ErrNodeUnreachable means the server could not open a direct connection
 // to a node.
 var ErrNodeUnreachable = errors.New("qdb: node unreachable")
@@ -49,4 +53,45 @@ func (c *Cluster) Statistics(ctx context.Context, u User) (map[string]NodeStats,
 		nodes[addr] = NodeStats(st)
 	}
 	return nodes, nil
+}
+
+// hasEndpoint reports whether one of the endpoints has the address addr.
+func hasEndpoint(endpoints []qdbapi.Endpoint, addr string) bool {
+	for _, e := range endpoints {
+		if e.URI() == addr {
+			return true
+		}
+	}
+	return false
+}
+
+// NodeStatistics answers the statistics of the node at addr, an
+// <ip>:<port>, as the user. An addr that is no endpoint of the cluster is
+// ErrNodeNotFound, and a node it cannot connect to is ErrNodeUnreachable.
+// It is retried once on a retryable failure, as a read is.
+func (c *Cluster) NodeStatistics(ctx context.Context, u User, addr string) (NodeStats, error) {
+	// 1. read the cluster's endpoints on the leased session
+	// 2. refuse an addr no endpoint has
+	// 3. read the node's statistics on the same session
+
+	var st qdbapi.Statistics
+	err := c.ObservedCall(ctx, u, OpNodeStatistics, func(s *Session) error {
+		endpoints, err := s.session.Cluster().Endpoints()
+		if err != nil {
+			return err
+		}
+		// 2. The check comes before the connect, so a caller cannot make the
+		//    server dial an address of its choosing.
+		if !hasEndpoint(endpoints, addr) {
+			return fmt.Errorf("%w: %q", ErrNodeNotFound, addr)
+		}
+		// 3. The read shares the session of step 1, because one checkout per
+		//    request is what the pool and the budget are built around.
+		st, err = s.session.NodeStatistics(addr)
+		return nodeError(err)
+	}, WithReadRetry())
+	if err != nil {
+		return NodeStats{}, err
+	}
+	return NodeStats(st), nil
 }

@@ -395,19 +395,20 @@ func (c *Cluster) feedBreaker(err error) {
 type Operation string
 
 const (
-	OpQuery        Operation = "query"
-	OpDescribe     Operation = "describe"
-	OpIngest       Operation = "ingest"
-	OpRead         Operation = "read"
-	OpCreateTable  Operation = "create_table"
-	OpRemoveTable  Operation = "remove_table"
-	OpTables       Operation = "tables"
-	OpTableSchemas Operation = "table_schemas"
-	OpTable        Operation = "table"
-	OpAttachTag    Operation = "attach_tag"
-	OpDetachTag    Operation = "detach_tag"
-	OpFind         Operation = "find"
-	OpStatistics   Operation = "statistics"
+	OpQuery          Operation = "query"
+	OpDescribe       Operation = "describe"
+	OpIngest         Operation = "ingest"
+	OpRead           Operation = "read"
+	OpCreateTable    Operation = "create_table"
+	OpRemoveTable    Operation = "remove_table"
+	OpTables         Operation = "tables"
+	OpTableSchemas   Operation = "table_schemas"
+	OpTable          Operation = "table"
+	OpAttachTag      Operation = "attach_tag"
+	OpDetachTag      Operation = "detach_tag"
+	OpFind           Operation = "find"
+	OpStatistics     Operation = "statistics"
+	OpNodeStatistics Operation = "node_statistics"
 )
 
 // observeCall records one run of operation op as u.
