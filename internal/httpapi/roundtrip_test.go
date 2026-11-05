@@ -10,11 +10,11 @@
 // route, each in every format. It tags them, reads the tag's entries
 // and each table's tags, and detaches the tag. It deletes them,
 // re-creates them over what the delete leaves behind, and deletes them
-// again. Each response
-// equals the encoder run directly over the cluster, and each direct read
-// passes table.Check against the rows generated. So the bytes on the
-// wire carry the rows written, and the DuckDB path and the native path
-// answer the same rows.
+// again. Last, it reads the cluster's nodes and the fixture's node by its
+// address. Each read, query and DuckDB response equals the encoder run
+// directly over the cluster, and each direct read passes table.Check
+// against the rows generated. So the bytes on the wire carry the rows
+// written, and the DuckDB path and the native path answer the same rows.
 package httpapi
 
 import (
@@ -547,6 +547,28 @@ func TestRoundtrip(t *testing.T) {
 				if resp := s.deleteTable(tbl.Name); resp.Code != http.StatusNotFound {
 					rt.Fatalf("delete %s of nothing: status %d: %s", tbl.Name, resp.Code, resp.Body.String())
 				}
+			}
+
+			// 9. the cluster answers the fixture's one node by its address, and
+			// the node route answers that node. No statistic is compared, because
+			// the counters move between two reads
+			addr := strings.TrimPrefix(f.Spec.URI, "qdb://")
+			resp = s.cluster()
+			var nodes clusterResponse
+			if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &nodes) != nil {
+				rt.Fatalf("cluster: status %d: %s", resp.Code, resp.Body.String())
+			}
+			ids := make([]string, len(nodes.Nodes))
+			for i, n := range nodes.Nodes {
+				ids[i] = n.ID
+			}
+			if !slices.Equal(ids, []string{addr}) {
+				rt.Fatalf("cluster: nodes %v, want [%s]", ids, addr)
+			}
+			resp = s.node(addr)
+			var node nodeResponse
+			if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &node) != nil || node.ID != addr {
+				rt.Fatalf("node %s: status %d: %s", addr, resp.Code, resp.Body.String())
 			}
 		})
 	})
