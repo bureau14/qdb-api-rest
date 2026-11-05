@@ -98,14 +98,6 @@ func (h DirectHandleType) getStatistics(prefix string, s interface{}) error {
 	return nil
 }
 
-// NodeStatistics : Retrieve statistics for a specific node
-//
-// Deprecated: Statistics will be fetched directly from the node using the new
-// direct API
-func (h HandleType) NodeStatistics(nodeID string) (Statistics, error) {
-	return Statistics{}, nil
-}
-
 func (h DirectHandleType) nodeStatistics() (Statistics, error) {
 	stat := Statistics{}
 	prefix := "$qdb.statistics."
@@ -114,7 +106,18 @@ func (h DirectHandleType) nodeStatistics() (Statistics, error) {
 	return stat, err
 }
 
-// Statistics : Retrieve statistics for all nodes
+// NodeStatistics : Retrieve statistics for the node at nodeURI
+func (h HandleType) NodeStatistics(nodeURI string) (Statistics, error) {
+	dh, err := h.DirectConnect(nodeURI)
+	if err != nil {
+		return Statistics{}, err
+	}
+	defer func() { _ = dh.Close() }()
+
+	return dh.nodeStatistics()
+}
+
+// Statistics : Retrieve statistics for all nodes, keyed by node URI
 func (h HandleType) Statistics() (map[string]Statistics, error) {
 	results := map[string]Statistics{}
 
@@ -125,18 +128,13 @@ func (h HandleType) Statistics() (map[string]Statistics, error) {
 
 	for _, endpoint := range endpoints {
 		uri := endpoint.URI()
-		dh, err := h.DirectConnect(uri)
+		stats, err := h.NodeStatistics(uri)
 		if err != nil {
 			return results, err
 		}
 
-		stats, err := dh.nodeStatistics()
-		if err != nil {
-			return results, err
-		}
-
-		results[stats.NodeID] = stats
+		results[uri] = stats
 	}
 
-	return results, err
+	return results, nil
 }
