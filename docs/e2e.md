@@ -24,8 +24,11 @@ driven over HTTP like a client:
    in-flight streams survive graceful shutdown.
 
 Every assertion is pass or fail. The harness measures nothing
-(ADR-0015). The v1 golden suite of the drop-in milestone joins this
-harness when that milestone starts (`docs/brief.md`, Milestones).
+(ADR-0015). The v1 comparison of the drop-in milestone joins this
+harness and runs by hand beside the stress, never in CI. It starts the
+old server built from `master` and the new one on the same cluster,
+sends each case to both and compares the answers (ADR-0015,
+Decision 4).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
 lineage) plus one Go tool, which also drives the ADBC smoke step, and
@@ -353,8 +356,8 @@ the tool is Go and runs wherever the server builds.
 `scripts/cicd/40.test-e2e.sh` runs after the Go tests in every
 platform's build step, against the qdbd `start-services.sh` started and
 the binary `20.build.sh` built. It runs `make test-round-trip`, which
-loads nothing. The stress and the v1 goldens run by hand and never in
-this step (`docs/brief.md`, Testing doctrine). A suite enters the step
+loads nothing. The stress and the v1 comparison run by hand and never
+in this step (`docs/brief.md`, Testing doctrine). A suite enters the step
 when it is green. The script follows qdb-nats-connector's
 `50.test-e2e.sh`: GNU make discovery (`gmake` on FreeBSD,
 `mingw32-make` on Windows), the Windows DLL co-location into `bin/`,
