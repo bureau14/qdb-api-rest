@@ -8,7 +8,8 @@ endpoint and the v2 error shape. ADR-0011 holds the login's, and
 ADR-0016 the refresh's, the logout's and the session's. ADR-0017
 holds DuckDB's, which the query endpoint reaches behind `#sql`. The brief
 holds the table routes' (`docs/brief.md`, "Tables: create and delete").
-This file, Handlers, holds the table reader's.
+This file, Handlers, holds the table reader's. The v1 routes live in
+`v1/`, which wraps this package. Open `v1/AGENTS.md` before touching one.
 
 ## Handlers
 
@@ -176,7 +177,8 @@ This file, Handlers, holds the table reader's.
 
 ## Middleware
 
-- `withRequestLogging` wraps the mux once. `requireBearer` and
+- `WithRequestLogging` wraps the router the entry point composes, once,
+  and `NewHandler` returns the v2 router without it. `requireBearer` and
   `withCompression` wrap a route. The probes, `/metrics` and
   `/debug/pprof/` stay outside both: the exposition compresses through
   the client's own writer when a scraper asks, and the profiler's
@@ -197,7 +199,7 @@ This file, Handlers, holds the table reader's.
   access line counts bytes on the wire. The request side is
   `newDecompressor`, the inverse of `newCompressor`, with zstd at
   concurrency one so a request spawns no goroutines.
-- The edge enriches and handlers do not. `withRequestLogging` tags the
+- The edge enriches and handlers do not. `WithRequestLogging` tags the
   logger with the request id and `observe.PlaneHTTP`. `requireBearer`
   places the claims on the ctx and tags the logger with `observe.KeyUser`
   (the username as the token carries it, empty for anonymous) and
@@ -205,9 +207,10 @@ This file, Handlers, holds the table reader's.
 
 ## Tests
 
-- The handler tests run through `NewHandler` with a context carrying a
-  discarding logger, a metrics registry, a fixture cluster and a
-  keychain. The fixtures place the metrics and the HTTP plane on their
+- The handler tests run through `NewHandler`, which writes no access
+  line, with a context carrying a discarding logger, a metrics registry,
+  a fixture cluster and a keychain. `middleware_test.go` calls
+  `WithRequestLogging` itself. The fixtures place the metrics and the HTTP plane on their
   context (`observeContext`), because `MetricsFrom` and
   `observe.PlaneOf` panic without them. The
   two switches have one table, `TestOperationalRoutes`

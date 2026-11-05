@@ -34,10 +34,12 @@ decisions are in `docs/adr/`.
   else (ADR-0007). That is the v1 wire surface: the wrapper handlers,
   the wart encoders and the v1 token extraction. The package imports
   `internal/httpapi` for the v2 core, and the binary's entry point
-  composes the two, so `internal/httpapi` does not import it. A v1
-  route wraps its v2 counterpart and does not reimplement it. Inside
-  the package the names say v1 too (`writeV1JSON`, not a bare
-  `writeJSON`). Outside the package, no code knows a wart exists.
+  composes the two, so `internal/httpapi` does not import it. The v1
+  package wraps the v2 endpoints, not the v2 functions, and has its own
+  builder. Inside the package the names say v1 too (`writeV1JSON`, not
+  a bare `writeJSON`). Outside the package, no code knows a wart
+  exists. Open `internal/httpapi/v1/AGENTS.md` before touching a v1
+  route.
 - A query result outside `internal/qdb` is the Arrow record batch the
   binding builds through `qdb_query_arrow`, and nothing else.
   `Cluster.Query` hands it to a sink as slices of `model.BatchRows` rows
@@ -236,9 +238,9 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   the logger (`observe`) and the cluster (`qdb.WithCluster` and
   `qdb.ClusterFrom`, which panics without one, like `Logger`). Handlers
   read them from the request context. Nothing is injected through a
-  constructor that the context already carries. Composing the v1
-  routes (ADR-0007) is the entry point's job. That is composition, not
-  state.
+  constructor that the context already carries. The entry point nests
+  the v2 router in the v1 router and wraps the result in the request
+  logging once (ADR-0007). That is composition, not state.
 - Scope attributes with `observe.WithAttrs(ctx, ...)` and pass the child
   ctx down. The caller's ctx stays untagged.
 - Keys come from `observe.Key*`, and errors go through

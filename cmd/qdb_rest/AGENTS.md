@@ -29,9 +29,11 @@ Scope: the binary's entry point. Packages it wires together live under
   (ADR-0001).
 - main builds the metrics registry once, right after the logger, and
   places it in the process context (`observe.WithMetrics`), so every
-  listener records into one registry, and it passes the `observability`
+  listener records into one registry. It passes the `observability`
   block to `httpapi.NewHandler`, because configuration does not travel
-  in the context.
+  in the context, nests the v2 router in `v1.NewHandler` and wraps the
+  result in `httpapi.WithRequestLogging`, so every request writes one
+  access line.
 - Every HTTP request inherits the process values through a context
   without the process context's cancellation (`newListeners`), so
   SIGINT or SIGTERM cuts no stream in flight and `listen.shutdown_grace`
