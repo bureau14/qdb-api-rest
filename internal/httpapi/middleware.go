@@ -66,10 +66,11 @@ func (rec *responseRecorder) Unwrap() http.ResponseWriter {
 	return rec.ResponseWriter
 }
 
-// withRequestLogging puts the request id on the request context and on
-// the response, tags the context with the plane, and logs one access line
-// when the handler returns. Log lines join on the id.
-func withRequestLogging(next http.Handler) http.Handler {
+// WithRequestLogging puts the request id on the request context and on
+// the response, tags the context with the HTTP plane, and logs one access
+// line when the handler returns, so log lines join on the id. The entry
+// point wraps the composed router in it once.
+func WithRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		id := requestID(r)

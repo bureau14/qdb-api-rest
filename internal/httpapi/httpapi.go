@@ -1,8 +1,8 @@
 // Package httpapi serves the REST server's /api/v2 resource API, its
-// bearer middleware and the unauthenticated operational routes: the
-// status probes, the metrics exposition and the runtime profiler. It
-// never imports v1 compatibility code. The v1 package wraps this one,
-// and the entry point composes the two.
+// bearer middleware, the unauthenticated operational routes (the status
+// probes, the metrics exposition and the runtime profiler), and the
+// request logging that the entry point wraps around the composed router.
+// The v1 package wraps this one, and this package does not import it.
 package httpapi
 
 import (
@@ -97,10 +97,10 @@ func registerPprofRoutes(mux *http.ServeMux, on bool) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 }
 
-// NewHandler builds the HTTP handler: the v2 routes, the probes, and
+// NewHandler builds the v2 router: the v2 routes, the probes, and
 // /metrics and /debug/pprof/ when the observability block switches them
-// on. The handlers read the logger, the cluster, the keychain and the
-// metrics from the request context.
+// on. It writes no access line, because the entry point wraps the
+// composed router in WithRequestLogging.
 func NewHandler(cfg config.Observability) http.Handler {
 	// The handler takes the observability block, because configuration
 	// does not travel in the context and the block holds both switches.
@@ -116,5 +116,5 @@ func NewHandler(cfg config.Observability) http.Handler {
 	registerClusterRoutes(mux)
 	registerReadRoutes(mux)
 	registerRowsRoutes(mux)
-	return withRequestLogging(mux)
+	return mux
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/bureau14/qdb-api-rest/internal/observe"
 )
 
-// serve runs one request through withRequestLogging over handler and
+// serve runs one request through WithRequestLogging over handler and
 // returns the response plus every JSON log record written.
 func serve(t *testing.T, handler http.HandlerFunc, header string) (*httptest.ResponseRecorder, []map[string]any) {
 	t.Helper()
@@ -24,7 +24,7 @@ func serve(t *testing.T, handler http.HandlerFunc, header string) (*httptest.Res
 		req.Header.Set(requestIDHeader, header)
 	}
 	resp := httptest.NewRecorder()
-	withRequestLogging(handler).ServeHTTP(resp, req)
+	WithRequestLogging(handler).ServeHTTP(resp, req)
 	var records []map[string]any
 	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 		var rec map[string]any

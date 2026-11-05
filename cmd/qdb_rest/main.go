@@ -288,11 +288,13 @@ func main() {
 
 	// 5. Build the listeners over the root context, so every request
 	//    inherits the logger, the metrics, the cluster and the keychain.
-	//    The handler takes the observability block as an argument,
-	//    because configuration does not travel in the context. Loading
-	//    the TLS material and binding any of the three ports can fail
-	//    here.
-	listeners, err := newListeners(ctx, cfg, httpapi.NewHandler(cfg.Observability))
+	//    The v2 router is wrapped once in the request logging, so every
+	//    request writes one access line. The router takes the
+	//    observability block as an argument, because configuration does
+	//    not travel in the context. Loading the TLS material and binding
+	//    any of the three ports can fail here.
+	handler := httpapi.WithRequestLogging(httpapi.NewHandler(cfg.Observability))
+	listeners, err := newListeners(ctx, cfg, handler)
 	if err != nil {
 		logger.ErrorContext(ctx, "startup failed", observe.Err(err))
 		os.Exit(1)
