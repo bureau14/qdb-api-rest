@@ -62,6 +62,7 @@ func loginHandler(v2 http.Handler, route string) http.Handler {
 		}
 		switch {
 		case rec.Code != http.StatusOK:
+			// The old server's 401 always carried a message.
 			if json.Unmarshal(rec.Body.Bytes(), &problem) != nil || problem.Detail == "" {
 				problem.Detail = http.StatusText(rec.Code)
 			}

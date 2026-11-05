@@ -80,7 +80,8 @@ func TestLogin(t *testing.T) {
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		ctx, h := newServer(t, f.Cluster)
 		for _, path := range paths {
-			// The request carries no Content-Type, as old clients sent it.
+			// The request carries no Content-Type, because the v1 login
+			// accepts a body under any media type.
 			resp := login(t, ctx, h, path, fmt.Sprintf(`{"username":%q,"secret_key":%q}`, f.User.Username, f.User.SecretKey))
 			if resp.Code != http.StatusOK {
 				t.Fatalf("%s: status %d: %s", path, resp.Code, resp.Body.String())
