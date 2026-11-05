@@ -7,26 +7,44 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 Last updated: 2026-11-05
 
-| Milestone                       | State       | Note                                                  |
-| ------------------------------- | ----------- | ----------------------------------------------------- |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25                            |
-| M1 -- v2 query                  | done        | closed 2026-09-21                                     |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12                                     |
-| M3 -- v2 auth                   | done        | closed 2026-10-14                                     |
-| M4 -- Embedded DuckDB           | done        | closed 2026-10-16                                     |
-| M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
-| M6 -- Hardening                 | done        | closed 2026-10-28                                     |
-| M7 -- Observability             | done        | closed 2026-11-04                                     |
-| M8 -- Exploration               | done        | closed 2026-11-05                                     |
-| M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
-| M10 -- Release                  | not started |                                                       |
+| Milestone                       | State       | Note                       |
+| ------------------------------- | ----------- | -------------------------- |
+| M0 -- Foundation                | done        | exit signed off 2026-08-25 |
+| M1 -- v2 query                  | done        | closed 2026-09-21          |
+| M2 -- Tables, reader and ingest | done        | closed 2026-10-12          |
+| M3 -- v2 auth                   | done        | closed 2026-10-14          |
+| M4 -- Embedded DuckDB           | done        | closed 2026-10-16          |
+| M5 -- Flight SQL                | done        | closed 2026-10-26          |
+| M6 -- Hardening                 | done        | closed 2026-10-28          |
+| M7 -- Observability             | done        | closed 2026-11-04          |
+| M8 -- Exploration               | done        | closed 2026-11-05          |
+| M9 -- Drop-in compat            | in progress | started 2026-11-05         |
+| M10 -- Release                  | not started |                            |
 
-In flight: none.
+M9 exit criteria:
+
+1. `POST /api/v1/login` and `POST /api/v1/query`, with their aliases
+   `/api/login` and `/api/query`, are served by `internal/httpapi/v1` as
+   wrappers that call the v2 endpoints and convert their answers.
+2. A script run by hand builds the old server from `master`, starts both
+   servers on both clusters, sends each case to both and compares the
+   answers: bytes for query bodies and error bodies, shape for the
+   token. It is green, and it is not in Buildkite.
+3. The `find` prefix and the deviations the brief lists behave as
+   specified, and each deviation's case is left out of the comparison.
+
+In flight: the v1 login (`sc-19567/rr-v1-login`).
 
 Next:
 
-1. M9 -- Drop-in compat, the v1 endpoints as thin wrappers over their
-   v2 counterparts (`docs/brief.md`, Milestones).
+1. The v1 query: `POST /api/v1/query` and `/api/query`, the bearer
+   header or `?token=`, the conversion from the v2 answer, the `find`
+   prefix, the error rows and a round-trip step (`docs/brief.md`,
+   Compatibility contract). An all-null column may carry its Arrow
+   type's word instead of `none` if matching the old server costs more
+   than a mapping (owner, 2026-11-05).
+2. The side-by-side compatibility script, run by hand, against the old
+   server built from `master` (ADR-0015, Decision 4).
 
 Handoff to M9:
 
@@ -61,6 +79,12 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-05 -- M9 started
+
+- Owner decisions: v1 routes call their v2 endpoints, the v1 token is
+  the v2 access token, and compatibility is a by-hand side-by-side
+  comparison; `docs/brief.md`, Compatibility contract and Milestones.
 
 ## 2026-11-05 -- cluster-statistics-plan.md deleted
 
