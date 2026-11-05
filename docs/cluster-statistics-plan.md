@@ -1,7 +1,7 @@
 # Cluster and node statistics routes -- Plan
 
 Thread: M8 cluster and node statistics routes
-Status: draft
+Status: approved
 
 ## Outcome
 
