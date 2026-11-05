@@ -144,6 +144,14 @@ decisions are in `docs/adr/`.
   holding a single quote (`ErrInvalidTag`), because the find grammar has
   no escape for one, and it answers a tag no entry carries as
   `IsTableNotFound`.
+- The cluster's statistics are `Cluster.Statistics` (every node, keyed
+  by address) and `Cluster.NodeStatistics` (one node), over the binding's
+  direct connection to each node, read as `NodeStats`.
+- `NodeStatistics` checks the address against the cluster's endpoints
+  before it connects (`ErrNodeNotFound`), so a caller cannot make the
+  server dial an address of its choosing.
+- A failed direct connection is `ErrNodeUnreachable`, which does not feed
+  the breaker, so one down node does not fail every route.
 - On a secure cluster, a dial that fails other than by an unreachable
   cluster is `qdb.ErrCredentialsRefused`, whether a user pool, the login
   or the classification of a failed DuckDB attach dialed. The

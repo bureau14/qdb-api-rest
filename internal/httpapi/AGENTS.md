@@ -59,6 +59,15 @@ This file, Handlers, holds the table reader's.
   `Cluster.Tagged`, 404 for a tag no entry carries and 400 for
   `qdb.ErrInvalidTag`. No route lists every tag, because qdbd has no tag
   enumeration.
+- The cluster routes are `GET /api/v2/cluster`, `{"nodes":[...]}` sorted
+  by id, and `GET /api/v2/cluster/nodes/{id}`, one node. A node is the
+  binding's statistics as its JSON tags spell them, with its
+  `<ip>:<port>` as `id`.
+- An unknown address is 404, a node the server cannot connect to is 503
+  without `Retry-After`, and the rest goes through `writeClusterError` at 400.
+- qdbd's permissions decide who may read a node's statistics, and the
+  server adds no authorization of its own, so a refusal answers as
+  `writeClusterError` maps the binding's error (owner, 2026-11-05).
 - A list body is an object with a named array and never a bare array,
   so a field can join the array later without a break.
 - The login proves credentials by `Cluster.Authenticate`, which is one
