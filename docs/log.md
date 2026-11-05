@@ -33,7 +33,7 @@ M9 exit criteria:
 3. The `find` prefix and the deviations the brief lists behave as
    specified, and each deviation's case is left out of the comparison.
 
-In flight: the v1 login (`sc-19567/rr-v1-login`).
+In flight: none.
 
 Next:
 
@@ -79,6 +79,13 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-05 -- v1-login-plan.md deleted
+
+- Facts moved to `internal/httpapi/v1/AGENTS.md`, `internal/AGENTS.md`,
+  `internal/httpapi/AGENTS.md`, `cmd/qdb_rest/AGENTS.md`, ADR-0007,
+  ADR-0008, ADR-0015, `docs/brief.md`, `docs/e2e.md` and the comments
+  of `internal/httpapi`, `internal/httpapi/v1` and `cmd/qdb_rest`.
 
 ## 2026-11-05 -- M9 started
 
