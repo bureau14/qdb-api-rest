@@ -237,17 +237,17 @@ minted under `/api/v2/*` only. The canonical spelling of every v1
 endpoint is `/api/v1/<path>`. The historical unversioned path is an
 alias served by the same handler, never a redirect (ADR-0008).
 
-v1 routes carry no parallel implementation. A v1 route wraps its v2
-counterpart and translates request and response shapes around the v2
-core, and v1 code lives in its own package (ADR-0007).
+v1 routes carry no parallel implementation. A v1 route calls its v2
+endpoint and converts the answer into the v1 wire shape, and v1 code
+lives in its own package (ADR-0007).
 
 The contract covers two endpoints, the login and the query. The status
 probes are outside it (Observability and logging). The two endpoints
-behave byte-shape identically to the old server, except for the
-deliberate deviations listed at the end of this section. Golden
-responses captured from the old server are part of the e2e test suite,
-and no golden exercises a deviation. This section is the
-specification.
+answer as the old server's code does, except for the deliberate
+deviations listed at the end of this section. Where this section and
+that code disagree, the code wins (owner, 2026-11-05). A script run by
+hand compares the old server and the new one side by side, and no case
+of it exercises a deviation. This section is the specification.
 
 ### POST /api/v1/login
 
@@ -256,9 +256,13 @@ specification.
   anonymous login (insecure clusters). The Grafana plugin relies on this.
 - Response 200: `{"token": "<opaque string>"}`. Clients treat the token
   as opaque. Its format is this server's alone (ADR-0005). The token is
-  a v2 access token whose lifetime is fixed at 12 hours in the code, as
-  the old server fixed it, and it cannot be refreshed.
-- Response 401: `{"message": "..."}`.
+  the v2 login's access token, which lives `auth.access_ttl`, and the
+  refresh token is not returned. The owner requires the v1 login to
+  accept the old request data, and lets the token's format and lifetime
+  differ.
+- Response 401: `{"message": "..."}`, for every failure, a malformed
+  body and an unreachable cluster included, because the old server
+  answered 401 for every login it could not complete.
 - Tokens minted by the old server are rejected. Clients log in again on
   401 (the Grafana plugin clears its token and retries on 401).
 
@@ -269,8 +273,11 @@ specification.
   tokens in URLs.
 - Request: `{"query": "..."}`, the object form the Grafana plugin sends.
   A bare JSON string is not accepted.
-- Response 200: `{"tables": [{"name": "...", "columns": [{"name": "...",
-"type": "...", "data": [...]}]}]}`.
+- Response 200: `{"tables": [{"name": "...", "columns": [{"data": [...],
+"name": "...", "type": "..."}]}]}`. A column's keys come in the order
+  `data`, `name`, `type`, and an empty table name is omitted.
+- A query whose text begins with `#sql` runs on DuckDB as it does on v2
+  (owner, 2026-11-05).
 - Column types: `blob | double | int64 | string | timestamp | none`. A
   `COUNT(...)` column is an `int64`. The old server's `count` type
   named the same number, and no client told the two apart.
@@ -285,21 +292,25 @@ specification.
     The match is a raw, case-sensitive, untrimmed prefix test
     (`strings.HasPrefix(query, "find")`). Leading whitespace defeats it,
     and any query starting with those four bytes (`finder ...`, for
-    example) is routed too.
-- Errors 400/500: `{"message": "..."}`.
+    example) is routed too. A find answers each table with
+    `"columns":null`.
+- Errors 400/500: `{"message": "..."}`. A token failure is 401
+  `{"code":401,"message":"..."}`.
 
 ### Deliberate deviations
 
 This table lists every place where v1 answers differently from the old
-server. No v1 golden exercises an entry of this list.
+server. No case of the side-by-side comparison exercises an entry of
+this list.
 
-| Deviation                                                                  | Specified in              |
-| -------------------------------------------------------------------------- | ------------------------- |
-| a `COUNT(...)` column is typed `int64`, where the old server said `count`  | POST /api/v1/query, above |
-| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced     | POST /api/v1/query, above |
-| tokens minted by the old server are rejected                               | POST /api/v1/login, above |
-| bad credentials on a secured cluster are `401` at login, not a blind `200` | ADR-0011                  |
-| the dropped endpoints answer `404`                                         | Explicitly dropped, below |
+| Deviation                                                                   | Specified in              |
+| --------------------------------------------------------------------------- | ------------------------- |
+| a `COUNT(...)` column is typed `int64`, where the old server said `count`   | POST /api/v1/query, above |
+| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced      | POST /api/v1/query, above |
+| tokens minted by the old server are rejected                                | POST /api/v1/login, above |
+| the v1 token lives `auth.access_ttl`, where the old server's lived 12 hours | POST /api/v1/login, above |
+| bad credentials on a secured cluster are `401` at login, not a blind `200`  | ADR-0011                  |
+| the dropped endpoints answer `404`                                          | Explicitly dropped, below |
 
 ### Explicitly dropped
 
@@ -694,9 +705,9 @@ makes that safe:
 - **Logout is client-side.** `/api/v2/auth/logout` answers success and
   the server forgets nothing, because it holds nothing. The
   administrator's response to a compromised token is a key rotation.
-- The v1 token (`/api/v1/login`) is an access token with a fixed 12
-  hour lifetime and no refresh token, as the old server had it. One
-  verifier serves every token.
+- The v1 token (`/api/v1/login`) is the v2 access token, which lives
+  `auth.access_ttl`, without its refresh token. One verifier serves
+  every token.
 - **Keys from passphrases**: the config holds human-friendly passphrases.
   The actual keys are derived once at startup through argon2id
   (memory-hard, so an attacker brute-forcing a captured token pays
@@ -844,7 +855,7 @@ internal/qdb/          session pools, circuit breaker, query execution, ingestio
 internal/encoding/     format encoders and decoders: json, ndjson, csv, arrow
 internal/model/        the neutral table representation the layers share, Arrow record batches by indirection
 internal/httpapi/      /api/v2 handlers, status probes, middleware, the router
-internal/httpapi/v1/   v1 wrappers over the v2 core; the only package that knows the v1 wire shape (ADR-0007)
+internal/httpapi/v1/   v1 wrappers over the v2 endpoints; the only package that knows the v1 wire shape (ADR-0007)
 internal/flightsql/    Arrow Flight SQL server
 internal/olap/         embedded DuckDB (go-duckdb + quasardb extension)
 internal/query/        one query string to the engine its #sql prefix names (ADR-0018)
@@ -898,7 +909,7 @@ pinning.
 
 There are three layers, one question each (ADR-0015). The Go tests and
 the round trip run in Buildkite on every platform and gate. The stress
-and the v1 golden suite run by hand (owner, 2026-10-26), because the
+and the v1 comparison run by hand (owner, 2026-10-26), because the
 Buildkite agents are small and a suite that needs load or a build of the
 old server does not belong on them. Every question has a yes or no
 answer. Nothing in the repository measures a number: no benchmark, no
@@ -1011,11 +1022,10 @@ starts.
   in `internal/qdb` that the v1 `find` wart of M9 wraps, and the
   cluster and node statistics routes, each a step of the round trip
   (the sketch above, M8 rows).
-- **M9 -- Drop-in compat**: the v1 endpoints as thin wrappers over
-  their v2 counterparts: `/api/v1/login` (12h tokens) and
-  `/api/v1/query` (and their unversioned compat aliases) with a `v1`
-  golden suite, captured from the old server when this milestone
-  starts, green when run by hand. The outcome replaces the old binary at
+- **M9 -- Drop-in compat**: the v1 endpoints as wrappers that call
+  their v2 endpoints: `/api/v1/login` and `/api/v1/query` (and their
+  unversioned compat aliases), with a script run by hand that compares
+  the live old server with the new one. The outcome replaces the old binary at
   a customer site with no client changes.
 - **M10 -- Release**: hardening, docs rewrite in `qdb-documentation`
   (including removal of the cluster-endpoint and Prometheus
