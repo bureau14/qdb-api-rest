@@ -563,9 +563,9 @@ GET    /api/v2/tables/{name}/rows  the table reader: the bulk reader streamed ba
 PUT    /api/v2/tables/{name}/tags/{tag}    attach the tag to the table; M8
 DELETE /api/v2/tables/{name}/tags/{tag}    detach the tag from the table; M8
 GET    /api/v2/tags/{tag}          names of the entries carrying the tag; M8
-GET    /api/v2/cluster             the binding's per-node statistics as JSON, one object per node, plus the
-                                   endpoints; unaggregated, uncached, no status word; M8
-GET    /api/v2/cluster/nodes/{id}  one node's statistics object; M8
+GET    /api/v2/cluster             {"nodes":[...]}: each node's statistics as the binding reads them, its
+                                   <ip>:<port> as id, sorted by id; uncached; 503 when a node cannot be read; M8
+GET    /api/v2/cluster/nodes/{id}  one node's object, {id} its <ip>:<port>; 404 outside the cluster's endpoints; M8
 GET    /api/v2/status/liveness     unauthenticated probe
 GET    /api/v2/status/readiness    unauthenticated probe (dials as the REST API's own user)
 GET    /metrics                    Prometheus exposition (config-gatable)
