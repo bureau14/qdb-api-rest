@@ -27,12 +27,8 @@ driver gains no step, and `docs/e2e.md` records why.
 The vendored qdb-api-go moves to PR #131's head, `88106da`, and the unit
 re-points it at #131's squash commit on `master` before it merges.
 
-The unit leaves for later:
-
-- closing M8 in `docs/log.md`, which commit 15 does only if the plan's
-  approval settles Open questions 1 that way;
-- a statistics read by a user who is not a superuser on a secured
-  cluster, which nothing here verifies (Open questions 2).
+Completing the unit closes M8 (owner, 2026-11-05), so commit 15 marks
+M8 done in `docs/log.md`. The unit leaves nothing for later.
 
 ## Verified facts
 
@@ -336,6 +332,9 @@ A bullet after the tag routes (`internal/httpapi/AGENTS.md:51-61`):
   as `id`.
 - An unknown address is 404, a node the server cannot connect to is 503
   without Retry-After, and the rest goes through writeClusterError at 400.
+- qdbd's permissions decide who may read a node's statistics, and the
+  server adds no authorization of its own, so a refusal answers as
+  writeClusterError maps the binding's error (owner, 2026-11-05).
 ```
 
 ### `docs/brief.md`, /api/v2 endpoint sketch
@@ -362,6 +361,7 @@ GET    /api/v2/cluster/nodes/{id}  one node's object, {id} its <ip>:<port>; 404 
 | both calls run under `WithReadRetry` and their own `Operation`               | they are reads, timed like every other leased call                                              | no retry: a retryable failure would surface where every other read retries                                                                                 | one retry on a bad session                                  | none                                                                                              | `internal/AGENTS.md`, Logging and metrics         |
 | `TestRoundtrip` checks the status and the address, and compares no statistic | statistics move between two reads and are not worth pinning                                     | comparing each answer with the other, or with qdbsh: flaky                                                                                                 | a step that cannot flake                                    | the values are unchecked                                                                          | owner, 2026-11-05                                 |
 | the e2e driver gains no step                                                 | as above, and the Go twin already exercises both routes                                         | a driver step checking status and address                                                                                                                  | no change to the driver                                     | the built binary's cluster routes are not driven over curl                                        | owner, 2026-11-05                                 |
+| qdbd's permissions decide who may read the statistics                        | the server relies on qdbd's permission system and implements no authorization layer of its own  | a check in the server, or a test with a non-superuser on the secure cluster                                                                                | no second permission model                                  | a refusal's status is whatever ADR-0010 maps the binding's error to                               | owner, 2026-11-05                                 |
 | `go.mod` points at `88106da` until #131 merges, then at its squash commit    | the fix is in review upstream, and the owner chose the PR head for now                          | waiting for the merge before seeding                                                                                                                       | the unit builds now                                         | one more vendor commit before merge                                                               | owner, 2026-11-05; `internal/AGENTS.md`, Building |
 
 ## Knowledge
@@ -387,7 +387,9 @@ GET    /api/v2/cluster/nodes/{id}  one node's object, {id} its <ip>:<port>; 404 
 - Commit 10 (`internal/AGENTS.md`, `internal/httpapi/AGENTS.md`): the
   statistics core, the endpoint check and the no-breaker rule, because they
   span the files of `internal/qdb`, and the wire shape and statuses of the
-  routes, because they span the handlers and the tests.
+  routes, because they span the handlers and the tests. The httpapi
+  bullet also carries the row that qdbd's permissions decide who may read
+  the statistics.
 - Commit 11 (`docs/brief.md`): the sketch rows. The brief owns the
   endpoint sketch (`docs/AGENTS.md`, What lives where).
 - `plan only`: the rejected own-struct alternative, the rejected
@@ -432,22 +434,14 @@ the code against this plan before the build-stage message.
 14. `/doc-discipline check docs/cluster-statistics-plan.md`. Each finding is
     fixed in a further `docs(...)` commit before the next step.
 15. `docs(log): cluster-statistics-plan.md deleted, facts moved to internal/AGENTS.md, internal/httpapi/AGENTS.md, docs/e2e.md, docs/brief.md and the comments of internal/qdb and internal/httpapi`.
-    Current state drops Next item 1, and the M8 criteria say the round trip
+    Current state marks M8 done, drops Next item 1 and the M8 criteria,
+    and names M9 as next. A dated entry "M8 closed" says the round trip
     reads the cluster and one node by address and compares no statistic
-    (owner, 2026-11-05).
+    (owner, 2026-11-05), beside the entry for the plan's deletion.
 16. Verify: push `sc-19567/rr-cluster-statistics`, build its head in
     Buildkite, wait for the result. Green: report the build number. Red: fix
     with further small commits on this branch, push, build again.
 
 ## Open questions and recommendations
 
-1. Does M8 close with this unit? Recommendation: yes. Every exit criterion
-   is met once the build is green, so commit 15 also marks M8 done in the
-   milestone table and adds the dated entry "M8 closed".
-2. Can a user who is not a superuser read the statistics on a secured
-   cluster? Recommendation: leave it unverified. A refusal would answer 400
-   through `writeClusterError`, which is honest, and no user of that kind
-   exists in the test setup.
-3. The M8 exit criterion "the Handoff item naming the table cores is
-   deleted" is already met, because no such item remains. Recommendation:
-   commit 15 drops it from the criteria.
+none
