@@ -62,7 +62,22 @@ func handleCluster(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(clusterResponse{Nodes: nodes})
 }
 
-// registerClusterRoutes mounts the cluster routes behind the bearer edge.
+// handleNode answers the statistics of the node whose address is the
+// path's id.
+func handleNode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	st, err := qdb.ClusterFrom(ctx).NodeStatistics(ctx, caller(r), r.PathValue("id"))
+	if err != nil {
+		writeNodeError(ctx, w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(nodeResponse{ID: r.PathValue("id"), NodeStats: st})
+}
+
+// registerClusterRoutes mounts the two cluster routes behind the bearer
+// edge.
 func registerClusterRoutes(mux *http.ServeMux) {
 	handleData(mux, "GET "+clusterPath, withCompression(requireBearer(http.HandlerFunc(handleCluster))))
+	handleData(mux, "GET "+clusterPath+"/nodes/{id}", withCompression(requireBearer(http.HandlerFunc(handleNode))))
 }
