@@ -110,6 +110,11 @@ func TestErrorRows(t *testing.T) {
 			"tagged: no token":      {http.MethodGet, tagsPath + "/qdbtest_tag", "", nil, http.StatusUnauthorized, "Bearer"},
 			"tagged: no such tag":   {http.MethodGet, tagsPath + "/qdbtest_tag_none", "", bearer, http.StatusNotFound, ""},
 			"tagged: quote in tag":  {http.MethodGet, tagsPath + "/qdbtest_a'b", "", bearer, http.StatusBadRequest, ""},
+			// the cluster. Port 1 is no endpoint of either test cluster, so the
+			// node route refuses it before any connect.
+			"cluster: no token":  {http.MethodGet, clusterPath, "", nil, http.StatusUnauthorized, "Bearer"},
+			"node: no token":     {http.MethodGet, clusterPath + "/nodes/127.0.0.1:2836", "", nil, http.StatusUnauthorized, "Bearer"},
+			"node: no such node": {http.MethodGet, clusterPath + "/nodes/127.0.0.1:1", "", bearer, http.StatusNotFound, ""},
 			// the reader
 			"read: no token":         {http.MethodGet, read(a.Name, ""), "", nil, http.StatusUnauthorized, "Bearer"},
 			"read: no such table":    {http.MethodGet, read("qdbtest_read_none", ""), "", bearer, http.StatusNotFound, ""},
@@ -158,6 +163,8 @@ func TestErrorRows(t *testing.T) {
 				"attach: anonymous on the secure cluster":     {http.MethodPut, tagPath(a.Name, "qdbtest_tag"), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 				"detach: anonymous on the secure cluster":     {http.MethodDelete, tagPath(a.Name, "qdbtest_tag"), "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 				"tagged: anonymous on the secure cluster":     {http.MethodGet, tagsPath + "/qdbtest_tag", "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"cluster: anonymous on the secure cluster":    {http.MethodGet, clusterPath, "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
+				"node: anonymous on the secure cluster":       {http.MethodGet, clusterPath + "/nodes/127.0.0.1:2838", "", map[string]string{"Authorization": anon}, http.StatusUnauthorized, refused},
 			} {
 				rows[name] = row
 			}
