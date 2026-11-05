@@ -38,11 +38,14 @@ costs is the time the preview does not have.
    (`make load`, `datasets.json`, the packaging script, the S3
    archive) is deleted. Every e2e suite, the stress included, works
    on rows it generates itself, as the v2 round trip does (ADR-0014).
-4. **The v1 golden suite is removed.** The goldens, their driver,
-   their fixture and the old-server build are deleted. M9 captures
-   what it needs when it starts, and the byte-shape facts of the old
-   server are recovered then from the old server's source on
-   `master`.
+4. **The v1 golden suite is removed.** The goldens, their driver and
+   their fixture are deleted. M9 checks compatibility by a script run
+   by hand, which starts the old server built from `master` and the new
+   one on the same cluster, sends each case to both and compares the
+   answers. It stores nothing, because these are validation runs on
+   the owner's machine and every stored golden would be one more file
+   to audit (owner, 2026-11-05). The byte-shape facts of the old server
+   come from its source on `master`.
 
 This ADR supersedes ADR-0013. Four of its rules stay in force and are
 restated here, so that nothing cites a superseded document:
@@ -50,7 +53,7 @@ restated here, so that nothing cites a superseded document:
 - The e2e harness asserts behaviour and measures nothing. Every
   assertion is pass or fail, and no CI gate is a timing or a number.
 - The round trip and the Flight SQL smoke steps run in the Buildkite
-  build step on every platform, the stress and the v1 golden suite run
+  build step on every platform, the stress and the v1 comparison run
   by hand (brief, Testing doctrine), and every milestone from M2 on
   closes on CI evidence of the built binary.
 - Text responses are compared as bytes, and Arrow IPC is compared as
@@ -77,8 +80,8 @@ restated here, so that nothing cites a superseded document:
   the bench as readers of the dataset, and to the bench's
   `http-arrow@new-rest` run name things that no longer exist. Its
   decision stands as written.
-- ADR-0007 and ADR-0008 still describe the v1 layer. They apply when
-  M9 starts, and the golden suite they mention is the one M9 builds.
+- ADR-0007 and ADR-0008 describe the v1 layer that M9 builds, and the
+  side-by-side comparison is the check they mention.
 - The Handoff to M4 in `docs/log.md` and the M4 criteria are deleted.
   The v1 byte-shape facts they pointed to leave the repository with
   `docs/e2e.md`'s goldens section, and M9 derives them again from
@@ -89,6 +92,6 @@ restated here, so that nothing cites a superseded document:
 | Alternative                                             | Why not                                                                                                              |
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Keep the bench and only drop it from milestone criteria | the owner judged it over-engineered and irrelevant to the preview, and a kept tool keeps asking for time             |
-| Keep the twelve goldens that do not read the dataset    | the suite still needs the old-server build, and M9 can recapture in less time than keeping them green                |
+| Keep the twelve goldens that do not read the dataset    | the suite still needs the old-server build, and comparing the live servers costs less than keeping them green        |
 | A smaller dataset archive for CI                        | the preview needs no customer-derived data at all, and the round trip already proves the binary on rows it generates |
 | Flight SQL before DuckDB                                | the Flight SQL endpoint would be designed twice, once without the DuckDB layer and once with it                      |
