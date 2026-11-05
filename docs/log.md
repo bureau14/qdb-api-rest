@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-04
+Last updated: 2026-11-05
 
 | Milestone                       | State       | Note                                                  |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
@@ -17,30 +17,18 @@ Last updated: 2026-11-04
 | M5 -- Flight SQL                | done        | closed 2026-10-26                                     |
 | M6 -- Hardening                 | done        | closed 2026-10-28                                     |
 | M7 -- Observability             | done        | closed 2026-11-04                                     |
-| M8 -- Exploration               | in progress | criteria below                                        |
+| M8 -- Exploration               | done        | closed 2026-11-05                                     |
 | M9 -- Drop-in compat            | not started | the v1 goldens are captured when it starts (ADR-0015) |
 | M10 -- Release                  | not started |                                                       |
-
-M8 criteria. Entry: M7 closed. Exit: the seven exploration routes of
-the brief's sketch (`docs/brief.md`, /api/v2 endpoint sketch, M8 rows)
-serve behind the bearer edge with ADR-0010's problems, over
-`Cluster.Tables`, `Cluster.TableSchemas`, a find core and a statistics
-core in `internal/qdb`; the round trip lists its tables under a prefix,
-reads one schema with its tags, attaches a tag, lists the tag's
-entries, detaches it, and reads the cluster and one node, each compared
-against what it created; the Handoff item naming the table cores is
-deleted.
 
 In flight: none.
 
 Next:
 
-1. The cluster and node statistics routes, `GET /api/v2/cluster` and
-   `GET /api/v2/cluster/nodes/{id}`. They need a qdb-api-go fix first,
-   because `HandleType.Statistics` never closes the direct handles it
-   opens.
+1. M9 -- Drop-in compat, the v1 endpoints as thin wrappers over their
+   v2 counterparts (`docs/brief.md`, Milestones).
 
-Handoff to M8:
+Handoff to M9:
 
 - The round trip drives both servers over plain HTTP, and no step reads
   the HTTPS listener. Steps over both HTTP and HTTPS may be added
@@ -73,6 +61,17 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-05 -- cluster-statistics-plan.md deleted
+
+- Facts moved to `internal/AGENTS.md`, `internal/httpapi/AGENTS.md`,
+  `docs/e2e.md`, `docs/brief.md` and the comments of `internal/qdb` and
+  `internal/httpapi`.
+
+## 2026-11-05 -- M8 closed
+
+- Owner decision. The round trip reads the cluster and one node by
+  address and compares no statistic (`docs/e2e.md`, The v2 round trip).
 
 ## 2026-11-04 -- exploration-tables-tags-plan.md deleted
 
