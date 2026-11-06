@@ -19,6 +19,33 @@ handlers these routes call are in `internal/httpapi/AGENTS.md`.
   failure 401 `{"message"}`, unreachable cluster included (owner,
   2026-11-05). The token lives `auth.access_ttl`, and a v1 client logs
   in again on a 401.
+- The query reads `{"query"}` under any Content-Type, as the login reads
+  its body, after the token, because the old server authenticated before
+  it bound the body. No token is 401 `{"code","message"}`, an empty body
+  422 code 602, and a body that does not decode 400 code 400, as
+  go-openapi answered.
+- The token is the `Authorization` header without one optional,
+  case-sensitive `Bearer `, then `?token=`, each forwarded as the v2
+  bearer, the first that is not 401 winning. v1 forwards the token and
+  verifies nothing itself (ADR-0007).
+- A query asks the v2 query for Arrow, because typed arrays give the old
+  cell values and the null typing directly. It holds the whole result
+  before it writes, because the old body lists every cell of a column
+  before the next column, and nothing caps that result (owner,
+  2026-11-06). It answers no table for no rows, else one table without
+  a name. A column's word is `none` when every cell is null. The five
+  old types keep their words and their `encoding/json` cells. Timestamps
+  are in UTC whatever zone the process runs in (owner, 2026-11-06), and
+  NaN and the infinities are null, because `encoding/json` cannot write
+  them. Any other type answers its Arrow name and its v2 JSON cell
+  through `encoding.JSONCell`, because only DuckDB answers such a type
+  and no old client sends `#sql` (owner, 2026-11-06).
+- A query that begins with `find` calls `POST /api/v2/find` and answers
+  one table per name with `"columns":null`.
+- A v2 401 is 401 `{"code","message"}`, a 400 or 413 is 400
+  `{"message"}`, and anything else, 503 included, is 500 `{"message"}`,
+  because the old server had no cap and answered 500 when it could not
+  lease a session (owner, 2026-11-06).
 - Every body goes through `writeV1JSON`, which encodes as the old server
   did: no HTML escaping and a trailing newline.
 - Tests: one test per route over `cluster.Each`, each row at both
