@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -327,4 +328,64 @@ func TestQueryUnreachable(t *testing.T) {
 	for _, path := range queryPaths {
 		errorShape(t, path, postQuery(ctx, h, path, queryBody("SELECT 1"), bearerHeader, token), http.StatusInternalServerError, 0)
 	}
+}
+
+// TestQuerySQL: on both clusters, one #sql row of every DuckDB scalar
+// answers each column under its word, the old word for the old five types
+// and the Arrow name for the rest, and each cell as the v2 JSON writes it.
+func TestQuerySQL(t *testing.T) {
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		ctx, h := newServer(t, f.Cluster)
+		token := mintAccess(t, ctx, f.User)
+		// The cells past the old five are copied from TestDuckDBScalars,
+		// because the cell is the v2 JSON's. The old five are encoding/json's,
+		// and a column without a value is none.
+		want := []struct{ expr, word, cell string }{
+			{"1::BIGINT", "int64", "1"},
+			{"1.5::DOUBLE", "double", "1.5"},
+			{"'a'", "string", `"a"`},
+			{"'a'::BLOB", "blob", `"YQ=="`},
+			{"TIMESTAMP '2026-06-11 00:00:00.5'", "timestamp", `"2026-06-11T00:00:00.5Z"`},
+			{"1::TINYINT", "int8", "1"},
+			{"1::SMALLINT", "int16", "1"},
+			{"1", "int32", "1"},
+			{"1::UTINYINT", "uint8", "1"},
+			{"1::USMALLINT", "uint16", "1"},
+			{"1::UINTEGER", "uint32", "1"},
+			{"1::UBIGINT", "uint64", "1"},
+			{"1.5::FLOAT", "float32", "1.5"},
+			{"sum(1)", "decimal", "1"},
+			{"1.50::DECIMAL(5,2)", "decimal", "1.50"},
+			{"true", "bool", "true"},
+			{"DATE '2026-06-11'", "date32", `"2026-06-11"`},
+			{"TIME '24:00:00'", "time64", `"24:00:00.000000000"`},
+			{"NULL", "none", "null"},
+		}
+		exprs := make([]string, len(want))
+		for i, w := range want {
+			exprs[i] = fmt.Sprintf("%s AS c%d", w.expr, i)
+		}
+		for _, path := range queryPaths {
+			resp := postQuery(ctx, h, path, queryBody("#sql SELECT "+strings.Join(exprs, ", ")), bearerHeader, token)
+			var body struct {
+				Tables []struct {
+					Columns []struct {
+						Data []json.RawMessage
+						Type string
+					}
+				}
+			}
+			if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &body) != nil {
+				t.Fatalf("%s: status %d: %s", path, resp.Code, resp.Body.String())
+			}
+			if len(body.Tables) != 1 || len(body.Tables[0].Columns) != len(want) {
+				t.Fatalf("%s: want one table of %d columns: %s", path, len(want), resp.Body.String())
+			}
+			for i, c := range body.Tables[0].Columns {
+				if c.Type != want[i].word || len(c.Data) != 1 || string(c.Data[0]) != want[i].cell {
+					t.Errorf("%s %s: type %q data %s, want type %q data [%s]", path, want[i].expr, c.Type, c.Data, want[i].word, want[i].cell)
+				}
+			}
+		}
+	})
 }
