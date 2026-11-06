@@ -215,6 +215,14 @@ func jsonCell(f arrow.Field, a arrow.Array) (jsonColumn, error) {
 	return c, nil
 }
 
+// JSONCell answers the function that appends cell i of the column as the
+// JSON encoder writes it, null included. A type the encoder does not write
+// is ErrUnsupportedType, which names the column.
+func JSONCell(f arrow.Field, a arrow.Array) (func(dst []byte, i int) []byte, error) {
+	c, err := jsonCell(f, a)
+	return c.cell, err
+}
+
 // jsonColumns returns the jsonColumn of every column of the batch.
 func jsonColumns(rec arrow.RecordBatch) ([]jsonColumn, error) {
 	cols := make([]jsonColumn, rec.NumCols())

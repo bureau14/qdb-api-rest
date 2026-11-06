@@ -132,6 +132,8 @@ logging rules and the test fixtures are in `internal/AGENTS.md`.
   integers a width they lack. DuckDB's SQL names were rejected, because
   the encoders do not know DuckDB and the query endpoint never answers
   those names.
+- `JSONCell` lends one column's JSON appender to the v1 query, which
+  writes a DuckDB type as the JSON encoder does.
 - JSON (`application/json`) is
   `{"columns":[{"name":..,"type":..,"data":[..]},..]}`, with the keys in
   that order and no `tables` wrapper. The table a row came from is a
