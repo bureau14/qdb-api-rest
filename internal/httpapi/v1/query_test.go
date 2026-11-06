@@ -19,6 +19,7 @@ import (
 	"pgregory.net/rapid"
 
 	"github.com/bureau14/qdb-api-rest/internal/auth"
+	"github.com/bureau14/qdb-api-rest/internal/config"
 	"github.com/bureau14/qdb-api-rest/internal/qdb"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/cluster"
 	"github.com/bureau14/qdb-api-rest/internal/qdbtest/table"
@@ -235,4 +236,95 @@ func TestQuery(t *testing.T) {
 			table.Check(rt, tbl, readOldBody(rt, tbl, b))
 		})
 	})
+}
+
+// errorShape checks the status and that the body is a JSON object holding
+// a message, the code where the shape carries one, and no other key.
+func errorShape(t *testing.T, name string, resp *httptest.ResponseRecorder, status, code int) {
+	t.Helper()
+	var m map[string]any
+	if resp.Code != status || json.Unmarshal(resp.Body.Bytes(), &m) != nil {
+		t.Fatalf("%s: status %d, want %d: %s", name, resp.Code, status, resp.Body.String())
+	}
+	if msg, _ := m["message"].(string); msg == "" {
+		t.Fatalf("%s: no message: %s", name, resp.Body.String())
+	}
+	// A 401 and the old server's request errors carry the code, and a
+	// failed query carries the message alone.
+	want := 1
+	if code != 0 {
+		want = 2
+		if m["code"] != float64(code) {
+			t.Fatalf("%s: code %v, want %d", name, m["code"], code)
+		}
+	}
+	if len(m) != want {
+		t.Fatalf("%s: keys %v", name, m)
+	}
+}
+
+// TestQueryErrors: each row answers its status and its body shape, at both
+// spellings.
+func TestQueryErrors(t *testing.T) {
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		ctx, h := newServer(t, f.Cluster)
+		token := mintAccess(t, ctx, f.User)
+		rows := []struct {
+			name, header, param, body string
+			status, code              int
+		}{
+			{"no token", "", "", queryBody("SELECT 1"), http.StatusUnauthorized, http.StatusUnauthorized},
+			{"bad token", "Bearer nope", "", queryBody("SELECT 1"), http.StatusUnauthorized, http.StatusUnauthorized},
+			// The old server tried ?token= after a header that failed.
+			{"bad header, good ?token=", "Bearer nope", token, queryBody("show tables"), http.StatusOK, 0},
+			{"empty body", "Bearer " + token, "", "", http.StatusUnprocessableEntity, 602},
+			{"bare string", "Bearer " + token, "", `"show tables"`, http.StatusBadRequest, http.StatusBadRequest},
+			{"undecodable", "Bearer " + token, "", `{"query":`, http.StatusBadRequest, http.StatusBadRequest},
+			{"invalid query", "Bearer " + token, "", queryBody("NOT A QUERY"), http.StatusBadRequest, 0},
+			{"unknown table", "Bearer " + token, "", queryBody("SELECT * FROM qdbtest_v1_none"), http.StatusBadRequest, 0},
+			// A list is a type no cell writer knows.
+			{"#sql unsupported type", "Bearer " + token, "", queryBody("#sql SELECT [1]"), http.StatusInternalServerError, 0},
+		}
+		for _, path := range queryPaths {
+			for _, row := range rows {
+				p := path
+				if row.param != "" {
+					p += "?token=" + url.QueryEscape(row.param)
+				}
+				req := httptest.NewRequestWithContext(ctx, http.MethodPost, p, strings.NewReader(row.body))
+				if row.header != "" {
+					req.Header.Set("Authorization", row.header)
+				}
+				resp := httptest.NewRecorder()
+				h.ServeHTTP(resp, req)
+				name := path + " " + row.name
+				if row.status == http.StatusOK {
+					if resp.Code != http.StatusOK {
+						t.Fatalf("%s: status %d: %s", name, resp.Code, resp.Body.String())
+					}
+					continue
+				}
+				errorShape(t, name, resp, row.status, row.code)
+			}
+		}
+	})
+}
+
+// TestQueryUnreachable: a cluster that does not answer is 500 {"message"}
+// at both spellings.
+func TestQueryUnreachable(t *testing.T) {
+	cfg := config.Default()
+	cfg.Cluster.URI = "qdb://127.0.0.1:1" // the connection is refused at once
+	c := qdb.New(cfg, nil)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = c.Close(ctx)
+	})
+	ctx, h := newServer(t, c)
+	// Minted from the keychain, because a login on this cluster fails.
+	token := mintAccess(t, ctx, qdb.User{})
+	for _, path := range queryPaths {
+		errorShape(t, path, postQuery(ctx, h, path, queryBody("SELECT 1"), bearerHeader, token), http.StatusInternalServerError, 0)
+	}
 }
