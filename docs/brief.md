@@ -281,6 +281,10 @@ of it exercises a deviation. This section is the specification.
 - Column types: `blob | double | int64 | string | timestamp | none`. A
   `COUNT(...)` column is an `int64`. The old server's `count` type
   named the same number, and no client told the two apart.
+- Timestamps are written in UTC, whatever zone the process runs in
+  (owner, 2026-11-06).
+- NaN and the infinities are written as `null`, because `encoding/json`
+  cannot write them.
 - Null cells of every type are JSON `null`, and the column type is taken
   from the last non-null row (`"none"` if every row is null). The old
   server's `"(void)"` and `"(undefined)"` sentinel strings are not
@@ -307,6 +311,8 @@ this list.
 | --------------------------------------------------------------------------- | ------------------------- |
 | a `COUNT(...)` column is typed `int64`, where the old server said `count`   | POST /api/v1/query, above |
 | the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced      | POST /api/v1/query, above |
+| timestamps are in UTC, where the old server wrote the process's zone        | POST /api/v1/query, above |
+| NaN and the infinities are `null`, where the old server's encoder failed    | POST /api/v1/query, above |
 | tokens minted by the old server are rejected                                | POST /api/v1/login, above |
 | the v1 token lives `auth.access_ttl`, where the old server's lived 12 hours | POST /api/v1/login, above |
 | bad credentials on a secured cluster are `401` at login, not a blind `200`  | ADR-0011                  |
@@ -574,6 +580,7 @@ GET    /api/v2/tables/{name}/rows  the table reader: the bulk reader streamed ba
 PUT    /api/v2/tables/{name}/tags/{tag}    attach the tag to the table; M8
 DELETE /api/v2/tables/{name}/tags/{tag}    detach the tag from the table; M8
 GET    /api/v2/tags/{tag}          names of the entries carrying the tag; M8
+POST   /api/v2/find                find expression -> {"entries":[...]}, the names it matches; M9
 GET    /api/v2/cluster             {"nodes":[...]}: each node's statistics as the binding reads them, its
                                    <ip>:<port> as id, sorted by id; uncached; 503 when a node cannot be read; M8
 GET    /api/v2/cluster/nodes/{id}  one node's object, {id} its <ip>:<port>; 404 outside the cluster's endpoints; M8
@@ -585,8 +592,8 @@ GET    /metrics                    Prometheus exposition (config-gatable)
 The exploration routes (M8) take a bearer token like every data route
 and read the cluster as the caller's user on a pooled session. The find
 core (`Cluster.Find`, a find expression answering entry names) lives in
-`internal/qdb`, serves the tag routes and the v1 `find` wart, and no v2
-route takes a find expression (owner, 2026-10-26). qdbd has no tag
+`internal/qdb` and serves the tag routes and `POST /api/v2/find`, which
+the v1 `find` wart wraps (owner, 2026-11-06). qdbd has no tag
 enumeration, so no route lists every tag (owner, 2026-11-04).
 
 `GET /api/v2/session` ("who am i") returns the authenticated caller's view
@@ -1019,7 +1026,7 @@ starts.
 - **M8 -- Exploration**: `GET /api/v2/tables` and
   `GET /api/v2/tables/{name}` over the existing table cores, the tag
   routes (entries of a tag, attach and detach) over a find core
-  in `internal/qdb` that the v1 `find` wart of M9 wraps, and the
+  in `internal/qdb`, and the
   cluster and node statistics routes, each a step of the round trip
   (the sketch above, M8 rows).
 - **M9 -- Drop-in compat**: the v1 endpoints as wrappers that call
