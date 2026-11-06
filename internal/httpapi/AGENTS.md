@@ -60,6 +60,13 @@ This file, Handlers, holds the table reader's. The v1 routes live in
   `Cluster.Tagged`, 404 for a tag no entry carries and 400 for
   `qdb.ErrInvalidTag`. No route lists every tag, because qdbd has no tag
   enumeration.
+- The find route is `POST /api/v2/find`, a find expression as a text body
+  under the query's content types and cap, answering `{"entries":[...]}`
+  through `Cluster.Find` in the cluster's order. No match is 200 with an
+  empty list, because an expression names no resource whose absence a
+  404 would report. Anything the cluster answered is 400 through
+  `writeClusterError`. The v1 `find` query wraps the route, because v1
+  wraps v2 endpoints and never calls `internal/qdb` (ADR-0007).
 - The cluster routes are `GET /api/v2/cluster`, `{"nodes":[...]}` sorted
   by id, and `GET /api/v2/cluster/nodes/{id}`, one node. A node is the
   binding's statistics as its JSON tags spell them, with its
@@ -228,7 +235,7 @@ This file, Handlers, holds the table reader's. The v1 routes live in
   HTTP. The first is read empty in every format. All are ingested in one
   body of a drawn format, under a drawn request coding and a drawn push
   mode, read whole and under a drawn column subset, queried and read through DuckDB behind `#sql` on the query route
-  in every format, tagged and untagged, deleted, re-created over the
+  in every format, tagged, found by the tag's expression and untagged, deleted, re-created over the
   symtables the delete leaves, and deleted again. Each table is also
   listed under its own name and read against its create body when it is
   created. Under `async` the
