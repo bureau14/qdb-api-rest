@@ -389,3 +389,41 @@ func TestQuerySQL(t *testing.T) {
 		}
 	})
 }
+
+// TestFind: on both clusters, a query that begins with find answers one
+// table per entry the expression matches, with columns null, and no table
+// for no match. Leading whitespace and FIND reach the native engine, which
+// answers 400.
+func TestFind(t *testing.T) {
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		ctx, h := newServer(t, f.Cluster)
+		token := mintAccess(t, ctx, f.User)
+		tbl := table.Table{Name: "qdbtest_v1_find", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnInt64}}}
+		table.CreateAs(t, f.Cluster, f.User, tbl)
+		tag := "qdbtest_v1_tag"
+		table.RemoveTagOnCleanupAs(t, f.Cluster, f.User, tag)
+		// v1 has no tag route, so the test attaches the tag through v2.
+		attach := httptest.NewRequestWithContext(ctx, http.MethodPut, "/api/v2/tables/"+tbl.Name+"/tags/"+tag, nil)
+		attach.Header.Set("Authorization", "Bearer "+token)
+		attached := httptest.NewRecorder()
+		h.ServeHTTP(attached, attach)
+		if attached.Code != http.StatusNoContent {
+			t.Fatalf("attach: status %d: %s", attached.Code, attached.Body.String())
+		}
+		found := `{"tables":[{"name":"` + tbl.Name + `","columns":null}]}` + "\n"
+		for _, path := range queryPaths {
+			for _, row := range []struct{ query, body string }{
+				{"find(tag='" + tag + "')", found},
+				{"find(tag='qdbtest_v1_tag_none')", "{\"tables\":[]}\n"},
+			} {
+				resp := postQuery(ctx, h, path, queryBody(row.query), bearerHeader, token)
+				if resp.Code != http.StatusOK || resp.Body.String() != row.body {
+					t.Fatalf("%s %s: status %d: %s", path, row.query, resp.Code, resp.Body.String())
+				}
+			}
+			for _, q := range []string{" find(tag='" + tag + "')", "FIND(tag='" + tag + "')"} {
+				errorShape(t, path+" "+q, postQuery(ctx, h, path, queryBody(q), bearerHeader, token), http.StatusBadRequest, 0)
+			}
+		}
+	})
+}
