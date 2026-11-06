@@ -1,7 +1,7 @@
 # v1 query over the v2 query and a v2 find route
 
 Thread: v1 query
-Status: draft
+Status: approved
 
 ## Outcome
 
