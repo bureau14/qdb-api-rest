@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	"github.com/bureau14/qdb-api-rest/internal/encoding"
@@ -18,8 +19,11 @@ type v1Query struct {
 	Query string `json:"query"`
 }
 
-// v2QueryPath is the v2 endpoint the v1 query calls.
-const v2QueryPath = "/api/v2/query"
+// v2QueryPath and v2FindPath are the v2 endpoints the v1 query calls.
+const (
+	v2QueryPath = "/api/v2/query"
+	v2FindPath  = "/api/v2/find"
+)
 
 // callV2 posts the text body to the v2 path under the token, asking for
 // the media type, and answers the recorded response.
@@ -83,12 +87,28 @@ func writeV2Failure(w http.ResponseWriter, rec *httptest.ResponseRecorder) int {
 	}
 }
 
-// answerQuery runs the v1 request and writes its answer, and answers the
+// readFindTables reads the v2 find's {"entries"} into the old find's
+// body: one table per name, with columns null.
+func readFindTables(r io.Reader) (v1Tables, error) {
+	var found struct {
+		Entries []string `json:"entries"`
+	}
+	if err := json.NewDecoder(r).Decode(&found); err != nil {
+		return v1Tables{}, err
+	}
+	tables := make([]v1Table, len(found.Entries))
+	for i, name := range found.Entries {
+		tables[i] = v1Table{Name: name}
+	}
+	return v1Tables{Tables: tables}, nil
+}
+
+// answerQuery runs the v1 request, writes its answer, and answers the
 // status written.
 func answerQuery(w http.ResponseWriter, r *http.Request, v2 http.Handler) int {
 	// 1. take the tokens, and answer 401 when there are none
 	// 2. read the body and decode {"query"}
-	// 3. call the v2 query for Arrow
+	// 3. call the v2 find for a find query, or the v2 query for Arrow
 	// 4. convert the answer into the old body, or the failure into the old shapes
 	ctx := r.Context()
 
@@ -118,11 +138,17 @@ func answerQuery(w http.ResponseWriter, r *http.Request, v2 http.Handler) int {
 		return http.StatusBadRequest
 	}
 
-	rec := callAuthorized(ctx, v2, tokens, v2QueryPath, encoding.ArrowContentType, []byte(q.Query))
+	// 3. The prefix is raw and case-sensitive, as the old server matched
+	//    it, so leading whitespace or FIND reaches the native engine.
+	path, accept, convert := v2QueryPath, encoding.ArrowContentType, readV1Tables
+	if strings.HasPrefix(q.Query, "find") {
+		path, accept, convert = v2FindPath, encoding.JSONContentType, readFindTables
+	}
+	rec := callAuthorized(ctx, v2, tokens, path, accept, []byte(q.Query))
 	if rec.Code != http.StatusOK {
 		return writeV2Failure(w, rec)
 	}
-	tables, err := readV1Tables(rec.Body)
+	tables, err := convert(rec.Body)
 	if err != nil {
 		// 4. A type no cell writer knows is 500, as v2 answers it.
 		writeV1JSON(w, http.StatusInternalServerError, v1Error{Message: err.Error()})
@@ -132,9 +158,10 @@ func answerQuery(w http.ResponseWriter, r *http.Request, v2 http.Handler) int {
 	return http.StatusOK
 }
 
-// queryHandler answers the old server's query through the v2 query. It
-// answers the old {"tables"} body, and every failure in the old server's
-// shapes. route is the path the request duration is recorded under.
+// queryHandler answers the old server's query through the v2 query, or
+// through the v2 find for a query that begins with find. It answers the
+// old {"tables"} body, and every failure in the old server's shapes.
+// route is the path the request duration is recorded under.
 func queryHandler(v2 http.Handler, route string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
