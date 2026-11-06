@@ -7,8 +7,9 @@
 // against its create body, and reads them empty. It ingests them in one
 // body of a drawn format under a drawn request coding. It reads them,
 // queries them, and reads them through DuckDB behind #sql on the query
-// route, each in every format. It tags them, reads the tag's entries
-// and each table's tags, and detaches the tag. It deletes them,
+// route, each in every format. It tags them, reads the tag's entries,
+// finds them by the tag's expression, reads each table's tags, and
+// detaches the tag. It deletes them,
 // re-creates them over what the delete leaves behind, and deletes them
 // again. Last, it reads the cluster's nodes and the fixture's node by its
 // address. Each read, query and DuckDB response equals the encoder run
@@ -496,9 +497,12 @@ func TestRoundtrip(t *testing.T) {
 
 			// 7. tag each table with one drawn tag, removed on cleanup, attached
 			// twice (204 both times). The tag's entries are the tables, compared
-			// as a set because the find answers in the cluster's order, and each
+			// as a set because the find answers in the cluster's order, and the
+			// find route answers the same set for the tag's expression. Each
 			// table body lists the tag. A detach twice (204 both times) leaves
-			// the tag on no entry, which is 404
+			// the tag on no entry: the tag route answers 404, and the find route
+			// answers 200 with no entries, because an expression names no
+			// resource whose absence a 404 would report
 			tag := "qdbtest_" + rapid.StringMatching(`[a-z]{16}`).Draw(rt, "tag")
 			table.RemoveTagOnCleanupAs(rt, s.c, s.user, tag)
 			names := make([]string, len(tables))
@@ -518,6 +522,15 @@ func TestRoundtrip(t *testing.T) {
 			if got, want := slices.Sorted(slices.Values(entries.Entries)), slices.Sorted(slices.Values(names)); !slices.Equal(got, want) {
 				rt.Fatalf("tagged %s: %v, want %v", tag, got, want)
 			}
+			expr := "find(tag='" + tag + "')"
+			resp = s.find(expr)
+			var found entriesResponse
+			if resp.Code != http.StatusOK || json.Unmarshal(resp.Body.Bytes(), &found) != nil {
+				rt.Fatalf("find %s: status %d: %s", expr, resp.Code, resp.Body.String())
+			}
+			if got, want := slices.Sorted(slices.Values(found.Entries)), slices.Sorted(slices.Values(names)); !slices.Equal(got, want) {
+				rt.Fatalf("find %s: %v, want %v", expr, got, want)
+			}
 			for _, tbl := range tables {
 				if got, want := s.getTable(rt, tbl.Name), tableResponseOfCreate(createBodyOf(tbl), []string{tag}); !reflect.DeepEqual(got, want) {
 					rt.Fatalf("get %s tagged: %+v, want %+v", tbl.Name, got, want)
@@ -530,6 +543,10 @@ func TestRoundtrip(t *testing.T) {
 			}
 			if resp := s.tagged(tag); resp.Code != http.StatusNotFound {
 				rt.Fatalf("tagged %s after the detach: status %d: %s", tag, resp.Code, resp.Body.String())
+			}
+			resp = s.find(expr)
+			if resp.Code != http.StatusOK || strings.TrimSpace(resp.Body.String()) != `{"entries":[]}` {
+				rt.Fatalf("find %s after the detach: status %d: %s", expr, resp.Code, resp.Body.String())
 			}
 
 			// 8. delete each (204), which leaves the symtables. The same create
