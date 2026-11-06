@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-05
+Last updated: 2026-11-06
 
 | Milestone                       | State       | Note                       |
 | ------------------------------- | ----------- | -------------------------- |
@@ -28,8 +28,9 @@ M9 exit criteria:
    wrappers that call the v2 endpoints and convert their answers.
 2. A script run by hand builds the old server from `master`, starts both
    servers on both clusters, sends each case to both and compares the
-   answers: bytes for query bodies and error bodies, shape for the
-   token. It is green, and it is not in Buildkite.
+   answers: bytes for query bodies, status and shape for error bodies,
+   and shape for the token (owner, 2026-11-06). It is green, and it is
+   not in Buildkite.
 3. The `find` prefix and the deviations the brief lists behave as
    specified, and each deviation's case is left out of the comparison.
 
@@ -37,13 +38,7 @@ In flight: none.
 
 Next:
 
-1. The v1 query: `POST /api/v1/query` and `/api/query`, the bearer
-   header or `?token=`, the conversion from the v2 answer, the `find`
-   prefix, the error rows and a round-trip step (`docs/brief.md`,
-   Compatibility contract). An all-null column may carry its Arrow
-   type's word instead of `none` if matching the old server costs more
-   than a mapping (owner, 2026-11-05).
-2. The side-by-side compatibility script, run by hand, against the old
+1. The side-by-side compatibility script, run by hand, against the old
    server built from `master` (ADR-0015, Decision 4).
 
 Handoff to M9:
@@ -79,6 +74,19 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-06 -- v1-query-plan.md deleted
+
+- Facts moved to `internal/httpapi/v1/AGENTS.md`,
+  `internal/httpapi/AGENTS.md`, `internal/encoding/AGENTS.md`,
+  `docs/brief.md` and the comments of `internal/httpapi`,
+  `internal/httpapi/v1`, `internal/encoding` and `internal/qdb`.
+
+## 2026-11-06 -- a v2 find route, and error bodies compared by shape
+
+- Owner decisions: `POST /api/v2/find` serves the find core and the v1
+  `find` wraps it (`docs/brief.md`, /api/v2 endpoint sketch), and M9
+  exit criterion 2 compares error bodies by status and shape.
 
 ## 2026-11-05 -- v1-login-plan.md deleted
 
