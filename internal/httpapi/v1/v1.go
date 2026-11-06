@@ -15,6 +15,8 @@ func NewHandler(v2 http.Handler) http.Handler {
 	// spelling clients send.
 	mux.Handle("POST /api/v1/login", loginHandler(v2, "/api/v1/login"))
 	mux.Handle("POST /api/login", loginHandler(v2, "/api/login"))
+	mux.Handle("POST /api/v1/query", queryHandler(v2, "/api/v1/query"))
+	mux.Handle("POST /api/query", queryHandler(v2, "/api/query"))
 	// The v2 router keeps its own 404 and 405 for every path that is not
 	// a v1 route.
 	mux.Handle("/", v2)

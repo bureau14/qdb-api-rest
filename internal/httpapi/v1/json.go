@@ -10,6 +10,13 @@ type v1Error struct {
 	Message string `json:"message"`
 }
 
+// v1AuthError is the old server's 401, and the body of its request
+// errors: the status as code, and the message.
+type v1AuthError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
 // writeV1JSON writes the status and v as the old server encoded its
 // bodies: application/json, HTML characters unescaped, and a trailing
 // newline.
