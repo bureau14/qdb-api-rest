@@ -61,8 +61,8 @@ func (c *Cluster) Tagged(ctx context.Context, u User, tag string) ([]string, err
 	if strings.Contains(tag, "'") {
 		return nil, fmt.Errorf("%w: %q holds a single quote", ErrInvalidTag, tag)
 	}
-	// The tag goes through Find, because the find core also serves the v1
-	// find query (docs/brief.md).
+	// The tag goes through the find core, which POST /api/v2/find also
+	// serves.
 	names, err := c.Find(ctx, u, "find(tag='"+tag+"')")
 	if err != nil {
 		return nil, err

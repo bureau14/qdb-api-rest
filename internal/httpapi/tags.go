@@ -11,8 +11,9 @@ import (
 // tagsPath is the tag collection. A tag is tagsPath + "/" + its name.
 const tagsPath = "/api/v2/tags"
 
-// entriesResponse is the body of GET /api/v2/tags/{tag}. The names sit
-// under a key, so a field can join them later without a break.
+// entriesResponse is the body of GET /api/v2/tags/{tag} and of POST
+// /api/v2/find. The names sit under a key, so a field can join them later
+// without a break.
 type entriesResponse struct {
 	Entries []string `json:"entries"`
 }
