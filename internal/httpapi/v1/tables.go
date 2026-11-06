@@ -130,8 +130,10 @@ func readV1Tables(r io.Reader) (v1Tables, error) {
 			}
 			for row := range a.Len() {
 				cols[i].Data = append(cols[i].Data, cell(row))
-				valued[i] = valued[i] || !a.IsNull(row)
 			}
+			// NullN counts every cell of Arrow's null type, whose IsNull
+			// answers false for want of a validity bitmap.
+			valued[i] = valued[i] || a.NullN() < a.Len()
 		}
 		rows += rec.NumRows()
 	}
