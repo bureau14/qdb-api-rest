@@ -65,11 +65,9 @@ decisions are in `docs/adr/`.
   empty batch of its schema, built from `ColumnsInfo`, so the sequence
   is never empty. The Arrow type of a column type is the binding's
   `TsColumnType.ArrowType` (a symbol reads as a string). The server
-  declares no map of its own. Two C API defects surface here without a
-  workaround, filed as sc-19829 and sc-19830. The first: the Arrow path
-  drops one trailing NUL byte from a string cell, and a canary in
-  `internal/qdb/read_test.go` fails when it is fixed. The second: two
-  symbol-bearing tables in one reader fail, so a read is one table.
+  declares no map of its own. One C API defect surfaces here without a
+  workaround, filed as sc-19830: two symbol-bearing tables in one reader
+  fail, so a read is one table.
 - An ingest is one push per request through one held session.
   `Cluster.Ingest` leases one session of the caller's pool for the whole
   body. It lends the decoder a schema lookup bound to that session
@@ -356,9 +354,8 @@ vendor`. Nothing under `vendor/` is written by hand, except the one
   owner chose the bound over a qdbd story. The draw
   does not produce `MinInt64`, `NaN`, the empty string or the empty
   blob, which the server reads back as null whichever writer sent them.
-  It does not produce a NUL either, which the bulk reader drops from the
-  end of a string (sc-19829). Strings draw the characters the text wires
-  quote, and symbols draw only what a symtable takes. The table fixture
+  Strings draw the characters the text wires quote, a NUL among them,
+  and symbols draw only what a symtable takes. The table fixture
   and the cluster fixture (`internal/qdbtest/cluster`, `Bind`, `Each`
   and `EachWith`) are subpackages, because `internal/qdb`'s own tests
   import `qdbtest`, and a `qdbtest` that imported `internal/qdb` would

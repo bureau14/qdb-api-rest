@@ -79,12 +79,11 @@ func drawSymbol(rt *rapid.T) string {
 }
 
 // drawString draws a string value from the characters the text wires
-// must quote or escape (a space, a comma, a quote, <&>, an LF) among
-// plain ones. The value is never empty, because the server stores the
-// empty string as null, and it never holds a NUL, which the bulk reader
-// drops from the end of a string (sc-19829).
+// must quote or escape (a space, a comma, a quote, <&>, an LF, a NUL)
+// among plain ones. The value is never empty, because the server stores
+// the empty string as null.
 func drawString(rt *rapid.T) string {
-	return rapid.StringMatching(`[a-zA-Z0-9 ,"<&>\n]{1,16}`).Draw(rt, "string")
+	return rapid.StringMatching(`[a-zA-Z0-9 ,"<&>\n\x00]{1,16}`).Draw(rt, "string")
 }
 
 // drawTime draws a timestamp value in the range the result set accepts.

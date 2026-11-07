@@ -143,7 +143,7 @@ func (r *releaser) release() {
 func generate(name string, rows, seed int) (arrow.RecordBatch, error) {
 	// The fixture draws the rows, so the vocabulary and the bounds are
 	// those of the property tests and are written once. The bounds are no
-	// empty string, no NUL, no MinInt64 and alphanumeric symbols.
+	// empty string, no MinInt64 and alphanumeric symbols.
 	//
 	//  1. Draw the rows under the seed. rapid.Custom(...).Example(seed) is
 	//     the only seeded entry rapid offers outside a test. Example runs

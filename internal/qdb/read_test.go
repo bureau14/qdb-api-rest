@@ -8,9 +8,7 @@ package qdb_test
 import (
 	"context"
 	"slices"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -24,28 +22,6 @@ import (
 )
 
 func init() { qdbapi.SetLogger(&qdbapi.NilLogger{}) }
-
-// oneRow builds a one-row batch for the table, with $timestamp at
-// 2020-01-01 and the given string in its only column. The caller releases
-// it.
-func oneRow(tbl table.Table, s string) arrow.RecordBatch {
-	schema := table.Schema(tbl)
-	// There is one builder per field. A builder is released once it has
-	// handed its array out, because the array holds its own reference to
-	// the buffers.
-	ts := array.NewTimestampBuilder(memory.DefaultAllocator, schema.Field(0).Type.(*arrow.TimestampType))
-	defer ts.Release()
-	ts.Append(arrow.Timestamp(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()))
-	str := array.NewStringBuilder(memory.DefaultAllocator)
-	defer str.Release()
-	str.Append(s)
-	// The record batch retains the arrays it is built from, so the local
-	// references are released here and the batch alone keeps them alive.
-	cols := []arrow.Array{ts.NewArray(), str.NewArray()}
-	defer cols[0].Release()
-	defer cols[1].Release()
-	return array.NewRecordBatch(schema, cols, 1)
-}
 
 // concat joins the batches column by column into one batch the caller
 // owns.
@@ -144,51 +120,5 @@ func TestReadAnswersRowsWritten(t *testing.T) {
 			}
 			table.Check(rt, tbl, subset)
 		})
-	})
-}
-
-// TestReadDropsTrailingNUL pins a C API defect, sc-19829. The bulk
-// reader's Arrow path drops one trailing NUL byte from a string cell,
-// while the query answers the byte, on either cluster. When this test
-// fails, the C API has been fixed. Delete the test then, and let the
-// fixture's drawString draw NUL.
-func TestReadDropsTrailingNUL(t *testing.T) {
-	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
-		c, u := f.Cluster, f.User
-		tbl := table.Table{Name: "qdbtest_trailing_nul", Columns: []table.Column{{Name: "c0", Type: qdbapi.TsColumnString}}}
-		tbl.Batch = oneRow(tbl, "x\x00")
-		defer tbl.Batch.Release()
-		table.CreateAs(t, c, u, tbl)
-		// A string value aliases the batch's buffer, which a lent batch frees
-		// when yield returns, so both paths copy the cell out.
-		cell := func(rec arrow.RecordBatch) string { return strings.Clone(rec.Column(0).(*array.String).Value(0)) }
-		var queried, read string
-		err := c.Query(context.Background(), u, "SELECT c0 FROM "+tbl.Name, func(seq qdb.Batches) error {
-			for rec, err := range seq {
-				if err != nil {
-					return err
-				}
-				queried = cell(rec)
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("query: %v", err)
-		}
-		err = c.Read(context.Background(), u, tbl.Name, qdb.ReadOptions{Columns: []string{"c0"}}, func(seq qdb.Batches) error {
-			for rec, err := range seq {
-				if err != nil {
-					return err
-				}
-				read = cell(rec)
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("read: %v", err)
-		}
-		if queried != "x\x00" || read != "x" {
-			t.Fatalf("query answered %q and the read %q; sc-19829 fixed? delete this test", queried, read)
-		}
 	})
 }
