@@ -327,3 +327,44 @@ compare_csv() {
         return 1
     fi
 }
+
+# ------------------------------------------------------------ the old server
+
+# old_config <file> <cluster_uri> <port> <tls_port> [<cluster_key> <user_key> <cert> <key>]:
+# writes the old server's JSON config. The four key paths make it a
+# secure config; without them it is insecure.
+old_config() {
+    local file="$1" uri="$2" port="$3" tls_port="$4"
+    local cluster_key="${5:-}" user_key="${6:-}" cert="${7:-}" key="${8:-}"
+    # host is 127.0.0.1, because localhost may resolve to ::1 and the
+    # harness dials v4. An empty log sends the old server's log to the
+    # console, which start_server captures. The buffer size and the
+    # parallelism are its sample config's values. rest_private_key_file
+    # is the harness's user key, because the old server turns security
+    # on only when it is set next to the cluster key.
+    jq -n --arg uri "$uri" --argjson port "$port" --argjson tls_port "$tls_port" \
+        --arg cluster_key "$cluster_key" --arg user_key "$user_key" --arg cert "$cert" --arg key "$key" '{
+        allowed_origins: [],
+        cluster_uri: $uri,
+        cluster_public_key_file: $cluster_key,
+        rest_private_key_file: $user_key,
+        tls_certificate: $cert,
+        tls_key: $key,
+        tls_port: $tls_port,
+        host: "127.0.0.1",
+        port: $port,
+        log: "",
+        max_in_buffer_size: 131072000,
+        parallelism_count: 1
+    }' > "$file"
+}
+
+# old_tls_pair <cert> <key>: a self-signed RSA pair for the secure old
+# server, written once per run.
+old_tls_pair() {
+    local cert="$1" key="$2"
+    # rsa, because the old server signs its tokens with this key and
+    # unmarshals it as PKCS8 RSA.
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$key" -out "$cert" -days 1 \
+        -subj /CN=127.0.0.1 >/dev/null 2>&1 || die "openssl could not write the tls pair $cert, $key"
+}

@@ -7,6 +7,7 @@
 #   make test-round-trip            the v2 round trip, one server per cluster
 #   make test-stress                the stress, by hand: the drain step on both clusters
 #   make old-server                 export master and build the old server into bin/, for the v1 comparison
+#   make test-v1-compare            the v1 comparison, by hand: the old server next to the new one on both clusters
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -91,10 +92,10 @@ ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
 
 COMMON := source $(E2E_DIR)/common.sh
 
-.PHONY: help services-check e2etool jdbc test-round-trip test-stress old-server clean
+.PHONY: help services-check e2etool jdbc test-round-trip test-stress old-server test-v1-compare clean
 
 help:
-	@sed -n '2,11p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,12p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -231,8 +232,64 @@ old-server:
 	    go build -mod=vendor -buildvcs=false -o $(OLD_BIN) ./apps/qdb_rest && \
 	    log_info "built $(OLD_BIN)"
 
+# The comparison starts two servers per cluster. The old server takes an
+# http port and a tls port, because a secure old server must bind tls,
+# and it then redirects every plain request there, so the driver dials
+# the secure one at its tls port. The new servers reuse REST_ARGS and
+# REST_ARGS_SECURE with the round trip's pidfiles and logs, so the
+# comparison and the round trip test one binary the same way. The old
+# server's configs and tls pair are written under COMPARE_OUT per run.
+# COMPARE_TABLE is the round trip's first table, which make
+# test-round-trip has seeded on both clusters, and the target does not
+# run it.
+OLD_PORT            ?= 40096
+OLD_TLS_PORT        ?= 40097
+OLD_PORT_SECURE     ?= 40098
+OLD_TLS_PORT_SECURE ?= 40099
+OLD_PID             := $(E2E_DIR)/old.pid
+OLD_LOG             := $(E2E_DIR)/old.log
+OLD_PID_SECURE      := $(E2E_DIR)/old-secure.pid
+OLD_LOG_SECURE      := $(E2E_DIR)/old-secure.log
+COMPARE_OUT         := $(E2E_DIR)/actual/compare
+OLD_CONF            := $(COMPARE_OUT)/old.json
+OLD_CONF_SECURE     := $(COMPARE_OUT)/old-secure.json
+OLD_TLS_CERT        := $(COMPARE_OUT)/old.cert.pem
+OLD_TLS_KEY         := $(COMPARE_OUT)/old.key.pem
+COMPARE_TABLE       ?= e2e_csv
+COMPARE             := $(E2E_DIR)/compare-v1.sh
+
+# Four servers start and stop in an order the trap must match:
+#   1. the tls pair for the secure old server
+#   2. the secure old server and the secure new server, the driver, both stopped
+#   3. the insecure old server and the insecure new server, the driver, both stopped
+# 1. An RSA pair, because the old server signs its tokens with the tls
+#    key. 2. The secure cluster first, because the login means something
+#    only there. The secure old server is waited for on its tls port,
+#    the one the driver dials.
+test-v1-compare: services-check old-server
+	@$(COMMON); \
+	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
+	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
+	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary>"; \
+	trap 'stop_server $(OLD_PID_SECURE); stop_server $(REST_PID_SECURE); stop_server $(OLD_PID); stop_server $(REST_PID)' EXIT; \
+	rm -rf $(COMPARE_OUT); mkdir -p $(COMPARE_OUT); \
+	old_tls_pair $(OLD_TLS_CERT) $(OLD_TLS_KEY); \
+	old_config $(OLD_CONF_SECURE) $(QDB_URI_SECURE) $(OLD_PORT_SECURE) $(OLD_TLS_PORT_SECURE) \
+	    $(REPO_ROOT)/cluster_public.key $(REPO_ROOT)/user_private.key $(OLD_TLS_CERT) $(OLD_TLS_KEY); \
+	start_server $(OLD_PID_SECURE) $(OLD_LOG_SECURE) $(OLD_TLS_PORT_SECURE) $(OLD_BIN) --config-file $(OLD_CONF_SECURE); \
+	start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
+	$(COMPARE) --name secure --old https://127.0.0.1:$(OLD_TLS_PORT_SECURE) --new http://127.0.0.1:$(REST_PORT_SECURE) \
+	    --table $(COMPARE_TABLE) --out $(COMPARE_OUT)/secure --login-body $(REPO_ROOT)/user_private.key; \
+	stop_server $(OLD_PID_SECURE); stop_server $(REST_PID_SECURE); \
+	old_config $(OLD_CONF) $(QDB_URI) $(OLD_PORT) $(OLD_TLS_PORT); \
+	start_server $(OLD_PID) $(OLD_LOG) $(OLD_PORT) $(OLD_BIN) --config-file $(OLD_CONF); \
+	start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
+	$(COMPARE) --name insecure --old http://127.0.0.1:$(OLD_PORT) --new http://127.0.0.1:$(REST_PORT) \
+	    --table $(COMPARE_TABLE) --out $(COMPARE_OUT)/insecure; \
+	log_info "v1 comparison: both clusters passed"
+
 # ------------------------------------------------------------------ cleanup
 
 clean:
-	@$(COMMON); stop_server $(REST_PID); stop_server $(REST_PID_SECURE); \
-	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(E2ETOOL) $(JDBC_DIR)/target
+	@$(COMMON); stop_server $(REST_PID); stop_server $(REST_PID_SECURE); stop_server $(OLD_PID); stop_server $(OLD_PID_SECURE); \
+	rm -rf $(E2E_DIR)/actual $(E2E_DIR)/*.log $(E2E_DIR)/*.pid $(E2ETOOL) $(JDBC_DIR)/target $(OLD_SRC) $(OLD_BIN)

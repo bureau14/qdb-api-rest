@@ -24,7 +24,7 @@ require_command jq
 require_command cmp
 
 NAME="" OLD="" NEW="" TABLE="" OUT="" LOGIN_BODY=""
-OLD_TOKEN="" NEW_TOKEN=""
+OLD_TOKEN="" NEW_TOKEN="" OLD_CURL=""
 
 # QUERIES: the query texts, one per line, with @TABLE@ for the table.
 # A select star over every type and null, no rows, a find that
@@ -58,6 +58,9 @@ parse_args() {
         esac
     done
     [[ -n "$NAME" && -n "$OLD" && -n "$NEW" && -n "$TABLE" && -n "$OUT" ]] || usage
+    # The secure old server redirects every plain request to its tls
+    # port, so it is dialled there, and its certificate is self-signed.
+    if [[ "$OLD" == https://* ]]; then OLD_CURL="-k"; fi
 }
 
 # shape_of <body_file>: the body with every scalar replaced by its JSON
@@ -100,7 +103,7 @@ compare() {
 # non-empty token; sets OLD_TOKEN and NEW_TOKEN.
 login_case() {
     local old_status new_status
-    old_status=$(request "$OUT" login.old -X POST -H 'Content-Type: application/json' --data-binary "@$LOGIN_BODY" "$OLD/api/login")
+    old_status=$(request "$OUT" login.old $OLD_CURL -X POST -H 'Content-Type: application/json' --data-binary "@$LOGIN_BODY" "$OLD/api/login")
     new_status=$(request "$OUT" login.new -X POST -H 'Content-Type: application/json' --data-binary "@$LOGIN_BODY" "$NEW/api/v1/login")
     expect 200 "$old_status" "$OUT" login.old || return 1
     expect 200 "$new_status" "$OUT" login.new || return 1
@@ -122,7 +125,7 @@ query_case() {
     local i="$1" query="$2" body old_status status
     body=$(jq -cn --arg q "$query" '{query: $q}')
     # The old server knows the unversioned spelling only.
-    old_status=$(request "$OUT" "q$i.old" -X POST -H "Authorization: Bearer $OLD_TOKEN" -H 'Content-Type: application/json' \
+    old_status=$(request "$OUT" "q$i.old" $OLD_CURL -X POST -H "Authorization: Bearer $OLD_TOKEN" -H 'Content-Type: application/json' \
         --data-binary "$body" "$OLD/api/query")
     # The new server answers both spellings, and each is compared with
     # the old.
