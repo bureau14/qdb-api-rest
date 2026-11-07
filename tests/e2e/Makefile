@@ -232,61 +232,56 @@ old-server:
 	    go build -mod=vendor -buildvcs=false -o $(OLD_BIN) ./apps/qdb_rest && \
 	    log_info "built $(OLD_BIN)"
 
-# The comparison starts two servers per cluster. The old server takes an
-# http port and a tls port, because a secure old server must bind tls,
-# and it then redirects every plain request there, so the driver dials
-# the secure one at its tls port. The new servers reuse REST_ARGS and
-# REST_ARGS_SECURE with the round trip's pidfiles and logs, so the
-# comparison and the round trip test one binary the same way. The old
-# server's configs and tls pair are written under COMPARE_OUT per run.
-# COMPARE_TABLE is the round trip's first table, which make
-# test-round-trip has seeded on both clusters, and the target does not
-# run it.
+# The comparison runs the old server next to the new one on each
+# cluster. The new servers reuse REST_ARGS and REST_ARGS_SECURE with the
+# round trip's pidfiles and logs, so the comparison and the round trip
+# test one binary the same way.
+
+# The old server's ports. It takes an http port and a tls port per
+# cluster, because a secure old server must bind tls, and it then
+# redirects every plain request there, so the driver dials the secure
+# one at its tls port.
 OLD_PORT            ?= 40096
 OLD_TLS_PORT        ?= 40097
 OLD_PORT_SECURE     ?= 40098
 OLD_TLS_PORT_SECURE ?= 40099
-OLD_PID             := $(E2E_DIR)/old.pid
-OLD_LOG             := $(E2E_DIR)/old.log
-OLD_PID_SECURE      := $(E2E_DIR)/old-secure.pid
-OLD_LOG_SECURE      := $(E2E_DIR)/old-secure.log
-COMPARE_OUT         := $(E2E_DIR)/actual/compare
-OLD_CONF            := $(COMPARE_OUT)/old.json
-OLD_CONF_SECURE     := $(COMPARE_OUT)/old-secure.json
-OLD_TLS_CERT        := $(COMPARE_OUT)/old.cert.pem
-OLD_TLS_KEY         := $(COMPARE_OUT)/old.key.pem
-COMPARE_TABLE       ?= e2e_csv
-COMPARE             := $(E2E_DIR)/compare-v1.sh
 
-# Four servers start and stop in an order the trap must match:
-#   1. the tls pair for the secure old server
-#   2. the secure old server and the secure new server, the driver, both stopped
-#   3. the insecure old server and the insecure new server, the driver, both stopped
-# 1. An RSA pair, because the old server signs its tokens with the tls key.
-# 2. The secure cluster first, because the login means something only
-#    there. The secure old server is waited for on its tls port, the one
-#    the driver dials.
+# The old server's pidfiles and logs, next to the round trip's.
+OLD_PID        := $(E2E_DIR)/old.pid
+OLD_LOG        := $(E2E_DIR)/old.log
+OLD_PID_SECURE := $(E2E_DIR)/old-secure.pid
+OLD_LOG_SECURE := $(E2E_DIR)/old-secure.log
+
+# The run's working files: the driver's bodies per cluster, and the old
+# server's configs and tls pair, written per run.
+COMPARE_OUT     := $(E2E_DIR)/actual/compare
+OLD_CONF        := $(COMPARE_OUT)/old.json
+OLD_CONF_SECURE := $(COMPARE_OUT)/old-secure.json
+OLD_TLS_CERT    := $(COMPARE_OUT)/old.cert.pem
+OLD_TLS_KEY     := $(COMPARE_OUT)/old.key.pem
+
+# The driver and its table. COMPARE_TABLE is the round trip's first
+# table, which make test-round-trip has seeded on both clusters, and
+# the target does not run it.
+COMPARE_TABLE ?= e2e_csv
+COMPARE       := $(E2E_DIR)/compare-v1.sh
+
+# The driver starts both servers of each cluster itself, runs the
+# comparison and stops them, and the values it uses are exported here,
+# because a recipe carries no comment between its lines and the
+# driver's steps need them. Both clusters must answer, and the secure
+# probe lives here as in the round trip.
+export OLD_BIN OLD_PORT OLD_TLS_PORT OLD_PORT_SECURE OLD_TLS_PORT_SECURE
+export OLD_PID OLD_LOG OLD_PID_SECURE OLD_LOG_SECURE
+export COMPARE_OUT OLD_CONF OLD_CONF_SECURE OLD_TLS_CERT OLD_TLS_KEY COMPARE_TABLE
+export QDB_REST_BIN REST_PORT REST_ARGS REST_PID REST_LOG
+export REST_PORT_SECURE REST_ARGS_SECURE REST_PID_SECURE REST_LOG_SECURE QDB_URI_SECURE
 test-v1-compare: services-check old-server
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
 	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary>"; \
-	trap 'stop_server $(OLD_PID_SECURE); stop_server $(REST_PID_SECURE); stop_server $(OLD_PID); stop_server $(REST_PID)' EXIT; \
-	rm -rf $(COMPARE_OUT); mkdir -p $(COMPARE_OUT); \
-	old_tls_pair $(OLD_TLS_CERT) $(OLD_TLS_KEY); \
-	old_config $(OLD_CONF_SECURE) $(QDB_URI_SECURE) $(OLD_PORT_SECURE) $(OLD_TLS_PORT_SECURE) \
-	    $(REPO_ROOT)/cluster_public.key $(REPO_ROOT)/user_private.key $(OLD_TLS_CERT) $(OLD_TLS_KEY); \
-	start_server $(OLD_PID_SECURE) $(OLD_LOG_SECURE) $(OLD_TLS_PORT_SECURE) $(OLD_BIN) --config-file $(OLD_CONF_SECURE); \
-	start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
-	$(COMPARE) --name secure --old https://127.0.0.1:$(OLD_TLS_PORT_SECURE) --new http://127.0.0.1:$(REST_PORT_SECURE) \
-	    --table $(COMPARE_TABLE) --out $(COMPARE_OUT)/secure --login-body $(REPO_ROOT)/user_private.key; \
-	stop_server $(OLD_PID_SECURE); stop_server $(REST_PID_SECURE); \
-	old_config $(OLD_CONF) $(QDB_URI) $(OLD_PORT) $(OLD_TLS_PORT); \
-	start_server $(OLD_PID) $(OLD_LOG) $(OLD_PORT) $(OLD_BIN) --config-file $(OLD_CONF); \
-	start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
-	$(COMPARE) --name insecure --old http://127.0.0.1:$(OLD_PORT) --new http://127.0.0.1:$(REST_PORT) \
-	    --table $(COMPARE_TABLE) --out $(COMPARE_OUT)/insecure; \
-	log_info "v1 comparison: both clusters passed"
+	$(COMPARE)
 
 # ------------------------------------------------------------------ cleanup
 
