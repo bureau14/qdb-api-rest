@@ -6,6 +6,7 @@
 #   make jdbc                       build the JDBC smoke jar of the v2 round trip
 #   make test-round-trip            the v2 round trip, one server per cluster
 #   make test-stress                the stress, by hand: the drain step on both clusters
+#   make old-server                 export master and build the old server into bin/, for the v1 comparison
 #
 # qdbd is a persistent service: bash scripts/tests/setup/start-services.sh
 
@@ -90,10 +91,10 @@ ROUND_TRIP        := $(E2E_DIR)/round-trip.sh
 
 COMMON := source $(E2E_DIR)/common.sh
 
-.PHONY: help services-check e2etool jdbc test-round-trip test-stress clean
+.PHONY: help services-check e2etool jdbc test-round-trip test-stress old-server clean
 
 help:
-	@sed -n '2,10p' $(firstword $(MAKEFILE_LIST))
+	@sed -n '2,11p' $(firstword $(MAKEFILE_LIST))
 
 services-check:
 	@$(COMMON) && require_qdbd && log_info "qdbd answering on $(QDB_URI)"
@@ -208,6 +209,27 @@ test-stress: services-check e2etool
 	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW) \
 	    --login-body $(REPO_ROOT)/user_private.key; \
 	log_info "stress budget and drain steps: both clusters passed (seed=$(STRESS_SEED))"
+
+# ---------------------------------------------------------- v1 comparison
+
+# The old server (docs/e2e.md, The v1 comparison): master, exported into
+# OLD_SRC and built against this repository's qdb/, by hand, for the
+# comparison. OLD_SRC is gitignored. The binary lands next to qdb_rest,
+# because every cgo binary the harness runs sits in bin/.
+OLD_SRC := $(E2E_DIR)/old-server
+OLD_BIN := $(BIN_DIR)/qdb_rest_old$(EXE_EXT)
+
+# git archive leaves .git untouched, where a worktree would register
+# itself and need pruning. The export's own .envrc resolves qdb/ next to
+# itself, so the repository's qdb/ is symlinked in, and the build sources
+# that .envrc and links from the export's own vendor/.
+old-server:
+	@$(COMMON); rm -rf $(OLD_SRC); mkdir -p $(OLD_SRC) $(BIN_DIR); \
+	cd $(REPO_ROOT) && git archive master | tar -x -C $(OLD_SRC); \
+	ln -s $(QDB_DIR) $(OLD_SRC)/qdb; \
+	cd $(OLD_SRC) && source ./.envrc && \
+	    go build -mod=vendor -buildvcs=false -o $(OLD_BIN) ./apps/qdb_rest && \
+	    log_info "built $(OLD_BIN)"
 
 # ------------------------------------------------------------------ cleanup
 

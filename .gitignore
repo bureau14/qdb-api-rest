@@ -21,6 +21,8 @@ tests/e2e/actual/
 tests/e2e/tools/jdbc/target/
 tests/e2e/*.log
 tests/e2e/*.pid
+# the old server's export, built by make old-server
+tests/e2e/old-server/
 # Python venvs
 .env/
 .venv/
