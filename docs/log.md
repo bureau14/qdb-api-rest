@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-06
+Last updated: 2026-11-07
 
 | Milestone                       | State       | Note                       |
 | ------------------------------- | ----------- | -------------------------- |
@@ -36,10 +36,7 @@ M9 exit criteria:
 
 In flight: none.
 
-Next:
-
-1. The side-by-side compatibility script, run by hand, against the old
-   server built from `master` (ADR-0015, Decision 4).
+Next: none.
 
 Handoff to M9:
 
@@ -74,6 +71,11 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-07 -- v1-compare-plan.md deleted
+
+- Facts moved to `docs/e2e.md`, "The v1 comparison", `tests/e2e/AGENTS.md`
+  and the comments of `tests/e2e`.
 
 ## 2026-11-06 -- v1-query-plan.md deleted
 
