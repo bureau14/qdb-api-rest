@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The v1 comparison (docs/e2e.md, The v1 comparison): one cluster per
-# call. It logs in to the old server and the new one, then sends each
-# query of QUERIES to both under each server's token. The old server is
+# call. It logs in to the old server and the new one, tags the table
+# through the new server, then sends each query of QUERIES to both under
+# each server's token. The old server is
 # sent /api/<path>; the new server /api/v1/<path> and /api/<path>, and
 # each of its answers is compared with the old server's. A 200 compares
 # as bytes, anything else by status and the shape of the body.
@@ -26,17 +27,21 @@ require_command cmp
 NAME="" OLD="" NEW="" TABLE="" OUT="" LOGIN_BODY=""
 OLD_TOKEN="" NEW_TOKEN="" OLD_CURL=""
 
-# QUERIES: the query texts, one per line, with @TABLE@ for the table.
-# A select star over every type and null, no rows, a find that
-# matches, a find that does not, an invalid query, an unknown table.
+# TAG is the round trip's tag, which tag_case puts on the table.
+TAG=e2e_tag
+
+# QUERIES: the query texts, one per line, with @TABLE@ for the table and
+# @TAG@ for the tag. A select star over every type and null, no rows,
+# a find that matches, a find that does not, an invalid query, an
+# unknown table.
 # No COUNT, because its type word is a listed deviation. The range
 # holds no generated row, because the rows start on the last day of
 # 2019. The invalid query and the unknown table are the Go test's.
 QUERIES=(
     "SELECT * FROM @TABLE@"
     "SELECT * FROM @TABLE@ IN RANGE(1970, +1d)"
-    "find(tag='e2e_tag')"
-    "find(tag='e2e_tag_none')"
+    "find(tag='@TAG@')"
+    "find(tag='@TAG@_none')"
     "NOT A QUERY"
     "SELECT * FROM qdbtest_v1_none"
 )
@@ -119,6 +124,18 @@ login_case() {
     log_info "[OK] login: 200, the same shape on both servers"
 }
 
+# tag_case: PUT the tag on the table through the new server's v2 route,
+# so the find that matches has a carrier; 204.
+tag_case() {
+    local status
+    # The round trip detaches the tag at its end, so the comparison
+    # attaches it and leaves it: a second PUT is 204 too, and the round
+    # trip removes the tag entry before its own tag step.
+    status=$(request "$OUT" tag -X PUT -H "Authorization: Bearer $NEW_TOKEN" "$NEW/api/v2/tables/$TABLE/tags/$TAG")
+    expect 204 "$status" "$OUT" tag || return 1
+    log_info "[OK] tag: $TAG on $TABLE"
+}
+
 # query_case <index> <query>: the query to the old server, then to the
 # new server at both spellings, each new answer compared with the old.
 query_case() {
@@ -137,13 +154,15 @@ query_case() {
     compare "q$i /api/query $query" "$old_status" "$OUT/q$i.old.body" "$status" "$OUT/q$i.alias.body" || return 1
 }
 
-# run_cluster: login_case, then query_case over QUERIES.
+# run_cluster: login_case, tag_case, then query_case over QUERIES.
 run_cluster() {
-    local i
+    local i query
     log_info "$NAME: old $OLD, new $NEW, table $TABLE"
     login_case || return 1
+    tag_case || return 1
     for i in "${!QUERIES[@]}"; do
-        query_case "$i" "${QUERIES[$i]//@TABLE@/$TABLE}" || return 1
+        query="${QUERIES[$i]//@TABLE@/$TABLE}"
+        query_case "$i" "${query//@TAG@/$TAG}" || return 1
     done
 }
 
