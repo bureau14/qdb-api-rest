@@ -2,10 +2,10 @@
 # The v1 comparison (docs/e2e.md, The v1 comparison): one cluster per
 # call. It logs in to the old server and the new one, tags the table
 # through the new server, then sends each query of QUERIES to both under
-# each server's token. The old server is
-# sent /api/<path>; the new server /api/v1/<path> and /api/<path>, and
-# each of its answers is compared with the old server's. A 200 compares
-# as bytes, anything else by status and the shape of the body.
+# each server's token. The old server is sent /api/<path>; the new
+# server /api/v1/<path> and /api/<path>, and each of its answers is
+# compared with the old server's. A 200 compares as bytes, anything else
+# by status and the shape of the body.
 #
 #   compare-v1.sh --name <cluster> --old <url> --new <url> --table <name> --out <dir> [--login-body <file>]
 #
@@ -33,10 +33,10 @@ TAG=e2e_tag
 # QUERIES: the query texts, one per line, with @TABLE@ for the table and
 # @TAG@ for the tag. A select star over every type and null, no rows,
 # a find that matches, a find that does not, an invalid query, an
-# unknown table.
-# No COUNT, because its type word is a listed deviation. The range
-# holds no generated row, because the rows start on the last day of
-# 2019. The invalid query and the unknown table are the Go test's.
+# unknown table. No COUNT, because its type word is a listed deviation.
+# The range holds no generated row, because the rows start on the last
+# day of 2019. The invalid query and the unknown table are the Go
+# test's.
 QUERIES=(
     "SELECT * FROM @TABLE@"
     "SELECT * FROM @TABLE@ IN RANGE(1970, +1d)"
@@ -63,8 +63,7 @@ parse_args() {
         esac
     done
     [[ -n "$NAME" && -n "$OLD" && -n "$NEW" && -n "$TABLE" && -n "$OUT" ]] || usage
-    # The secure old server redirects every plain request to its tls
-    # port, so it is dialled there, and its certificate is self-signed.
+    # The secure old server's certificate is self-signed.
     if [[ "$OLD" == https://* ]]; then OLD_CURL="-k"; fi
 }
 

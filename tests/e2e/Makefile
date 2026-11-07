@@ -262,10 +262,10 @@ COMPARE             := $(E2E_DIR)/compare-v1.sh
 #   1. the tls pair for the secure old server
 #   2. the secure old server and the secure new server, the driver, both stopped
 #   3. the insecure old server and the insecure new server, the driver, both stopped
-# 1. An RSA pair, because the old server signs its tokens with the tls
-#    key. 2. The secure cluster first, because the login means something
-#    only there. The secure old server is waited for on its tls port,
-#    the one the driver dials.
+# 1. An RSA pair, because the old server signs its tokens with the tls key.
+# 2. The secure cluster first, because the login means something only
+#    there. The secure old server is waited for on its tls port, the one
+#    the driver dials.
 test-v1-compare: services-check old-server
 	@$(COMMON); \
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \

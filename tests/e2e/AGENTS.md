@@ -80,10 +80,8 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   clusters. `make old-server` exports `master` into `old-server/` and
   builds it against the repository's `qdb/`; the export is never
   edited. The old server's config and TLS pair are written by
-  `common.sh`, and the secure old server is dialled at its TLS port,
-  because it redirects plain requests there. No query sends `#sql` and
-  none exercises a deviation the brief lists. The mechanics are
-  `docs/e2e.md`, "The v1 comparison".
+  `common.sh`. No query sends `#sql` and none exercises a deviation the
+  brief lists. The mechanics are `docs/e2e.md`, "The v1 comparison".
 - `common.sh` exports `TZ=UTC` for every server the harness starts.
   Keep it that way, so a response that carries a local-time timestamp
   compares equal on every machine.
