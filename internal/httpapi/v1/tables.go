@@ -19,11 +19,11 @@ type v1Tables struct {
 	Tables []v1Table `json:"tables"`
 }
 
-// v1Table is one table: its name, empty for a query, and its columns, nil
-// for a find.
+// v1Table is one table, its keys in the old server's order: its columns,
+// nil for a find, then its name, empty for a query.
 type v1Table struct {
-	Name    string     `json:"name,omitempty"`
 	Columns []v1Column `json:"columns"`
+	Name    string     `json:"name,omitempty"`
 }
 
 // v1Column is one column, its keys in the old server's order.

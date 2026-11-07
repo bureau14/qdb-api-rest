@@ -410,7 +410,7 @@ func TestFind(t *testing.T) {
 		if attached.Code != http.StatusNoContent {
 			t.Fatalf("attach: status %d: %s", attached.Code, attached.Body.String())
 		}
-		found := `{"tables":[{"name":"` + tbl.Name + `","columns":null}]}` + "\n"
+		found := `{"tables":[{"columns":null,"name":"` + tbl.Name + `"}]}` + "\n"
 		for _, path := range queryPaths {
 			for _, row := range []struct{ query, body string }{
 				{"find(tag='" + tag + "')", found},
