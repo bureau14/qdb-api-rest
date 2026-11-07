@@ -1,8 +1,8 @@
 # tests/e2e -- end-to-end harness
 
 The v2 round trip, the stress and the v1 comparison for the QuasarDB
-REST API, run against a live qdbd. The specification is `docs/e2e.md`, and the conventions
-are in `AGENTS.md`.
+REST API, run against a live qdbd. The specification is `docs/e2e.md`,
+and the conventions are in `AGENTS.md`.
 
 ## Prerequisites
 
