@@ -69,11 +69,12 @@ definition". Working files are under `actual/stress/<cluster>/`.
 `make test-v1-compare` runs after `make test-round-trip` has seeded the
 clusters. It builds the old server from `master` (`make old-server`)
 and runs `compare-v1.sh`, which starts it next to the new one on the
-secure cluster and then on the insecure one, logs in to both, tags `e2e_csv` with `e2e_tag` through
-the new server, and sends each query of `compare-v1.sh` to both: the
-old server at `/api/<path>`, the new one at `/api/v1/<path>` and
-`/api/<path>`. A 200 compares byte for byte, anything else by status
-and the shape of the body, and the login by shape. It runs by hand and
-never in CI, and `COMPARE_TABLE` selects the table. The definition is
-`docs/e2e.md`, "The v1 comparison". Working files are under
-`actual/compare/<cluster>/`, and the export under `old-server/`.
+secure cluster and then on the insecure one, logs in to both, tags
+`e2e_csv` with `e2e_tag` through the new server, and sends each of its
+queries to both: the old server at `/api/<path>`, the new one at
+`/api/v1/<path>` and `/api/<path>`. A 200 compares byte for byte,
+anything else by status and the shape of the body, and the login by
+shape. It runs by hand and never in CI, and `COMPARE_TABLE` selects the
+table. The definition is `docs/e2e.md`, "The v1 comparison". Working
+files are under `actual/compare/<cluster>/`, and the export under
+`old-server/`.

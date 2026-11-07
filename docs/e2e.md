@@ -423,15 +423,15 @@ through `make test-v1-compare` on a developer machine and never in
 Buildkite (owner, 2026-11-07). The Makefile exports every path, port
 and flag, and the driver starts the old server, built from `master`,
 next to the new one on the same cluster, stops both at the end, and
-sends the same requests to both: a login, then a list of queries under each server's
-own token. The login's token compares by shape, because the two servers
-mint different tokens. A query that answers 200 compares as bytes, and
-one that fails compares by status and the shape of its body, because
-each server words its own messages (ADR-0015, D4). The shape is the
-body with every scalar replaced by its JSON type and every array cut to
-its first element. The old server is sent `/api/<path>`, the new server
-`/api/v1/<path>` and `/api/<path>`, and each of its answers is compared
-with the old server's (ADR-0008).
+sends the same requests to both: a login, then a list of queries under
+each server's own token. The login's token compares by shape, because
+the two servers mint different tokens. A query that answers 200
+compares as bytes, and one that fails compares by status and the shape
+of its body, because each server words its own messages (ADR-0015,
+D4). The shape is the body with every scalar replaced by its JSON type
+and every array cut to its first element. The old server is sent
+`/api/<path>`, the new server `/api/v1/<path>` and `/api/<path>`, and
+each of its answers is compared with the old server's (ADR-0008).
 
 The run is seeded by the round trip, which it does not run (owner,
 2026-11-07): `make test-round-trip` leaves `e2e_csv` on both clusters,
@@ -447,12 +447,12 @@ built by the export's own `.envrc` from its own `vendor/`, into `bin/`
 next to `qdb_rest`. It reads one JSON config file, which the driver
 writes per run through `common.sh` with the host, the two ports, and on
 the secure cluster the cluster key, the harness's user key and a
-self-signed RSA TLS pair written with `openssl`, because the old server signs
-its tokens with its TLS private key and reads it as PKCS8 RSA. A
-secure old server redirects every plain request to its TLS port, so the
-driver dials that port and accepts the self-signed certificate. Both
-servers run under `TZ=UTC`, as every server the harness starts, so the
-UTC deviation of the brief never shows.
+self-signed RSA TLS pair written with `openssl`, because the old
+server signs its tokens with its TLS private key and reads it as PKCS8
+RSA. A secure old server redirects every plain request to its TLS port,
+so the driver dials that port and accepts the self-signed certificate.
+Both servers run under `TZ=UTC`, as every server the harness starts, so
+the UTC deviation of the brief never shows.
 
 The queries, and what each proves: a `SELECT *` over the round trip's
 table, every type and a null in every nullable column, as bytes; the
