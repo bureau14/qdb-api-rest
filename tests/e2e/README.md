@@ -1,7 +1,7 @@
 # tests/e2e -- end-to-end harness
 
-The v2 round trip and the stress for the QuasarDB REST API, run against
-a live qdbd. The specification is `docs/e2e.md`, and the conventions
+The v2 round trip, the stress and the v1 comparison for the QuasarDB
+REST API, run against a live qdbd. The specification is `docs/e2e.md`, and the conventions
 are in `AGENTS.md`.
 
 ## Prerequisites
@@ -11,9 +11,10 @@ are in `AGENTS.md`.
 - qdbd running: `bash scripts/tests/setup/start-services.sh` (insecure
   `127.0.0.1:2836`, secure `:2838`). The script force-restarts and wipes
   the data dirs.
-- `curl`, `gunzip`, GNU make, Go (for the round trip's `tools/e2etool`),
-  and `java` and `mvn` (for its `tools/jdbc` jar, which the round trip
-  needs on every platform).
+- `curl`, `gunzip`, `jq`, GNU make, Go (for the round trip's
+  `tools/e2etool`), `java` and `mvn` (for its `tools/jdbc` jar, which
+  the round trip needs on every platform), and `openssl` for the v1
+  comparison.
 
 ## Usage
 
@@ -24,6 +25,8 @@ make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one 
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
     FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
 make test-stress QDB_REST_BIN=<new server binary>      # the stress, by hand: the drain step on both clusters
+make old-server                                        # export master and build the old server into <repo>/bin/
+make test-v1-compare QDB_REST_BIN=<new server binary>  # the v1 comparison, by hand, after a round trip
 ```
 
 ## The v2 round trip
@@ -60,3 +63,17 @@ cleanly on its own. It runs by hand and never in CI. `STRESS_ROWS`,
 `STRESS_EXIT_WINDOW` are its parameters, and the Makefile says why
 each has its value. The definition is `docs/e2e.md`, "Stress
 definition". Working files are under `actual/stress/<cluster>/`.
+
+## The v1 comparison
+
+`make test-v1-compare` runs after `make test-round-trip` has seeded the
+clusters. It builds the old server from `master` (`make old-server`),
+starts it next to the new one on the secure cluster and then on the
+insecure one, logs in to both, tags `e2e_csv` with `e2e_tag` through
+the new server, and sends each query of `compare-v1.sh` to both: the
+old server at `/api/<path>`, the new one at `/api/v1/<path>` and
+`/api/<path>`. A 200 compares byte for byte, anything else by status
+and the shape of the body, and the login by shape. It runs by hand and
+never in CI, and `COMPARE_TABLE` selects the table. The definition is
+`docs/e2e.md`, "The v1 comparison". Working files are under
+`actual/compare/<cluster>/`, and the export under `old-server/`.

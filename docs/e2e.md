@@ -416,6 +416,55 @@ outlasts the read because a grace that expires cuts the stream by
 process exit; and the exit window above the grace. The agents are
 small, which is why the stress runs by hand.
 
+## The v1 comparison
+
+The v1 comparison is shell and curl (`compare-v1.sh`), run by hand
+through `make test-v1-compare` on a developer machine and never in
+Buildkite (owner, 2026-11-07). It runs the old server, built from
+`master`, next to the new one on the same cluster, and sends the same
+requests to both: a login, then a list of queries under each server's
+own token. The login's token compares by shape, because the two servers
+mint different tokens. A query that answers 200 compares as bytes, and
+one that fails compares by status and the shape of its body, because
+each server words its own messages (ADR-0015, D4). The shape is the
+body with every scalar replaced by its JSON type and every array cut to
+its first element. The old server is sent `/api/<path>`, the new server
+`/api/v1/<path>` and `/api/<path>`, and each of its answers is compared
+with the old server's (ADR-0008).
+
+The run is seeded by the round trip, which it does not run (owner,
+2026-11-07): `make test-round-trip` leaves `e2e_csv` on both clusters,
+and the comparison puts the round trip's tag `e2e_tag` on it through
+the new server's v2 tag route, because the round trip detaches the tag
+at its end. The secure cluster runs first, then the insecure one
+(owner, 2026-11-07), because the login means something only on the
+secure cluster and the anonymous login is the plugin's path.
+
+The old server is a `git archive master` export under
+`tests/e2e/old-server/`, with the repository's `qdb/` symlinked in and
+built by the export's own `.envrc` from its own `vendor/`, into `bin/`
+next to `qdb_rest`. It reads one JSON config file, which `common.sh`
+writes per run with the host, the two ports, and on the secure cluster
+the cluster key, the harness's user key and a self-signed RSA TLS pair
+that `common.sh` writes with `openssl`, because the old server signs
+its tokens with its TLS private key and reads it as PKCS8 RSA. A
+secure old server redirects every plain request to its TLS port, so the
+driver dials that port and accepts the self-signed certificate. Both
+servers run under `TZ=UTC`, as every server the harness starts, so the
+UTC deviation of the brief never shows.
+
+The queries, and what each proves: a `SELECT *` over the round trip's
+table, every type and a null in every nullable column, as bytes; the
+same over a range before the generated rows, the empty answer; a find
+on the tag, one table with `columns` null; a find on a tag nobody
+carries, no table; an invalid query and an unknown table, both 400 with
+a body of one message. No query sends `#sql` (owner, 2026-11-07), and
+none exercises a deviation the brief lists, `COUNT` included, so every
+red is a bug. A gzip comparison waits for the unit that makes v1 honor
+`Accept-Encoding`, and is one more query line then. The run stores
+nothing: working files are under `actual/compare/<cluster>/`, and `make
+clean` removes them with the export and the old binary.
+
 ## Layout
 
 ```
@@ -423,11 +472,14 @@ scripts/tests/setup/      qdb-test-setup git submodule (start-services.sh, ...);
 tests/e2e/
   Makefile                services-check | e2etool | jdbc | test-round-trip | clean
                           test-stress (by hand; the budget step, then the drain step)
+                          old-server | test-v1-compare (by hand; the old server next to the new)
   common.sh               helpers: log_*, pidfile/start_server/stop_server/wait_for_exit,
                           the request, login, create, ingest and compare helpers both
-                          drivers share, qdbsh wrapper
+                          drivers share, the old server's config and tls pair, qdbsh wrapper
   round-trip.sh           the v2 round trip driver
   stress.sh               the stress driver, one cluster per call
+  compare-v1.sh           the v1 comparison driver, one cluster per call
+  old-server/             the export of master that make old-server builds (gitignored)
   tools/e2etool/          Go: gen, tocsv and adbc;
                           gen writes the four body files, tocsv decodes a response to CSV,
                           adbc runs a statement through arrow-adbc's Flight SQL driver
@@ -445,6 +497,15 @@ golden datasets are not used: every row the harness needs is drawn by
 `e2etool gen` through the table fixture of the Go property tests, so
 schema variety (every column type, nulls, awkward strings) comes from
 the same generator in-process and over HTTP.
+
+## Decision log (2026-11-07)
+
+| Decision                                                                            | Why                                                                                                          | Rejected                                                                                                 |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| The old server is built from a `git archive master` export, not a worktree          | the export leaves `.git` untouched, and its own `.envrc` works with a `qdb/` symlink; one `rm -rf` cleans it | `git worktree add`, which registers in `.git`, needs pruning, and a stale one blocks a branch            |
+| A separate driver and target, not steps of the round trip                           | the round trip runs in CI on every platform and the comparison does not                                      | cases in `round-trip.sh` behind a flag, so the CI driver would carry code it never runs                  |
+| The old-server helpers live in `common.sh`, the compare in the driver               | the Makefile sources `common.sh` and starts the servers; nothing else compares                               | everything in the driver, so the Makefile could not start the old server                                 |
+| One flow, a login, the tag, then a query list, over a cluster the round trip seeded | one script a reader can hold                                                                                 | the script generating and ingesting its own rows, a null table, token forms: each a mechanism of its own |
 
 ## Decision log (2026-10-28)
 
