@@ -1,7 +1,7 @@
 # Plan: the side-by-side comparison of v1 with the old server
 
 Thread: v1 side-by-side comparison
-Status: draft
+Status: approved
 
 ## Outcome
 
