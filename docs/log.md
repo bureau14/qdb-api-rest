@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-07
+Last updated: 2026-11-09
 
 | Milestone                       | State       | Note                       |
 | ------------------------------- | ----------- | -------------------------- |
@@ -71,6 +71,14 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-09 -- v1-gzip-plan.md deleted
+
+- Owner decision: the v1 routes compress by the v2 rule, zstd included
+  (`docs/brief.md`, Compatibility contract). Facts moved to
+  `docs/brief.md`, ADR-0012, `internal/httpapi/AGENTS.md`,
+  `internal/httpapi/v1/AGENTS.md`, `docs/e2e.md` and the comments of
+  `internal/httpapi`, `internal/httpapi/v1` and `tests/e2e`.
 
 ## 2026-11-07 -- v1-compare-plan.md deleted
 
