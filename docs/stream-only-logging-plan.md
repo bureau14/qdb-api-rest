@@ -13,14 +13,16 @@ stdout and reports the service's lifecycle to the Event Log. The
 brief's observability paragraph, project structure, M10 line and
 ecosystem table say the same in one sentence each, and
 `cmd/qdb_rest/AGENTS.md` has one bullet so an agent about to add a
-service path reads the rule first. The log marks M9 done and M10 in
-progress with its exit criteria, and the handoff items M9 did not
-consume are carried to M10.
+service path reads the rule first. The log marks M9 done and M10 done,
+because every item of M10 is work in another repository (owner,
+2026-11-09), and the handoff items M9 did not consume stay listed as
+open after the milestones.
 
 Left for later: the wrapper's configuration and the installer change,
-which live in `qdb-pkg-windows`; the remaining M10 items, which live in
+which live in `qdb-pkg-windows`; the documentation rewrite, the
+migration notes and the version registration, which live in
 `qdb-documentation` and `qdb-release`; and the HTTPS steps of the round
-trip, which the handoff keeps open.
+trip, which stay open.
 
 ## Verified facts
 
@@ -133,10 +135,13 @@ Project structure [brief.md:864]:
 - cmd/qdb_rest/  entry point (all platforms; a Windows service is the
   package's wrapper, ADR-0020)
 
-Milestones, M10 [brief.md:1044-1048]:
-- "Windows service mode" becomes "the Windows installer runs the binary under
-  a service wrapper (ADR-0020)"; "hardening" is dropped or defined per Open
-  question 1
+Milestones, M10 [brief.md:1044-1048], rewritten:
+- M10 -- Release: the work that lives in other repositories, and no unit of
+  this one (owner, 2026-11-09): the docs rewrite in qdb-documentation, with
+  the cluster-endpoint and Prometheus remote-storage sections removed and
+  migration notes for them; the VERSION file's registration in qdb-release;
+  and the Windows installer running the binary under a service wrapper in
+  qdb-pkg-windows (ADR-0020). "hardening" is dropped [owner, 2026-11-09]
 
 Ecosystem table [brief.md:92-105], one row:
 - qdb-pkg-windows | The Inno Setup installer. Registers qdb_rest as a Windows
@@ -156,34 +161,35 @@ Ecosystem table [brief.md:92-105], one row:
 ```
 Current state, rewritten in place [docs/AGENTS.md, Project log]:
 - Last updated: 2026-11-09
-- M9 row: done, closed 2026-11-09; M10 row: in progress, started
-  2026-11-09
-- the M9 exit criteria block is removed; an M10 exit criteria block lists the
-  criteria Open question 1 settles
+- M9 row: done, closed 2026-11-09; M10 row: done, closed 2026-11-09, note
+  "its work lives in other repositories"
+- the M9 exit criteria block is removed and no M10 block replaces it
 - In flight: this unit (sc-19567/rr-stream-only-logging)
 - Next: none
-- Handoff to M10: the three M9 handoff items, unchanged
+- "Handoff to M9" becomes "Open after the milestones", the three items
+  unchanged, plus the brief's Risks item 5, the session budget lent to
+  qdb-duck, which the brief defers to this point [brief.md, Risks 5]
 - Blocked on: unchanged
 
 Entries, newest first, one to three lines each:
-- 2026-11-09 -- M9 closed, M10 started: the comparison ran green by hand on
-  both clusters; M10's criteria are in Current state; docs/brief.md,
-  Milestones.
+- 2026-11-09 -- M9 and M10 closed: the comparison ran green by hand on both
+  clusters, and M10's work lives in other repositories (owner decision);
+  docs/brief.md, Milestones.
 - 2026-11-09 -- the log is one stream: owner decision, ADR-0020; the brief's
   observability paragraph and M10 line follow.
 ```
 
 ## Rationale
 
-| decision                                                                              | why                                                                                                                                       | rejected, and why                                                                                                                                          | gained                                                     | given up                                                                               | settled by                               |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------- |
-| the log is one stream: no file, no rotation in the binary                             | the reference projects that dropped file logging did so for the Windows-service case, and a wrapper covers it                             | a `log.file` block with a rotating writer, own or vendored: code or a module to own for one platform                                                       | no new key, writer or module                               | an operator on Windows configures the wrapper, not the binary                          | owner, 2026-11-09                        |
-| the wrapper: the installer runs the binary under a service wrapper                    | a service has no stdout, and the wrapper captures, rotates and reports lifecycle without a line in the binary                             | a `windows/svc` handler and Event Log writer in the binary: unusable without a file sink, and lifecycle code the wrapper already has                       | the binary is one program on every platform                | the Windows package carries a second executable and its configuration                  | owner, 2026-11-09                        |
-| WinSW is the wrapper named                                                            | MIT, one executable and one XML file, stdout rotation modes, Event Log reporting                                                          | NSSM: an installer-style tool with registry-held configuration; the old `qdb_rest_service.exe`: links the server, so the server would have to be a library | a concrete name for the package to start from              | nothing; the package may pick an equivalent                                            | proposal                                 |
-| the decision is an ADR                                                                | it constrains `internal/observe` and `cmd/qdb_rest` until reversed, and a reader of the brief's old paragraph would rebuild the file sink | a plan decision-log row: dies with the plan                                                                                                                | one place a later agent reads before adding a service path | one more ADR                                                                           | `docs/AGENTS.md`, ADRs                   |
-| a start whose log file cannot open refuses the start                                  | fail fast is the project norm                                                                                                             | the library's lazy open: a silent log                                                                                                                      | nothing: moot once no file exists                          | nothing                                                                                | owner, 2026-11-09; `plan only`           |
-| M9 closes in this unit's log commit                                                   | criteria 1 and 3 are in the tree and criterion 2 ran green by hand on 2026-11-09                                                          | a separate docs unit for the close: a plan for one table row                                                                                               | the milestone table is current when M10's first unit lands | nothing                                                                                | owner, 2026-11-09; the run of 2026-11-09 |
-| M10 starts with four verifiable criteria and the word "hardening" leaves the M10 line | four facts a reader can verify, and a word nobody defined                                                                                 | keeping "hardening" undefined: a criterion no unit can meet                                                                                                | an exit the log can judge                                  | whatever the owner meant by hardening, unless the answer to Open question 1 defines it | proposal                                 |
+| decision                                                                                           | why                                                                                                                                       | rejected, and why                                                                                                                                          | gained                                                     | given up                                                              | settled by                               |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| the log is one stream: no file, no rotation in the binary                                          | the reference projects that dropped file logging did so for the Windows-service case, and a wrapper covers it                             | a `log.file` block with a rotating writer, own or vendored: code or a module to own for one platform                                                       | no new key, writer or module                               | an operator on Windows configures the wrapper, not the binary         | owner, 2026-11-09                        |
+| the wrapper: the installer runs the binary under a service wrapper                                 | a service has no stdout, and the wrapper captures, rotates and reports lifecycle without a line in the binary                             | a `windows/svc` handler and Event Log writer in the binary: unusable without a file sink, and lifecycle code the wrapper already has                       | the binary is one program on every platform                | the Windows package carries a second executable and its configuration | owner, 2026-11-09                        |
+| WinSW is the wrapper named                                                                         | MIT, one executable and one XML file, stdout rotation modes, Event Log reporting                                                          | NSSM: an installer-style tool with registry-held configuration; the old `qdb_rest_service.exe`: links the server, so the server would have to be a library | a concrete name for the package to start from              | nothing; the package may pick an equivalent                           | proposal                                 |
+| the decision is an ADR                                                                             | it constrains `internal/observe` and `cmd/qdb_rest` until reversed, and a reader of the brief's old paragraph would rebuild the file sink | a plan decision-log row: dies with the plan                                                                                                                | one place a later agent reads before adding a service path | one more ADR                                                          | `docs/AGENTS.md`, ADRs                   |
+| a start whose log file cannot open refuses the start                                               | fail fast is the project norm                                                                                                             | the library's lazy open: a silent log                                                                                                                      | nothing: moot once no file exists                          | nothing                                                               | owner, 2026-11-09; `plan only`           |
+| M9 closes in this unit's log commit                                                                | criteria 1 and 3 are in the tree and criterion 2 ran green by hand on 2026-11-09                                                          | a separate docs unit for the close: a plan for one table row                                                                                               | the milestone table is current when the unit lands         | nothing                                                               | owner, 2026-11-09; the run of 2026-11-09 |
+| M10 closes with this unit, and the brief's M10 line names the three repositories its work lives in | every M10 item is a change to qdb-documentation, qdb-release or qdb-pkg-windows, and none is a unit of this repository                    | M10 kept open with exit criteria this repository cannot meet: a milestone no unit here could close                                                         | the milestone table ends                                   | the word "hardening", which no document defined                       | owner, 2026-11-09                        |
 
 ## Knowledge
 
@@ -196,37 +202,31 @@ Entries, newest first, one to three lines each:
   decision is an ADR" is `plan only`.
 - Commit 4, `docs(agents)`: the `cmd/qdb_rest/AGENTS.md` bullet (a rule
   of a folder).
-- Commit 5, `docs(log)`: the milestone rows, the criteria block, the
-  handoff, the two entries (progress and dated events: the log's rows).
-  The rows "M9 closes" and "M10 starts" land here.
+- Commit 5, `docs(log)`: the milestone rows, the removed criteria block,
+  the open items, the two entries (progress and dated events: the log's
+  rows). The row "M9 closes" lands here, and "M10 closes" here and in
+  the brief's M10 line (commit 3).
 - Commit 7, `docs(log)`: the deletion entry and `Last updated`.
 
 ## How the knowledge lands
 
 The build stage is `/rr-build`, which writes every document row of the
 sections above and reconciles the tree against this plan before the
-build-stage message. Specific to this unit: commit 5 marks M9 done only
-on the comparison's result recorded in Verified facts; if Open question
-1 is still open at build time, the M10 criteria block carries the four
-recommended criteria and the M10 line drops "hardening", as the plan's
-approval settles it.
+build-stage message. Specific to this unit: commit 5 marks M9 done on
+the comparison's result recorded in Verified facts, and M10 done on the
+owner's decision in the Rationale, so no criteria block is written.
 
 ## Commits
 
 1. `docs(plan): stream-only-logging-plan.md, the log stays a stream and Windows service mode is the package's wrapper`
 2. `docs(adr): ADR-0020, the log is one stream on stdout and a Windows service runs the binary under a service wrapper`
-3. `docs(brief): the observability paragraph, the project structure, the M10 line and the ecosystem table say the wrapper and drop the file sink`
+3. `docs(brief): the observability paragraph, the project structure and the ecosystem table say the wrapper, and the M10 line names the repositories its work lives in`
 4. `docs(agents): the cmd agents file says the binary has no service mode and logs to stdout only`
-5. `docs(log): M9 closed and M10 started with its exit criteria`
+5. `docs(log): M9 and M10 closed, the release work lives in other repositories`
 6. `/doc-discipline check docs/stream-only-logging-plan.md docs/brief.md docs/adr cmd/qdb_rest docs/log.md`, findings fixed before the next commit.
 7. `docs(log): stream-only-logging-plan.md deleted, facts moved to ADR-0020, docs/brief.md and cmd/qdb_rest/AGENTS.md`
 8. Verify: push `sc-19567/rr-stream-only-logging`, build its head in Buildkite, wait for the result. Green: report the build number. Red: fix with further small commits on this branch, push, build again.
 
 ## Open questions and recommendations
 
-1. M10's exit criteria, and what "hardening" means. Recommendation: the
-   `qdb-documentation` rewrite merged without the cluster-endpoint and
-   Prometheus sections, the `VERSION` file registered in `qdb-release`
-   with the old regex entry removed, the Windows installer running the
-   binary under the wrapper, and migration notes published for the
-   dropped endpoints; "hardening" leaves the M10 line.
+none
