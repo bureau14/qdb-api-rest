@@ -48,3 +48,6 @@ Scope: the binary's entry point. Packages it wires together live under
   two. Nothing is sent when `NOTIFY_SOCKET` is unset, and a failed send
   is one warning. The HTTP servers bind in `newHTTPServer`, before
   serving, so that `READY=1` is true when sent.
+- The binary has no service mode and writes its log to stdout only. On
+  Windows the installer runs it under a service wrapper (ADR-0020), so
+  no `windows/svc` handler, Event Log writer or log file belongs here.
