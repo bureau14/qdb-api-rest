@@ -1,7 +1,7 @@
 # Plan: the log stays a stream, and Windows service mode is the package's wrapper
 
 Thread: rr-windows-service: M10 Windows service mode
-Status: draft
+Status: approved
 
 ## Outcome
 
