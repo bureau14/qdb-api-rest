@@ -3,7 +3,8 @@
 # next to the new one, on the secure cluster and then on the insecure
 # one. On each cluster it starts both servers, logs in to both, tags
 # the table through the new server, sends each query of QUERIES to both
-# under each server's token, and stops both. The old server is sent
+# under each server's token, then the first query again under
+# Accept-Encoding gzip, and stops both. The old server is sent
 # /api/<path>; the new server /api/v1/<path> and /api/<path>, and each
 # of its answers is compared with the old server's. A 200 compares as
 # bytes, anything else by status and the shape of the body.
@@ -146,8 +147,44 @@ query_case() {
     compare "q$i /api/query $query" "$old_status" "$out/q$i.old.body" "$status" "$out/q$i.alias.body" || return 1
 }
 
+# labelled <out> <name>: the answer's headers name gzip as its coding;
+# the decoded body alone would pass against a plain answer.
+labelled() {
+    local out="$1" name="$2"
+    if ! grep -qi '^content-encoding: *gzip' "$out/$name.headers"; then
+        log_error "[FAIL] $name: no Content-Encoding: gzip in the answer"
+        return 1
+    fi
+}
+
+# gzip_case <out> <old_url> <new_url>: the select star under
+# Accept-Encoding gzip to the old server, then to the new server at both
+# spellings; each answer is labelled gzip, and the decoded bodies are
+# compared as bytes through compare.
+gzip_case() {
+    local out="$1" old="$2" new="$3" body old_status status
+    # The select star, because it is the largest body and the one a gzip
+    # client sends.
+    body=$(jq -cn --arg q "${QUERIES[0]//@TABLE@/$COMPARE_TABLE}" '{query: $q}')
+    # --compressed makes curl decode the body, so compare sees plain
+    # bytes: the servers compress at different levels, so the wire bytes
+    # never match. The header is set by hand, because curl's own names
+    # every coding it was built with and the case asks for gzip alone.
+    old_status=$(request "$out" gz.old -k --compressed -H 'Accept-Encoding: gzip' -X POST -H "Authorization: Bearer $OLD_TOKEN" \
+        -H 'Content-Type: application/json' --data-binary "$body" "$old/api/query")
+    labelled "$out" gz.old || return 1
+    status=$(request "$out" gz.v1 --compressed -H 'Accept-Encoding: gzip' -X POST -H "Authorization: Bearer $NEW_TOKEN" \
+        -H 'Content-Type: application/json' --data-binary "$body" "$new/api/v1/query")
+    labelled "$out" gz.v1 || return 1
+    compare "gzip /api/v1/query" "$old_status" "$out/gz.old.body" "$status" "$out/gz.v1.body" || return 1
+    status=$(request "$out" gz.alias --compressed -H 'Accept-Encoding: gzip' -X POST -H "Authorization: Bearer $NEW_TOKEN" \
+        -H 'Content-Type: application/json' --data-binary "$body" "$new/api/query")
+    labelled "$out" gz.alias || return 1
+    compare "gzip /api/query" "$old_status" "$out/gz.old.body" "$status" "$out/gz.alias.body" || return 1
+}
+
 # run_cluster <name> <old_url> <new_url> <body_file>: login_case,
-# tag_case, then query_case over QUERIES, the bodies under
+# tag_case, query_case over QUERIES, then gzip_case, the bodies under
 # COMPARE_OUT/<name>.
 run_cluster() {
     local name="$1" old="$2" new="$3" body="$4" out="$COMPARE_OUT/$1" i query
@@ -159,6 +196,7 @@ run_cluster() {
         query="${QUERIES[$i]//@TABLE@/$COMPARE_TABLE}"
         query_case "$out" "$old" "$new" "$i" "${query//@TAG@/$TAG}" || return 1
     done
+    gzip_case "$out" "$old" "$new" || return 1
 }
 
 # secure_pair: the comparison on the secure cluster, both servers
