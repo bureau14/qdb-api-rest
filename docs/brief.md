@@ -821,10 +821,10 @@ defaults by test.
   echoed) and writes one access line. Auth adds the user and the session
   the same way, and every line logged below inherits those attributes.
   The decision and its rationale are in ADR-0002.
-- Windows has no stdout for a service, and the binary still writes one
-  stream: the installer runs it under a service wrapper that captures
-  and rotates stdout and reports the service's lifecycle to the Event
-  Log (ADR-0020). No configuration key names a log file.
+- A Windows service has no stdout, and the binary writes one stream on
+  every platform: the installer runs it under a service wrapper that
+  captures and rotates stdout and reports the service's lifecycle to the
+  Event Log (ADR-0020). No configuration key names a log file.
 - `/metrics` (Prometheus exposition) as described under Goals, and the
   Go runtime profiler (`net/http/pprof`, under `/debug/pprof/`) on the
   same mux outside the bearer edge when `observability.pprof` is true, false by
