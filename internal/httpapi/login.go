@@ -246,8 +246,8 @@ func handleSession(w http.ResponseWriter, r *http.Request) {
 // the session sit behind the bearer edge, so only an access token
 // reaches them.
 func registerAuthRoutes(mux *http.ServeMux) {
-	handleData(mux, "POST /api/v2/auth/login", withCompression(http.HandlerFunc(handleLogin)))
-	handleData(mux, "POST /api/v2/auth/refresh", withCompression(http.HandlerFunc(handleRefresh)))
+	handleData(mux, "POST /api/v2/auth/login", WithCompression(http.HandlerFunc(handleLogin)))
+	handleData(mux, "POST /api/v2/auth/refresh", WithCompression(http.HandlerFunc(handleRefresh)))
 	handleData(mux, "POST /api/v2/auth/logout", requireBearer(http.HandlerFunc(handleLogout)))
-	handleData(mux, "GET /api/v2/session", requireBearer(withCompression(http.HandlerFunc(handleSession))))
+	handleData(mux, "GET /api/v2/session", requireBearer(WithCompression(http.HandlerFunc(handleSession))))
 }

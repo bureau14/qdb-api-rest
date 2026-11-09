@@ -75,7 +75,7 @@ func handleTagged(w http.ResponseWriter, r *http.Request) {
 // registerTagRoutes serves the tag routes behind the bearer middleware.
 // The mux patterns fix method and path.
 func registerTagRoutes(mux *http.ServeMux) {
-	handleData(mux, "PUT "+tablesPath+"/{name}/tags/{tag}", withCompression(requireBearer(http.HandlerFunc(handleAttachTag))))
-	handleData(mux, "DELETE "+tablesPath+"/{name}/tags/{tag}", withCompression(requireBearer(http.HandlerFunc(handleDetachTag))))
-	handleData(mux, "GET "+tagsPath+"/{tag}", withCompression(requireBearer(http.HandlerFunc(handleTagged))))
+	handleData(mux, "PUT "+tablesPath+"/{name}/tags/{tag}", WithCompression(requireBearer(http.HandlerFunc(handleAttachTag))))
+	handleData(mux, "DELETE "+tablesPath+"/{name}/tags/{tag}", WithCompression(requireBearer(http.HandlerFunc(handleDetachTag))))
+	handleData(mux, "GET "+tagsPath+"/{tag}", WithCompression(requireBearer(http.HandlerFunc(handleTagged))))
 }

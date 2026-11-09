@@ -186,7 +186,7 @@ This file, Handlers, holds the table reader's. The v1 routes live in
 
 - `WithRequestLogging` wraps the router the entry point composes, once,
   and `NewHandler` returns the v2 router without it. `requireBearer` and
-  `withCompression` wrap a route. The probes, `/metrics` and
+  `WithCompression` wrap a route. The probes, `/metrics` and
   `/debug/pprof/` stay outside both: the exposition compresses through
   the client's own writer when a scraper asks, and the profiler's
   answers are the stdlib's. The login and the refresh are compressed

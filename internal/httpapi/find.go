@@ -42,5 +42,5 @@ func handleFind(w http.ResponseWriter, r *http.Request) {
 
 // registerFindRoute serves the find route behind the bearer middleware.
 func registerFindRoute(mux *http.ServeMux) {
-	handleData(mux, "POST "+findPath, withCompression(requireBearer(http.HandlerFunc(handleFind))))
+	handleData(mux, "POST "+findPath, WithCompression(requireBearer(http.HandlerFunc(handleFind))))
 }

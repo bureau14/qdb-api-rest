@@ -110,13 +110,11 @@ func (c *compressingWriter) Unwrap() http.ResponseWriter {
 	return c.ResponseWriter
 }
 
-// withCompression compresses one route's responses in the coding the
-// client asked for, problem bodies included. Identity passes the writer
-// through untouched. Every response of the route carries Vary:
-// Accept-Encoding, so a cache does not serve one client's coding to
-// another. It wraps single routes and never the mux, because the probes
-// answer empty bodies.
-func withCompression(next http.Handler) http.Handler {
+// WithCompression compresses one route's answers in the coding the
+// client's Accept-Encoding names, problem bodies included, and marks
+// every answer of the route with Vary: Accept-Encoding. It wraps a
+// route, never the mux, because the probes answer empty bodies.
+func WithCompression(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Accept-Encoding")
 		c := negotiateCoding(r.Header.Get("Accept-Encoding"))

@@ -70,12 +70,12 @@ func TestNegotiateCoding(t *testing.T) {
 	}
 }
 
-// compressed runs handler behind withCompression for one Accept-Encoding.
+// compressed runs handler behind WithCompression for one Accept-Encoding.
 func compressed(handler http.HandlerFunc, acceptEncoding string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("Accept-Encoding", acceptEncoding)
 	resp := httptest.NewRecorder()
-	withCompression(handler).ServeHTTP(resp, req)
+	WithCompression(handler).ServeHTTP(resp, req)
 	return resp
 }
 

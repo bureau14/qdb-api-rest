@@ -245,8 +245,8 @@ func handleGetTable(w http.ResponseWriter, r *http.Request) {
 // registerTableRoutes serves the table collection behind the bearer
 // middleware. The mux patterns fix method and path.
 func registerTableRoutes(mux *http.ServeMux) {
-	handleData(mux, "GET "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleListTables))))
-	handleData(mux, "GET "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleGetTable))))
-	handleData(mux, "POST "+tablesPath, withCompression(requireBearer(http.HandlerFunc(handleCreateTable))))
-	handleData(mux, "DELETE "+tablesPath+"/{name}", withCompression(requireBearer(http.HandlerFunc(handleDeleteTable))))
+	handleData(mux, "GET "+tablesPath, WithCompression(requireBearer(http.HandlerFunc(handleListTables))))
+	handleData(mux, "GET "+tablesPath+"/{name}", WithCompression(requireBearer(http.HandlerFunc(handleGetTable))))
+	handleData(mux, "POST "+tablesPath, WithCompression(requireBearer(http.HandlerFunc(handleCreateTable))))
+	handleData(mux, "DELETE "+tablesPath+"/{name}", WithCompression(requireBearer(http.HandlerFunc(handleDeleteTable))))
 }

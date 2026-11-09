@@ -165,5 +165,5 @@ func handleIngestRows(w http.ResponseWriter, r *http.Request) {
 // registerRowsRoutes serves the ingest behind the bearer middleware. The
 // mux pattern fixes method and path.
 func registerRowsRoutes(mux *http.ServeMux) {
-	handleData(mux, "POST "+rowsPath, withCompression(requireBearer(http.HandlerFunc(handleIngestRows))))
+	handleData(mux, "POST "+rowsPath, WithCompression(requireBearer(http.HandlerFunc(handleIngestRows))))
 }

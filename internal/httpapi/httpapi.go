@@ -58,7 +58,7 @@ func registerStatusRoutes(mux *http.ServeMux) {
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// Built per scrape, because the registry travels in the context and
 	// NewHandler has none. The client's writer compresses when asked,
-	// because the route sits outside withCompression.
+	// because the route sits outside WithCompression.
 	reg := observe.MetricsFrom(r.Context()).Registry
 	promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(w, r)
 }

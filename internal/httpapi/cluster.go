@@ -78,6 +78,6 @@ func handleNode(w http.ResponseWriter, r *http.Request) {
 // registerClusterRoutes mounts the two cluster routes behind the bearer
 // edge.
 func registerClusterRoutes(mux *http.ServeMux) {
-	handleData(mux, "GET "+clusterPath, withCompression(requireBearer(http.HandlerFunc(handleCluster))))
-	handleData(mux, "GET "+clusterPath+"/nodes/{id}", withCompression(requireBearer(http.HandlerFunc(handleNode))))
+	handleData(mux, "GET "+clusterPath, WithCompression(requireBearer(http.HandlerFunc(handleCluster))))
+	handleData(mux, "GET "+clusterPath+"/nodes/{id}", WithCompression(requireBearer(http.HandlerFunc(handleNode))))
 }
