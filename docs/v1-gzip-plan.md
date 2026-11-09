@@ -1,7 +1,7 @@
 # Plan: the v1 routes compress as v2 does, and the comparison asks for gzip
 
 Thread: v1 gzip
-Status: draft
+Status: approved
 
 ## Outcome
 
