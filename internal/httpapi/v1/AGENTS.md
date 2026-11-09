@@ -28,6 +28,13 @@ handlers these routes call are in `internal/httpapi/AGENTS.md`.
   case-sensitive `Bearer `, then `?token=`, each forwarded as the v2
   bearer, the first that is not 401 winning. v1 forwards the token and
   verifies nothing itself (ADR-0007).
+- Each route is wrapped in `httpapi.WithCompression` at registration, so
+  a v1 answer compresses by the v2 rule (ADR-0012) and carries `Vary`.
+  The handler writes the old body plain, and the inner v2 request
+  carries no `Accept-Encoding`, because the route decodes the v2 answer
+  and compresses only what it writes itself. The differences from the
+  old server's substring test are a listed deviation (`docs/brief.md`,
+  Deliberate deviations).
 - A query asks the v2 query for Arrow, because typed arrays give the old
   cell values and the null typing directly. It holds the whole result
   before it writes, because the old body lists every cell of a column
