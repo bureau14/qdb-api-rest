@@ -265,6 +265,7 @@ of it exercises a deviation. This section is the specification.
   answered 401 for every login it could not complete.
 - Tokens minted by the old server are rejected. Clients log in again on
   401 (the Grafana plugin clears its token and retries on 401).
+- The answer compresses as the query's does (POST /api/v1/query, below).
 
 ### POST /api/v1/query
 
@@ -278,6 +279,11 @@ of it exercises a deviation. This section is the specification.
   `data`, `name`, `type`, and an empty table name is omitted.
 - A query whose text begins with `#sql` runs on DuckDB as it does on v2
   (owner, 2026-11-05).
+- Both endpoints compress as the v2 routes do: `Accept-Encoding` is read
+  in the client's order, the first of `gzip`, `zstd` and `identity` wins,
+  case-insensitive, `q` unread, and nothing is forced (ADR-0012). The
+  old server gzipped when the header contained the bytes `gzip` anywhere
+  and knew no zstd (owner, 2026-11-07).
 - Column types: `blob | double | int64 | string | timestamp | none`. A
   `COUNT(...)` column is an `int64`. The old server's `count` type
   named the same number, and no client told the two apart.
@@ -307,16 +313,17 @@ This table lists every place where v1 answers differently from the old
 server. No case of the side-by-side comparison exercises an entry of
 this list.
 
-| Deviation                                                                   | Specified in              |
-| --------------------------------------------------------------------------- | ------------------------- |
-| a `COUNT(...)` column is typed `int64`, where the old server said `count`   | POST /api/v1/query, above |
-| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced      | POST /api/v1/query, above |
-| timestamps are in UTC, where the old server wrote the process's zone        | POST /api/v1/query, above |
-| NaN and the infinities are `null`, where the old server's encoder failed    | POST /api/v1/query, above |
-| tokens minted by the old server are rejected                                | POST /api/v1/login, above |
-| the v1 token lives `auth.access_ttl`, where the old server's lived 12 hours | POST /api/v1/login, above |
-| bad credentials on a secured cluster are `401` at login, not a blind `200`  | ADR-0011                  |
-| the dropped endpoints answer `404`                                          | Explicitly dropped, below |
+| Deviation                                                                                                       | Specified in              |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| a `COUNT(...)` column is typed `int64`, where the old server said `count`                                       | POST /api/v1/query, above |
+| the `"(void)"` and `"(undefined)"` sentinel strings are not reproduced                                          | POST /api/v1/query, above |
+| timestamps are in UTC, where the old server wrote the process's zone                                            | POST /api/v1/query, above |
+| NaN and the infinities are `null`, where the old server's encoder failed                                        | POST /api/v1/query, above |
+| tokens minted by the old server are rejected                                                                    | POST /api/v1/login, above |
+| the v1 token lives `auth.access_ttl`, where the old server's lived 12 hours                                     | POST /api/v1/login, above |
+| bad credentials on a secured cluster are `401` at login, not a blind `200`                                      | ADR-0011                  |
+| `Accept-Encoding` is negotiated as v2 does, zstd included, where the old server gzipped on the substring `gzip` | POST /api/v1/query, above |
+| the dropped endpoints answer `404`                                                                              | Explicitly dropped, below |
 
 ### Explicitly dropped
 
