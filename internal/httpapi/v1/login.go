@@ -41,7 +41,8 @@ func loginHandler(v2 http.Handler, route string) http.Handler {
 		// 1. Content-Type is application/json whatever the client sent,
 		//    because the v2 login refuses anything else with 415 and the v1
 		//    login has no 415. The inner request carries no Accept-Encoding,
-		//    so the v2 answer comes back uncompressed.
+		//    because this route decodes the v2 answer and compresses only
+		//    the body it writes itself.
 		in.Header.Set("Content-Type", "application/json")
 
 		// 2. The answer is recorded whole, because a login answer is a few

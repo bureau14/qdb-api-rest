@@ -37,7 +37,8 @@ func callV2(ctx context.Context, v2 http.Handler, path, token, accept string, bo
 		rec.WriteHeader(http.StatusInternalServerError)
 		return rec
 	}
-	// No Accept-Encoding, so the v2 answer comes back uncompressed.
+	// No Accept-Encoding, because the v1 route decodes the v2 answer and
+	// compresses only the body it writes itself.
 	in.Header.Set("Content-Type", "text/plain")
 	in.Header.Set("Accept", accept)
 	in.Header.Set("Authorization", "Bearer "+token)
