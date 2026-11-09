@@ -21,7 +21,7 @@ Last updated: 2026-11-09
 | M9 -- Drop-in compat            | done  | closed 2026-11-09                                       |
 | M10 -- Release                  | done  | closed 2026-11-09, its work lives in other repositories |
 
-In flight: the stream-only logging unit (`sc-19567/rr-stream-only-logging`).
+In flight: none.
 
 Next: none.
 
@@ -61,6 +61,10 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-09 -- stream-only-logging-plan.md deleted
+
+- Facts moved to ADR-0020, `docs/brief.md` and `cmd/qdb_rest/AGENTS.md`.
 
 ## 2026-11-09 -- M9 and M10 closed
 
