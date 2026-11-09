@@ -41,8 +41,9 @@ vendored bytes.
 ## Consequences
 
 - Every later v2 route opts in by wrapping its handler, and the rule
-  never grows a second shape. M4's v1 wart (substring `gzip`, every
-  route) exports what it needs of the writer when it exists.
+  never grows a second shape. The v1 routes wrap the same exported
+  writer, `WithCompression`, so one rule reads every client's
+  `Accept-Encoding` on both surfaces (ADR-0007).
 - The access line counts wire bytes, because compression sits inside
   the request logger.
 - A level knob or pooled compressors are additions the bench can ask
