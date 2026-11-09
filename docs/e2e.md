@@ -459,12 +459,15 @@ table, every type and a null in every nullable column, as bytes; the
 same over a range before the generated rows, the empty answer; a find
 on the tag, one table with `columns` null; a find on a tag nobody
 carries, no table; an invalid query and an unknown table, both 400 with
-a body of one message. No query sends `#sql` (owner, 2026-11-07), and
-none exercises a deviation the brief lists, `COUNT` included, so every
-red is a bug. A gzip comparison waits for the unit that makes v1 honor
-`Accept-Encoding`, and is one more query line then. The run stores
-nothing: working files are under `actual/compare/<cluster>/`, and `make
-clean` removes them with the export and the old binary.
+a body of one message; and the `SELECT *` again under
+`Accept-Encoding: gzip`, through curl `--compressed`, where each answer
+must carry `Content-Encoding: gzip` and the decoded bodies compare as
+bytes, because the two servers compress at different levels and the
+compressed bytes are no part of the contract. No query sends `#sql`
+(owner, 2026-11-07), and none exercises a deviation the brief lists,
+`COUNT` included, so every red is a bug. The run stores nothing:
+working files are under `actual/compare/<cluster>/`, and `make clean`
+removes them with the export and the old binary.
 
 ## Layout
 
