@@ -7,38 +7,25 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 Last updated: 2026-11-09
 
-| Milestone                       | State       | Note                       |
-| ------------------------------- | ----------- | -------------------------- |
-| M0 -- Foundation                | done        | exit signed off 2026-08-25 |
-| M1 -- v2 query                  | done        | closed 2026-09-21          |
-| M2 -- Tables, reader and ingest | done        | closed 2026-10-12          |
-| M3 -- v2 auth                   | done        | closed 2026-10-14          |
-| M4 -- Embedded DuckDB           | done        | closed 2026-10-16          |
-| M5 -- Flight SQL                | done        | closed 2026-10-26          |
-| M6 -- Hardening                 | done        | closed 2026-10-28          |
-| M7 -- Observability             | done        | closed 2026-11-04          |
-| M8 -- Exploration               | done        | closed 2026-11-05          |
-| M9 -- Drop-in compat            | in progress | started 2026-11-05         |
-| M10 -- Release                  | not started |                            |
+| Milestone                       | State | Note                                                    |
+| ------------------------------- | ----- | ------------------------------------------------------- |
+| M0 -- Foundation                | done  | exit signed off 2026-08-25                              |
+| M1 -- v2 query                  | done  | closed 2026-09-21                                       |
+| M2 -- Tables, reader and ingest | done  | closed 2026-10-12                                       |
+| M3 -- v2 auth                   | done  | closed 2026-10-14                                       |
+| M4 -- Embedded DuckDB           | done  | closed 2026-10-16                                       |
+| M5 -- Flight SQL                | done  | closed 2026-10-26                                       |
+| M6 -- Hardening                 | done  | closed 2026-10-28                                       |
+| M7 -- Observability             | done  | closed 2026-11-04                                       |
+| M8 -- Exploration               | done  | closed 2026-11-05                                       |
+| M9 -- Drop-in compat            | done  | closed 2026-11-09                                       |
+| M10 -- Release                  | done  | closed 2026-11-09, its work lives in other repositories |
 
-M9 exit criteria:
-
-1. `POST /api/v1/login` and `POST /api/v1/query`, with their aliases
-   `/api/login` and `/api/query`, are served by `internal/httpapi/v1` as
-   wrappers that call the v2 endpoints and convert their answers.
-2. A script run by hand builds the old server from `master`, starts both
-   servers on both clusters, sends each case to both and compares the
-   answers: bytes for query bodies, status and shape for error bodies,
-   and shape for the token (owner, 2026-11-06). It is green, and it is
-   not in Buildkite.
-3. The `find` prefix and the deviations the brief lists behave as
-   specified, and each deviation's case is left out of the comparison.
-
-In flight: none.
+In flight: the stream-only logging unit (`sc-19567/rr-stream-only-logging`).
 
 Next: none.
 
-Handoff to M9:
+Open after the milestones:
 
 - The round trip drives both servers over plain HTTP, and no step reads
   the HTTPS listener. Steps over both HTTP and HTTPS may be added
@@ -60,6 +47,9 @@ Cannot get shards for table ...: The handle is invalid.` (the Go
 to fetch data from Quasar: The timeseries does not contain this
 column.` of the round trip on Windows (builds 164 and 165) (owner,
   2026-10-30).
+- qdb-duck's handle pool opens qdbd sessions outside the session budget
+  (`docs/brief.md`, Risks 5). The budget lending qdb-duck its sessions
+  is looked at here (owner, 2026-10-13).
 
 Blocked on: the bump of `duckdb-go-bindings` waits for the next
 maintenance release.
@@ -71,6 +61,17 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-09 -- M9 and M10 closed
+
+- The v1 comparison ran green by hand on both clusters, and M10's work
+  lives in other repositories (owner decision); `docs/brief.md`,
+  Milestones.
+
+## 2026-11-09 -- the log is one stream
+
+- Owner decision, ADR-0020. The brief's observability paragraph and M10
+  line follow.
 
 ## 2026-11-09 -- v1-gzip-plan.md deleted
 
