@@ -100,6 +100,7 @@ scalable design.
 | `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects. This project designs the protocol with them in the loop.                     |
 | `qdb-dashboard`                 | The old ClojureScript SPA, unused by customers. Retired, with no feature-parity obligation.                                                                                                                                               |
 | `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                                     |
+| `qdb-pkg-windows`               | The Inno Setup installer. Registers `qdb_rest` as a Windows service through a wrapper (ADR-0020) and drops the SPA assets.                                                                                                                |
 | `qdb-docker`                    | Today bundles the REST binary into the `qdb-dashboard` component image. This project adds a first-class standalone image.                                                                                                                 |
 | `qdb-release`                   | Central version manager. The rewrite must register its version-string location(s) there.                                                                                                                                                  |
 | `qdb-documentation`             | Public docs; `user-guide/tools/qdb_rest.rst` and `user-guide/api/rest.rst` must be rewritten at the end of the project.                                                                                                                   |
@@ -820,13 +821,10 @@ defaults by test.
   echoed) and writes one access line. Auth adds the user and the session
   the same way, and every line logged below inherits those attributes.
   The decision and its rationale are in ADR-0002.
-- The one exception is Windows service mode, where there is no console and
-  no logrotate convention. Service lifecycle and fatal events go to the
-  Windows Event Log (the native facility monitoring agents collect from),
-  and the application log stream goes to a self-rotating file through
-  `natefinch/lumberjack` (the ecosystem-standard rotation writer, vendored
-  unmodified). An optional `observability.log.file` config key exposes the same sink on
-  any platform for users who want it.
+- Windows has no stdout for a service, and the binary still writes one
+  stream: the installer runs it under a service wrapper that captures
+  and rotates stdout and reports the service's lifecycle to the Event
+  Log (ADR-0020). No configuration key names a log file.
 - `/metrics` (Prometheus exposition) as described under Goals, and the
   Go runtime profiler (`net/http/pprof`, under `/debug/pprof/`) on the
   same mux outside the bearer edge when `observability.pprof` is true, false by
@@ -861,7 +859,7 @@ auth are preserved so it can be added without rework.
 ### Project structure
 
 ```
-cmd/qdb_rest/          entry point (all platforms; Windows service mode included)
+cmd/qdb_rest/          entry point (all platforms; a Windows service is the package's wrapper, ADR-0020)
 internal/config/       YAML config + flags + env
 internal/tlsconf/      HTTPS certificates (files or ephemeral self-signed; ADR-0001)
 internal/auth/         JWE tokens, key derivation, the caller's user
@@ -1041,12 +1039,13 @@ starts.
   unversioned compat aliases), with a script run by hand that compares
   the live old server with the new one. The outcome replaces the old binary at
   a customer site with no client changes.
-- **M10 -- Release**: hardening, docs rewrite in `qdb-documentation`
-  (including removal of the cluster-endpoint and Prometheus
-  remote-storage sections), `qdb-release` version registration,
-  Windows service mode,
-  migration notes covering the dropped cluster endpoints and Prometheus
-  remote read/write.
+- **M10 -- Release**: the work that lives in other repositories, and no
+  unit of this one (owner, 2026-11-09): the docs rewrite in
+  `qdb-documentation`, with the cluster-endpoint and Prometheus
+  remote-storage sections removed and migration notes for them; the
+  `VERSION` file's registration in `qdb-release`; and the Windows
+  installer running the binary under a service wrapper in
+  `qdb-pkg-windows` (ADR-0020).
 
 The ordering rationale. The first deployment is an early preview at a
 customer site that needs Flight SQL and DuckDB and has no v1 clients
