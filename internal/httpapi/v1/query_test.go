@@ -239,6 +239,68 @@ func TestQuery(t *testing.T) {
 	})
 }
 
+// codedQuery posts the body to path under the bearer token and the
+// Accept-Encoding header, and answers the recorded response.
+func codedQuery(ctx context.Context, h http.Handler, path, body, token, acceptEncoding string) *httptest.ResponseRecorder {
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept-Encoding", acceptEncoding)
+	resp := httptest.NewRecorder()
+	h.ServeHTTP(resp, req)
+	return resp
+}
+
+// TestQueryCoding: on both clusters and at both spellings, the select star
+// over a generated table under each Accept-Encoding row answers the coding
+// the row expects, its decoded bytes equal the plain answer's, and a 400
+// is labelled and compressed the same way.
+func TestQueryCoding(t *testing.T) {
+	rows := []struct{ header, coding string }{
+		{"gzip", "gzip"},
+		{"zstd", "zstd"},
+		// The client's order decides, so zstd wins where the old server
+		// answered gzip.
+		{"zstd, gzip", "zstd"},
+		{"GZIP", "gzip"},
+		// Not a coding this server produces, so the body is plain where the
+		// old server gzipped.
+		{"x-gzip", ""},
+	}
+	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
+		ctx, h := newServer(t, f.Cluster)
+		token := mintAccess(t, ctx, f.User)
+		rapid.Check(t, func(rt *rapid.T) {
+			tbl := table.Generate(rt)
+			table.CreateAs(rt, f.Cluster, f.User, tbl)
+			for _, path := range queryPaths {
+				plain := postQuery(ctx, h, path, queryBody(tbl.Select()), bearerHeader, token)
+				if plain.Code != http.StatusOK {
+					rt.Fatalf("%s: status %d: %s", path, plain.Code, plain.Body.String())
+				}
+				for _, row := range rows {
+					name := path + " " + row.header
+					resp := codedQuery(ctx, h, path, queryBody(tbl.Select()), token, row.header)
+					if resp.Code != http.StatusOK || resp.Header().Get("Content-Encoding") != row.coding {
+						rt.Fatalf("%s: status %d, Content-Encoding %q", name, resp.Code, resp.Header().Get("Content-Encoding"))
+					}
+					if !bytes.Equal(decoded(rt, resp), plain.Body.Bytes()) {
+						rt.Fatalf("%s: decoded body differs from the plain answer", name)
+					}
+				}
+				// An error body compresses like a result.
+				resp := codedQuery(ctx, h, path, queryBody("NOT A QUERY"), token, "gzip")
+				if resp.Code != http.StatusBadRequest || resp.Header().Get("Content-Encoding") != "gzip" {
+					rt.Fatalf("%s invalid: status %d, Content-Encoding %q", path, resp.Code, resp.Header().Get("Content-Encoding"))
+				}
+				var m map[string]any
+				if err := json.Unmarshal(decoded(rt, resp), &m); err != nil || len(m) != 1 || m["message"] == "" {
+					rt.Fatalf("%s invalid: body %v (%v)", path, m, err)
+				}
+			}
+		})
+	})
+}
+
 // errorShape checks the status and that the body is a JSON object holding
 // a message, the code where the shape carries one, and no other key.
 func errorShape(t *testing.T, name string, resp *httptest.ResponseRecorder, status, code int) {
