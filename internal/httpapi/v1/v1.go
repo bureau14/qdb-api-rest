@@ -17,10 +17,8 @@ import (
 func NewHandler(v2 http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	// Each spelling records under its own path, so the metrics show which
-	// spelling clients send. The compressor sits outside the handler, so
-	// the handler writes the old body plain and the writer labels and
-	// compresses it, and the duration the handler records includes the
-	// compression.
+	// spelling clients send. The compressor wraps the handler, so the old
+	// body is written plain and the recorded duration includes compressing it.
 	mux.Handle("POST /api/v1/login", httpapi.WithCompression(loginHandler(v2, "/api/v1/login")))
 	mux.Handle("POST /api/login", httpapi.WithCompression(loginHandler(v2, "/api/login")))
 	mux.Handle("POST /api/v1/query", httpapi.WithCompression(queryHandler(v2, "/api/v1/query")))

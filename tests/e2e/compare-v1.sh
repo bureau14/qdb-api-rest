@@ -168,8 +168,8 @@ gzip_case() {
     body=$(jq -cn --arg q "${QUERIES[0]//@TABLE@/$COMPARE_TABLE}" '{query: $q}')
     # --compressed makes curl decode the body, so compare sees plain
     # bytes: the servers compress at different levels, so the wire bytes
-    # never match. The header is set by hand, because curl's own names
-    # every coding it was built with and the case asks for gzip alone.
+    # never match. The header is set by hand, because curl's own header
+    # lists every coding it was built with and the case asks for gzip alone.
     old_status=$(request "$out" gz.old -k --compressed -H 'Accept-Encoding: gzip' -X POST -H "Authorization: Bearer $OLD_TOKEN" \
         -H 'Content-Type: application/json' --data-binary "$body" "$old/api/query")
     labelled "$out" gz.old || return 1
