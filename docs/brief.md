@@ -51,12 +51,13 @@ by default (12-factor configuration, stdout logging, Prometheus metrics,
 health probes, graceful shutdown). It fails fast and honestly under
 overload, and it treats QuasarDB connection reuse as non-optional.
 
-The project replaces the go-swagger-generated server on `master`. A
-server-side rendered dashboard replacing the (unused) ClojureScript SPA is a
-future direction and not part of the initial scope. The project is
-developed entirely by LLM agents over roughly 3 months. This document and
-the ADRs exist so that an agent working on any milestone can recover the
-intent and constraints without re-deriving them.
+The project replaces the go-swagger-generated server, which lives on as
+`archive/go-swagger`. A server-side rendered dashboard replacing the
+(unused) ClojureScript SPA is a future direction and not part of the
+initial scope. The project is developed entirely by LLM agents over
+roughly 3 months. This document and the ADRs exist so that an agent
+working on any milestone can recover the intent and constraints without
+re-deriving them.
 
 ## Strategic context: the gateway direction
 
