@@ -9,7 +9,7 @@ require (
 	github.com/apache/arrow-go/v18 v18.8.0
 	github.com/bureau14/qdb-api-go/v3 v3.9.1-0.20261105121240-928c48b1b766
 	github.com/duckdb/duckdb-go/v2 v2.20000.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/klauspost/compress v1.20.1
 	github.com/knadh/koanf/parsers/yaml v1.1.1

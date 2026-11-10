@@ -63,7 +63,7 @@ github.com/duckdb/duckdb-go-bindings/include
 github.com/duckdb/duckdb-go/v2
 github.com/duckdb/duckdb-go/v2/arrowmapping
 github.com/duckdb/duckdb-go/v2/mapping
-# github.com/go-jose/go-jose/v4 v4.1.4
+# github.com/go-jose/go-jose/v4 v4.1.6
 ## explicit; go 1.24.0
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher
