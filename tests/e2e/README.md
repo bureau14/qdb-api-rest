@@ -25,7 +25,7 @@ make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one 
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
     FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
 make test-stress QDB_REST_BIN=<new server binary>      # the stress, by hand: the drain step on both clusters
-make old-server                                        # export master and build the old server into <repo>/bin/
+make old-server                                        # export archive/go-swagger-master and build the old server into <repo>/bin/
 make test-v1-compare QDB_REST_BIN=<new server binary>  # the v1 comparison, by hand, after a round trip
 ```
 
@@ -67,8 +67,9 @@ definition". Working files are under `actual/stress/<cluster>/`.
 ## The v1 comparison
 
 `make test-v1-compare` runs after `make test-round-trip` has seeded the
-clusters. It builds the old server from `master` (`make old-server`)
-and runs `compare-v1.sh`, which starts it next to the new one on the
+clusters. It builds the old server from the tag
+`archive/go-swagger-master` (`make old-server`) and runs `compare-v1.sh`,
+which starts it next to the new one on the
 secure cluster and then on the insecure one, logs in to both, tags
 `e2e_csv` with `e2e_tag` through the new server, and sends each of its
 queries to both: the old server at `/api/<path>`, the new one at

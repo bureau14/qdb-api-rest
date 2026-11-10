@@ -77,9 +77,9 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   and a row count and never a cell.
 - The v1 comparison (`compare-v1.sh`, `make test-v1-compare`) runs by
   hand and never in CI, after `make test-round-trip` has seeded the
-  clusters. `make old-server` exports `master` into `old-server/` and
-  builds it against the repository's `qdb/`; the export is never
-  edited. The old server's config and TLS pair are written by
+  clusters. `make old-server` exports the tag `archive/go-swagger-master`
+  into `old-server/` and builds it against the repository's `qdb/`; the
+  export is never edited. The old server's config and TLS pair are written by
   `common.sh`. No query sends `#sql` and none exercises a deviation the
   brief lists. The mechanics are `docs/e2e.md`, "The v1 comparison".
 - `common.sh` exports `TZ=UTC` for every server the harness starts.

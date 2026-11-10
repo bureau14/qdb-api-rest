@@ -26,9 +26,9 @@ driven over HTTP like a client:
 Every assertion is pass or fail. The harness measures nothing
 (ADR-0015). The v1 comparison of the drop-in milestone joins this
 harness and runs by hand beside the stress, never in CI. It starts the
-old server built from `master` and the new one on the same cluster,
-sends each case to both and compares the answers (ADR-0015,
-Decision 4).
+old server built from the tag `archive/go-swagger-master` and the new
+one on the same cluster, sends each case to both and compares the
+answers (ADR-0015, Decision 4).
 
 The harness is Make + shell + curl + awk (the qdb-nats-connector ADR-007
 lineage) plus one Go tool, which also drives the ADBC smoke step, and
@@ -421,10 +421,10 @@ small, which is why the stress runs by hand.
 The v1 comparison is shell and curl (`compare-v1.sh`), run by hand
 through `make test-v1-compare` on a developer machine and never in
 Buildkite (owner, 2026-11-07). The Makefile exports every path, port
-and flag, and the driver starts the old server, built from `master`,
-next to the new one on the same cluster, stops both at the end, and
-sends the same requests to both: a login, then a list of queries under
-each server's own token. The login's token compares by shape, because
+and flag, and the driver starts the old server, built from the tag
+`archive/go-swagger-master`, next to the new one on the same cluster,
+stops both at the end, and sends the same requests to both: a login,
+then a list of queries under each server's own token. The login's token compares by shape, because
 the two servers mint different tokens. A query that answers 200
 compares as bytes, and one that fails compares by status and the shape
 of its body, because each server words its own messages (ADR-0015,
@@ -441,7 +441,7 @@ at its end. The secure cluster runs first, then the insecure one
 (owner, 2026-11-07), because the login means something only on the
 secure cluster and the anonymous login is the plugin's path.
 
-The old server is a `git archive master` export under
+The old server is a `git archive archive/go-swagger-master` export under
 `tests/e2e/old-server/`, with the repository's `qdb/` symlinked in and
 built by the export's own `.envrc` from its own `vendor/`, into `bin/`
 next to `qdb_rest`. It reads one JSON config file, which the driver
@@ -483,7 +483,7 @@ tests/e2e/
   round-trip.sh           the v2 round trip driver
   stress.sh               the stress driver, one cluster per call
   compare-v1.sh           the v1 comparison driver, both clusters, starts the servers itself
-  old-server/             the export of master that make old-server builds (gitignored)
+  old-server/             the export of archive/go-swagger-master that make old-server builds (gitignored)
   tools/e2etool/          Go: gen, tocsv and adbc;
                           gen writes the four body files, tocsv decodes a response to CSV,
                           adbc runs a statement through arrow-adbc's Flight SQL driver
@@ -506,7 +506,7 @@ the same generator in-process and over HTTP.
 
 | Decision                                                                            | Why                                                                                                          | Rejected                                                                                                 |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| The old server is built from a `git archive master` export, not a worktree          | the export leaves `.git` untouched, and its own `.envrc` works with a `qdb/` symlink; one `rm -rf` cleans it | `git worktree add`, which registers in `.git`, needs pruning, and a stale one blocks a branch            |
+| The old server is built from a `git archive` export, not a worktree                 | the export leaves `.git` untouched, and its own `.envrc` works with a `qdb/` symlink; one `rm -rf` cleans it | `git worktree add`, which registers in `.git`, needs pruning, and a stale one blocks a branch            |
 | A separate driver and target, not steps of the round trip                           | the round trip runs in CI on every platform and the comparison does not                                      | cases in `round-trip.sh` behind a flag, so the CI driver would carry code it never runs                  |
 | The driver starts and stops the four servers itself, from the Makefile's exports    | a Makefile recipe carries no comment between its lines, and the lifecycle's steps need them                  | the lifecycle in the recipe, as the stress does, which read as one block                                 |
 | One flow, a login, the tag, then a query list, over a cluster the round trip seeded | one script a reader can hold                                                                                 | the script generating and ingesting its own rows, a null table, token forms: each a mechanism of its own |
@@ -531,9 +531,9 @@ the same generator in-process and over HTTP.
 
 ## Decision log (2026-08-19)
 
-| Decision                                      | Why                                                                                             | Rejected                                      |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| qdb-test-setup as a git submodule, not a copy | one owner for qdbd flags and license, the same as nats-connector and old master, updates by SHA | copying the scripts (drift, duplicated owner) |
+| Decision                                      | Why                                                                                                 | Rejected                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| qdb-test-setup as a git submodule, not a copy | one owner for qdbd flags and license, the same as nats-connector and the old server, updates by SHA | copying the scripts (drift, duplicated owner) |
 
 ## Decision log (2026-08-20)
 
