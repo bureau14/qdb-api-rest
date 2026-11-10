@@ -69,6 +69,11 @@ re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
 
+## 2026-11-10 -- cutover-plan.md deleted
+
+- Facts moved to `docs/brief.md`, `internal/AGENTS.md` and the `rr-*`
+  skills.
+
 ## 2026-11-10 -- master and 3.14.x carry the rewrite, the old server is archived
 
 - Owner decision; the rr workflow's base is `master`. `docs/brief.md`,
