@@ -197,14 +197,16 @@ decisions are in `docs/adr/`.
   through `GOFLAGS`. Without it the compile fails on missing qdb
   headers, and the binding compiles against the stubs of `third_party/`
   and fails to link. `qdb-api-go` is never patched in `vendor/`. Fix it
-  upstream, then bump the version in `go.mod` (`go get ...@<commit>`, a
-  commit on upstream `master`; a branch commit lives only as long as
-  the work that needs it), and re-run `go mod tidy` and `go mod
-vendor`. Nothing under `vendor/` is written by hand, except the one
-  binding file of the next bullet. A branch commit
-  of a PR that is squash-merged does not reach `master`, so the work
-  that vendored it re-points `go.mod` at the squash commit before it
-  merges.
+  upstream, then bump the version in `go.mod` with `go get ...@<commit>`
+  and re-run `go mod tidy` and `go mod vendor`. The commit sits on the
+  upstream branch named like this repository's branch: upstream
+  `master` for `master`, and upstream `3.14.x` for `3.14.x`. Changes
+  reach upstream `3.14.x` by cherry-pick, so it carries the same work as
+  upstream `master`. A branch commit lives only as long as the work that
+  needs it. A branch commit of a PR that is squash-merged reaches no
+  upstream branch, so the work that vendored it re-points `go.mod` at
+  the squash commit before it merges. Nothing under `vendor/` is written
+  by hand, except the one binding file of the next bullet.
 - `vendor/github.com/duckdb/duckdb-go-bindings/alloc.go` carries one
   hand-written patch (owner, 2026-10-29). `allocNames` takes its array
   of name pointers from `calloc` instead of `duckdb_malloc`, which is
