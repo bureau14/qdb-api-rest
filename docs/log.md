@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -23,7 +23,46 @@ Last updated: 2026-11-09
 
 In flight: none.
 
-Next: none.
+Next:
+
+1. Cut the base over to `master` and `3.14.x` (owner, 2026-11-10). This
+   unit is shell and GitHub work, not code: the base is an orphan with no
+   merge base to `master`, so it lands by force-push and no pull request
+   exists for it. The owner's decisions, in order:
+   - Archive the old server once: branch `archive/go-swagger` from
+     `origin/master`, tags `archive/go-swagger-master` and
+     `archive/go-swagger-3.14.x` on the two tips, pushed first. One
+     archive branch suffices because `master` and `3.14.x` differ only in
+     the vendored `qdb-api-go` sync.
+   - Close, or retarget to `archive/go-swagger`, the open pull requests
+     against `master` (#3, #13, #14, #22, #24, #25, #27) before the
+     force-push. #51 targets `3.14.x-20260821-qdb-3.14.2` and stays.
+   - `git push --force origin sc-19567/rest-rewrite:master`. `VERSION`
+     is already `3.15.0.dev0`. The `master` protection allows force
+     pushes and does not enforce admins, and `3.14.x` is unprotected, so
+     no rule is loosened; nothing deletes a ref.
+   - `3.14.x` from the new `master` with one commit setting `VERSION` to
+     `3.14.4.dev0`, force-pushed over the old `3.14.x`.
+   - Ensure a Buildkite build of each pushed tip (both branches pass the
+     pipeline's filter) and read them back green.
+   - Shortcut: story 20139 to Completed; the brief's Tracking table is
+     the map. Story 20143 is the follow-up in `qdb-release`: its updater
+     (`scripts/release/src/submodules/updater/update.py`, the
+     `qdb-api-rest` entry) rewrites `swagger.json` and `restapi/*`,
+     none of which exist here, and must read and write `VERSION`
+     instead, with the `qdb-nats-connector` formats in `version.py`. It
+     lands before the first release off the new `master`.
+   - The pin branch `3.14.x-20260821-qdb-3.14.2` keeps the old server
+     for its customer; its backports come from `archive/go-swagger`
+     from now on.
+   - Optional review artifact, since no pull request can carry one: an
+     empty orphan branch and a pull request of the base against it
+     renders the whole tree as a diff for Igor, and the force-push
+     follows his approval.
+   - The rewrite becoming the `3.14.x` line ships a new config format and
+     dropped endpoints in a patch line; the owner accepted this on
+     2026-11-10. If reversed, cut over `master` only and leave `3.14.x`
+     on the old server.
 
 Open after the milestones:
 
@@ -61,6 +100,11 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-10 -- the base lands on master by force-push, the old server is archived
+
+- Owner decision; the procedure is Current state, Next 1. Shortcut epic
+  19567 and its stories: `docs/brief.md`, Tracking.
 
 ## 2026-11-09 -- stream-only-logging-plan.md deleted
 

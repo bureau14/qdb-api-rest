@@ -12,8 +12,9 @@ the recommended reading order are in `docs/AGENTS.md`.
 The rewrite is Shortcut epic 19567, "REST API Rewrite"
 (`https://app.shortcut.com/quasardb/epic/19567`). The server code on
 `sc-19567/rest-rewrite` is story 20139; the branch predates the story and
-keeps the epic's id, so the integration does not attach it and the PR is
-linked to 20139 by hand. The M10 work that lives outside this repo has one
+keeps the epic's id, and it lands on `master` by force-push with no pull
+request (`docs/log.md`, Current state, Next), so 20139 is completed by
+hand. The M10 work that lives outside this repo has one
 story each, all blocked by 20139:
 
 | Story | Work                                                   |
