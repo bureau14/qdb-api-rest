@@ -7,6 +7,27 @@ decisions made before development started. Progress against the milestones
 below is tracked only in `docs/log.md`. The documentation conventions and
 the recommended reading order are in `docs/AGENTS.md`.
 
+## Tracking
+
+The rewrite is Shortcut epic 19567, "REST API Rewrite"
+(`https://app.shortcut.com/quasardb/epic/19567`). The server code on
+`sc-19567/rest-rewrite` is story 20139; the branch predates the story and
+keeps the epic's id, so the integration does not attach it and the PR is
+linked to 20139 by hand. The M10 work that lives outside this repo has one
+story each, all blocked by 20139:
+
+| Story | Work                                                   |
+| ----- | ------------------------------------------------------ |
+| 20139 | `[rest]` server implementation, this branch            |
+| 20140 | `[rest]` Windows service wrapper in `qdb-pkg-windows`  |
+| 20141 | `[rest]` deb and rpm packaging with systemd unit       |
+| 20142 | `[rest]` Docker image                                  |
+| 20143 | `[rest]` `VERSION` registration with `qdb-release`     |
+| 20144 | `[rest]` documentation rewrite                         |
+| 20145 | `[rest]` `duckdb-go-bindings` bump, blocks 20139       |
+| 20146 | `[rest]` Grafana plugin verification against v1 (Igor) |
+| 20147 | `[duck]` flaky `Catalog Error` in CI, relates to 20139 |
+
 ## Vision
 
 The product is a single, dependency-vendored Go binary that is QuasarDB's
