@@ -8,9 +8,9 @@ user-invocable: false
 
 ## Branches and commits
 
-- `sc-19567/rest-rewrite` is the base branch. Commit to it only by
-  fast-forward merge from a reviewed feature branch. It is a flat,
-  linear history; it stays that way.
+- `master` is the base branch. Commit to it only by fast-forward merge
+  from a reviewed feature branch. It is a flat, linear history; it stays
+  that way.
 - Every unit of work happens on a feature branch off the base, named
   `sc-19567/rr-<slug>`. Create it only when the owner opens the plan
   stage, from an up-to-date base, with a clean working tree.
@@ -20,7 +20,7 @@ user-invocable: false
   one; each commit builds and passes lint.
 - The owner reviews the plan and the code in the Plannotator Inbox
   (The Inbox, below). The code review's patch is
-  `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`.
+  `git diff master...sc-19567/rr-<slug>`.
 - No GitHub pull requests, no stacked branches, no history rewriting on
   the base.
 
@@ -32,15 +32,15 @@ reprioritized, how it is watched and how its state is read back. The
 stage skills say what to do with a build; the skill says how, and it
 takes these values from this repository:
 
-| Parameter      | Value                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| Pipeline slug  | `qdb-api-rest`                                                                            |
-| Org            | `quasar-1`, resolved from the repository's `.bk.yaml`; nothing to set                     |
-| Branch         | the feature branch, `sc-19567/rr-<slug>`                                                  |
-| Commit         | the full SHA of the head, `git rev-parse HEAD`                                            |
-| `MESSAGE`      | `rr-<slug>`, so the pipeline's build list reads by unit                                   |
-| `CHECKPOINT`   | `7200`, because the watcher runs beside the owner's code review, which can take hours     |
-| Control branch | `sc-19567/rest-rewrite`, when the skill says to check a failure against an unchanged base |
+| Parameter      | Value                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------- |
+| Pipeline slug  | `qdb-api-rest`                                                                        |
+| Org            | `quasar-1`, resolved from the repository's `.bk.yaml`; nothing to set                 |
+| Branch         | the feature branch, `sc-19567/rr-<slug>`                                              |
+| Commit         | the full SHA of the head, `git rev-parse HEAD`                                        |
+| `MESSAGE`      | `rr-<slug>`, so the pipeline's build list reads by unit                               |
+| `CHECKPOINT`   | `7200`, because the watcher runs beside the owner's code review, which can take hours |
+| Control branch | `master`, when the skill says to check a failure against an unchanged base            |
 
 The builds of a head, with their states, are read with the skill's
 one-liner in "Inspecting builds and jobs". `/rr-merge` quotes it in its
@@ -48,16 +48,14 @@ entry check because the harness evaluates that check at load time.
 
 The reviews go through the `plannotator_inbox` tool:
 
-| Review      | Calls                                     | Values here                                                                             |
-| ----------- | ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| Plan review | `send_message`, the plan in `attachments` | `docs/<slug>-plan.md`, one message                                                      |
-| Code review | `get_guide_brief`, then `submit_guide`    | patch `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`, the head's SHA in the body |
+| Review      | Calls                                     | Values here                                                              |
+| ----------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| Plan review | `send_message`, the plan in `attachments` | `docs/<slug>-plan.md`, one message                                       |
+| Code review | `get_guide_brief`, then `submit_guide`    | patch `git diff master...sc-19567/rr-<slug>`, the head's SHA in the body |
 
-The `quasardb-workflow` skill does not apply on this branch, and
-neither does the `github` skill: the whole rewrite is one Shortcut
-story that lasts months, so there is no story to create, no pull
-request to open and no squash-merge. `/rr-merge` is the only merge,
-and the base lands on `master` once, at the end, outside these skills.
+The `quasardb-workflow` skill does not apply to a unit, and neither
+does the `github` skill. A unit has no Shortcut story of its own, no
+pull request and no squash-merge. `/rr-merge` is the only merge.
 
 Correct: the build stage runs the buildkite skill's watcher with slug
 `qdb-api-rest`, the feature branch, the head's SHA,
