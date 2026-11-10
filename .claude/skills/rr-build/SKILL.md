@@ -24,7 +24,7 @@ The branch names the plan. On `sc-19567/rr-<slug>` the plan is
 `docs/<slug>-plan.md`, and it is the one `docs/*-plan.md` the branch
 adds over the base:
 
-!`git diff --name-only --diff-filter=A sc-19567/rest-rewrite...HEAD -- 'docs/*-plan.md'`
+!`git diff --name-only --diff-filter=A master...HEAD -- 'docs/*-plan.md'`
 
 When that list is one file, it is the plan, and an empty argument is
 the normal case. When the argument names a file, it is the plan and
@@ -139,7 +139,7 @@ than after it. So once the checks above are clean, in this order:
 2. Write a guided review of the pushed head and send it, as
    `/rr-workflow`, The Inbox, says:
    - `get_guide_brief`, then the patch
-     `git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`.
+     `git diff master...sc-19567/rr-<slug>`.
    - `submit_guide` with that exact patch, in the unit's thread. The
      body names the head's SHA, because the owner's "Looks good"
      approves that head and no other.
@@ -203,8 +203,8 @@ doc-discipline check's report, or "clean"; the plan's deletion commit
 by its sha; the review's outcome, with the Inbox message id the owner
 marked; the Buildkite build number and its state,
 and any superseded build numbers; the command
-`git diff sc-19567/rest-rewrite...sc-19567/rr-<slug>`; one line saying
-the merge waits for `/rr-merge`.
+`git diff master...sc-19567/rr-<slug>`; one line saying the merge waits
+for `/rr-merge`.
 
 Then wait. Do not ask whether to merge; the owner invokes `/rr-merge`
 when they are ready.

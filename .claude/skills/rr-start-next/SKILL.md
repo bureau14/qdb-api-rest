@@ -22,7 +22,7 @@ Current branch: !`git branch --show-current`
 
 Base vs origin, commits ahead / behind (0 0 means in sync):
 
-!`git rev-list --left-right --count sc-19567/rest-rewrite...origin/sc-19567/rest-rewrite`
+!`git rev-list --left-right --count master...origin/master`
 
 Working tree (empty means clean):
 

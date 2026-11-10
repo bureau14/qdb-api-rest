@@ -48,7 +48,7 @@ Current branch: !`git branch --show-current`
 
 Base vs origin, commits ahead / behind (0 0 means in sync):
 
-!`git rev-list --left-right --count sc-19567/rest-rewrite...origin/sc-19567/rest-rewrite`
+!`git rev-list --left-right --count master...origin/master`
 
 Working tree (empty means clean):
 
@@ -87,8 +87,8 @@ it is the unit, and its stage is read under Resume.
 
 For a plan path, the tree and the unit's Inbox thread say what stage
 the unit is in. Read the plan's `Status:` and `Thread:` lines and
-`git log --oneline sc-19567/rest-rewrite..` on the unit's branch; the
-plan is the next stage's whole input and is not re-read here. Once the
+`git log --oneline master..` on the unit's branch; the plan is the next
+stage's whole input and is not re-read here. Once the
 build stage has deleted the plan, its header is read from the parent of
 the deletion commit, `git show <deletion sha>^:docs/<slug>-plan.md`.
 

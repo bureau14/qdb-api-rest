@@ -18,11 +18,11 @@ Working tree (empty means clean):
 
 Feature branch vs base, commits ahead / behind:
 
-!`git rev-list --left-right --count sc-19567/rest-rewrite...HEAD`
+!`git rev-list --left-right --count master...HEAD`
 
 Base vs origin, commits ahead / behind:
 
-!`git rev-list --left-right --count sc-19567/rest-rewrite...origin/sc-19567/rest-rewrite`
+!`git rev-list --left-right --count master...origin/master`
 
 Plan documents on this branch (empty means none):
 
@@ -52,14 +52,13 @@ reviewed and built, never a commit on the base.
    not `<n> 0`), rebase the feature branch onto the base so the merge
    stays a fast-forward, and say so in the closing line. A rebase that
    conflicts is stopped and reported; the owner decides.
-2. `git checkout sc-19567/rest-rewrite && git merge --ff-only sc-19567/rr-<slug>`.
+2. `git checkout master && git merge --ff-only sc-19567/rr-<slug>`.
    No merge commit, ever.
 3. Delete the feature branch locally and on origin, where the build
    stage pushed it:
    `git branch -d sc-19567/rr-<slug> && git push origin --delete sc-19567/rr-<slug>`.
-4. `git push origin sc-19567/rest-rewrite`. The head it publishes is
-   the one the entry check saw pass, so the base on origin is always
-   a built head. A rejected push (origin moved) is stopped and
+4. `git push origin master`. The head it publishes is the one the entry
+   check saw pass, so the base on origin is always a built head. A rejected push (origin moved) is stopped and
    reported; the owner decides.
 
 Close with one line: what merged and that the base is pushed, as
