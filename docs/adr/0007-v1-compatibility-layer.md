@@ -30,8 +30,9 @@ demonstrated this and was discarded.
 The early-drop-in argument (ship the compatible binary first to
 de-risk the compatibility story) does not need the v1 code first
 either. Compatibility is checked by a script run by hand, which starts
-the old server built from `master` and the new one on the same cluster,
-sends each case to both and compares the answers (ADR-0015). The check
+the old server built from the tag `archive/go-swagger-master` and the
+new one on the same cluster, sends each case to both and compares the
+answers (ADR-0015). The check
 holds the contract whenever the code that satisfies it is written.
 
 ## Decision

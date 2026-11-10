@@ -40,12 +40,13 @@ costs is the time the preview does not have.
    on rows it generates itself, as the v2 round trip does (ADR-0014).
 4. **The v1 golden suite is removed.** The goldens, their driver and
    their fixture are deleted. M9 checks compatibility by a script run
-   by hand, which starts the old server built from `master` and the new
-   one on the same cluster, sends each case to both and compares the
-   answers. It stores nothing, because these are validation runs on
-   the owner's machine and every stored golden would be one more file
-   to audit (owner, 2026-11-05). The byte-shape facts of the old server
-   come from its source on `master`.
+   by hand, which starts the old server built from the tag
+   `archive/go-swagger-master` and the new one on the same cluster,
+   sends each case to both and compares the answers. It stores
+   nothing, because these are validation runs on the owner's machine
+   and every stored golden would be one more file to audit (owner,
+   2026-11-05). The byte-shape facts of the old server
+   come from its source at that tag.
 
 This ADR supersedes ADR-0013. Four of its rules stay in force and are
 restated here, so that nothing cites a superseded document:
