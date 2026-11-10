@@ -10,22 +10,21 @@ the recommended reading order are in `docs/AGENTS.md`.
 ## Tracking
 
 The rewrite is Shortcut epic 19567, "REST API Rewrite"
-(`https://app.shortcut.com/quasardb/epic/19567`). The server code on
-`sc-19567/rest-rewrite` is story 20139; the branch predates the story and
-keeps the epic's id, and it lands on `master` by force-push with no pull
-request (`docs/log.md`, Current state, Next), so 20139 is completed by
-hand. The M10 work that lives outside this repo has one
-story each, all blocked by 20139:
+(`https://app.shortcut.com/quasardb/epic/19567`). The server lives on
+`master` and `3.14.x`, and story 20139 tracks it. No pull request
+carried the server onto `master`, so 20139 is completed by hand. Feature
+branches keep the epic's id, as `sc-19567/rr-<slug>`. The epic holds
+these stories:
 
 | Story | Work                                                   |
 | ----- | ------------------------------------------------------ |
-| 20139 | `[rest]` server implementation, this branch            |
+| 20139 | `[rest]` server implementation                         |
 | 20140 | `[rest]` Windows service wrapper in `qdb-pkg-windows`  |
 | 20141 | `[rest]` deb and rpm packaging with systemd unit       |
 | 20142 | `[rest]` Docker image                                  |
 | 20143 | `[rest]` `VERSION` registration with `qdb-release`     |
 | 20144 | `[rest]` documentation rewrite                         |
-| 20145 | `[rest]` `duckdb-go-bindings` bump, blocks 20139       |
+| 20145 | `[rest]` `duckdb-go-bindings` bump                     |
 | 20146 | `[rest]` Grafana plugin verification against v1 (Igor) |
 | 20147 | `[duck]` flaky `Catalog Error` in CI, relates to 20139 |
 
