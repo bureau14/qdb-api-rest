@@ -1102,6 +1102,15 @@ comes last because the preview customer does not use the v1 endpoints.
   nothing is sed-patched during the build.
 - Vendoring: the full `vendor/` tree is committed, and `qdb-api-go` is
   updated by version bump only, never patched locally.
+- `master` and `3.14.x` both carry this server. `3.14.x` is a patch
+  line at `3.14.4.dev0`, and it ships the new config format and the
+  dropped endpoints as `master` does (owner, 2026-11-10).
+- The branch `archive/go-swagger` holds the old go-swagger server. The
+  tags `archive/go-swagger-master` and `archive/go-swagger-3.14.x` mark
+  the two tips this server replaced (owner, 2026-11-10).
+- The pin branch `3.14.x-20260821-qdb-3.14.2` keeps the old server for
+  its customer, and its backports come from `archive/go-swagger`
+  (owner, 2026-11-10).
 
 ## Risks and open explorations
 
