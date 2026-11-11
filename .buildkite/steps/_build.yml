@@ -8,7 +8,9 @@ key: build-{slug}
 # starts qdbd from qdb/, and the build links the binary against both
 # trees. The e2e harness (tests/e2e/) runs last, through
 # scripts/cicd/40.test-e2e.sh, against that qdbd and the binary the build
-# command produced (docs/e2e.md, "In Buildkite").
+# command produced (docs/e2e.md, "In Buildkite"). The last command packs
+# that binary into artifacts/, and the plugin uploads and promotes the
+# archive when every command passed.
 
 commands:
   - echo \"+++ Start services\"
@@ -19,6 +21,8 @@ commands:
   - bash scripts/cicd/30.test.sh
   - echo \"+++ Tests - e2e\"
   - bash scripts/cicd/40.test-e2e.sh
+  - echo \"+++ Package\"
+  - bash scripts/cicd/50.package.sh
 
 plugins:
   - bureau14/qdb-artifacts#master:
@@ -37,6 +41,12 @@ plugins:
           extract: true
           files:
             - "artifacts/qdb-duck-*-libduckdb.tar.zst!*"
+      upload:
+        files:
+          - "artifacts/*-rest.*"
+        # qdb-pkg-archives downloads the archive by its bare name.
+        base-dir: "artifacts"
+      promote: {}
   - bureau14/qdb-test-report#master:
       title: "Test report {slug}"
       job:

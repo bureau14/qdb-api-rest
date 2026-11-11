@@ -3,15 +3,15 @@
 Loads step templates from `steps/*.yml`, substitutes `{placeholder}`
 vars, overlays env, the Docker plugin, and qdb-artifacts options
 (variant + git_ref) per platform. Produces a 10-step graph: one lint
-step in parallel with eight per-platform combined steps (build + unit
-tests), then an aggregate test-report step.
+step in parallel with eight per-platform combined steps (build, tests
+and package), then an aggregate test-report step.
 
 Each per-platform step starts qdbd through the shared test-setup
 submodule before building and stops it in hooks/pre-exit; the
 qdb-artifacts plugin extracts the c-api, server and utils dists the step
 needs into qdb/ and qdb-duck's package into duck/. The e2e harness
-(tests/e2e/) runs last in the same step, after the Go tests
-(.buildkite/AGENTS.md).
+(tests/e2e/) runs in the same step after the Go tests, and the step
+then packs and uploads the rest archive (.buildkite/AGENTS.md).
 
 Usage:
     python3 pipeline.py [generate|check]
@@ -187,6 +187,19 @@ def _download_options(variant: str, git_ref: str) -> dict:
     }
 
 
+def _publish_options(variant: str, git_ref: str) -> dict:
+    """Return the qdb-artifacts upload and promote options of one build step.
+
+    The rest archive is published under the variant the step downloads
+    its dependencies under, which is the variant qdb-pkg-archives asks
+    for.
+    """
+    return {
+        "upload": {"variant": variant, "git_ref": git_ref},
+        "promote": {"variant": variant, "git_ref": git_ref},
+    }
+
+
 def _per_platform_step(p: Platform) -> dict:
     """Generate the combined per-platform step (build + unit tests) for
     one platform.
@@ -234,9 +247,9 @@ def generate_pipeline() -> Pipeline:
     depends_on.
 
     Each step's qdb-artifacts plugin entry receives the download options
-    of _download_options(). There are no ``upload`` or ``promote``
-    blocks: this pipeline publishes no artifacts yet (packaging is out
-    of the plan; see the brief's Non-goals).
+    of _download_options(), and each build step also the options of
+    _publish_options(). The ``files`` of the upload stay in
+    steps/_build.yml, next to the command that writes them.
     """
     git_ref = get_git_ref()
     pipeline = Pipeline()
@@ -251,7 +264,11 @@ def generate_pipeline() -> Pipeline:
     for p in PLATFORMS:
         step = _per_platform_step(p)
         variants.append(p.slug())
-        set_artifact_plugin_options(step, _download_options(p.slug("release"), git_ref))
+        variant = p.slug("release")
+        set_artifact_plugin_options(
+            step,
+            {**_download_options(variant, git_ref), **_publish_options(variant, git_ref)},
+        )
         pipeline.add_step(CommandStep.from_dict(step))
 
     step = load_template(STEPS_DIR / "_test_report.yml")
