@@ -255,9 +255,7 @@ func Default() Config {
 		// worker. The empty spill directory disables spilling, so a query
 		// over the memory limit fails instead of writing to disk. The pool
 		// size and the TTL are qdb-duck's own defaults, so a server with
-		// no quasar block behaves as one that never set them. A smaller
-		// pool tied to Threads was rejected: the session budget is the
-		// brief's Risks item, for after the milestones.
+		// no quasar block behaves as one that never set them.
 		DuckDB: DuckDB{
 			MemoryLimit:  1 << 30,
 			Threads:      4,
