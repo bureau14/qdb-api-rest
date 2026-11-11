@@ -201,8 +201,8 @@ def _publish_options(variant: str, git_ref: str) -> dict:
 
 
 def _per_platform_step(p: Platform) -> dict:
-    """Generate the combined per-platform step (build + unit tests) for
-    one platform.
+    """Generate the combined per-platform step (build, tests and package)
+    for one platform.
 
     The template declares the bash invocations in its `commands:` list;
     this function handles env composition, docker overlay, and

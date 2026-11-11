@@ -34,7 +34,7 @@ in `.buildkite/` (see its `AGENTS.md`).
   loads on FreeBSD, macOS and Windows, and `examples/qdb_rest.yaml` as
   `etc/qdb_rest.yaml` into `artifacts/qdb-<version>-<os>-<arch>-rest.tar.gz`
   (`.zip` on Windows). The qdb-artifacts plugin in
-  `.buildkite/steps/_build.yml` uploads `artifacts/`. `qdb-pkg-archives`
+  `.buildkite/steps/_build.yml` uploads it. `qdb-pkg-archives`
   republishes the archive unchanged, and `qdb-pkg-debian`, `qdb-pkg-rpm`
   and `qdb-pkg-windows` read `bin/qdb_rest` and `etc/qdb_rest.yaml` from
   it, so a change to the name or the layout is a change in those

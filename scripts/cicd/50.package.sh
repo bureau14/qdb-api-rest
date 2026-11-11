@@ -93,7 +93,7 @@ else
     tar -czf "${ARCHIVE}" -C "${PKG_DIR}" bin etc
 fi
 
-# Only the archive stays in artifacts/, which the plugin uploads whole.
+# The staging directory goes, so artifacts/ holds the archive alone.
 rm -rf "${PKG_DIR}"
 
 echo "package: ${ARCHIVE}"
