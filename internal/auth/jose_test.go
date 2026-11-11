@@ -48,7 +48,7 @@ func TestJoseDecryptsOurTokens(t *testing.T) {
 		if err != nil {
 			rt.Fatal(err)
 		}
-		jwe, err := jose.ParseEncrypted(token,
+		jwe, err := jose.ParseEncryptedCompact(token,
 			[]jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
 		if err != nil {
 			rt.Fatalf("go-jose rejects the serialization: %v", err)
