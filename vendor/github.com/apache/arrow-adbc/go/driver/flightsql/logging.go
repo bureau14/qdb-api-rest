@@ -1,0 +1,230 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package flightsql
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"io"
+	"log/slog"
+	"strconv"
+	"time"
+
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+)
+
+// safeLogger returns a non-nil *slog.Logger wrapped with otelTraceHandler
+// so records carry trace/span IDs when their context has an active span.
+// A nil logger becomes a discard logger; the wrap is idempotent.
+func safeLogger(logger *slog.Logger) *slog.Logger {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return withOtelTraceContext(logger)
+}
+
+// maxLoggedBlobBytes caps how many bytes of opaque server-defined blobs
+// (descriptor commands, AppMetadata) are emitted in log records. Flight
+// tickets are not logged at all because they may carry sensitive data.
+const maxLoggedBlobBytes = 32
+
+// streamProgress tracks per-endpoint streaming statistics for log records
+// and error messages emitted when a stream ends. Not safe for concurrent
+// use; intended to be owned by the goroutine driving one endpoint.
+type streamProgress struct {
+	start         time.Time
+	firstBatchAt  time.Time
+	lastBatchAt   time.Time
+	batchesRead   int64
+	recordsRead   int64
+	bytesEstimate int64
+}
+
+func newStreamProgress() *streamProgress {
+	return &streamProgress{start: time.Now()}
+}
+
+// recordBatch updates the tracker after one Arrow record batch was received.
+func (p *streamProgress) recordBatch(rows int64, bytes int64) {
+	now := time.Now()
+	if p.batchesRead == 0 {
+		p.firstBatchAt = now
+	}
+	p.lastBatchAt = now
+	p.batchesRead++
+	p.recordsRead += rows
+	p.bytesEstimate += bytes
+}
+
+// summary returns a compact human-readable summary of the stream's progress
+// suitable for embedding into wrapped error messages.
+func (p *streamProgress) summary() string {
+	if p.batchesRead == 0 {
+		return "no batches received before failure; elapsed=" + time.Since(p.start).String()
+	}
+	return "received " + formatInt(p.batchesRead) + " batch(es), " +
+		formatInt(p.recordsRead) + " row(s) before failure; elapsed=" + time.Since(p.start).String() +
+		"; timeSinceLastBatch=" + time.Since(p.lastBatchAt).String()
+}
+
+// formatInt formats an int64 without pulling in fmt.
+func formatInt(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
+// wellKnownCorrelationHeaders is the curated allow-list of inbound gRPC
+// header/trailer keys that are surfaced verbatim into log records, for
+// cross-referencing client-side logs with server-side traces. Includes
+// the Microsoft / Power BI / Power Query family of correlation IDs.
+var wellKnownCorrelationHeaders = []string{
+	"x-request-id",
+	"x-correlation-id",
+	"x-trace-id",
+	"x-amzn-trace-id",
+	"x-b3-traceid",
+	"x-b3-spanid",
+	"traceparent",
+	"tracestate",
+	"x-arrow-flight-session-id",
+	"x-dremio-request-id",
+	"x-dremio-query-id",
+	"x-server-version",
+	"server",
+	// Microsoft / Power BI / Power Query family. gRPC's metadata package
+	// normalizes header names to lower case; both unprefixed and "x-ms-"
+	// variants are listed because Mashup's diagnostics record the former.
+	"activityid",
+	"activity-id",
+	"x-ms-activity-id",
+	"x-ms-client-request-id",
+	"x-ms-request-id",
+	"requestid",
+	"x-pbi-activity-id",
+}
+
+// headerAttrsWithPrefix is the shared implementation behind
+// correlationHeaderAttrs (incoming) and outgoingCallHeaderAttrs
+// (outbound). Only headers in wellKnownCorrelationHeaders are emitted;
+// returns nil when none are present.
+func headerAttrsWithPrefix(md metadata.MD, prefix string) []any {
+	if len(md) == 0 {
+		return nil
+	}
+	out := make([]any, 0, 4)
+	for _, k := range wellKnownCorrelationHeaders {
+		if vals := md.Get(k); len(vals) > 0 {
+			out = append(out, slog.Any(prefix+k, vals))
+		}
+	}
+	return out
+}
+
+// correlationHeaderAttrs returns slog attributes for well-known correlation
+// headers present in md (typically incoming headers/trailers). Uses the
+// "hdr_" prefix; only allow-listed headers are emitted.
+func correlationHeaderAttrs(md metadata.MD) []any {
+	return headerAttrsWithPrefix(md, "hdr_")
+}
+
+// outgoingCallHeaderAttrs returns slog attributes for well-known correlation
+// headers on ctx's outbound gRPC metadata. Uses the "out_hdr_" prefix.
+func outgoingCallHeaderAttrs(ctx context.Context) []any {
+	if ctx == nil {
+		return nil
+	}
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return nil
+	}
+	return headerAttrsWithPrefix(md, "out_hdr_")
+}
+
+// grpcStatusAttrs returns "grpc_code" and "grpc_message" slog attributes
+// for the gRPC status embedded in err, or nil if err has no status.
+func grpcStatusAttrs(err error) []any {
+	if err == nil {
+		return nil
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return nil
+	}
+	return []any{
+		slog.String("grpc_code", st.Code().String()),
+		slog.String("grpc_message", st.Message()),
+	}
+}
+
+// otelTraceHandler wraps an slog.Handler so records are stamped with the
+// current OpenTelemetry "trace_id" and "span_id" when the record's context
+// carries an active span.
+type otelTraceHandler struct {
+	inner slog.Handler
+}
+
+func (h *otelTraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *otelTraceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if ctx != nil {
+		sc := trace.SpanFromContext(ctx).SpanContext()
+		if sc.IsValid() {
+			r.AddAttrs(
+				slog.String("trace_id", sc.TraceID().String()),
+				slog.String("span_id", sc.SpanID().String()),
+			)
+		}
+	}
+	return h.inner.Handle(ctx, r)
+}
+
+func (h *otelTraceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &otelTraceHandler{inner: h.inner.WithAttrs(attrs)}
+}
+
+func (h *otelTraceHandler) WithGroup(name string) slog.Handler {
+	return &otelTraceHandler{inner: h.inner.WithGroup(name)}
+}
+
+// withOtelTraceContext wraps logger so records carry "trace_id" and
+// "span_id" attributes from any OpenTelemetry span on the record's
+// context. Idempotent; a nil logger is returned unchanged.
+func withOtelTraceContext(logger *slog.Logger) *slog.Logger {
+	if logger == nil {
+		return logger
+	}
+	if _, alreadyWrapped := logger.Handler().(*otelTraceHandler); alreadyWrapped {
+		return logger
+	}
+	return slog.New(&otelTraceHandler{inner: logger.Handler()})
+}
+
+// newRandomID returns a short "<prefix>-<hex>" identifier for tagging log
+// records and error details. Falls back to a nanosecond timestamp if
+// crypto/rand is unavailable.
+func newRandomID(prefix string) string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return prefix + "-" + strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	return prefix + "-" + hex.EncodeToString(b[:])
+}
