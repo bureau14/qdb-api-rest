@@ -6,8 +6,8 @@
 #   cicd_setup_qdb_env      -- CGO environment, sourced from the root .envrc
 #   cicd_trust_workspace    -- let git operate on a checkout owned by another UID
 #
-# The step scripts 10.lint.sh, 20.build.sh and 30.test.sh source this
-# file, and it is not a pipeline step (scripts/cicd/AGENTS.md).
+# Every step script sources this file, and it is not a pipeline step
+# (scripts/cicd/AGENTS.md).
 
 set -eu
 
