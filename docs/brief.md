@@ -369,9 +369,10 @@ One binary, two listeners:
   endpoints, `/api/v2` data plane. HTTP/1.1 and HTTP/2.
 - **gRPC listener** (`listen.flight`, default `:40493`): Arrow Flight
   SQL. It always starts, and the port is the configurable part (owner,
-  2026-10-13). It serves the certificates of `tls.certificate` and
-  `tls.private_key`, with the HTTPS listener's ephemeral self-signed
-  fallback, and has no plaintext form (ADR-0018). It is not multiplexed
+  2026-10-13). It serves the certificates of
+  `listen.tls.certificate_file` and `listen.tls.private_key_file`, with
+  the HTTPS listener's ephemeral self-signed fallback, and has no
+  plaintext form (ADR-0018). It is not multiplexed
   onto the HTTP port. gRPC and plain HTTP/2 are indistinguishable at
   accept time (same `h2` ALPN), so sharing a port means either grpc-go's
   shared-port path (`Server.ServeHTTP` through `net/http`, officially
@@ -827,8 +828,8 @@ The configuration is a YAML file (which plays well with helm and
 cloud-init), overridable by environment variables and flags, with
 env-var interpolation inside the YAML for secret injection. There is no
 compatibility with the old JSON config.
-`examples/qdb_rest.yaml` is the commented reference config, pinned to the
-defaults by test.
+`examples/qdb_rest.yaml` is the reference config. It lists every key
+commented out at its default.
 
 ### Observability and logging
 
