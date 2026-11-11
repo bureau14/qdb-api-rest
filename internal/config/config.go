@@ -35,23 +35,25 @@ import (
 // a sentinel and does not handle the flag itself.
 var ErrVersionRequested = errors.New("version requested")
 
-// Listen holds the listener addresses and the drain deadline. The HTTP
-// listener is off unless an address is set, and it is the only one that
-// can be off (ADR-0001). The deadline sits with the listeners it drains.
-// A shutdown block of its own would hold one key, and a server block
-// would hold nothing else.
+// TLS names the PEM certificate and private key files that the HTTPS and
+// Flight SQL listeners serve. Both empty means an ephemeral self-signed
+// certificate is generated at startup.
+type TLS struct {
+	CertificateFile string `yaml:"certificate_file" help:"PEM certificate file of the HTTPS and Flight SQL listeners, set together with listen.tls.private_key_file"`
+	PrivateKeyFile  string `yaml:"private_key_file" help:"PEM private key file of the HTTPS and Flight SQL listeners"`
+}
+
+// Listen holds the listener addresses, the drain deadline and the
+// certificate of the two TLS listeners. The HTTP listener is off unless
+// an address is set, and it is the only one that can be off (ADR-0001).
+// The deadline sits with the listeners it drains. A shutdown block of
+// its own would hold one key, and a server block would hold nothing else.
 type Listen struct {
 	HTTP          string        `yaml:"http" help:"HTTP listener address; off unless set"`
 	HTTPS         string        `yaml:"https" help:"HTTPS listener address"`
 	Flight        string        `yaml:"flight" help:"Flight SQL listener address (gRPC over TLS)"`
 	ShutdownGrace time.Duration `yaml:"shutdown_grace" help:"deadline for draining in-flight calls on every listener and the session pool on SIGTERM"`
-}
-
-// TLS points the HTTPS listener at a PEM certificate/key pair. Both empty
-// means an ephemeral self-signed certificate is generated at startup.
-type TLS struct {
-	Certificate string `yaml:"certificate" help:"PEM certificate for the HTTPS listener, set together with tls.private_key"`
-	PrivateKey  string `yaml:"private_key" help:"PEM private key for the HTTPS listener"`
+	TLS           TLS           `yaml:"tls"`
 }
 
 // Log selects the log output shape and how much of a query's statement
@@ -194,7 +196,6 @@ type Observability struct {
 // Config is the full server configuration.
 type Config struct {
 	Listen        Listen        `yaml:"listen"`
-	TLS           TLS           `yaml:"tls"`
 	Cluster       Cluster       `yaml:"cluster"`
 	Pool          Pool          `yaml:"pool"`
 	Status        Status        `yaml:"status"`

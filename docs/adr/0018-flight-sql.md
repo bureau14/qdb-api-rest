@@ -29,7 +29,7 @@ schema of a query it has not run (owner, 2026-10-24).
 
 1. **The Flight SQL listener always starts.** Its address is
    `listen.flight`, default `:40493`. It serves TLS from
-   `tls.certificate` and `tls.private_key`, with the same ephemeral
+   `listen.tls.certificate_file` and `listen.tls.private_key_file`, with the same ephemeral
    self-signed fallback and startup warning as the HTTPS listener.
    There is no plaintext Flight listener.
 2. **The implementation is arrow-go's Flight SQL server.** The binary
