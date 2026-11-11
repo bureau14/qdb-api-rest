@@ -24,7 +24,7 @@ import (
 	"time"
 
 	adbcapi "github.com/apache/arrow-adbc/go/adbc"
-	adbcflight "github.com/apache/arrow-adbc/go/adbc/driver/flightsql"
+	adbcflight "github.com/apache/arrow-adbc/go/driver/flightsql"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
