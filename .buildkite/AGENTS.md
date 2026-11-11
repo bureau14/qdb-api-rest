@@ -8,7 +8,7 @@ all of this should feel.
 ## Layout
 
 - `pipeline.py` is the dynamic generator: 1 lint step, 8 per-platform
-  build+unit-test steps and 1 aggregate test report. Run
+  build, test and package steps and 1 aggregate test report. Run
   `python3 pipeline.py check` (needs `pip install -r requirements.txt`
   and `BUILDKITE_BRANCH` set) after any change, and `generate` prints
   the YAML for inspection.
@@ -48,6 +48,12 @@ all of this should feel.
   Buildkite", specifies the step). The hook does not stop the REST
   servers the harness starts, because the harness Makefile's exit trap
   does.
+- Every build step uploads and promotes the rest archive that
+  `scripts/cicd/50.package.sh` packs, under the variant it downloads its
+  dependencies under (`linux-core2-release`, for one). `qdb-pkg-archives`
+  downloads it from this pipeline under the same variant and its own git
+  ref, so a branch with the same name in both repositories builds the
+  packages from this branch's binary.
 - Doubled `$$` in env values escapes Buildkite's upload-time
   interpolation so agent-side variables (`QDB_CICD_AGENT_*`) survive to
   the agent shell.

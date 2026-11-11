@@ -16,6 +16,8 @@ license.key
 # Build outputs
 bin/
 test-reports/
+# the archive scripts/cicd/50.package.sh packs
+/artifacts/
 # e2e harness working files
 tests/e2e/actual/
 tests/e2e/tools/jdbc/target/
