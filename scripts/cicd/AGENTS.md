@@ -30,6 +30,15 @@ in `.buildkite/` (see its `AGENTS.md`).
   repository root, and the test-report plugin in
   `.buildkite/steps/_build.yml` uploads it. Both files spell the
   archive's name, and a change to one changes the other.
+- `50.package.sh` packs `bin/qdb_rest`, the shared libraries the binary
+  loads on FreeBSD, macOS and Windows, and `examples/qdb_rest.yaml` as
+  `etc/qdb_rest.yaml` into `artifacts/qdb-<version>-<os>-<arch>-rest.tar.gz`
+  (`.zip` on Windows). The qdb-artifacts plugin in
+  `.buildkite/steps/_build.yml` uploads `artifacts/`. `qdb-pkg-archives`
+  republishes the archive unchanged, and `qdb-pkg-debian`, `qdb-pkg-rpm`
+  and `qdb-pkg-windows` read `bin/qdb_rest` and `etc/qdb_rest.yaml` from
+  it, so a change to the name or the layout is a change in those
+  repositories too.
 - `20.build.sh` composes the same `-ldflags` as the root Makefile's
   build target (VERSION file, git SHA, build time, build mode, GOAMD64).
   The `-X` targets are `internal/build`'s variables. When one changes,
