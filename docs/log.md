@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -21,7 +21,10 @@ Last updated: 2026-11-10
 | M9 -- Drop-in compat            | done  | closed 2026-11-09                                       |
 | M10 -- Release                  | done  | closed 2026-11-09, its work lives in other repositories |
 
-In flight: none.
+In flight: story 20141, the deb and rpm packages. This repository's
+pipeline uploads the rest archive, and the same branch name in
+`qdb-pkg-archives`, `qdb-pkg-debian` and `qdb-pkg-rpm` builds the
+packages from it.
 
 Next:
 
@@ -68,6 +71,13 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-11 -- deb and rpm packaging is in scope again
+
+- Owner decision, story 20141: four pull requests under one title, no
+  certificate generated at install, the old `qdb_rest.conf` left
+  untouched with a notice, and `3.14.x` as `master`. `docs/brief.md`,
+  Ecosystem and Non-goals.
 
 ## 2026-11-10 -- cutover-plan.md deleted
 

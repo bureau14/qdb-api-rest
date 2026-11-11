@@ -121,7 +121,8 @@ scalable design.
 | `qdb-grafana-plugin`            | External consumer of `/api/v1/login` and `/api/v1/query` through their unversioned aliases. Defines the backwards-compatibility surface together with customer code.                                                                      |
 | `qdb-api-python` (and siblings) | Future gateway consumers: client APIs gain an `http(s)://` transport (Flight SQL / HTTP) next to the native `qdb://` link. Migrations are separate projects. This project designs the protocol with them in the loop.                     |
 | `qdb-dashboard`                 | The old ClojureScript SPA, unused by customers. Retired, with no feature-parity obligation.                                                                                                                                               |
-| `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit.                                                                                                                                                                                     |
+| `qdb-pkg-archives`              | Republishes the archive this repository's pipeline uploads (`bin/qdb_rest`, `etc/qdb_rest.yaml`) for the packaging repositories and the download site.                                                                                    |
+| `qdb-pkg-debian`, `qdb-pkg-rpm` | Package the binary as `qdb-rest` with a systemd unit. The archive's `etc/qdb_rest.yaml` becomes `/etc/qdb/qdb_rest.yaml`, a conffile in the deb and `%config(noreplace)` in the rpm. No certificate is generated at install (ADR-0001).   |
 | `qdb-pkg-windows`               | The Inno Setup installer. Registers `qdb_rest` as a Windows service through a wrapper (ADR-0020) and drops the SPA assets.                                                                                                                |
 | `qdb-docker`                    | Today bundles the REST binary into the `qdb-dashboard` component image. This project adds a first-class standalone image.                                                                                                                 |
 | `qdb-release`                   | Central version manager. The rewrite must register its version-string location(s) there.                                                                                                                                                  |
@@ -200,11 +201,8 @@ code and prose:
 ## Non-goals
 
 - **No SPA, no frontend framework, no node/npm anywhere.**
-- **No packaging and no Docker image.** deb/rpm packaging, the
-  standalone Docker image and the `qdb-pkg-*` / `qdb-docker` integration
-  are out of scope until deployment becomes a concern. When packaging
-  returns, the RPM marks the config `%config(noreplace)` (Debian's
-  conffile handling is the reference).
+- **No Docker image.** The standalone Docker image and the `qdb-docker`
+  integration are out of scope until deployment becomes a concern.
 - **No dashboard in the initial scope.** The SSR dashboard is a future
   direction (see Architecture: Dashboard). The routing seam and
   cookie-compatible auth are preserved for it.
