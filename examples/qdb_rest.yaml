@@ -75,11 +75,6 @@ pool:
     # How long the breaker stays open before one call is let through.
     open_for: "10s"
 
-status:
-  # Query executed by the readiness probe, as the REST API's own user,
-  # after the dial. The result is discarded.
-  readiness_query: "SELECT 1"
-
 auth:
   # Rolling token passphrases. The first entry mints tokens, and the rest
   # stay valid during rotation. When empty, tokens do not survive a
@@ -134,6 +129,10 @@ duckdb:
     load_balancing: false
 
 observability:
+  status:
+    # Query executed by the readiness probe, as the REST API's own user,
+    # after the dial. The result is discarded.
+    readiness_query: "SELECT 1"
   log:
     # debug | info | warn | error
     level: "info"

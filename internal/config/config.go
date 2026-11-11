@@ -186,8 +186,9 @@ type Metrics struct {
 }
 
 // Observability groups what the process tells an operator about itself:
-// its log, its metrics and the runtime profiler.
+// its readiness, its log, its metrics and the runtime profiler.
 type Observability struct {
+	Status  Status  `yaml:"status"`
 	Log     Log     `yaml:"log"`
 	Metrics Metrics `yaml:"metrics"`
 	Pprof   bool    `yaml:"pprof" help:"serve the Go runtime profiler under /debug/pprof/ on the HTTP listeners"`
@@ -198,7 +199,6 @@ type Config struct {
 	Listen        Listen        `yaml:"listen"`
 	Cluster       Cluster       `yaml:"cluster"`
 	Pool          Pool          `yaml:"pool"`
-	Status        Status        `yaml:"status"`
 	Auth          Auth          `yaml:"auth"`
 	DuckDB        DuckDB        `yaml:"duckdb"`
 	Observability Observability `yaml:"observability"`
@@ -236,7 +236,6 @@ func Default() Config {
 			MaxLifetime: 15 * time.Minute,
 			Breaker:     Breaker{Failures: 3, OpenFor: 10 * time.Second},
 		},
-		Status: Status{ReadinessQuery: "SELECT 1"},
 		// TokenSecrets defaults to a non-nil empty slice. The defaults
 		// round-trip through YAML in defaults(), where nil marshals as []
 		// and decodes back as a non-nil empty slice. One canonical empty
@@ -266,6 +265,7 @@ func Default() Config {
 			Quasar:       Quasar{MaxPoolSize: 100, TableCacheTTL: time.Minute},
 		},
 		Observability: Observability{
+			Status: Status{ReadinessQuery: "SELECT 1"},
 			// The kibibyte of statement is not measured. It holds several
 			// lines of SQL.
 			Log: Log{Level: "info", Format: "json", StatementMaxBytes: 1024},
@@ -790,8 +790,8 @@ func validate(cfg Config) error {
 	if err := validateMetrics(cfg.Observability.Metrics); err != nil {
 		return err
 	}
-	if cfg.Status.ReadinessQuery == "" {
-		return errors.New("status.readiness_query must not be empty")
+	if cfg.Observability.Status.ReadinessQuery == "" {
+		return errors.New("observability.status.readiness_query must not be empty")
 	}
 	return nil
 }

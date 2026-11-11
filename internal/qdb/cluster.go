@@ -48,7 +48,7 @@ type Cluster struct {
 	cfg            config.Cluster
 	poolCfg        config.Pool
 	duckCfg        config.DuckDB
-	readinessQuery string // status.readiness_query, run by Probe
+	readinessQuery string // observability.status.readiness_query, run by Probe
 	now            func() time.Time
 
 	// budget caps the live sessions of the whole process at max_sessions.
@@ -104,7 +104,7 @@ func New(cfg config.Config, now func() time.Time) *Cluster {
 		cfg:            cfg.Cluster,
 		poolCfg:        cfg.Pool,
 		duckCfg:        cfg.DuckDB,
-		readinessQuery: cfg.Status.ReadinessQuery,
+		readinessQuery: cfg.Observability.Status.ReadinessQuery,
 		now:            now,
 		budget:         newBudget(cfg.Pool.MaxSessions),
 		breaker:        newBreaker(cfg.Pool.Breaker.Failures, cfg.Pool.Breaker.OpenFor, now),
@@ -591,9 +591,10 @@ func (c *Cluster) Authenticate(ctx context.Context, u User) error {
 
 // Probe answers readiness. It dials a fresh session as the REST API's own
 // user (outside the pool, the budget and the breaker), runs
-// status.readiness_query, and closes the session on its own goroutine. The
-// dial proves that the cluster is reachable and that the REST API's own
-// user authenticates. The query proves that the session serves queries.
+// observability.status.readiness_query, and closes the session on its own
+// goroutine. The dial proves that the cluster is reachable and that the
+// REST API's own user authenticates. The query proves that the session
+// serves queries.
 func (c *Cluster) Probe(ctx context.Context) error {
 	hdl, err := c.connect(ctx, c.ownCredentials(), false)
 	if err != nil {
