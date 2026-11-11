@@ -827,8 +827,8 @@ The configuration is a YAML file (which plays well with helm and
 cloud-init), overridable by environment variables and flags, with
 env-var interpolation inside the YAML for secret injection. There is no
 compatibility with the old JSON config.
-`examples/qdb_rest.yaml` is the commented reference config, pinned to the
-defaults by test.
+`examples/qdb_rest.yaml` is the reference config. It lists every key
+commented out at its default.
 
 ### Observability and logging
 

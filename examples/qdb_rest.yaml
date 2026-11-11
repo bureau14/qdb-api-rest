@@ -1,164 +1,143 @@
-# qdb_rest reference configuration: every key, at its built-in default.
-# internal/config's tests pin it to those defaults.
+# qdb_rest reference configuration.
+#
+# Every key is listed commented out at its default value. Uncomment a key,
+# together with the section headers above it, to change it.
 #
 # Load with `qdb_rest --config /etc/qdb/qdb_rest.yaml`. Every key is also
-# an environment variable and a flag named after its path (pool.max_sessions
-# is QDB_REST_POOL_MAX_SESSIONS and --pool-max-sessions). Precedence, lowest
-# to highest: these defaults, this file, the environment, flags. The loader
-# expands `${VAR}` references from the environment at load time, and an
-# unset variable refuses the start.
+# an environment variable and a flag named after its path: pool.max_sessions
+# is QDB_REST_POOL_MAX_SESSIONS and --pool-max-sessions. A flag overrides
+# the environment, and the environment overrides this file.
 
-listen:
-  # HTTP listener address. Off unless set, and the only listener that
-  # can be off.
-  # http: ":40080"
+#listen:
+  # HTTP listener address. The HTTP listener is off unless this is set.
+  #http: ""
   # HTTPS listener address.
-  https: ":40443"
-  # Flight SQL listener address (gRPC over TLS, the HTTPS certificates).
-  flight: ":40493"
-  # Deadline for draining in-flight calls on every listener and then the
-  # session pool on SIGTERM. Whatever stops the binary and then kills it
-  # must wait longer than this before the kill. The readiness probe
-  # answers 503 for the whole drain, so a load balancer that polls it
-  # stops sending new connections before a listener closes.
-  shutdown_grace: "8s"
-  tls:
+  #https: ":40443"
+  # Flight SQL listener address. Flight SQL is served over TLS only.
+  #flight: ":40493"
+  # Time in-flight requests get to finish on SIGTERM. The readiness probe
+  # answers 503 during that time.
+  #shutdown_grace: "8s"
+  #tls:
     # PEM certificate and private key files of the HTTPS and Flight SQL
-    # listeners, set together. With both empty, an ephemeral self-signed
-    # certificate is generated at every start.
-    certificate_file: ""
-    private_key_file: ""
+    # listeners, set together. With both empty, a self-signed certificate
+    # is generated at every start.
+    #certificate_file: ""
+    #private_key_file: ""
 
-cluster:
+#cluster:
   # Cluster URI. Several nodes form a comma-separated list.
-  uri: "qdb://127.0.0.1:2836"
+  #uri: "qdb://127.0.0.1:2836"
   # Cluster public key file. Empty means an insecure cluster.
-  public_key_file: ""
-  # User security file of the REST API's own user, the one it
-  # authenticates as on its own behalf (the readiness probe). Required
-  # when the cluster has a public key, and empty means anonymous.
-  user_security_file: ""
-  # Client-side C API compression: none | balanced.
-  compression: "none"
-  # Client-cluster traffic encryption: none | aes.
-  encryption: "none"
-  # C API socket timeout per session, the bound on one low-level network
-  # operation (a single send or receive, retried inside the C API).
-  # Whole seconds, at least 1s, and 0 leaves the Go API's default.
-  timeout: "0s"
-  # Per session, with 0 as the C API default: the client input buffer cap
-  # (bytes) and the C API worker threads (the C API default is half the
-  # logical cores, per session).
-  max_in_buffer_size: 0
-  parallelism: 0
-  # Per session, the soft limit on connections to any one node address
-  # (0 is the C API default, otherwise 2..100000).
-  connections_per_address: 0
+  #public_key_file: ""
+  # User security file of the user the readiness probe connects as.
+  # Required when the cluster has a public key. Empty means anonymous.
+  #user_security_file: ""
+  # Client-side compression: none | balanced.
+  #compression: "none"
+  # Encryption of the traffic to the cluster: none | aes.
+  #encryption: "none"
+  # Network timeout of a cluster connection, in whole seconds of at least
+  # 1s. 0 keeps the client's default.
+  #timeout: "0s"
+  # The three keys below apply to each cluster connection, and 0 keeps the
+  # client's default.
+  # Largest input buffer, in bytes.
+  #max_in_buffer_size: 0
+  # Client worker threads.
+  #parallelism: 0
+  # Soft limit on connections to one node, 2 to 100000.
+  #connections_per_address: 0
 
-pool:
-  # Sessions this process may hold across all users. Readiness probes
-  # dial outside this budget.
-  max_sessions: 64
-  # Sessions one user may hold, across all of that user's REST sessions.
-  # The anonymous user is one user.
-  per_user_max: 8
-  # A session unused this long is closed, and a user pool that has held
-  # no session for this long is evicted (so at most twice this after the
-  # last request).
-  idle_timeout: "5m"
+#pool:
+  # Cluster sessions the server may hold across all users.
+  #max_sessions: 64
+  # Cluster sessions one user may hold. The anonymous user is one user.
+  #per_user_max: 8
+  # A session unused this long is closed.
+  #idle_timeout: "5m"
   # A session older than this is closed instead of being reused.
-  max_lifetime: "15m"
-  breaker:
-    # Consecutive retryable failures (dial errors, retryable C API
-    # errors) that open the breaker.
-    failures: 3
-    # How long the breaker stays open before one call is let through.
-    open_for: "10s"
+  #max_lifetime: "15m"
+  #breaker:
+    # Consecutive retryable cluster errors after which the server stops
+    # calling the cluster.
+    #failures: 3
+    # How long the server waits before it tries the cluster again.
+    #open_for: "10s"
 
-auth:
-  # Rolling token passphrases. The first entry mints tokens, and the rest
-  # stay valid during rotation. When empty, tokens do not survive a
-  # restart and do not span multiple instances.
-  # token_secrets:
-  #   - "${QDB_REST_TOKEN_SECRET}"
-  argon2id:
-    # Token key-derivation cost, which must be identical on every instance.
-    time: 3
-    memory_mib: 64
-    parallelism: 4
-  # Validity of an access token from its login.
-  access_ttl: 15m
-  # Validity of a refresh token from the login or refresh that minted it.
-  # Fourteen days; durations have no day unit.
-  refresh_ttl: 336h
+#auth:
+  # Token passphrases. The first entry signs new tokens, and the others
+  # keep older tokens valid during a rotation. When empty, tokens do not
+  # survive a restart and are not valid on another instance.
+  #token_secrets: []
+  #argon2id:
+    # Cost of deriving the token keys from the passphrases. Every instance
+    # behind one load balancer must use the same values.
+    #time: 3
+    #memory_mib: 64
+    #parallelism: 4
+  # Validity of an access token.
+  #access_ttl: "15m"
+  # Validity of a refresh token. The default is fourteen days.
+  #refresh_ttl: "336h"
 
-duckdb:
-  # Every limit is per DuckDB instance, and the server opens one instance
-  # per user on that user's first sql call.
-  # Memory one instance may use, in bytes (1 GiB).
-  memory_limit: 1073741824
-  # Worker threads of one instance. A scan takes one qdbd session per
-  # worker thread.
-  threads: 4
-  # Directory an instance spills to when a query exceeds the memory
-  # limit. Empty disables spilling, so such a query fails.
-  spill_directory: ""
+#duckdb:
+  # The server opens one DuckDB instance per user, and every limit below
+  # applies to each instance.
+  # Memory limit, in bytes. The default is 1 GiB.
+  #memory_limit: 1073741824
+  # Worker threads. A scan takes one cluster session per worker thread.
+  #threads: 4
+  # Directory for spilling to disk when a query exceeds the memory limit.
+  # Empty disables spilling, so such a query fails.
+  #spill_directory: ""
   # Bytes one instance may spill.
-  max_spill_size: 0
-  # Instances live at once. A sql call that would open one more answers
-  # 503 until an idle user pool is evicted.
-  max_instances: 16
-  # The qdb-duck sessions behind one instance, set as qdb-duck's quasar_*
-  # globals before the attach.
-  quasar:
-    # qdbd sessions qdb-duck pools behind one instance, 1 to 1024. A scan
-    # takes one per DuckDB worker, and a catalog lookup can hold several.
-    max_pool_size: 100
-    # How long a qdb-duck session caches a table's metadata. 0 disables
-    # the cache, so every lookup asks qdbd.
-    table_cache_ttl: "1m"
-    # Per session, with 0 as the C API default: the longest wait for an
-    # unstable cluster and the longest retry of a conflicting
-    # transaction, each at least cluster.timeout when both are set, and
-    # the client-side soft memory limit in bytes.
-    stabilization_max_wait: "0s"
-    transaction_max_wait: "0s"
-    soft_memory_limit: 0
+  #max_spill_size: 0
+  # Instances open at once. When all are in use, a sql call from one more
+  # user answers 503.
+  #max_instances: 16
+  #quasar:
+    # Cluster sessions pooled behind one instance, 1 to 1024.
+    #max_pool_size: 100
+    # How long table metadata is cached. 0 disables the cache.
+    #table_cache_ttl: "1m"
+    # The two waits below are at least cluster.timeout when both are set,
+    # and 0 keeps the client's default.
+    # Longest wait for an unstable cluster.
+    #stabilization_max_wait: "0s"
+    # Longest retry of a conflicting transaction.
+    #transaction_max_wait: "0s"
+    # Client-side soft memory limit per session, in bytes. 0 keeps the
+    # client's default.
+    #soft_memory_limit: 0
     # Spread a session's requests across the nodes instead of pinning it
     # to one.
-    load_balancing: false
+    #load_balancing: false
 
-observability:
-  status:
-    # Query executed by the readiness probe, as the REST API's own user,
-    # after the dial. The result is discarded.
-    readiness_query: "SELECT 1"
-  log:
+#observability:
+  #status:
+    # Query the readiness probe runs against the cluster.
+    #readiness_query: "SELECT 1"
+  #log:
     # debug | info | warn | error
-    level: "info"
-    # json (one object per line, for journald and container runtimes) |
-    # text (key=value, for interactive use)
-    format: "json"
-    # Bytes of a query's statement that a debug line keeps. Longer statements
-    # are truncated and end in "...". 0 keeps every statement whole.
-    statement_max_bytes: 1024
-  metrics:
-    # Serve the Prometheus exposition at GET /metrics on the HTTP and
-    # HTTPS listeners, outside authentication. The scrape reads counters
-    # held in this process and never touches the cluster.
-    enabled: true
-    # Prefix of every series this binary names (qdb_rest_build_info), so
-    # several exporters on one host do not collide. The go_ and process_
-    # series of the Go client keep their names. A name of letters, digits,
-    # underscores and colons, not starting with a digit, and not empty.
-    namespace: "qdb_rest"
-    # Buckets of every duration histogram: count upper bounds, the first
-    # at start and each next one double the one before. The default runs
-    # from 32ms to 16.4s, and a minute needs a count of 12.
-    duration_buckets:
-      start: "32ms"
-      count: 10
-  # Serve the Go runtime profiler under /debug/pprof/ on the HTTP and
-  # HTTPS listeners, outside authentication, for goroutine, heap and
-  # CPU profiles of a live instance. Off unless a profile is wanted.
-  pprof: false
+    #level: "info"
+    # json | text
+    #format: "json"
+    # Bytes of a query's statement that a debug line keeps. 0 keeps the
+    # whole statement.
+    #statement_max_bytes: 1024
+  #metrics:
+    # Serve Prometheus metrics at GET /metrics on the HTTP and HTTPS
+    # listeners, without authentication.
+    #enabled: true
+    # Prefix of the metric names.
+    #namespace: "qdb_rest"
+    #duration_buckets:
+      # Upper bound of the first bucket of every duration histogram. Each
+      # next bound is double the one before.
+      #start: "32ms"
+      # Number of buckets.
+      #count: 10
+  # Serve the Go profiler under /debug/pprof/ on the HTTP and HTTPS
+  # listeners, without authentication.
+  #pprof: false
