@@ -100,14 +100,14 @@ func generateSelfSigned(now time.Time) (tls.Certificate, error) {
 // silently serve an ephemeral certificate. The rule lives here because
 // this function is the only place that reads the pair.
 func loadCertificate(cfg config.TLS, now time.Time) (tls.Certificate, Source, error) {
-	if (cfg.Certificate == "") != (cfg.PrivateKey == "") {
-		return tls.Certificate{}, SourceFile, errors.New("tls.certificate and tls.private_key must be set together")
+	if (cfg.CertificateFile == "") != (cfg.PrivateKeyFile == "") {
+		return tls.Certificate{}, SourceFile, errors.New("listen.tls.certificate_file and listen.tls.private_key_file must be set together")
 	}
-	if cfg.Certificate == "" {
+	if cfg.CertificateFile == "" {
 		cert, err := generateSelfSigned(now)
 		return cert, SourceEphemeral, err
 	}
-	cert, err := tls.LoadX509KeyPair(cfg.Certificate, cfg.PrivateKey)
+	cert, err := tls.LoadX509KeyPair(cfg.CertificateFile, cfg.PrivateKeyFile)
 	if err != nil {
 		return tls.Certificate{}, SourceFile, fmt.Errorf("loading tls certificate: %w", err)
 	}

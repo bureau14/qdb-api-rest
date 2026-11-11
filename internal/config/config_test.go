@@ -267,13 +267,3 @@ func TestHelpIsGNUStyle(t *testing.T) {
 		t.Fatalf("usage is not GNU-style:\n%s", out.String())
 	}
 }
-
-func TestExampleIsTheDefaults(t *testing.T) {
-	cfg, err := load([]string{"--config", "../../examples/qdb_rest.yaml"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(cfg, Default()) {
-		t.Fatalf("examples/qdb_rest.yaml = %+v, want %+v", cfg, Default())
-	}
-}

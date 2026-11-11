@@ -135,14 +135,14 @@ func newListeners(ctx context.Context, cfg config.Config, handler http.Handler) 
 	// 2. HTTPS and Flight serve the same certificate, so the TLS material
 	//    loads once. Loading it once keeps an ephemeral certificate to one
 	//    identity per start and logs its warning once.
-	tlsConfig, info, err := tlsconf.Load(cfg.TLS, time.Now())
+	tlsConfig, info, err := tlsconf.Load(cfg.Listen.TLS, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	if info.Source == tlsconf.SourceEphemeral {
 		log.WarnContext(ctx, "no tls certificate configured; generated an ephemeral self-signed certificate",
 			"fingerprint_sha256", info.Fingerprint,
-			"hint", "the identity changes on every start; set tls.certificate and tls.private_key for a stable one")
+			"hint", "the identity changes on every start; set listen.tls.certificate_file and listen.tls.private_key_file for a stable one")
 	}
 	// 3. HTTP, when configured, bound and over base, with one warning
 	//    when the cluster is secure, because access tokens then travel in

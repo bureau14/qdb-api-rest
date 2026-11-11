@@ -98,7 +98,7 @@ func writePEMPair(t *testing.T, dir string) (certPath, keyPath string, cert tls.
 
 func TestFileCertificates(t *testing.T) {
 	certPath, keyPath, written := writePEMPair(t, t.TempDir())
-	tlsConfig, info, err := Load(config.TLS{Certificate: certPath, PrivateKey: keyPath}, time.Now())
+	tlsConfig, info, err := Load(config.TLS{CertificateFile: certPath, PrivateKeyFile: keyPath}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestFileCertificates(t *testing.T) {
 
 func TestLoneCertificateOrKeyIsError(t *testing.T) {
 	certPath, keyPath, _ := writePEMPair(t, t.TempDir())
-	for _, cfg := range []config.TLS{{Certificate: certPath}, {PrivateKey: keyPath}} {
+	for _, cfg := range []config.TLS{{CertificateFile: certPath}, {PrivateKeyFile: keyPath}} {
 		if _, _, err := Load(cfg, time.Now()); err == nil {
 			t.Fatalf("want an error for the half-configured pair %+v, got nil", cfg)
 		}
@@ -123,7 +123,7 @@ func TestLoneCertificateOrKeyIsError(t *testing.T) {
 }
 
 func TestMissingFileIsError(t *testing.T) {
-	_, _, err := Load(config.TLS{Certificate: "/nonexistent/cert.pem", PrivateKey: "/nonexistent/key.pem"}, time.Now())
+	_, _, err := Load(config.TLS{CertificateFile: "/nonexistent/cert.pem", PrivateKeyFile: "/nonexistent/key.pem"}, time.Now())
 	if err == nil {
 		t.Fatal("want error for missing certificate files, got nil")
 	}

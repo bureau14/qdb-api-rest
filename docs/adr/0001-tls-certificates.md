@@ -23,10 +23,11 @@ honest warnings and no baked-in keys.
 
 The initial scope has two certificate sources:
 
-1. **Configured PEM pair**: `tls.certificate` + `tls.private_key`
-   (paths to PEM files), validated as both-or-neither. This is the
-   universal mechanism, because corporate CAs, k8s cert-manager secrets,
-   and ACM Private CA exports all reduce to a PEM pair on disk.
+1. **Configured PEM pair**: `listen.tls.certificate_file` +
+   `listen.tls.private_key_file` (paths to PEM files), validated as
+   both-or-neither. This is the universal mechanism, because corporate
+   CAs, k8s cert-manager secrets, and ACM Private CA exports all reduce
+   to a PEM pair on disk.
 2. **Ephemeral self-signed fallback**: when the HTTPS listener is
    enabled and no pair is configured, the server generates an in-memory
    ECDSA P-256 self-signed certificate at startup and logs a warning
@@ -64,7 +65,7 @@ rotation is restart-based.
   example via `GetCertificate` re-reading on file change) is a purely
   additive later step, and nothing in this decision blocks it.
 - ACME support, if ever demanded, is likewise additive config
-  (`tls.acme: ...`) and does not disturb the file path.
+  (`listen.tls.acme: ...`) and does not disturb the file path.
 
 ## Alternatives rejected
 
