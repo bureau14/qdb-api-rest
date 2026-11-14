@@ -1,7 +1,7 @@
 # Plan: the release updater rewrites qdb-api-rest's VERSION file
 
 Thread: rest VERSION registration in qdb-release (story 20143)
-Status: draft
+Status: approved
 
 ## Outcome
 
