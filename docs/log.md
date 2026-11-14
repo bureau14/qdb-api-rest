@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-11
+Last updated: 2026-11-14
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -21,19 +21,9 @@ Last updated: 2026-11-11
 | M9 -- Drop-in compat            | done  | closed 2026-11-09                                       |
 | M10 -- Release                  | done  | closed 2026-11-09, its work lives in other repositories |
 
-In flight: story 20141, the deb and rpm packages. This repository's
-pipeline uploads the rest archive, and the same branch name in
-`qdb-pkg-archives`, `qdb-pkg-debian` and `qdb-pkg-rpm` builds the
-packages from it.
+In flight: none.
 
-Next:
-
-1. Story 20143 in `qdb-release`: the updater's `qdb-api-rest` entry
-   (`scripts/release/src/submodules/updater/update.py`) rewrites
-   `swagger.json` and `restapi/*`, none of which exist here, and must
-   read and write `VERSION` instead, with the `qdb-nats-connector`
-   formats in `version.py`. It lands before the first release off
-   `master` (owner, 2026-11-10).
+Next: none.
 
 Open after the milestones:
 
@@ -71,6 +61,10 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-14 -- rest-version-registration-plan.md deleted
+
+- Facts moved to `docs/brief.md`.
 
 ## 2026-11-11 -- deb and rpm packaging is in scope again
 
