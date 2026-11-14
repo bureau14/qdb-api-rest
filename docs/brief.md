@@ -1092,10 +1092,11 @@ comes last because the preview customer does not use the v1 endpoints.
 ## Versioning and release
 
 - Package version pinned 1:1 to the QuasarDB server release.
-- There is one version string location in this repo, a `VERSION` file at
-  the repo root, registered with `qdb-release`'s central version manager
-  in that tool's version-string format for this project
-  (`{xyz}-{stage}.{stage_version}`). Build metadata (version, commit,
+- There is one version string location in this repository, a `VERSION`
+  file at the repository root. `qdb-release`'s updater rewrites it at
+  release time, with the version string format of qdb-nats-connector:
+  `3.15.0` for a release, `3.15.0.dev3` for a nightly and `3.15.0.rc3`
+  for a release candidate (owner, 2026-11-13). Build metadata (version, commit,
   build time, build mode, arch level) is injected into the binary
   through `-ldflags` at build time, following qdb-nats-connector's
   ADR-011 pattern. No version constants live in source files, and
