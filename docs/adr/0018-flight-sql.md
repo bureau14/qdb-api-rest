@@ -9,8 +9,8 @@ The brief (Arrow Flight SQL) puts a minimal Flight SQL server on its own
 gRPC port and leaves the shapes to this milestone. Flight SQL carries a
 query as one string in `CommandStatementQuery` and has no path or
 dialect field, so the string itself, or a header the connection sends,
-has to say which of the two query engines runs it (ADR-0015 places Flight SQL after DuckDB for this
-reason). Flight fetches a result in two calls, `GetFlightInfo`
+has to say which of the two query engines runs it (ADR-0015 places
+Flight SQL after DuckDB for this reason). Flight fetches a result in two calls, `GetFlightInfo`
 answering a ticket and `DoGet` streaming the batches for it, and the
 two calls of one client may reach different instances behind a load
 balancer. Stock drivers handshake once at connect and present the token
