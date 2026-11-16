@@ -9,9 +9,9 @@ import (
 )
 
 // CreatePreparedStatement answers the query text, with the prefix the
-// engine header asks for, as the handle and the query's described schema
-// as the dataset schema, with no parameter schema. The server keeps nothing, so the handle is the whole
-// statement.
+// engine header asks for, as the handle, and the query's described
+// schema as the dataset schema, with no parameter schema. The server
+// keeps nothing, so the handle is the whole statement.
 func (s *Server) CreatePreparedStatement(ctx context.Context, req flightsql.ActionCreatePreparedStatementRequest) (flightsql.ActionCreatePreparedStatementResult, error) {
 	// The dataset schema is required, because Arrow's JDBC driver classes a
 	// statement as an update unless the prepare answers a schema with
