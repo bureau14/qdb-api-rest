@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-14
+Last updated: 2026-11-16
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -61,6 +61,16 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-16 -- flight-sql-engine-plan.md deleted
+
+- Facts moved to ADR-0018, `docs/brief.md` and
+  `internal/flightsql/AGENTS.md`.
+
+## 2026-11-16 -- a Flight header picks the engine per connection
+
+- Owner decision, story 20181: the `engine` call header makes DuckDB the
+  default on the Flight port. ADR-0018, Decision 3.
 
 ## 2026-11-14 -- rest-version-registration-plan.md deleted
 
