@@ -229,18 +229,22 @@ through a decoder of the same package.
 
 ### The driver
 
-`tests/e2e/round-trip.sh run --insecure-http <url> --insecure-flight <url>
---secure-http <url> --secure-flight <url> --insecure-cluster <uri>
+`tests/e2e/round-trip.sh run --insecure-http <url> --insecure-https <url>
+--insecure-flight <url> --secure-http <url> --secure-https <url>
+--secure-flight <url> --insecure-cluster <uri>
 --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file>
 --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>]
 [--secure-log <file>] [--rows N] [--seed S]` is a small option loop.
 Each server is named by its cluster and each plane by a URL in the form
-its client takes, `http://` for curl and `grpc+tls://` for the ADBC
-driver, so the script owns no scheme. Each cluster is also named by its
+its client takes, `http://` and `https://` for curl and `grpc+tls://`
+for the ADBC driver, so the script owns no scheme. curl does not verify
+the HTTPS listener's certificate, as the Flight drivers do not verify
+the Flight listener's, because every test server serves the
+self-signed certificate it generates at start (ADR-0001). Each cluster is also named by its
 URI, and the secure one by its public key file and its user's security
 file, because the driver removes the tag entry through `qdbsh`. The
 Makefile passes `QDB_URI`, `QDB_URI_SECURE` and the key files at the
-repo root. The HTTPS listener has no option, because no step reads it. The Makefile is
+repo root. The Makefile is
 the only source of URLs, ports and paths, and it passes the log of each
 server it started and nothing for a server given as a URL.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a

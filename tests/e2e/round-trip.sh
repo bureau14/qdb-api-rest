@@ -10,20 +10,20 @@
 # step expects the generated input, so nothing is captured and nothing is
 # audited (ADR-0014). Error rows are Go tests and never steps here.
 #
-#   round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --insecure-cluster <uri> --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]
+#   round-trip.sh run --insecure-http <url> --insecure-https <url> --insecure-flight <url> --secure-http <url> --secure-https <url> --secure-flight <url> --insecure-cluster <uri> --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]
 #
 # Each server is named by its cluster, insecure or secure. Each of its
-# planes is a URL in the form its client takes: http://host:port for curl
-# on the HTTP listener, and grpc+tls://host:port for the ADBC driver on
-# the Flight listener, which is TLS only. The JDBC step rewrites the
-# Flight URL into the JDBC driver's own form. The HTTPS listener has no
-# option, because no step reads it. Each cluster is also named by its
-# URI, and the secure one by its public key file and its user's security
-# file, because the driver removes what the server leaves on the cluster
-# through qdbsh. Each server's log file is optional,
-# because a server given as a URL has none, and the warning step is
-# skipped for it. The Makefile is the only source of
-# URLs, ports and paths, and passes them as options. common.sh supplies
+# planes is a URL in the form its client takes: http://host:port and
+# https://host:port for curl on the HTTP and the HTTPS listener, and
+# grpc+tls://host:port for the ADBC driver on the Flight listener, which
+# is TLS only. The JDBC step rewrites the Flight URL into the JDBC
+# driver's own form. Each cluster is also named by its URI, and the
+# secure one by its public key file and its user's security file,
+# because the driver removes what the server leaves on the cluster
+# through qdbsh. Each server's log file is optional, because a server
+# given as a URL has none, and the warning step is skipped for it. The
+# Makefile is the only source of URLs, ports and paths, and passes them
+# as options. common.sh supplies
 # the request, login, create, ingest and compare helpers both drivers
 # share, and TZ=UTC. Working files go to actual/round-trip/<cluster>/.
 # The script needs bash, curl, jq, cmp, gunzip and java.
@@ -38,10 +38,10 @@ require_command java
 
 ACTUAL_DIR="$E2E_DIR/actual/round-trip"
 
-INSECURE_HTTP="" INSECURE_FLIGHT="" SECURE_HTTP="" SECURE_FLIGHT="" INSECURE_CLUSTER="" SECURE_CLUSTER="" SECURE_CLUSTER_KEY="" SECURE_USER_KEY="" TOOL="" JDBC_JAR="" INSECURE_LOG="" SECURE_LOG="" ROWS=10000 SEED="$(date +%s)"
+INSECURE_HTTP="" INSECURE_HTTPS="" INSECURE_FLIGHT="" SECURE_HTTP="" SECURE_HTTPS="" SECURE_FLIGHT="" INSECURE_CLUSTER="" SECURE_CLUSTER="" SECURE_CLUSTER_KEY="" SECURE_USER_KEY="" TOOL="" JDBC_JAR="" INSECURE_LOG="" SECURE_LOG="" ROWS=10000 SEED="$(date +%s)"
 
 usage() {
-    die "usage: round-trip.sh run --insecure-http <url> --insecure-flight <url> --secure-http <url> --secure-flight <url> --insecure-cluster <uri> --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]"
+    die "usage: round-trip.sh run --insecure-http <url> --insecure-https <url> --insecure-flight <url> --secure-http <url> --secure-https <url> --secure-flight <url> --insecure-cluster <uri> --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]"
 }
 
 # Every option is named, because two URLs on a command line need names.
@@ -51,8 +51,10 @@ parse_args() {
     while (( $# > 0 )); do
         case "$1" in
             --insecure-http)   INSECURE_HTTP="$2"; shift 2 ;;
+            --insecure-https)  INSECURE_HTTPS="$2"; shift 2 ;;
             --insecure-flight) INSECURE_FLIGHT="$2"; shift 2 ;;
             --secure-http)     SECURE_HTTP="$2"; shift 2 ;;
+            --secure-https)    SECURE_HTTPS="$2"; shift 2 ;;
             --secure-flight)   SECURE_FLIGHT="$2"; shift 2 ;;
             --insecure-cluster)   INSECURE_CLUSTER="$2"; shift 2 ;;
             --secure-cluster)     SECURE_CLUSTER="$2"; shift 2 ;;
@@ -67,7 +69,7 @@ parse_args() {
             *)              usage ;;
         esac
     done
-    [[ -n "$INSECURE_HTTP" && -n "$INSECURE_FLIGHT" && -n "$SECURE_HTTP" && -n "$SECURE_FLIGHT" && -x "$TOOL" && -f "$JDBC_JAR" ]] || usage
+    [[ -n "$INSECURE_HTTP" && -n "$INSECURE_HTTPS" && -n "$INSECURE_FLIGHT" && -n "$SECURE_HTTP" && -n "$SECURE_HTTPS" && -n "$SECURE_FLIGHT" && -x "$TOOL" && -f "$JDBC_JAR" ]] || usage
     [[ -n "$INSECURE_CLUSTER" && -n "$SECURE_CLUSTER" && -f "$SECURE_CLUSTER_KEY" && -f "$SECURE_USER_KEY" ]] || usage
 }
 

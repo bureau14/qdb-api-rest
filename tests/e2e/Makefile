@@ -67,13 +67,15 @@ JDBC_JAR := $(JDBC_DIR)/target/jdbc-smoke.jar
 # its server is started from QDB_REST_BIN. The secure server takes the
 # key files start-services.sh writes at the repo root, and both run
 # their HTTPS and Flight listeners on test ports. Each plane the driver
-# reads is a URL in the form its client takes, http:// for curl and
-# grpc+tls:// for the ADBC driver, and a server given by its URLs is used
-# as it is, Flight included.
+# reads is a URL in the form its client takes, http:// and https:// for
+# curl and grpc+tls:// for the ADBC driver, and a server given by its
+# URLs is used as it is, HTTPS and Flight included.
 ROWS                ?= 10000
 SEED                ?= $(shell date +%s)
 REST_URL_INSECURE   ?= $(REST_URL)
 REST_URL_SECURE     ?=
+HTTPS_URL_INSECURE  ?= https://127.0.0.1:$(HTTPS_PORT)
+HTTPS_URL_SECURE    ?= https://127.0.0.1:$(HTTPS_PORT_SECURE)
 FLIGHT_URL_INSECURE ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT)
 FLIGHT_URL_SECURE   ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_SECURE)
 QDB_URI_SECURE    := qdb://127.0.0.1:2838
@@ -144,8 +146,8 @@ test-round-trip: services-check e2etool jdbc
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
 	    secure=http://127.0.0.1:$(REST_PORT_SECURE); secure_log=$(REST_LOG_SECURE); \
 	fi; \
-	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
-	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
+	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-https $(HTTPS_URL_INSECURE) --insecure-flight $(FLIGHT_URL_INSECURE) \
+	    --secure-http "$$secure" --secure-https $(HTTPS_URL_SECURE) --secure-flight $(FLIGHT_URL_SECURE) \
 	    --insecure-cluster $(QDB_URI) --secure-cluster $(QDB_URI_SECURE) \
 	    --secure-cluster-key $(REPO_ROOT)/cluster_public.key --secure-user-key $(REPO_ROOT)/user_private.key \
 	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
