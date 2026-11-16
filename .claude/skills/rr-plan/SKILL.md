@@ -1,6 +1,6 @@
 ---
 name: rr-plan
-description: Open the plan stage of the current unit -- create the feature branch, write and commit the plan document as the unit's first commit, and put it to the owner in one Inbox review. Invoked by the owner after the seed report; the invocation is the gate.
+description: Open the plan stage of the current unit -- create the story and its branch, write and commit the plan document as the unit's first commit, and put it to the owner in one Inbox review. Invoked by the owner after the seed report; the invocation is the gate.
 disable-model-invocation: true
 ---
 
@@ -13,24 +13,26 @@ this invocation, and nothing in it is code.
 
 Current branch: !`git branch --show-current`
 
-Base vs origin, commits ahead / behind (0 0 means in sync):
+Origin's master (the branch is made from it, so a local `master`
+behind it does not matter):
 
-!`git rev-list --left-right --count master...origin/master`
+!`git fetch -q origin && git log --oneline -1 origin/master`
 
 Working tree (empty means clean):
 
 !`git status --short`
 
-Feature branches already present:
+Story branches already present:
 
-!`git branch --list 'sc-19567/rr-*'`
+!`git branch --list 'sc-*'`
 
 A seed report for this unit is in the conversation; its Decisions,
 Open questions and Proposed commits are the inputs here. Without one,
-stop and say so. A dirty tree, a base behind origin, or a leftover
-feature branch is the owner's decision before anything else.
+stop and say so. Modified tracked files, or a leftover story branch
+of an earlier unit, are the owner's decision before anything else.
+Untracked files are fine.
 
-When the current branch is already the unit's `sc-19567/rr-<slug>`,
+When the current branch is already the unit's story branch,
 its last commit is the plan's `docs(plan)` commit and the plan says
 `Status: draft`, the branch and the plan exist and the owner has not
 approved it: skip to step 5. A seed report is not required in that
@@ -42,7 +44,13 @@ send the plan.
 
 ## Step by step
 
-1. Create `sc-19567/rr-<slug>` from the up-to-date base, clean tree.
+1. Create the story and its branch, as `quasardb-workflow`, steps 1
+   and 2, say. Print `Following QuasarDB workflow (bureau14/qdb-api-rest)`
+   first. The story title follows that skill's title rules and starts
+   with `[rest]`, as the epic's other stories do. Pass `-e 19567` to
+   `sc-story.sh` in place of the release epic (`/rr-workflow`, Tools).
+   Make the branch with the name `sc-story.sh` prints, from
+   `origin/master`.
 2. `/doc-discipline read`.
 3. Read `plan-shape.md` and write `docs/<slug>-plan.md` in that shape,
    with the seed report's thread name on its `Thread:` line.
