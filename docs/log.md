@@ -27,10 +27,6 @@ Next: none.
 
 Open after the milestones:
 
-- The round trip drives both servers over plain HTTP, and no step reads
-  the HTTPS listener. Steps over both HTTP and HTTPS may be added
-  (owner, 2026-10-24, and left open on 2026-10-26); `docs/e2e.md`, The
-  driver, says which planes the driver takes today.
 - The stress has no Flight case (owner, 2026-10-13). The drain covers
   Flight streams (`cmd/qdb_rest/main.go`, `shutdown`).
 - A flaky failure on the `#sql` path is observed in CI and not
