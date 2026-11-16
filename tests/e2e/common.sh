@@ -201,7 +201,9 @@ wait_for_exit() {
 request() {
     local out="$1" name="$2"
     shift 2
-    curl -sS -g -o "$out/$name.body" -D "$out/$name.headers" -w '%{http_code}' "$@" || die "curl failed: $name"
+    # -k, because every test server serves HTTPS with the self-signed
+    # certificate it generates at start, and curl ignores -k over http://.
+    curl -sS -g -k -o "$out/$name.body" -D "$out/$name.headers" -w '%{http_code}' "$@" || die "curl failed: $name"
 }
 
 # expect <status> <got> <out_dir> <name>: the status is the whole
