@@ -59,9 +59,14 @@ Each rule below names the function whose comments carry its reason.
 
 ## Statement
 
+- A connection picks its engine with the `engine` call header, `sql` or
+  `native`, matched case-insensitively. `withEngine` writes `#sql ` in
+  front of a text without the prefix under `sql`, before the describe,
+  the ticket and the prepared handle, so DoGet reads no header (ADR-0018,
+  Decision 3). An unknown value is INVALID_ARGUMENT.
 - GetFlightInfo for a statement describes the query and answers one
-  endpoint whose ticket is the query text verbatim, with the described
-  schema, no location and unknown totals. It runs nothing and keeps
+  endpoint whose ticket is the query text after `withEngine`, with the
+  described schema, no location and unknown totals. It runs nothing and keeps
   nothing. `GetFlightInfoStatement` says why the text travels unchanged
   (ADR-0018, Decision 9; owner, 2026-10-21).
 - A query describes through `query.Describe`. A DuckDB column type the
@@ -92,7 +97,8 @@ Each rule below names the function whose comments carry its reason.
 
 ## Prepared
 
-- The handle of a prepared statement is the query text, so the server
+- The handle of a prepared statement is the query text after
+  `withEngine`, so the server
   stores nothing and closing answers nothing (`CreatePreparedStatement`).
 - GetFlightInfo of a prepared statement answers a statement ticket of
   the handle, and DoGet streams it as a statement

@@ -8,24 +8,29 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-// CreatePreparedStatement answers the query text as the handle and the
-// query's described schema as the dataset schema, with no parameter
-// schema. The server keeps nothing, so the handle is the whole
-// statement.
+// CreatePreparedStatement answers the query text, with the prefix the
+// engine header asks for, as the handle, and the query's described
+// schema as the dataset schema, with no parameter schema. The server
+// keeps nothing, so the handle is the whole statement.
 func (s *Server) CreatePreparedStatement(ctx context.Context, req flightsql.ActionCreatePreparedStatementRequest) (flightsql.ActionCreatePreparedStatementResult, error) {
 	// The dataset schema is required, because Arrow's JDBC driver classes a
 	// statement as an update unless the prepare answers a schema with
 	// fields. A transaction id is ignored, because GetSqlInfo announces no
 	// transactions. IsUpdate stays nil, because the server is read-only and
 	// the driver reads the dataset schema.
-	sc, err := schemaOf(ctx, req.GetQuery())
+	text, err := withEngine(ctx, req.GetQuery())
 	if err != nil {
 		return flightsql.ActionCreatePreparedStatementResult{}, err
 	}
-	// The handle is the text verbatim, so any instance behind a load
-	// balancer serves the later calls (ADR-0018, Decision 9).
+	sc, err := schemaOf(ctx, text)
+	if err != nil {
+		return flightsql.ActionCreatePreparedStatementResult{}, err
+	}
+	// The handle is the text with the engine already in it, so any
+	// instance behind a load balancer serves the later calls (ADR-0018,
+	// Decision 9).
 	return flightsql.ActionCreatePreparedStatementResult{
-		Handle:        []byte(req.GetQuery()),
+		Handle:        []byte(text),
 		DatasetSchema: sc,
 	}, nil
 }
@@ -57,7 +62,11 @@ func (s *Server) GetFlightInfoPreparedStatement(ctx context.Context, q flightsql
 // GetSchemaPreparedStatement answers the described schema of the
 // handle's text, without running it.
 func (s *Server) GetSchemaPreparedStatement(ctx context.Context, q flightsql.PreparedStatementQuery, _ *flight.FlightDescriptor) (*flight.SchemaResult, error) {
-	sc, err := schemaOf(ctx, string(q.GetPreparedStatementHandle()))
+	text, err := withEngine(ctx, string(q.GetPreparedStatementHandle()))
+	if err != nil {
+		return nil, err
+	}
+	sc, err := schemaOf(ctx, text)
 	if err != nil {
 		return nil, err
 	}
