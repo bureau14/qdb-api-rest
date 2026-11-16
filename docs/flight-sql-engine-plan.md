@@ -1,7 +1,7 @@
 # Flight SQL engine selection per connection
 
 Thread: Flight SQL engine selection
-Status: draft
+Status: approved
 
 ## Outcome
 
