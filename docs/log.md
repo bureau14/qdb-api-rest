@@ -58,6 +58,17 @@ re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
 
+## 2026-11-16 -- https-round-trip-plan.md deleted
+
+- Facts moved to `tests/e2e/round-trip.sh`, `tests/e2e/common.sh`,
+  `tests/e2e/AGENTS.md`, `docs/e2e.md`, `docs/brief.md` and the rr skills.
+
+## 2026-11-16 -- the rr workflow follows the QuasarDB workflow
+
+- Owner decision, story 20185: a unit is a story under epic 19567 with
+  one pull request, squash-merged and cherry-picked onto `3.14.x`.
+  `.claude/skills/rr-workflow/SKILL.md`.
+
 ## 2026-11-16 -- flight-sql-engine-plan.md deleted
 
 - Facts moved to ADR-0018, `docs/brief.md` and
