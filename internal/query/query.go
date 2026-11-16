@@ -1,7 +1,9 @@
 // Package query runs one query string on the engine its text names. A
 // string whose first non-whitespace bytes are #sql runs on DuckDB, and
 // any other string runs on the native engine (ADR-0018). The HTTP query
-// route calls Run, and the Flight server calls Run and Describe.
+// route calls Run, and the Flight server calls Run and Describe. The
+// Flight server writes the prefix itself when a connection picks DuckDB
+// through its engine header.
 package query
 
 import (
