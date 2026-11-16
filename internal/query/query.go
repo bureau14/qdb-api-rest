@@ -60,6 +60,13 @@ func split(q string) (text string, duck bool) {
 	return q[i+1:], true
 }
 
+// Prefixed reports whether q carries the #sql prefix, so Run and Describe
+// send it to DuckDB.
+func Prefixed(q string) bool {
+	_, duck := split(q)
+	return duck
+}
+
 // CountRows passes the batches through and adds the rows of each batch
 // the consumer pulls to n.
 func CountRows(b qdb.Batches, n *int64) qdb.Batches {
