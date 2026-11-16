@@ -1,7 +1,7 @@
 # HTTPS round trip and the rr skills on the QuasarDB workflow
 
 Thread: rr: round trip over HTTPS
-Status: draft
+Status: approved
 
 ## Outcome
 
