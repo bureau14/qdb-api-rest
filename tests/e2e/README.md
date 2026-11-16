@@ -47,7 +47,7 @@ reproduces. `tools/e2etool gen` draws the rows and writes `rows.csv`,
 `rows.ndjson`, `rows.arrow` and `rows.json` through the server's own
 encoders, and `tools/e2etool tocsv` turns a response into CSV through
 the server's own decoders. The definition is `docs/e2e.md`, "The v2
-round trip". Working files are under `actual/round-trip/<cluster>/`,
+round trip". Working files are under `actual/round-trip/<cluster>-<plane>/`,
 one `.body` and one `.headers` per request.
 
 ## The stress

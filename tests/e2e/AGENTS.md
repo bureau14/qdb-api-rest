@@ -25,7 +25,9 @@ facts live in `docs/e2e.md`, progress in `docs/log.md`, and usage in
   entry through the `qdbsh` wrapper before the tag step, because a tag
   entry outlives its carriers.
 - The v2 round trip (`round-trip.sh`, `make test-round-trip`, ADR-0014)
-  captures nothing. The rows it ingests come from `tools/e2etool gen`,
+  captures nothing. `main` runs `run_cluster` once on each HTTP plane of
+  each server, so a new step runs over HTTP and HTTPS without
+  plane-specific code. The rows it ingests come from `tools/e2etool gen`,
   which draws them through the table fixture (`internal/qdbtest/table`)
   and writes every body file through the server's encoders, and every
   response that is not the reader's CSV is decoded through

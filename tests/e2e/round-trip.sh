@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # The v2 e2e round trip (docs/e2e.md, "The v2 round trip"). It drives the
-# built binary over HTTP like a client: it logs in, creates one table per
-# body format, lists each under its name and reads it against its create
-# body, ingests the generated rows into each in that format, reads and
-# queries them back in every format and coding, and then reads them back
-# through Arrow's stock Flight SQL drivers, ADBC and JDBC. Last it tags
-# every table, reads the tag's entries and each table's tags, and
-# detaches the tag. Every
-# step expects the generated input, so nothing is captured and nothing is
-# audited (ADR-0014). Error rows are Go tests and never steps here.
+# built binary like a client, once over HTTP and once over HTTPS on each
+# server, and both runs take every step: it logs in, creates one table
+# per body format, lists each under its name and reads it against its
+# create body, ingests the generated rows into each in that format, reads
+# and queries them back in every format and coding, and then reads them
+# back through Arrow's stock Flight SQL drivers, ADBC and JDBC. Last it
+# tags every table, reads the tag's entries and each table's tags, and
+# detaches the tag. Every step expects the generated input, so nothing is
+# captured and nothing is audited (ADR-0014). Error rows are Go tests and
+# never steps here.
 #
 #   round-trip.sh run --insecure-http <url> --insecure-https <url> --insecure-flight <url> --secure-http <url> --secure-https <url> --secure-flight <url> --insecure-cluster <uri> --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file> --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>] [--secure-log <file>] [--rows N] [--seed S]
 #
@@ -25,7 +26,8 @@
 # Makefile is the only source of URLs, ports and paths, and passes them
 # as options. common.sh supplies
 # the request, login, create, ingest and compare helpers both drivers
-# share, and TZ=UTC. Working files go to actual/round-trip/<cluster>/.
+# share, and TZ=UTC. Working files go to
+# actual/round-trip/<cluster>-<plane>/.
 # The script needs bash, curl, jq, cmp, gunzip and java.
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
@@ -486,8 +488,9 @@ BODY_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vn
 READ_FORMATS=("csv:text/csv" "ndjson:application/x-ndjson" "arrow:application/vnd.apache.arrow.stream" "json:application/json")
 CODINGS=("identity" "gzip")
 
-# run_cluster <name> <http_url> <flight_url> <login_body_file> <qdbsh
-# cluster options...>: the round trip against one server: login once,
+# run_cluster <name> <url> <flight_url> <login_body_file> <qdbsh cluster
+# options...>: the round trip against one HTTP plane of one server, the
+# HTTP or the HTTPS listener at <url>, named <cluster>-<plane>: login once,
 # then per body format create the table, list it under its name, read it
 # against its create body, ingest the generated rows in that format,
 # read, query and read them through DuckDB SQL back in every format and
@@ -541,20 +544,26 @@ main() {
     local failed=0
     mkdir -p "$ACTUAL_DIR"
     printf '{"username":"","secret_key":""}' > "$ACTUAL_DIR/anonymous.json"
-    run_cluster insecure "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" \
+    # The runs go one after another, because the two runs of a cluster
+    # create the same tables and attach the same tag.
+    run_cluster insecure-http "$INSECURE_HTTP" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" \
+        --cluster "$INSECURE_CLUSTER" || failed=$((failed + 1))
+    run_cluster insecure-https "$INSECURE_HTTPS" "$INSECURE_FLIGHT" "$ACTUAL_DIR/anonymous.json" \
         --cluster "$INSECURE_CLUSTER" || failed=$((failed + 1))
     # The insecure server also serves HTTP, so an unconditional warning
     # fails here.
     check_log insecure "$INSECURE_LOG" absent || failed=$((failed + 1))
     check_query_lines insecure "$INSECURE_LOG" || failed=$((failed + 1))
-    run_cluster secure "$SECURE_HTTP" "$SECURE_FLIGHT" "$SECURE_USER_KEY" --cluster "$SECURE_CLUSTER" \
+    run_cluster secure-http "$SECURE_HTTP" "$SECURE_FLIGHT" "$SECURE_USER_KEY" --cluster "$SECURE_CLUSTER" \
+        --cluster-public-key-file "$SECURE_CLUSTER_KEY" --user-security-file "$SECURE_USER_KEY" || failed=$((failed + 1))
+    run_cluster secure-https "$SECURE_HTTPS" "$SECURE_FLIGHT" "$SECURE_USER_KEY" --cluster "$SECURE_CLUSTER" \
         --cluster-public-key-file "$SECURE_CLUSTER_KEY" --user-security-file "$SECURE_USER_KEY" || failed=$((failed + 1))
     # The secure server serves HTTP on a cluster with a public key, which
     # is the one case the warning is for.
     check_log secure "$SECURE_LOG" present || failed=$((failed + 1))
     check_query_lines secure "$SECURE_LOG" || failed=$((failed + 1))
-    (( failed == 0 )) || die "v2 round trip: $failed of 6 checks FAILED, two clusters, two warning steps and two query line steps (seed=$SEED)"
-    log_info "v2 round trip: both clusters passed (seed=$SEED)"
+    (( failed == 0 )) || die "v2 round trip: $failed of 8 checks FAILED, two planes of two clusters, two warning steps and two query line steps (seed=$SEED)"
+    log_info "v2 round trip: both planes of both clusters passed (seed=$SEED)"
 }
 
 main "$@"
