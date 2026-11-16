@@ -148,6 +148,12 @@ func duck(t table.T, c *qdb.Cluster, u qdb.User, q string) arrow.RecordBatch {
 	return qdbflight.Concat(t, schema, recs)
 }
 
+// engine adds the engine header to the context the client sends, as a
+// driver adds a connection property.
+func engine(ctx context.Context, v string) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "engine", v)
+}
+
 // code answers an error's gRPC code, OK for nil.
 func code(err error) codes.Code { return status.Code(err) }
 
@@ -267,9 +273,10 @@ func executeSchemaIs(t table.T, cl *flightsql.Client, ctx context.Context, q str
 // read back over Flight equals the rows generated, column by column, and
 // the #sql query read back over Flight equals the batches Cluster.Duck
 // answers directly, decoded. Both read through a prepared statement
-// answer the same rows, under the schema the prepare announced. A
-// statement without a result set streams one schema and no batch. The two engines are compared with their own
-// oracles and not with each other.
+// answer the same rows, under the schema the prepare announced. Under
+// engine=sql the SQL without the prefix answers the #sql batches. A
+// statement without a result set streams one schema and no batch. The two
+// engines are compared with their own oracles and not with each other.
 func TestStatement(t *testing.T) {
 	// Two engines, one oracle each, both clusters:
 	//
@@ -284,7 +291,9 @@ func TestStatement(t *testing.T) {
 	//  5. prepared: each query read through Prepare on both engines, the
 	//     rows equal to the statement's and the prepare's schema equal to
 	//     the stream's, and GetExecuteSchema equal to the prepare's;
-	//  6. an empty result: a DROP TABLE streams one schema and no batch,
+	//  6. engine=sql: the SQL without the prefix, through Execute and
+	//     through Prepare, compared with Cluster.Duck's batches;
+	//  7. an empty result: a DROP TABLE streams one schema and no batch,
 	//     and the reader reaches the end with no error.
 	cluster.Each(t, func(t *testing.T, f cluster.Fixture) {
 		// 1. the server and the bearer
@@ -339,7 +348,22 @@ func TestStatement(t *testing.T) {
 			got.Release()
 			want.Release()
 
-			// 6. no result set: the schema has no fields and no batch follows
+			// 6. engine=sql, before the drop because both read the table
+			sqlCtx := engine(ctx, "sql")
+			want = duck(rt, f.Cluster, f.User, tbl.SelectSQL())
+			got = qdbflight.Execute(rt, cl, sqlCtx, tbl.SelectSQL())
+			if !qdbflight.Same(got, want) {
+				rt.Fatalf("engine=sql over Flight differs from Cluster.Duck:\n%v\n%v", got, want)
+			}
+			got.Release()
+			_, got = qdbflight.Prepare(rt, cl, sqlCtx, tbl.SelectSQL())
+			if !qdbflight.Same(got, want) {
+				rt.Fatalf("prepared engine=sql differs from Cluster.Duck:\n%v\n%v", got, want)
+			}
+			got.Release()
+			want.Release()
+
+			// 7. no result set: the schema has no fields and no batch follows
 			schema, recs, err := qdbflight.ReadAll(rt, cl, ctx, qdbflight.TicketOf(rt, cl, ctx, "DROP TABLE "+tbl.Name))
 			if err != nil || schema.NumFields() != 0 || len(recs) != 0 {
 				rt.Fatalf("drop: want a schema of no fields and no batch, got %v, %d batches, %v", schema, len(recs), err)
@@ -396,6 +420,7 @@ func TestStatementRows(t *testing.T) {
 	//    The describe's refusals are INVALID_ARGUMENT too: a #sql text of
 	//    two statements at Execute and at Prepare, a query with a ? marker
 	//    on either engine at Prepare, and a native parse error at Prepare.
+	//    An unknown engine header value is INVALID_ARGUMENT.
 	f := cluster.Bind(t, qdbtest.Insecure(), nil)
 	s := newServer(t, f)
 	cl := qdbflight.Dial(t, s.srv.Addr().String())
@@ -420,6 +445,7 @@ func TestStatementRows(t *testing.T) {
 		{"native marker, prepared", prepareErr(cl, s.ctx, "SELECT ?")},
 		{"#sql marker, prepared", prepareErr(cl, s.ctx, "#sql SELECT ?")},
 		{"native parse error, prepared", prepareErr(cl, s.ctx, "selec 1")},
+		{"unknown engine", statementErr(t, cl, engine(s.ctx, "duckdb"), "SELECT 1")},
 	} {
 		if st := status.Convert(row.err); st.Code() != codes.InvalidArgument || st.Message() == "" {
 			t.Fatalf("%s: want INVALID_ARGUMENT with a message, got %v", row.name, row.err)

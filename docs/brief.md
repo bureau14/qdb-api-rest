@@ -454,6 +454,8 @@ string chooses the engine. A query whose first non-whitespace bytes are
 `#sql`, matched case-insensitively and followed by one whitespace
 character, runs on DuckDB with the prefix removed, in the style of
 BigQuery's `#standardSQL`. Every other query runs on the native engine.
+On the Flight port, a connection's `engine` header can make DuckDB the
+default for text without the prefix (ADR-0018, Decision 3).
 `POST /api/v2/query` honors the same prefix and is the one query route
 of the HTTP plane (owner, 2026-10-19). One dispatcher above `internal/qdb` and
 `internal/olap` recognizes the prefix and answers the batch iterator the

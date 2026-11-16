@@ -1,7 +1,9 @@
 // Package query runs one query string on the engine its text names. A
 // string whose first non-whitespace bytes are #sql runs on DuckDB, and
 // any other string runs on the native engine (ADR-0018). The HTTP query
-// route calls Run, and the Flight server calls Run and Describe.
+// route calls Run, and the Flight server calls Run and Describe. The
+// Flight server writes the prefix itself when a connection picks DuckDB
+// through its engine header.
 package query
 
 import (
@@ -58,6 +60,13 @@ func split(q string) (text string, duck bool) {
 	//    second whitespace byte included, so the SQL reaches DuckDB as
 	//    typed.
 	return q[i+1:], true
+}
+
+// Prefixed reports whether q carries the #sql prefix, so Run and Describe
+// send it to DuckDB.
+func Prefixed(q string) bool {
+	_, duck := split(q)
+	return duck
 }
 
 // CountRows passes the batches through and adds the rows of each batch

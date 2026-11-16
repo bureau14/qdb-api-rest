@@ -8,9 +8,9 @@ Date: 2026-10-13
 The brief (Arrow Flight SQL) puts a minimal Flight SQL server on its own
 gRPC port and leaves the shapes to this milestone. Flight SQL carries a
 query as one string in `CommandStatementQuery` and has no path or
-dialect field, so the string itself has to say which of the two query
-engines runs it (ADR-0015 places Flight SQL after DuckDB for this
-reason). Flight fetches a result in two calls, `GetFlightInfo`
+dialect field, so the string itself, or a header the connection sends,
+has to say which of the two query engines runs it (ADR-0015 places
+Flight SQL after DuckDB for this reason). Flight fetches a result in two calls, `GetFlightInfo`
 answering a ticket and `DoGet` streaming the batches for it, and the
 two calls of one client may reach different instances behind a load
 balancer. Stock drivers handshake once at connect and present the token
@@ -46,6 +46,18 @@ schema of a query it has not run (owner, 2026-10-24).
    character removed. Every other query runs on the native engine as
    is. `#sqlx` and `#sql` without a following whitespace character are
    native queries and fail there.
+
+   On the Flight port, a connection can set the call header `engine` to
+   `sql` or `native`, matched case-insensitively. Under `sql`, a query
+   without the prefix runs on DuckDB, and a query with the prefix runs
+   as before. Under `native`, or without the header, the prefix alone
+   picks the engine. The server writes the prefix into the ticket and
+   the prepared handle, so Decision 9 holds and `DoGet` reads no header.
+   An unknown value is `INVALID_ARGUMENT`. The HTTP plane reads no
+   header. BI tools generate SQL through the stock JDBC and ODBC
+   drivers, which cannot add a prefix and send a connection property
+   they do not know as a call header (owner, 2026-11-16).
+
 4. **`POST /api/v2/query` is the one query route of the HTTP plane.** A
    `#sql` body runs on DuckDB there as on the Flight port. There is no
    `POST /api/v2/sql`.
@@ -170,7 +182,8 @@ schema of a query it has not run (owner, 2026-10-24).
 
 | Alternative                                                                                          | Why not                                                                                                                             |
 | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| A gRPC metadata header choosing the engine                                                           | needs a driver knob per client, and the query text travels through every driver untouched                                           |
+| A header that overrides the prefix                                                                   | a `#sql` query pasted under `engine=sql` would reach DuckDB with the prefix and fail there (owner, 2026-11-16)                      |
+| Reading the `engine` header again on `DoGet`                                                         | a ticket would no longer say alone what it runs, and a client that forwards it without its headers would pick the other engine      |
 | Flight SQL session options choosing the engine                                                       | server-side session state, which the project rules out everywhere else                                                              |
 | A listener that is off until configured                                                              | the owner wants Flight SQL available on every install, and the port is the configurable part                                        |
 | Running the query in `GetFlightInfo` and caching it                                                  | the two calls may reach different instances, and a cache behind a load balancer is state nobody can route to                        |

@@ -79,19 +79,25 @@ func schemaOf(ctx context.Context, q string) (*arrow.Schema, error) {
 // runs the query ahead of time does its work here. This server has one
 // endpoint, keeps nothing between calls and runs the query at DoGet
 // (ADR-0018, Decision 9). The info is one endpoint whose ticket is the
-// query text, the described schema when there is one, no location, which
-// means this server, and unknown totals. A query that fails to describe
-// fails here, before any ticket.
+// query text with the prefix the engine header asks for, the described
+// schema when there is one, no location, which means this server, and
+// unknown totals. A query that fails to describe fails here, before any
+// ticket.
 func (s *Server) GetFlightInfoStatement(ctx context.Context, q flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
-	// The describe runs here and the query at DoGet, so the server stores
-	// nothing between the calls.
-	sc, ok, err := describe(ctx, q.GetQuery())
+	text, err := withEngine(ctx, q.GetQuery())
 	if err != nil {
 		return nil, err
 	}
-	// The text travels verbatim and DoGet dispatches it, so the #sql rule
-	// has one home, in query.Run. A mint failure is INTERNAL.
-	ticket, err := flightsql.CreateStatementQueryTicket([]byte(q.GetQuery()))
+	// The describe runs here and the query at DoGet, so the server stores
+	// nothing between the calls.
+	sc, ok, err := describe(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	// The ticket carries the text with the engine already in it, so DoGet
+	// reads no header and any instance serves the ticket. A mint failure
+	// is INTERNAL.
+	ticket, err := flightsql.CreateStatementQueryTicket([]byte(text))
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -114,7 +120,11 @@ func (s *Server) GetFlightInfoStatement(ctx context.Context, q flightsql.Stateme
 // GetSchemaStatement answers the described schema of the statement's
 // query, without running it.
 func (s *Server) GetSchemaStatement(ctx context.Context, q flightsql.StatementQuery, _ *flight.FlightDescriptor) (*flight.SchemaResult, error) {
-	sc, err := schemaOf(ctx, q.GetQuery())
+	text, err := withEngine(ctx, q.GetQuery())
+	if err != nil {
+		return nil, err
+	}
+	sc, err := schemaOf(ctx, text)
 	if err != nil {
 		return nil, err
 	}
