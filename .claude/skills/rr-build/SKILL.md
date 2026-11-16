@@ -1,6 +1,6 @@
 ---
 name: rr-build
-description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, build the branch in Buildkite while the owner reviews the code as a guided review in the Inbox, and post the build-stage message. The plan is derived from the branch; an argument overrides it. Invoked by the owner after the plan-stage message; the invocation is the gate.
+description: Open the build stage of a unit -- land the commits an approved plan lists, with their comments and document rows, run the doc-discipline checks, push, open the pull request, build the branch in Buildkite while the owner reviews the code as a guided review in the Inbox, and post the build-stage message. The plan is derived from the branch; an argument overrides it. Invoked by the owner after the plan-stage message; the invocation is the gate.
 disable-model-invocation: true
 argument-hint: "[docs/<slug>-plan.md, only when the branch does not name it]"
 ---
@@ -20,11 +20,10 @@ into that thread after the plan is deleted.
 
 ## The plan
 
-The branch names the plan. On `sc-19567/rr-<slug>` the plan is
-`docs/<slug>-plan.md`, and it is the one `docs/*-plan.md` the branch
-adds over the base:
+The branch names the plan. On the unit's story branch the plan is the
+one `docs/*-plan.md` the branch adds over `origin/master`:
 
-!`git diff --name-only --diff-filter=A master...HEAD -- 'docs/*-plan.md'`
+!`git diff --name-only --diff-filter=A origin/master...HEAD -- 'docs/*-plan.md'`
 
 When that list is one file, it is the plan, and an empty argument is
 the normal case. When the argument names a file, it is the plan and
@@ -32,7 +31,7 @@ the list is checked against it: a disagreement is said and the owner
 decides. When the list is empty or holds more than one file and the
 argument is empty, stop and ask for the path.
 
-Correct: the branch is `sc-19567/rr-flight-catalog`, the list is
+Correct: the branch is `sc-20190/rest-flight-catalog`, the list is
 `docs/flight-catalog-plan.md`, the argument is empty; that is the plan.
 
 Incorrect: the argument is empty and you ask for the path while the
@@ -50,8 +49,8 @@ Last commits on this branch:
 
 !`git log --oneline -5`
 
-The current branch is the plan's `sc-19567/rr-<slug>`, the tree is
-clean, the plan's last commit is a `docs(plan)` commit, and the plan's
+The current branch is the plan's story branch, `sc-<id>/<kebab-title>`,
+no tracked file is modified, the plan's last commit is a `docs(plan)` commit, and the plan's
 `Status:` line says `approved`, which the plan stage sets in its own
 commit when the owner approves the plan. Anything else is the owner's
 decision before anything else. A plan still at `draft` means the owner
@@ -132,14 +131,17 @@ Local lint and tests cover one platform; the pipeline covers the whole
 matrix, and the owner reviews the code while the pipeline runs rather
 than after it. So once the checks above are clean, in this order:
 
-1. With the plan deleted from the tree, push `sc-19567/rr-<slug>` and
-   ensure a build of its head: the `buildkite` skill, "Ensuring and
-   watching a build", with the parameters in `/rr-workflow`, Tools.
-   Run the watcher in the background; do not block on it.
+1. With the plan deleted from the tree, push the story branch and open
+   its pull request, as `quasardb-workflow`, step 4, says: titled
+   `QDB-<id> - <story title>`, an empty body, Igor as the reviewer.
+   Then ensure a build of its head: the `buildkite` skill, "Ensuring
+   and watching a build", with the parameters in `/rr-workflow`, Tools.
+   Run the watcher in the background; do not block on it. A later push
+   of review fixes updates the same pull request.
 2. Write a guided review of the pushed head and send it, as
    `/rr-workflow`, The Inbox, says:
    - `get_guide_brief`, then the patch
-     `git diff master...sc-19567/rr-<slug>`.
+     `git diff origin/master...HEAD`.
    - `submit_guide` with that exact patch, in the unit's thread. The
      body names the head's SHA, because the owner's "Looks good"
      approves that head and no other.
@@ -197,14 +199,14 @@ commit they never saw.
 
 ## The build-stage message
 
-Exactly: the branch name; a summary of the change in plain words; each
+Exactly: the branch name; the pull request by its URL; a summary of the change in plain words; each
 deviation from the plan with the reason the code forced it; the
 doc-discipline check's report, or "clean"; the plan's deletion commit
 by its sha; the review's outcome, with the Inbox message id the owner
 marked; the Buildkite build number and its state,
 and any superseded build numbers; the command
-`git diff master...sc-19567/rr-<slug>`; one line saying the merge waits
-for `/rr-merge`.
+`git diff origin/master...HEAD`; one line saying the merge waits for
+`/rr-merge` and for the pull request's approval by Igor or Edouard.
 
 Then wait. Do not ask whether to merge; the owner invokes `/rr-merge`
 when they are ready.
