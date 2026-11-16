@@ -1,6 +1,6 @@
 ---
 name: rr-merge
-description: Open the merge stage of a unit -- fast-forward the reviewed feature branch onto the base and delete it locally and on origin. Invoked by the owner after reviewing the diff of a green build; the invocation is the owner's yes on the code.
+description: Open the merge stage of a unit -- squash-merge the reviewed pull request onto master, cherry-pick the squash commit onto 3.14.x, ensure the builds of both lines and complete the story. Invoked by the owner after reviewing the code of a green build; the invocation is the owner's yes on the code.
 disable-model-invocation: true
 ---
 
@@ -16,57 +16,59 @@ Working tree (empty means clean):
 
 !`git status --short`
 
-Feature branch vs base, commits ahead / behind:
-
-!`git rev-list --left-right --count master...HEAD`
-
-Base vs origin, commits ahead / behind:
-
-!`git rev-list --left-right --count master...origin/master`
-
 Plan documents on this branch (empty means none):
 
 !`git ls-tree --name-only HEAD docs/ | grep -- '-plan.md' || true`
+
+Pull request of this branch (number, state, review decision, head):
+
+!`gh pr view --json number,state,reviewDecision,headRefOid -q '"\(.number) \(.state) \(.reviewDecision) \(.headRefOid)"' 2>/dev/null || echo none`
 
 Buildkite builds of this head (number, state), the `buildkite` skill's
 one-liner with the slug from `/rr-workflow`, Tools:
 
 !`bk api "pipelines/qdb-api-rest/builds?commit=$(git rev-parse HEAD)" 2>/dev/null | python3 -c 'import sys,json; print(*[(b["number"], b["state"]) for b in json.load(sys.stdin)] or ["none"])'`
 
-The current branch is a `sc-19567/rr-<slug>`, the tree is clean, the
-list above shows a build of this exact head in state `passed`, and
-the branch carries no plan document: the build stage deleted the
-unit's plan as its last commit before the push, with the log entry.
-The build's state is read from the list, never from the conversation:
-a build-stage message that names a green build is a claim, and the
-list is the evidence. Anything else (another branch, a dirty tree, no
-build of this head, a build still `running` or `scheduled`, a
-`failed` build, a plan still present) is a stop; say which, and the
-owner decides. A plan still present means the build
-stage is incomplete, and the fix is its deletion commit on this branch,
-reviewed and built, never a commit on the base.
+The current branch is the unit's story branch, `sc-<id>/<kebab-title>`.
+No tracked file is modified. The pull request is `OPEN`, its review
+decision is `APPROVED` by Igor or Edouard, and its head is this
+branch's head. The list above shows a build of this exact head in
+state `passed`. The branch carries no plan document, because the build
+stage deleted the unit's plan as its last commit before the push, with
+the log entry. The build's state and the approval are read from the
+lists, never from the conversation: a build-stage message that names a
+green build is a claim, and the list is the evidence. Anything else is
+a stop: another branch, modified files, no pull request, no approval,
+no build of this head, a build still `running` or `scheduled`, a
+`failed` build, or a plan still present. Say which, and the owner
+decides. A plan still present means the build stage is incomplete, and
+the fix is its deletion commit on this branch, reviewed and built,
+never a commit on `master`.
 
 ## Step by step
 
-1. If the base moved under the feature branch (the first count above is
-   not `<n> 0`), rebase the feature branch onto the base so the merge
-   stays a fast-forward, and say so in the closing line. A rebase that
-   conflicts is stopped and reported; the owner decides.
-2. `git checkout master && git merge --ff-only sc-19567/rr-<slug>`.
-   No merge commit, ever.
-3. Delete the feature branch locally and on origin, where the build
-   stage pushed it:
-   `git branch -d sc-19567/rr-<slug> && git push origin --delete sc-19567/rr-<slug>`.
-4. `git push origin master`. The head it publishes is the one the entry
-   check saw pass, so the base on origin is always a built head. A rejected push (origin moved) is stopped and
-   reported; the owner decides.
+Run `quasardb-workflow`, step 7, as one unit. Its preconditions are the
+entry check above, and the owner's invocation of `/rr-merge` is its
+"merge":
 
-Close with one line: what merged and that the base is pushed, as
-`<slug>: <n> commits, <first sha>..<last sha>, base pushed`, plus
-"rebased first" when step 1 ran.
+1. 7a: squash-merge the pull request with the subject
+   `QDB-<id> - <story title> (#<n>)` and an empty body, and delete the
+   branch.
+2. 7b: cherry-pick the squash commit onto `3.14.x`, run the build, lint
+   and the tests of the touched area, and push. A conflict in
+   hand-written code aborts the pick, leaves `3.14.x` untouched and is
+   reported. The owner decides.
+3. 7c: ensure the builds of the squash commit on `master` and of the
+   pick on `3.14.x`, both watchers in the background.
+4. 7d: set the story to Completed once both lines carry the change.
+
+Close with one line: what merged on both lines, as
+`<story title>: master <squash sha>, 3.14.x <pick sha>, builds <n> and <m>`.
 
 Incorrect: the entry check lists `docs/<slug>-plan.md`, and the merge
-runs anyway because the build is green, so the base carries a plan
+runs anyway because the build is green, so `master` carries a plan
 that no stage may remove there. Or: the build list says `running`,
-the build-stage message said green, and the merge runs on the
-message, so the base takes a head whose matrix has not finished.
+the build-stage message said green, and the merge runs on the message,
+so `master` takes a head whose matrix has not finished. Or: the owner
+invokes `/rr-merge` before Igor approved, and the merge runs because
+the invocation is the gate, so the pull request lands unreviewed.
