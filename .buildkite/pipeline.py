@@ -124,15 +124,12 @@ _OS_OVERLAY: dict[str, dict] = {"linux": _LINUX}
 # variant quasardb-build publishes.
 PLATFORMS: list[Platform] = [
     dataclasses.replace(p, **_OS_OVERLAY.get(p.os, {}))
+    # The sc-20192 test branch builds the three variants that the reduced
+    # quasardb-build and qdb-duck builds of that branch publish.
     for p in select_platforms(
         "linux-amd64-core2",
-        "linux-amd64-haswell",
         "linux-aarch64",
-        "windows-amd64-core2",
-        "windows-amd64-haswell",
-        "freebsd-amd64-core2",
         "freebsd-amd64-haswell",
-        "macos-aarch64",
     )
 ]
 
@@ -315,8 +312,9 @@ def generate_pipeline() -> Pipeline:
 
     lint = _lint_step()
     # Lint is not per-platform: it needs *a* C API to typecheck against, not
-    # a matching one.  Pinned to haswell (the lint agent is haswell-class).
-    set_artifact_plugin_options(lint, _download_options("linux-haswell-release", git_ref))
+    # a matching one.  The sc-20192 test branch reads core2, the only
+    # linux amd64 variant its reduced dependency builds publish.
+    set_artifact_plugin_options(lint, _download_options("linux-core2-release", git_ref))
     pipeline.add_step(CommandStep.from_dict(lint))
 
     variants = []
