@@ -20,9 +20,10 @@ Plan documents on this branch (empty means none):
 
 !`git ls-tree --name-only HEAD docs/ | grep -- '-plan.md' || true`
 
-Pull request of this branch (number, state, review decision, head):
+Pull request of this branch (number, state, head, and the logins whose
+latest review approves it):
 
-!`gh pr view --json number,state,reviewDecision,headRefOid -q '"\(.number) \(.state) \(.reviewDecision) \(.headRefOid)"' 2>/dev/null || echo none`
+!`gh pr view --json number,state,headRefOid,latestReviews -q '"\(.number) \(.state) \(.headRefOid) approved by: \([.latestReviews[] | select(.state == "APPROVED") | .author.login] | join(" "))"' 2>/dev/null || echo none`
 
 Buildkite builds of this head (number, state), the `buildkite` skill's
 one-liner with the slug from `/rr-workflow`, Tools:
@@ -30,9 +31,10 @@ one-liner with the slug from `/rr-workflow`, Tools:
 !`bk api "pipelines/qdb-api-rest/builds?commit=$(git rev-parse HEAD)" 2>/dev/null | python3 -c 'import sys,json; print(*[(b["number"], b["state"]) for b in json.load(sys.stdin)] or ["none"])'`
 
 The current branch is the unit's story branch, `sc-<id>/<kebab-title>`.
-No tracked file is modified. The pull request is `OPEN`, its review
-decision is `APPROVED` by Igor or Edouard, and its head is this
-branch's head. The list above shows a build of this exact head in
+No tracked file is modified. The pull request is `OPEN`, its head is
+this branch's head, and the approving logins include `igorniebylski`
+or `edouarda`. An approval by anyone else does not count, although
+GitHub's review decision reads `APPROVED` after it. The list above shows a build of this exact head in
 state `passed`. The branch carries no plan document, because the build
 stage deleted the unit's plan as its last commit before the push, with
 the log entry. The build's state and the approval are read from the
