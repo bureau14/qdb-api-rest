@@ -46,8 +46,9 @@ send the plan.
 
 1. Create the story and its branch, as `quasardb-workflow`, steps 1
    and 2, say. Print `Following QuasarDB workflow (bureau14/qdb-api-rest)`
-   first. The story title follows that skill's title rules and starts
-   with `[rest]`, as the epic's other stories do. Pass `-e 19567` to
+   first. The story title is the one the seed report proposed. It
+   follows that skill's title rules and starts with `[rest]`, as the
+   epic's other stories do. Pass `-e 19567` to
    `sc-story.sh` in place of the release epic (`/rr-workflow`, Tools).
    Make the branch with the name `sc-story.sh` prints, from
    `origin/master`.
