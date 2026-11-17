@@ -23,6 +23,7 @@ make e2etool                 # build the Go tool of the v2 round trip into <repo
 make jdbc                    # build the JDBC smoke jar into tools/jdbc/target/
 make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
+    HTTPS_URL_INSECURE=https://127.0.0.1:40092 HTTPS_URL_SECURE=https://127.0.0.1:40093 \
     FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
 make test-stress QDB_REST_BIN=<new server binary>      # the stress, by hand: the drain step on both clusters
 make old-server                                        # export archive/go-swagger-master and build the old server into <repo>/bin/

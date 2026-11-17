@@ -69,13 +69,15 @@ JDBC_JAR := $(JDBC_DIR)/target/jdbc-smoke.jar
 # their HTTPS and Flight listeners on test ports. Each plane the driver
 # reads is a URL in the form its client takes, http:// and https:// for
 # curl and grpc+tls:// for the ADBC driver, and a server given by its
-# URLs is used as it is, HTTPS and Flight included.
+# URLs is used as it is, HTTPS and Flight included. A server given by
+# its HTTP URL must also be given its HTTPS URL, because the HTTPS port
+# cannot be derived from the HTTP URL.
 ROWS                ?= 10000
 SEED                ?= $(shell date +%s)
 REST_URL_INSECURE   ?= $(REST_URL)
 REST_URL_SECURE     ?=
-HTTPS_URL_INSECURE  ?= https://127.0.0.1:$(HTTPS_PORT_INSECURE)
-HTTPS_URL_SECURE    ?= https://127.0.0.1:$(HTTPS_PORT_SECURE)
+HTTPS_URL_INSECURE  ?=
+HTTPS_URL_SECURE    ?=
 FLIGHT_URL_INSECURE ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_INSECURE)
 FLIGHT_URL_SECURE   ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_SECURE)
 QDB_URI_SECURE    := qdb://127.0.0.1:2838
@@ -133,6 +135,7 @@ test-round-trip: services-check e2etool jdbc
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
 	insecure="$(REST_URL_INSECURE)"; secure="$(REST_URL_SECURE)"; \
+	insecure_https="$(HTTPS_URL_INSECURE)"; secure_https="$(HTTPS_URL_SECURE)"; \
 	insecure_log=""; secure_log=""; \
 	if [[ -z "$$insecure" || -z "$$secure" ]]; then \
 	    [[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL_INSECURE and REST_URL_SECURE"; \
@@ -141,13 +144,17 @@ test-round-trip: services-check e2etool jdbc
 	if [[ -z "$$insecure" ]]; then \
 	    start_server $(REST_PID) $(REST_LOG) $(REST_PORT_INSECURE) $(QDB_REST_BIN) $(REST_ARGS); \
 	    insecure=http://127.0.0.1:$(REST_PORT_INSECURE); insecure_log=$(REST_LOG); \
+	    insecure_https=$${insecure_https:-https://127.0.0.1:$(HTTPS_PORT_INSECURE)}; \
 	fi; \
 	if [[ -z "$$secure" ]]; then \
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
 	    secure=http://127.0.0.1:$(REST_PORT_SECURE); secure_log=$(REST_LOG_SECURE); \
+	    secure_https=$${secure_https:-https://127.0.0.1:$(HTTPS_PORT_SECURE)}; \
 	fi; \
-	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-https $(HTTPS_URL_INSECURE) --insecure-flight $(FLIGHT_URL_INSECURE) \
-	    --secure-http "$$secure" --secure-https $(HTTPS_URL_SECURE) --secure-flight $(FLIGHT_URL_SECURE) \
+	[[ -n "$$insecure_https" ]] || die "REST_URL_INSECURE is set, so set HTTPS_URL_INSECURE too"; \
+	[[ -n "$$secure_https" ]] || die "REST_URL_SECURE is set, so set HTTPS_URL_SECURE too"; \
+	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-https "$$insecure_https" --insecure-flight $(FLIGHT_URL_INSECURE) \
+	    --secure-http "$$secure" --secure-https "$$secure_https" --secure-flight $(FLIGHT_URL_SECURE) \
 	    --insecure-cluster $(QDB_URI) --secure-cluster $(QDB_URI_SECURE) \
 	    --secure-cluster-key $(REPO_ROOT)/cluster_public.key --secure-user-key $(REPO_ROOT)/user_private.key \
 	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
