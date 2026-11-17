@@ -11,7 +11,12 @@ all of this should feel.
   build, test and package steps and 1 aggregate test report. Run
   `python3 pipeline.py check` (needs `pip install -r requirements.txt`
   and `BUILDKITE_BRANCH` set) after any change, and `generate` prints
-  the YAML for inspection.
+  the YAML for inspection. Run without a command, as the upload job
+  runs it, the script prints `snapshot-bootstrap.yml` unless
+  `SNAPDEP_PHASE=generate` is set.
+- `snapshot.yml` declares the pipelines this repository's pipeline
+  downloads from, and `snapshot-bootstrap.yml` holds the snapshot gate
+  jobs of the `bureau14/qdb-snapshot` plugin.
 - `steps/*.yml` are the step templates with `{placeholder}` vars, which
   `pipeline.py` loads and overlays.
 - `tools/` is the `bureau14/qdb-cicd-tools` git submodule (the
@@ -40,6 +45,13 @@ all of this should feel.
   repository gets the dependency's master without `pipeline.py` naming
   it. A `by_project` ref is only for pinning a dependency to one of its
   branches for a while, and `pipeline.py` says when such a pin goes.
+- The snapshot gate fixes which build of `quasardb-build` and `qdb-duck`
+  each build uses. The plugin writes those builds into the download
+  entries of the generated pipeline, and it builds a dependency first
+  when that dependency has no build for its commit. A new `project_id`
+  in a download entry therefore needs an entry in `snapshot.yml`, and
+  every generated step needs a `timeout_in_minutes`, because a step
+  that hangs holds the gate of its commit.
 - qdbd runs in CI. The build step starts it via
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` runs last
