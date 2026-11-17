@@ -28,19 +28,19 @@ QDB_URI   ?= qdb://127.0.0.1:2836
 export QDB_DIR QDB_URI
 
 # The server under test is either a URL of a running server, or a binary
-# the harness starts on REST_PORT with REST_ARGS. The default REST_ARGS
-# match the flags of this repo's cmd/qdb_rest. The HTTPS and Flight
+# the harness starts on REST_PORT_INSECURE with REST_ARGS. The default
+# REST_ARGS match the flags of this repo's cmd/qdb_rest. The HTTPS and Flight
 # listeners cannot be turned off, so each takes a test port of its own:
 # a test server never binds the deployment ports 40443 and 40493, and
 # the two servers do not collide.
 REST_URL     ?=
 QDB_REST_BIN ?=
-REST_PORT    ?= 40090
-HTTPS_PORT   ?= 40092
-FLIGHT_PORT  ?= 40094
-REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT) \
-                --listen-https 127.0.0.1:$(HTTPS_PORT) \
-                --listen-flight 127.0.0.1:$(FLIGHT_PORT)
+REST_PORT_INSECURE   ?= 40090
+HTTPS_PORT_INSECURE  ?= 40092
+FLIGHT_PORT_INSECURE ?= 40094
+REST_ARGS    ?= --listen-http 127.0.0.1:$(REST_PORT_INSECURE) \
+                --listen-https 127.0.0.1:$(HTTPS_PORT_INSECURE) \
+                --listen-flight 127.0.0.1:$(FLIGHT_PORT_INSECURE)
 REST_PID     := $(E2E_DIR)/rest.pid
 REST_LOG     := $(E2E_DIR)/rest.log
 
@@ -67,14 +67,18 @@ JDBC_JAR := $(JDBC_DIR)/target/jdbc-smoke.jar
 # its server is started from QDB_REST_BIN. The secure server takes the
 # key files start-services.sh writes at the repo root, and both run
 # their HTTPS and Flight listeners on test ports. Each plane the driver
-# reads is a URL in the form its client takes, http:// for curl and
-# grpc+tls:// for the ADBC driver, and a server given by its URLs is used
-# as it is, Flight included.
+# reads is a URL in the form its client takes, http:// and https:// for
+# curl and grpc+tls:// for the ADBC driver, and a server given by its
+# URLs is used as it is, HTTPS and Flight included. A server given by
+# its HTTP URL must also be given its HTTPS URL, because the HTTPS port
+# cannot be derived from the HTTP URL.
 ROWS                ?= 10000
 SEED                ?= $(shell date +%s)
 REST_URL_INSECURE   ?= $(REST_URL)
 REST_URL_SECURE     ?=
-FLIGHT_URL_INSECURE ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT)
+HTTPS_URL_INSECURE  ?=
+HTTPS_URL_SECURE    ?=
+FLIGHT_URL_INSECURE ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_INSECURE)
 FLIGHT_URL_SECURE   ?= grpc+tls://127.0.0.1:$(FLIGHT_PORT_SECURE)
 QDB_URI_SECURE    := qdb://127.0.0.1:2838
 REST_PORT_SECURE   ?= 40091
@@ -131,21 +135,26 @@ test-round-trip: services-check e2etool jdbc
 	check_service_running qdbd $(subst qdb://127.0.0.1:,,$(QDB_URI_SECURE)) \
 	    || die "secure qdbd is not answering on $(QDB_URI_SECURE); run: bash scripts/tests/setup/start-services.sh"; \
 	insecure="$(REST_URL_INSECURE)"; secure="$(REST_URL_SECURE)"; \
+	insecure_https="$(HTTPS_URL_INSECURE)"; secure_https="$(HTTPS_URL_SECURE)"; \
 	insecure_log=""; secure_log=""; \
 	if [[ -z "$$insecure" || -z "$$secure" ]]; then \
 	    [[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary> or REST_URL_INSECURE and REST_URL_SECURE"; \
 	fi; \
 	trap 'stop_server $(REST_PID); stop_server $(REST_PID_SECURE)' EXIT; \
 	if [[ -z "$$insecure" ]]; then \
-	    start_server $(REST_PID) $(REST_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS); \
-	    insecure=http://127.0.0.1:$(REST_PORT); insecure_log=$(REST_LOG); \
+	    start_server $(REST_PID) $(REST_LOG) $(REST_PORT_INSECURE) $(QDB_REST_BIN) $(REST_ARGS); \
+	    insecure=http://127.0.0.1:$(REST_PORT_INSECURE); insecure_log=$(REST_LOG); \
+	    insecure_https=$${insecure_https:-https://127.0.0.1:$(HTTPS_PORT_INSECURE)}; \
 	fi; \
 	if [[ -z "$$secure" ]]; then \
 	    start_server $(REST_PID_SECURE) $(REST_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE); \
 	    secure=http://127.0.0.1:$(REST_PORT_SECURE); secure_log=$(REST_LOG_SECURE); \
+	    secure_https=$${secure_https:-https://127.0.0.1:$(HTTPS_PORT_SECURE)}; \
 	fi; \
-	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-flight $(FLIGHT_URL_INSECURE) \
-	    --secure-http "$$secure" --secure-flight $(FLIGHT_URL_SECURE) \
+	[[ -n "$$insecure_https" ]] || die "REST_URL_INSECURE is set, so set HTTPS_URL_INSECURE too"; \
+	[[ -n "$$secure_https" ]] || die "REST_URL_SECURE is set, so set HTTPS_URL_SECURE too"; \
+	$(ROUND_TRIP) run --insecure-http "$$insecure" --insecure-https "$$insecure_https" --insecure-flight $(FLIGHT_URL_INSECURE) \
+	    --secure-http "$$secure" --secure-https "$$secure_https" --secure-flight $(FLIGHT_URL_SECURE) \
 	    --insecure-cluster $(QDB_URI) --secure-cluster $(QDB_URI_SECURE) \
 	    --secure-cluster-key $(REPO_ROOT)/cluster_public.key --secure-user-key $(REPO_ROOT)/user_private.key \
 	    --tool $(E2ETOOL) --jdbc-jar $(JDBC_JAR) --rows $(ROWS) --seed $(SEED) \
@@ -194,11 +203,11 @@ test-stress: services-check e2etool
 	[[ -n "$(QDB_REST_BIN)" ]] || die "no server under test: set QDB_REST_BIN=<binary>"; \
 	trap 'stop_server $(STRESS_PID); stop_server $(STRESS_PID_SECURE)' EXIT; \
 	rm -rf $(STRESS_OUT); \
-	start_server $(STRESS_PID) $(STRESS_LOG) $(REST_PORT) $(QDB_REST_BIN) $(REST_ARGS) $(STRESS_FLAGS); \
-	$(STRESS) budget --name insecure --http http://127.0.0.1:$(REST_PORT) \
+	start_server $(STRESS_PID) $(STRESS_LOG) $(REST_PORT_INSECURE) $(QDB_REST_BIN) $(REST_ARGS) $(STRESS_FLAGS); \
+	$(STRESS) budget --name insecure --http http://127.0.0.1:$(REST_PORT_INSECURE) \
 	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure/budget --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
 	    --clients $(STRESS_CLIENTS); \
-	$(STRESS) drain --name insecure --http http://127.0.0.1:$(REST_PORT) --pid-file $(STRESS_PID) --log $(STRESS_LOG) \
+	$(STRESS) drain --name insecure --http http://127.0.0.1:$(REST_PORT_INSECURE) --pid-file $(STRESS_PID) --log $(STRESS_LOG) \
 	    --tool $(E2ETOOL) --out $(STRESS_OUT)/insecure/drain --rows $(STRESS_ROWS) --seed $(STRESS_SEED) \
 	    --limit-rate $(STRESS_LIMIT_RATE) --exit-window $(STRESS_EXIT_WINDOW); \
 	start_server $(STRESS_PID_SECURE) $(STRESS_LOG_SECURE) $(REST_PORT_SECURE) $(QDB_REST_BIN) $(REST_ARGS_SECURE) $(STRESS_FLAGS); \
@@ -276,7 +285,7 @@ COMPARE       := $(E2E_DIR)/compare-v1.sh
 export OLD_BIN OLD_PORT OLD_TLS_PORT OLD_PORT_SECURE OLD_TLS_PORT_SECURE
 export OLD_PID OLD_LOG OLD_PID_SECURE OLD_LOG_SECURE
 export COMPARE_OUT OLD_CONF OLD_CONF_SECURE OLD_TLS_CERT OLD_TLS_KEY COMPARE_TABLE
-export QDB_REST_BIN REST_PORT REST_ARGS REST_PID REST_LOG
+export QDB_REST_BIN REST_PORT_INSECURE REST_ARGS REST_PID REST_LOG
 export REST_PORT_SECURE REST_ARGS_SECURE REST_PID_SECURE REST_LOG_SECURE QDB_URI_SECURE
 test-v1-compare: services-check old-server
 	@$(COMMON); \

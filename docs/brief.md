@@ -12,9 +12,9 @@ the recommended reading order are in `docs/AGENTS.md`.
 The rewrite is Shortcut epic 19567, "REST API Rewrite"
 (`https://app.shortcut.com/quasardb/epic/19567`). The server lives on
 `master` and `3.14.x`, and story 20139 tracks it. No pull request
-carried the server onto `master`, so 20139 is completed by hand. Feature
-branches keep the epic's id, as `sc-19567/rr-<slug>`. The epic holds
-these stories:
+carried the server onto `master`, so 20139 is completed by hand. Each
+later unit of work is a story of the epic, and its branch is the
+story's, `sc-<id>/<kebab-title>`. The epic holds these stories:
 
 | Story | Work                                                   |
 | ----- | ------------------------------------------------------ |

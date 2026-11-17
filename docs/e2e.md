@@ -12,7 +12,7 @@ the end.
 ## Purpose
 
 The harness proves, for the life of the product, that the built binary,
-driven over HTTP like a client:
+driven over HTTP and HTTPS like a client:
 
 1. works as a client expects on the v2 surface: login, create tables,
    ingest rows in every body format, read and query them back in every
@@ -59,11 +59,14 @@ qdbd is a persistent background service, never started by a test:
 
 There is one round trip and there are no captured files (ADR-0014). It
 is the sequence of `TestRoundtrip` (`internal/httpapi/roundtrip_test.go`)
-driven over HTTP by curl against the built binary. The expected value
-of every step is known by construction, so nothing is audited and
-nothing is captured. The round trip runs once
-per cluster, `insecure` (`qdb://127.0.0.1:2836`) and `secure` (`:2838`),
-each against its own server under test. The secure login body is the
+driven by curl against the built binary. The expected value of every
+step is known by construction, so nothing is audited and nothing is
+captured. There are two clusters, `insecure` (`qdb://127.0.0.1:2836`)
+and `secure` (`:2838`), each with its own server under test. The round
+trip runs every step on both HTTP planes of each server, once over HTTP
+and once over HTTPS, so there are four runs. The two runs of a cluster
+create the same tables and attach the same tag, so they run one after
+the other, and each run's create drops the table first. The secure login body is the
 user security file `start-services.sh` writes at the repo root
 (`user_private.key`, the file `internal/qdbtest` reads too), and the
 insecure login is anonymous. Every assertion is pass or fail. Nothing
@@ -229,18 +232,22 @@ through a decoder of the same package.
 
 ### The driver
 
-`tests/e2e/round-trip.sh run --insecure-http <url> --insecure-flight <url>
---secure-http <url> --secure-flight <url> --insecure-cluster <uri>
+`tests/e2e/round-trip.sh run --insecure-http <url> --insecure-https <url>
+--insecure-flight <url> --secure-http <url> --secure-https <url>
+--secure-flight <url> --insecure-cluster <uri>
 --secure-cluster <uri> --secure-cluster-key <file> --secure-user-key <file>
 --tool <e2etool> --jdbc-jar <jar> [--insecure-log <file>]
 [--secure-log <file>] [--rows N] [--seed S]` is a small option loop.
 Each server is named by its cluster and each plane by a URL in the form
-its client takes, `http://` for curl and `grpc+tls://` for the ADBC
-driver, so the script owns no scheme. Each cluster is also named by its
+its client takes, `http://` and `https://` for curl and `grpc+tls://`
+for the ADBC driver, so the script owns no scheme. curl does not verify
+the HTTPS listener's certificate, as the Flight drivers do not verify
+the Flight listener's, because every test server serves the
+self-signed certificate it generates at start (ADR-0001). Each cluster is also named by its
 URI, and the secure one by its public key file and its user's security
 file, because the driver removes the tag entry through `qdbsh`. The
 Makefile passes `QDB_URI`, `QDB_URI_SECURE` and the key files at the
-repo root. The HTTPS listener has no option, because no step reads it. The Makefile is
+repo root. The Makefile is
 the only source of URLs, ports and paths, and it passes the log of each
 server it started and nothing for a server given as a URL.
 `make test-round-trip` runs it. A cluster whose URL is empty gets a
@@ -249,7 +256,7 @@ server started from `QDB_REST_BIN` (`40090` on the insecure node,
 `--cluster-user-security-file`), with the HTTPS listener on `40092`
 and `40093` and the Flight listener on `40094` and `40095`, because
 neither can be turned off and the two servers must not collide, and
-`TZ=UTC`. Working files go to `actual/round-trip/<cluster>/`, one
+`TZ=UTC`. Working files go to `actual/round-trip/<cluster>-<plane>/`, one
 `.body` and one `.headers` file per request. The driver is one file
 over the request, status, login, create, ingest and compare helpers of
 `common.sh`, which the stress shares: one function per

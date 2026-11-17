@@ -20,7 +20,7 @@ branches, or make commits.
 
 Current branch: !`git branch --show-current`
 
-Base vs origin, commits ahead / behind (0 0 means in sync):
+Local `master` vs origin, commits ahead / behind (0 0 means in sync):
 
 !`git rev-list --left-right --count master...origin/master`
 
@@ -32,18 +32,19 @@ Recent history:
 
 !`git log --oneline -30`
 
-Feature branches already present (a leftover here needs the owner's
+Story branches already present (a leftover here needs the owner's
 decision before anything else):
 
-!`git branch --list 'sc-19567/rr-*'`
+!`git branch --list 'sc-*'`
 
-Read the state as it is, not as a story: a merged unit is a
-fast-forward, so its commits sit on the base with no branch and no
-merge commit, and that is the workflow working, not a unit that
-skipped it. The merge stage pushes the base, so a base ahead of origin
-means one merge was not pushed; that is a line under Open questions,
-not a reason to stop. A leftover is a feature branch in the list
-above, a dirty tree, or a `docs/*-plan.md` whose unit has merged.
+Read the state as it is, not as a story: a merged unit is one
+`QDB-<id> - <story title> (#<n>)` commit on `master`, and the same
+commit cherry-picked onto `3.14.x`. Its branch was deleted with the
+merge, and that is the workflow working, not a unit that skipped it.
+A local `master` behind `origin/master` only means it was not pulled.
+A leftover is a story branch in the list above whose pull request has
+merged or that carries a plan of its own, modified tracked files, or a
+`docs/*-plan.md` on `master`. Untracked files are not leftovers.
 
 ## Steps
 
