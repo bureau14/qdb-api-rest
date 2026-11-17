@@ -23,6 +23,7 @@ make e2etool                 # build the Go tool of the v2 round trip into <repo
 make jdbc                    # build the JDBC smoke jar into tools/jdbc/target/
 make test-round-trip QDB_REST_BIN=<new server binary>  # the v2 round trip, one server per cluster
 make test-round-trip REST_URL_INSECURE=http://127.0.0.1:40090 REST_URL_SECURE=http://127.0.0.1:40091 \
+    HTTPS_URL_INSECURE=https://127.0.0.1:40092 HTTPS_URL_SECURE=https://127.0.0.1:40093 \
     FLIGHT_URL_INSECURE=grpc+tls://127.0.0.1:40094 FLIGHT_URL_SECURE=grpc+tls://127.0.0.1:40095
 make test-stress QDB_REST_BIN=<new server binary>      # the stress, by hand: the drain step on both clusters
 make old-server                                        # export archive/go-swagger-master and build the old server into <repo>/bin/
@@ -47,7 +48,7 @@ reproduces. `tools/e2etool gen` draws the rows and writes `rows.csv`,
 `rows.ndjson`, `rows.arrow` and `rows.json` through the server's own
 encoders, and `tools/e2etool tocsv` turns a response into CSV through
 the server's own decoders. The definition is `docs/e2e.md`, "The v2
-round trip". Working files are under `actual/round-trip/<cluster>/`,
+round trip". Working files are under `actual/round-trip/<cluster>-<plane>/`,
 one `.body` and one `.headers` per request.
 
 ## The stress

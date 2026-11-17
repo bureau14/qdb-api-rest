@@ -33,7 +33,7 @@ require_command openssl
 : "${OLD_PORT:?}" "${OLD_TLS_PORT:?}" "${OLD_PORT_SECURE:?}" "${OLD_TLS_PORT_SECURE:?}"
 : "${OLD_PID:?}" "${OLD_LOG:?}" "${OLD_PID_SECURE:?}" "${OLD_LOG_SECURE:?}"
 : "${OLD_CONF:?}" "${OLD_CONF_SECURE:?}" "${OLD_TLS_CERT:?}" "${OLD_TLS_KEY:?}"
-: "${REST_PORT:?}" "${REST_ARGS:?}" "${REST_PID:?}" "${REST_LOG:?}"
+: "${REST_PORT_INSECURE:?}" "${REST_ARGS:?}" "${REST_PID:?}" "${REST_LOG:?}"
 : "${REST_PORT_SECURE:?}" "${REST_ARGS_SECURE:?}" "${REST_PID_SECURE:?}" "${REST_LOG_SECURE:?}"
 : "${QDB_URI:?}" "${QDB_URI_SECURE:?}"
 
@@ -225,9 +225,9 @@ insecure_pair() {
     # and the anonymous pair as the login body.
     old_config "$OLD_CONF" "$QDB_URI" "$OLD_PORT" "$OLD_TLS_PORT"
     start_server "$OLD_PID" "$OLD_LOG" "$OLD_PORT" "$OLD_BIN" --config-file "$OLD_CONF"
-    start_server "$REST_PID" "$REST_LOG" "$REST_PORT" "$QDB_REST_BIN" $REST_ARGS
+    start_server "$REST_PID" "$REST_LOG" "$REST_PORT_INSECURE" "$QDB_REST_BIN" $REST_ARGS
     printf '{"username":"","secret_key":""}' > "$COMPARE_OUT/anonymous.json"
-    run_cluster insecure "http://127.0.0.1:$OLD_PORT" "http://127.0.0.1:$REST_PORT" "$COMPARE_OUT/anonymous.json" || return 1
+    run_cluster insecure "http://127.0.0.1:$OLD_PORT" "http://127.0.0.1:$REST_PORT_INSECURE" "$COMPARE_OUT/anonymous.json" || return 1
     stop_server "$OLD_PID"
     stop_server "$REST_PID"
 }

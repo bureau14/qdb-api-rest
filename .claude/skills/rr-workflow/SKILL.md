@@ -1,6 +1,6 @@
 ---
 name: rr-workflow
-description: The branch-off workflow of the rest rewrite -- the base branch, the feature branch, the commit form, and the four stages a unit of work moves through with the owner's invocation as the gate between them. Loaded by the seed skills and at the top of every stage skill; never invoked by the owner.
+description: The workflow of the rest rewrite -- the story, the branch, the commit form, the pull request, and the four stages a unit of work moves through with the owner's invocation as the gate between them. Loaded by the seed skills and at the top of every stage skill; never invoked by the owner.
 user-invocable: false
 ---
 
@@ -8,21 +8,31 @@ user-invocable: false
 
 ## Branches and commits
 
-- `master` is the base branch. Commit to it only by fast-forward merge
-  from a reviewed feature branch. It is a flat, linear history; it stays
-  that way.
-- Every unit of work happens on a feature branch off the base, named
-  `sc-19567/rr-<slug>`. Create it only when the owner opens the plan
-  stage, from an up-to-date base, with a clean working tree.
-- Commits on the feature branch are small and individual: one
+A unit follows the QuasarDB workflow (the `quasardb-workflow` skill),
+and the rr stages add the seed, the plan and the owner's reviews in the
+Inbox to it.
+
+- `master` is the base branch, and `3.14.x` is the current release.
+  Commits reach `master` only as the squash commit of a unit's pull
+  request, and the same commit is cherry-picked onto `3.14.x`.
+- Each unit is one Shortcut story under epic 19567, created when the
+  owner opens the plan stage. Its branch is `sc-<id>/<kebab-title>`,
+  the name the shortcut skill's `sc-story.sh` prints, made from
+  `origin/master` with clean tracked files.
+- Each unit has a plan, `docs/<slug>-plan.md`. The seed report chooses
+  the slug, and the build stage finds the plan as the one plan file the
+  branch adds over `origin/master`.
+- Commits on the branch are small and individual: one
   conventional-commit line, `type(scope): subject`, no body, no
   trailers, no AI attribution. Prefer many small commits over one big
   one; each commit builds and passes lint.
-- The owner reviews the plan and the code in the Plannotator Inbox
-  (The Inbox, below). The code review's patch is
-  `git diff master...sc-19567/rr-<slug>`.
-- No GitHub pull requests, no stacked branches, no history rewriting on
-  the base.
+- The unit lands as one pull request to `master`, titled
+  `QDB-<id> - <story title>`, with an empty body, and Igor
+  (`igorniebylski`) reviews it. The owner reviews the plan and the code
+  in the Plannotator Inbox (The Inbox, below). The code review's patch
+  is `git diff origin/master...HEAD`.
+- No stacked branches, and no history rewriting on `master` or
+  `3.14.x`.
 
 ## Tools
 
@@ -36,7 +46,7 @@ takes these values from this repository:
 | -------------- | ------------------------------------------------------------------------------------- |
 | Pipeline slug  | `qdb-api-rest`                                                                        |
 | Org            | `quasar-1`, resolved from the repository's `.bk.yaml`; nothing to set                 |
-| Branch         | the feature branch, `sc-19567/rr-<slug>`                                              |
+| Branch         | the story branch, `sc-<id>/<kebab-title>`                                             |
 | Commit         | the full SHA of the head, `git rev-parse HEAD`                                        |
 | `MESSAGE`      | `rr-<slug>`, so the pipeline's build list reads by unit                               |
 | `CHECKPOINT`   | `7200`, because the watcher runs beside the owner's code review, which can take hours |
@@ -48,22 +58,29 @@ entry check because the harness evaluates that check at load time.
 
 The reviews go through the `plannotator_inbox` tool:
 
-| Review      | Calls                                     | Values here                                                              |
-| ----------- | ----------------------------------------- | ------------------------------------------------------------------------ |
-| Plan review | `send_message`, the plan in `attachments` | `docs/<slug>-plan.md`, one message                                       |
-| Code review | `get_guide_brief`, then `submit_guide`    | patch `git diff master...sc-19567/rr-<slug>`, the head's SHA in the body |
+| Review      | Calls                                     | Values here                                                       |
+| ----------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| Plan review | `send_message`, the plan in `attachments` | `docs/<slug>-plan.md`, one message                                |
+| Code review | `get_guide_brief`, then `submit_guide`    | patch `git diff origin/master...HEAD`, the head's SHA in the body |
 
-The `quasardb-workflow` skill does not apply to a unit, and neither
-does the `github` skill. A unit has no Shortcut story of its own, no
-pull request and no squash-merge. `/rr-merge` is the only merge.
+The `quasardb-workflow` skill owns the story, the branch, the pull
+request, the squash-merge and the cherry-pick onto `3.14.x`, and it
+reads the `shortcut` and `github` skills for their mechanics. The stage
+skills say which of its steps a stage runs. The story goes under epic
+19567, the rewrite's epic, and not under the release epic that
+`quasardb-workflow` picks by default.
 
 Correct: the build stage runs the buildkite skill's watcher with slug
 `qdb-api-rest`, the feature branch, the head's SHA,
 `MESSAGE=rr-flight-catalog` and `CHECKPOINT=7200`, in the background.
 
-Incorrect: the owner's message says "build", the origin is under
-bureau14, and the session opens `quasardb-workflow`, which would create
-a story and a pull request for one unit of the rewrite.
+Correct: the build stage pushes the story branch and opens the pull
+request through `quasardb-workflow`, step 4, before it ensures the
+build.
+
+Incorrect: the owner writes "merge" in the chat, and the session runs
+`quasardb-workflow`, step 7, because the skill says "merge" starts it.
+Only `/rr-merge` opens the merge of a unit.
 
 ## The Inbox
 
@@ -119,12 +136,12 @@ stage, or it is a review comment on what the current stage produced. A
 "Looks good" on an Inbox review message approves that review, as The
 Inbox says, and opens no stage either.
 
-| Stage    | Opened by                              | You produce                                                                                                                                                                        | You never                                                                                                                  | Ends with                                                                                                                                                            |
-| -------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Seed  | `/rr-start <task>` or `/rr-start-next` | the seed report                                                                                                                                                                    | write, branch, commit                                                                                                      | a wait for `/rr-plan`                                                                                                                                                |
-| 2. Plan  | `/rr-plan`                             | the branch, one commit with the plan document, its Inbox review, and on approval one commit setting its status to approved                                                         | touch code, tests, config, ADRs or any other document                                                                      | the Inbox review of the committed plan; on approval, the plan-stage message, then a wait for `/rr-build`                                                             |
-| 3. Build | `/rr-build`                            | the small commits the approved plan lists, the doc-discipline runs, the plan's deletion commit, the push, the Buildkite build and the Inbox code review, the last two side by side | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green | the build-stage message: branch, summary, the check's report, the review's decision, the build number and state, the `git diff` command, then a wait for `/rr-merge` |
-| 4. Merge | `/rr-merge`                            | the fast-forward merge, the branch deletion                                                                                                                                        | merge without the owner having invoked `/rr-merge` on a green, approved build; merge a branch that still carries its plan  | one line: what merged                                                                                                                                                |
+| Stage    | Opened by                              | You produce                                                                                                                                                               | You never                                                                                                                                                               | Ends with                                                                                                                                                                          |
+| -------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Seed  | `/rr-start <task>` or `/rr-start-next` | the seed report                                                                                                                                                           | write, branch, commit                                                                                                                                                   | a wait for `/rr-plan`                                                                                                                                                              |
+| 2. Plan  | `/rr-plan`                             | the story, the branch, one commit with the plan document, its Inbox review, and on approval one commit setting its status to approved                                     | touch code, tests, config, ADRs or any other document                                                                                                                   | the Inbox review of the committed plan; on approval, the plan-stage message, then a wait for `/rr-build`                                                                           |
+| 3. Build | `/rr-build`                            | the small commits the approved plan lists, the doc-discipline runs, the plan's deletion commit, the push, the pull request, the Buildkite build and the Inbox code review | merge; deviate from the plan without saying so; invent a reason for a comment; ask about merging before the build is green                                              | the build-stage message: branch, pull request, summary, the check's report, the review's decision, the build number and state, the `git diff` command, then a wait for `/rr-merge` |
+| 4. Merge | `/rr-merge`                            | the squash-merge, the cherry-pick onto `3.14.x`, the builds of both lines, the story completed                                                                            | merge without the owner having invoked `/rr-merge` on a green build that the owner and the pull request's reviewer approved; merge a branch that still carries its plan | one line: what merged on both lines                                                                                                                                                |
 
 A session may begin at any stage from the tree. `/rr-start` with a
 plan path reads the unit's stage and names the next gate; it opens

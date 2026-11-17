@@ -192,7 +192,7 @@ moves nothing; a fact still without one is a finding of the check,
 fixed before this commit.
 
 Incorrect: the Commits section ends with the Verify step, the plan is
-pushed with the branch, and it survives the merge onto the base, where
+pushed with the branch, and it survives the merge onto `master`, where
 no stage may commit.
 
 ## The plan ends with a Buildkite build
@@ -201,9 +201,10 @@ Local lint and tests cover one platform; the pipeline covers the whole
 matrix. So the Commits section closes with one final step that is not
 a commit, written out in the plan itself:
 
-> N. Verify: push `sc-19567/rr-<slug>`, build its head in Buildkite,
-> wait for the result. Green: report the build number. Red: fix with
-> further small commits on this branch, push, build again.
+> N. Verify: push the story branch, open the pull request
+> `QDB-<id> - <story title>`, build its head in Buildkite, and wait for
+> the result. Green: report the build number. Red: fix with further
+> small commits on this branch, push, build again.
 
 A plan that changes only documents still gets the step; the lint step
 runs on every build. How the build is run, and what a red build means,
