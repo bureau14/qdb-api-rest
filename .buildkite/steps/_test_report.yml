@@ -8,9 +8,6 @@ command: "true"
 
 allow_dependency_failure: true
 
-# The aggregation takes under a minute.
-timeout_in_minutes: 10
-
 depends_on:
 
 plugins:

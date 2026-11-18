@@ -13,12 +13,6 @@ needs into qdb/ and qdb-duck's package into duck/. The e2e harness
 (tests/e2e/) runs in the same step after the Go tests, and the step
 then packs and uploads the rest archive (.buildkite/AGENTS.md).
 
-Without a command and without SNAPDEP_PHASE=generate, the script prints
-the snapshot gate of snapshot-bootstrap.yml instead. The gate's first
-job runs the qdb-snapshot plugin, which calls this script again with
-SNAPDEP_PHASE=generate to obtain the pipeline (snapshot.yml declares the
-dependencies).
-
 Usage:
     python3 pipeline.py [generate|check]
 """
@@ -26,69 +20,16 @@ Usage:
 from __future__ import annotations
 
 import dataclasses
-import os
-import subprocess
 import sys
-import time
 from pathlib import Path
 
-SNAPDEP_BOOTSTRAP = Path(__file__).parent / "snapshot-bootstrap.yml"
-
-
-def _snapdep_wants_bootstrap() -> bool:
-    """Return True for the upload job's plain invocation, outside the generate phase."""
-    return (
-        len(sys.argv) == 1
-        and os.environ.get("SNAPDEP_PHASE") != "generate"
-        and SNAPDEP_BOOTSTRAP.exists()
-    )
-
-
-def _snapdep_record_arrival() -> None:
-    """Set the build meta-data snapdep-arrived to the current UTC epoch seconds.
-
-    Does nothing when buildkite-agent is not installed (a local run), and
-    raises CalledProcessError when buildkite-agent fails.
-    """
-    now = str(int(time.time()))
-    try:
-        # stdout goes to stderr, because the upload job pipes stdout into the upload.
-        subprocess.run(
-            ["buildkite-agent", "meta-data", "set", "snapdep-arrived", now],
-            check=True,
-            stdout=sys.stderr,
-        )
-    except FileNotFoundError:
-        pass
-
-
-def _snapdep_bootstrap() -> str:
-    """Return snapshot-bootstrap.yml with __COMMIT__ replaced by the HEAD commit."""
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=SNAPDEP_BOOTSTRAP.parent,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    return SNAPDEP_BOOTSTRAP.read_text().replace("__COMMIT__", sha)
-
-
-# The bootstrap runs before the imports below, so it needs neither the
-# tools submodule nor the packages of requirements.txt.
-if _snapdep_wants_bootstrap():
-    bootstrap = _snapdep_bootstrap()
-    _snapdep_record_arrival()
-    sys.stdout.write(bootstrap)
-    sys.exit(0)
-
-from buildkite_sdk import CommandStep, Pipeline  # noqa: E402
+from buildkite_sdk import CommandStep, Pipeline
 
 # qdb-cicd-tools ships the qdb_pipeline library as a submodule.
 # Insert the path before importing so the relative submodule is found
 # regardless of the working directory the generator is called from.
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
-from qdb_pipeline import (  # noqa: E402
+from qdb_pipeline import (
     Platform,
     apply_docker,
     get_git_ref,
@@ -97,7 +38,7 @@ from qdb_pipeline import (  # noqa: E402
     select_platforms,
     set_artifact_plugin_options,
     validate_pipeline,
-)
+)  # noqa: E402
 
 STEPS_DIR = Path(__file__).parent / "steps"
 
