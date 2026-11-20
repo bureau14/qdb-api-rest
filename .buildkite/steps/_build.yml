@@ -13,6 +13,7 @@ key: build-{slug}
 # archive when every command passed.
 
 commands:
+  - bash .buildkite/sc-20192-fail-unasked.sh {slug}
   - echo \"+++ Start services\"
   - bash scripts/tests/setup/start-services.sh
   - echo \"+++ Build\"
