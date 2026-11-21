@@ -192,8 +192,8 @@ def _publish_options(variant: str, git_ref: str) -> dict:
     for.
     """
     return {
-        "upload": {"variant": variant, "git_ref": git_ref},
-        "promote": {"variant": variant, "git_ref": git_ref},
+        "upload": {"variant": variant},
+        "promote": {"variant": variant},
     }
 
 

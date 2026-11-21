@@ -1,5 +1,5 @@
 label: ":hammer: build ({slug})"
-key: build-{slug}
+step_id: build
 
 # The qdb-artifacts plugin extracts two packages for this step's variant:
 # the c-api, server and utils dists into qdb/, the QuasarDB project
@@ -25,11 +25,12 @@ commands:
   - bash scripts/cicd/50.package.sh
 
 plugins:
-  - bureau14/qdb-artifacts#sc-20192/snapshot-dependencies:
+  - bureau14/qdb-artifacts#ed7b5a5a5d958c7a0af1695df2dbf1a8fbfa8204:
       download:
         clean: true
         projects:
         - project_id: "quasardb-build"
+          step: build
           output-dir: "qdb"
           extract: true
           files:
