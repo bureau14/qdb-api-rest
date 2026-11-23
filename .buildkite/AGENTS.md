@@ -34,12 +34,17 @@ all of this should feel.
   into `duck/`. The lint step downloads both too, because
   golangci-lint's typecheck compiles the cgo packages. The link flags
   and build tags that consume the two trees are the root `.envrc`'s.
-- Every download project is asked for this repository's own git ref.
-  The plugin walks that ref, then the project's master, then main, and
-  takes the first one that holds artifacts, so a branch of this
-  repository gets the dependency's master without `pipeline.py` naming
-  it. A `by_project` ref is only for pinning a dependency to one of its
-  branches for a while, and `pipeline.py` says when such a pin goes.
+- Every download entry names the dependency's step (`step: build`) and
+  this repository's own git ref. The artifacts plugin's plan step fixes
+  the commit and key of each dependency before any job runs. It takes a
+  dependency from the root build's branch when the dependency's
+  repository has that branch, and else from the release line of the root
+  build's commit, `master` or `main`. It starts a build of the dependency
+  when no build has made that key yet, so a branch of this repository
+  gets the dependency's master without `pipeline.py` naming it. A pin to
+  one of a dependency's branches is a literal `git_ref` in the step
+  template, because the plan step reads pins from the committed templates
+  and refuses a ref that only `pipeline.py` writes.
 - qdbd runs in CI. The build step starts it via
   `scripts/tests/setup/start-services.sh` before building, and
   `hooks/pre-exit` stops it. The e2e harness in `tests/e2e/` runs last
