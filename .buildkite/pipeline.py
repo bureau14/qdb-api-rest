@@ -175,9 +175,9 @@ def _download_options(variant: str, git_ref: str) -> dict:
     """Return the qdb-artifacts download options of one step.
 
     Every download project receives this repository's own ref and the
-    step's variant. The plugin resolves a ref that holds no artifacts of
-    a project to that project's master, so no ref is spelled out here
-    for quasardb-build or qdb-duck (.buildkite/AGENTS.md).
+    step's variant. The plan step of the build fixes the commit of each
+    project from that ref, so no ref is spelled out here for
+    quasardb-build or qdb-duck (.buildkite/AGENTS.md).
     """
     return {
         "download": {
