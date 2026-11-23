@@ -9,7 +9,7 @@ key: lint
 # apply_docker so that the propagated env and the qdb/ volume are both
 # visible inside the container -- the same container the build steps use.
 plugins:
-  - bureau14/qdb-artifacts#sc-20192/snapshot-dependencies:
+  - bureau14/qdb-artifacts#master:
       download:
         clean: true
         projects:

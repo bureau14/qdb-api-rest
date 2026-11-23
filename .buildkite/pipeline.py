@@ -37,7 +37,7 @@ from qdb_pipeline import (
     merge_env,
     select_platforms,
     set_artifact_plugin_options,
-    run,
+    validate_pipeline,
 )  # noqa: E402
 
 STEPS_DIR = Path(__file__).parent / "steps"
@@ -65,12 +65,15 @@ _OS_OVERLAY: dict[str, dict] = {"linux": _LINUX}
 # variant quasardb-build publishes.
 PLATFORMS: list[Platform] = [
     dataclasses.replace(p, **_OS_OVERLAY.get(p.os, {}))
-    # The sc-20192 test branch builds the three variants that the reduced
-    # quasardb-build and qdb-duck builds of that branch publish.
     for p in select_platforms(
         "linux-amd64-core2",
+        "linux-amd64-haswell",
         "linux-aarch64",
+        "windows-amd64-core2",
+        "windows-amd64-haswell",
+        "freebsd-amd64-core2",
         "freebsd-amd64-haswell",
+        "macos-aarch64",
     )
 ]
 
@@ -253,9 +256,8 @@ def generate_pipeline() -> Pipeline:
 
     lint = _lint_step()
     # Lint is not per-platform: it needs *a* C API to typecheck against, not
-    # a matching one.  The sc-20192 test branch reads core2, the only
-    # linux amd64 variant its reduced dependency builds publish.
-    set_artifact_plugin_options(lint, _download_options("linux-core2-release", git_ref))
+    # a matching one.  Pinned to haswell (the lint agent is haswell-class).
+    set_artifact_plugin_options(lint, _download_options("linux-haswell-release", git_ref))
     pipeline.add_step(CommandStep.from_dict(lint))
 
     variants = []
@@ -276,5 +278,35 @@ def generate_pipeline() -> Pipeline:
     return pipeline
 
 
+def main() -> None:
+    """Entry point.
+
+    Commands:
+        generate  -- emit the pipeline YAML to stdout (default).
+        check     -- validate pipeline structure; print errors or [OK] summary.
+    """
+    command = sys.argv[1] if len(sys.argv) > 1 else "generate"
+
+    try:
+        pipeline = generate_pipeline()
+    except Exception as e:
+        print(f"[FAIL] Pipeline generation failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if command == "generate":
+        print(pipeline.to_yaml())
+    elif command == "check":
+        errors = validate_pipeline(pipeline)
+        if errors:
+            for e in errors:
+                print(f"[FAIL] {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"[OK] Pipeline valid: {len(pipeline.steps)} steps")
+    else:
+        print(f"Unknown command: {command}", file=sys.stderr)
+        print("Usage: pipeline.py [generate|check]", file=sys.stderr)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    run(generate_pipeline)
+    main()
