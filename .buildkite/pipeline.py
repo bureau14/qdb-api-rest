@@ -35,9 +35,9 @@ from qdb_pipeline import (
     get_git_ref,
     load_template,
     merge_env,
+    run,
     select_platforms,
     set_artifact_plugin_options,
-    validate_pipeline,
 )  # noqa: E402
 
 STEPS_DIR = Path(__file__).parent / "steps"
@@ -187,7 +187,7 @@ def _download_options(variant: str, git_ref: str) -> dict:
     }
 
 
-def _publish_options(variant: str, git_ref: str) -> dict:
+def _publish_options(variant: str) -> dict:
     """Return the qdb-artifacts upload and promote options of one build step.
 
     The rest archive is published under the variant the step downloads
@@ -195,8 +195,8 @@ def _publish_options(variant: str, git_ref: str) -> dict:
     for.
     """
     return {
-        "upload": {"variant": variant, "git_ref": git_ref},
-        "promote": {"variant": variant, "git_ref": git_ref},
+        "upload": {"variant": variant},
+        "promote": {"variant": variant},
     }
 
 
@@ -267,7 +267,7 @@ def generate_pipeline() -> Pipeline:
         variant = p.slug("release")
         set_artifact_plugin_options(
             step,
-            {**_download_options(variant, git_ref), **_publish_options(variant, git_ref)},
+            {**_download_options(variant, git_ref), **_publish_options(variant)},
         )
         pipeline.add_step(CommandStep.from_dict(step))
 
@@ -278,35 +278,5 @@ def generate_pipeline() -> Pipeline:
     return pipeline
 
 
-def main() -> None:
-    """Entry point.
-
-    Commands:
-        generate  -- emit the pipeline YAML to stdout (default).
-        check     -- validate pipeline structure; print errors or [OK] summary.
-    """
-    command = sys.argv[1] if len(sys.argv) > 1 else "generate"
-
-    try:
-        pipeline = generate_pipeline()
-    except Exception as e:
-        print(f"[FAIL] Pipeline generation failed: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if command == "generate":
-        print(pipeline.to_yaml())
-    elif command == "check":
-        errors = validate_pipeline(pipeline)
-        if errors:
-            for e in errors:
-                print(f"[FAIL] {e}", file=sys.stderr)
-            sys.exit(1)
-        print(f"[OK] Pipeline valid: {len(pipeline.steps)} steps")
-    else:
-        print(f"Unknown command: {command}", file=sys.stderr)
-        print("Usage: pipeline.py [generate|check]", file=sys.stderr)
-        sys.exit(1)
-
-
 if __name__ == "__main__":
-    main()
+    run(generate_pipeline)
