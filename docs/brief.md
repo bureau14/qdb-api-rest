@@ -267,9 +267,9 @@ listing. The status probes are outside it (Observability and logging).
 The three endpoints answer as the old server's code does, except for the
 deliberate deviations listed at the end of this section. Where this
 section and that code disagree, the code wins (owner, 2026-11-05). A
-script run by
-hand compares the old server and the new one side by side, and no case
-of it exercises a deviation. This section is the specification.
+script run by hand compares the old server and the new one side by side,
+and no case of it exercises a deviation. This section is the
+specification.
 
 ### POST /api/v1/login
 
@@ -369,9 +369,9 @@ this list.
 `/api/option/parallelism`, `/api/option/max-in-buffer-size`,
 `/api/cluster`, `/api/cluster/nodes/{id}`. None has a known consumer
 (the Grafana plugin calls none of them). The cluster endpoints and the
-Prometheus remote-storage integration are publicly
-documented, so the release milestone's migration notes and the
-`qdb-documentation` rewrite cover their removal. v2 provides
+Prometheus remote-storage integration are publicly documented, so the
+release milestone's migration notes and the `qdb-documentation` rewrite
+cover their removal. v2 provides
 cluster-status equivalents.
 
 ## Architecture
