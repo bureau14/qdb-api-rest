@@ -262,13 +262,14 @@ v1 routes carry no parallel implementation. A v1 route calls its v2
 endpoint and converts the answer into the v1 wire shape, and v1 code
 lives in its own package (ADR-0007).
 
-The contract covers two endpoints, the login and the query. The status
-probes are outside it (Observability and logging). The two endpoints
-answer as the old server's code does, except for the deliberate
-deviations listed at the end of this section. Where this section and
-that code disagree, the code wins (owner, 2026-11-05). A script run by
-hand compares the old server and the new one side by side, and no case
-of it exercises a deviation. This section is the specification.
+The contract covers three endpoints, the login, the query and the tag
+listing. The status probes are outside it (Observability and logging).
+The three endpoints answer as the old server's code does, except for the
+deliberate deviations listed at the end of this section. Where this
+section and that code disagree, the code wins (owner, 2026-11-05). A
+script run by hand compares the old server and the new one side by side,
+and no case of it exercises a deviation. This section is the
+specification.
 
 ### POST /api/v1/login
 
@@ -328,6 +329,22 @@ of it exercises a deviation. This section is the specification.
 - Errors 400/500: `{"message": "..."}`. A token failure is 401
   `{"code":401,"message":"..."}`.
 
+### GET /api/v1/tags
+
+- Auth: as POST /api/v1/query.
+- Request: the optional `?regex=<re>` query parameter, a Go regular
+  expression. The Grafana plugin sends it for a template variable query
+  `show tags where tag ~ <re>`, and calls the route without it for
+  `show tags`.
+- Response 200: `{"tables": [{"columns": [{"data": ["tag_01", ...],
+"name": "name", "type": "string"}]}]}`. The server lists the entries
+  that carry the tag `$qdb.tagroot`, in the cluster's order, and keeps
+  the names the regex matches. `data` is empty when no name matches.
+- Errors: a regex that does not compile is 500 `{"message": "..."}`, a
+  failed find is 400 `{"message": "..."}`, and a token failure is 401
+  `{"code":401,"message":"..."}`.
+- The answer compresses as the query's does.
+
 ### Deliberate deviations
 
 This table lists every place where v1 answers differently from the old
@@ -350,11 +367,11 @@ this list.
 
 `/api/prometheus/read`, `/api/prometheus/write`, `/api/tables/{name}.csv`,
 `/api/option/parallelism`, `/api/option/max-in-buffer-size`,
-`/api/cluster`, `/api/cluster/nodes/{id}`, `/api/tags`. None has a
-known consumer (the Grafana plugin calls none of them). The cluster
-endpoints and the Prometheus remote-storage integration are publicly
-documented, so the release milestone's migration notes and the
-`qdb-documentation` rewrite cover their removal. v2 provides
+`/api/cluster`, `/api/cluster/nodes/{id}`. None has a known consumer
+(the Grafana plugin calls none of them). The cluster endpoints and the
+Prometheus remote-storage integration are publicly documented, so the
+release milestone's migration notes and the `qdb-documentation` rewrite
+cover their removal. v2 provides
 cluster-status equivalents.
 
 ## Architecture

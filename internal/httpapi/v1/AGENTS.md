@@ -1,9 +1,9 @@
 # internal/httpapi/v1 -- Agent Instructions
 
-Scope: the v1 compatibility surface, the old server's login and query at
-`/api/v1/<path>` and at their unversioned aliases. The package-wide Go
-rules and the test fixtures are in `internal/AGENTS.md`, and the v2
-handlers these routes call are in `internal/httpapi/AGENTS.md`.
+Scope: the v1 compatibility surface, the old server's login, query and
+tag listing at `/api/v1/<path>` and at their unversioned aliases. The
+package-wide Go rules and the test fixtures are in `internal/AGENTS.md`,
+and the v2 handlers these routes call are in `internal/httpapi/AGENTS.md`.
 
 - Every v1 route calls its v2 endpoint in process through the v2 router
   that `NewHandler` takes, and converts the answer (ADR-0007). v1 and v2
@@ -48,6 +48,14 @@ handlers these routes call are in `internal/httpapi/AGENTS.md`.
   and no old client sends `#sql` (owner, 2026-11-06).
 - A query that begins with `find` calls `POST /api/v2/find` and answers
   one table per name with `"columns":null`.
+- The tag listing calls `POST /api/v2/find` with
+  `find(tag='$qdb.tagroot')` and answers one table without a name,
+  holding one `string` column called `name`. The optional `?regex=` is a
+  Go regexp that keeps the names it matches, in find order. A regex that
+  does not compile is 500 `{"message"}`, checked after the token and
+  before a find failure, in the old server's order. The old swagger
+  example named the table `tags` and the column `tag`, and the old
+  handler wrote neither, so the handler is followed.
 - A v2 401 is 401 `{"code","message"}`, a 400 or 413 is 400
   `{"message"}`, and anything else, 503 included, is 500 `{"message"}`,
   because the old server had no cap and answered 500 when it could not
