@@ -1,8 +1,8 @@
-// Package v1 serves the old server's login and query at /api/v1/<path>
-// and at their unversioned aliases. Each route calls its v2 endpoint in
-// process and converts the answer into the old server's wire shape, so
-// v1 and v2 share one implementation. It is the only package that knows
-// that shape.
+// Package v1 serves the old server's login, query and tag listing at
+// /api/v1/<path> and at their unversioned aliases. Each route calls its v2
+// endpoint in process and converts the answer into the old server's wire
+// shape, so v1 and v2 share one implementation. It is the only package
+// that knows that shape.
 package v1
 
 import (
@@ -23,6 +23,8 @@ func NewHandler(v2 http.Handler) http.Handler {
 	mux.Handle("POST /api/login", httpapi.WithCompression(loginHandler(v2, "/api/login")))
 	mux.Handle("POST /api/v1/query", httpapi.WithCompression(queryHandler(v2, "/api/v1/query")))
 	mux.Handle("POST /api/query", httpapi.WithCompression(queryHandler(v2, "/api/query")))
+	mux.Handle("GET /api/v1/tags", httpapi.WithCompression(tagsHandler(v2, "/api/v1/tags")))
+	mux.Handle("GET /api/tags", httpapi.WithCompression(tagsHandler(v2, "/api/tags")))
 	// The v2 router keeps its own 404 and 405 for every path that is not
 	// a v1 route.
 	mux.Handle("/", v2)
