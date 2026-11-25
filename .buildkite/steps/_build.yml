@@ -1,5 +1,5 @@
 label: ":hammer: build ({slug})"
-key: build-{slug}
+step_id: build
 
 # The qdb-artifacts plugin extracts two packages for this step's variant:
 # the c-api, server and utils dists into qdb/, the QuasarDB project
@@ -30,6 +30,7 @@ plugins:
         clean: true
         projects:
         - project_id: "quasardb-build"
+          step: build
           output-dir: "qdb"
           extract: true
           files:
@@ -37,6 +38,7 @@ plugins:
             - "*-server.tar.zst!*"
             - "*-utils.tar.zst!*"
         - project_id: "qdb-duck"
+          step: build
           output-dir: "duck"
           extract: true
           files:
