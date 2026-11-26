@@ -30,7 +30,7 @@ func NewCollector(c *Cluster, namespace string, perUser bool) *Collector {
 	return &Collector{
 		c:       c,
 		perUser: perUser,
-		budget:  desc("budget_sessions", "Sessions of the process-wide budget: in use, and the maximum.", "state"),
+		budget:  desc("budget_sessions", "Sessions of the process-wide budget: in use, of those held by DuckDB calls, and the maximum.", "state"),
 		breaker: desc("breaker_state", "The circuit breaker's state, at 1 on the current one and 0 on the others.", "state"),
 		pools:   desc("pool_sessions", "Sessions of the user pools by state.", poolLabels...),
 		retries: desc("retries_total", "Second attempts of an idempotent read after a retryable failure."),
@@ -74,7 +74,7 @@ func sumPools(byUser map[string]qdbapi.SessionPoolStats) qdbapi.SessionPoolStats
 // Collect sends one snapshot of the budget, the breaker, the pools and
 // the retry count, and the call histogram.
 func (k *Collector) Collect(ch chan<- prometheus.Metric) {
-	// 1. the budget, in use and max
+	// 1. the budget: in use, DuckDB's part of it, and max
 	// 2. the breaker, 1 on the current state and 0 on the others
 	// 3. the pools, per user or summed, read under c.mu
 	// 4. the retry count
@@ -86,6 +86,8 @@ func (k *Collector) Collect(ch chan<- prometheus.Metric) {
 	// 1. In use counts a session until its close returns, so it can
 	//    exceed what the pools report while an evicted pool closes.
 	gauge(k.budget, k.c.budget.inUse(), "in_use")
+	// 1. duckdb is the part of in_use that DuckDB calls hold.
+	gauge(k.budget, k.c.budget.duckInUse(), "duckdb")
 	gauge(k.budget, k.c.budget.max(), "max")
 
 	// 2. One series per state at 0 or 1 is the Prometheus convention for

@@ -45,6 +45,7 @@ func (b *budget) releaseDuck() {
 	b.release()
 }
 
-func (b *budget) release()   { <-b.tokens }
-func (b *budget) inUse() int { return len(b.tokens) }
-func (b *budget) max() int   { return cap(b.tokens) }
+func (b *budget) release()       { <-b.tokens }
+func (b *budget) inUse() int     { return len(b.tokens) }
+func (b *budget) max() int       { return cap(b.tokens) }
+func (b *budget) duckInUse() int { return int(b.duck.Load()) }
