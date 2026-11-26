@@ -66,11 +66,20 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
    threads and spill directory with its size cap per instance, and a
    cap on live instances. Defaults are conservative. The key names and
    values are the handler's.
-7. **qdb-duck's handle pool is sized and tuned by the `duckdb.quasar`
-   block and the cluster block's network knobs**, set as qdb-duck's globals on
-   the attach connection before the ATTACH (owner, 2026-10-28). Its
-   sessions do not count against `pool.max_sessions`, and idle handles
-   live until detach. The brief's Risks item keeps the budget question.
+7. **qdb-duck's handle pool and the session budget.**
+   - qdb-duck's handle pool is sized and tuned by the `duckdb.quasar`
+     block and the cluster block's network knobs, set as qdb-duck's
+     globals on the attach connection before the ATTACH (owner,
+     2026-10-28).
+   - A DuckDB call, a query or a describe, holds one unit of
+     `pool.max_sessions` from before the instance opens until the call
+     ends, and waits for it as a native dial does (owner, 2026-11-17,
+     2026-11-25).
+   - The unit does not count against `pool.per_user_max` (owner,
+     2026-11-17).
+   - Idle handles live until detach and are not counted, and a query
+     over several tables holds one unit for several handles (owner,
+     2026-11-17).
 8. **Writes are qdbd's decision.** `CREATE VIEW` and `CREATE SEQUENCE`
    write blobs under the user's credentials and qdbd refuses them for
    a user without write permission. The server adds no filter.
@@ -97,9 +106,6 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 - `internal/olap` exposes the query as the batch iterator the encoders
   take, and M5's Flight SQL endpoint calls the same function for the
   DuckDB layer.
-- `duckdb.threads` bounds how many qdbd sessions one user's query opens
-  at once, because a qdb-duck scan takes one worker per four shards
-  and one handle per worker.
 - qdb-duck answers `$timestamp` as `timestamp[ns]`, the native
   reader's type, so the equivalence check needs no cast.
 - On Windows the cgo compiler is a UCRT build of MinGW, because the
@@ -110,18 +116,21 @@ The owner made the decisions below on 2026-10-13, and Decision 4 on
 
 ## Alternatives rejected
 
-| Alternative                                                     | Why not                                                                                                                                        |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| One shared DuckDB instance with every user's catalog            | every connection sees every attached catalog, so one user queries under another's credentials                                                  |
-| One instance per request                                        | every request attaches and dials the cluster, and the handle pool is thrown away each time                                                     |
-| A shared service credential for DuckDB                          | the user's permissions would no longer apply, which the brief rules out                                                                        |
-| Dropping FreeBSD from the platform matrix                       | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                                         |
-| Bumping qdb-duck to the newest go-duckdb release                | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                                |
-| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side        | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                  |
-| An upstream pool size parameter before M4                       | the pool is correct as is, and the budget question is better answered once the milestones are done                                             |
-| ATTACH string parameters for the tuning                         | the pool size and the TTL need qdb-duck PR #23 and a refreshed artifact on every platform, and the globals reach every option today            |
-| A standalone property test of native-versus-DuckDB equivalence  | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows   |
-| An msvcrt build of MinGW on Windows                             | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                     |
-| A MinGW build of qdb-duck's Windows package                     | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                             |
-| A registration call of this repository's own in `internal/olap` | the binding's init already makes it under the static-lib tag, and a second call is a no-op that would have to be kept in step with the binding |
-| Freeing the binding's cgo allocations with `C.free` in vendor/  | the next re-vendor overwrites a local patch, and the change belongs upstream in duckdb-go-bindings                                             |
+| Alternative                                                           | Why not                                                                                                                                        |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| One shared DuckDB instance with every user's catalog                  | every connection sees every attached catalog, so one user queries under another's credentials                                                  |
+| One instance per request                                              | every request attaches and dials the cluster, and the handle pool is thrown away each time                                                     |
+| A shared service credential for DuckDB                                | the user's permissions would no longer apply, which the brief rules out                                                                        |
+| Dropping FreeBSD from the platform matrix                             | the platform surfaces obscure edge cases, and the binary there is the same as on Linux                                                         |
+| Bumping qdb-duck to the newest go-duckdb release                      | the header and the library must come from one release, and qdb-duck's pin is the one tested against the cluster                                |
+| Refusing `CREATE VIEW` and `CREATE SEQUENCE` server-side              | qdbd already enforces write permission per user, and a statement filter would be a second authorization layer to keep correct                  |
+| An upstream pool size parameter before M4                             | the pool is correct as is, and the budget question is better answered once the milestones are done                                             |
+| ATTACH string parameters for the tuning                               | the pool size and the TTL need qdb-duck PR #23 and a refreshed artifact on every platform, and the globals reach every option today            |
+| A standalone property test of native-versus-DuckDB equivalence        | the round trip's sql step already checks both paths against the generated rows, and a second test would be a second oracle for the same rows   |
+| An msvcrt build of MinGW on Windows                                   | its heap is private, so the binding's frees inside `duckdb.dll` corrupt it                                                                     |
+| A MinGW build of qdb-duck's Windows package                           | a second Windows build to maintain, while the MSVC package and a UCRT MinGW already share one heap                                             |
+| A registration call of this repository's own in `internal/olap`       | the binding's init already makes it under the static-lib tag, and a second call is a no-op that would have to be kept in step with the binding |
+| Freeing the binding's cgo allocations with `C.free` in vendor/        | the next re-vendor overwrites a local patch, and the change belongs upstream in duckdb-go-bindings                                             |
+| A reservation of `max_pool_size` budget units per DuckDB instance     | it sizes the budget to the worst case, and the default pool size would have to drop below `max_sessions`                                       |
+| One budget unit per table reference of a DuckDB query                 | the server would have to read the query's plan before it runs the query                                                                        |
+| Answering a DuckDB call that finds the budget full with `503` at once | only the reservation needed it, and one unit per call has the shape of a native request, which waits without deadlock                          |
