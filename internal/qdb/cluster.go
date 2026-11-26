@@ -783,10 +783,10 @@ func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instanc
 // Duck runs a DuckDB query on the user's own DuckDB instance and hands its
 // batches to the sink. The call holds one budget unit while it runs, and
 // it is never retried and does not feed the breaker. An error before the
-// sink runs is ctx's while the call waits for a unit, then the instance
-// cap's (*InstanceLimitError), a refused credential on a secure cluster
+// sink runs comes from ctx while the call waits for a unit, the instance
+// cap (*InstanceLimitError), a refused credential on a secure cluster
 // (ErrCredentialsRefused), the attach (olap.ErrAttach, which
-// IsClusterUnavailable reports) or DuckDB's own. The sink's error is
+// IsClusterUnavailable reports) or DuckDB itself. The sink's error is
 // returned unchanged.
 func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
 	return c.withInstance(ctx, u, func(in *olap.Instance) error {
