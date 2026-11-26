@@ -1,7 +1,7 @@
 # DuckDB queries count against the session budget
 
 Thread: rr: DuckDB queries count against the session budget
-Status: draft
+Status: approved
 
 ## Outcome
 
