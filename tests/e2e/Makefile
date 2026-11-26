@@ -170,17 +170,19 @@ test-round-trip: services-check e2etool jdbc
 # STRESS_LIMIT_RATE makes the read outlast the signal by seconds.
 # STRESS_GRACE outlasts the read by a wide margin, because a grace that
 # expires cuts the stream by process exit and fails the body assertion,
-# and STRESS_EXIT_WINDOW sits above the grace. The budget is two
-# sessions, the smallest that leaves the ingest and the read one each.
-# STRESS_CLIENTS is three times the budget, not measured, so the budget
-# step's clients queue for sessions.
+# and STRESS_EXIT_WINDOW sits above the grace. The budget is three
+# sessions and the per-user cap two, so one unit stays free for the
+# budget step's sql clients while idle native sessions keep theirs. Two
+# native sessions are the smallest that leave the ingest and the read one
+# each. STRESS_CLIENTS is three times the per-user cap, not measured, so
+# the clients queue for sessions.
 STRESS_ROWS        ?= 200000
 STRESS_SEED        ?= $(shell date +%s)
 STRESS_LIMIT_RATE  ?= 500k
 STRESS_GRACE       ?= 60s
 STRESS_EXIT_WINDOW ?= 70
 STRESS_CLIENTS     ?= 6
-STRESS_FLAGS       := --listen-shutdown-grace $(STRESS_GRACE) --pool-max-sessions 2 --pool-per-user-max 2
+STRESS_FLAGS       := --listen-shutdown-grace $(STRESS_GRACE) --pool-max-sessions 3 --pool-per-user-max 2
 STRESS_PID         := $(E2E_DIR)/stress.pid
 STRESS_LOG         := $(E2E_DIR)/stress.log
 STRESS_PID_SECURE  := $(E2E_DIR)/stress-secure.pid
