@@ -249,13 +249,11 @@ func Default() Config {
 		// DuckDB's own defaults take most of the RAM and every core. That
 		// suits a workstation and not a gateway next to qdbd, so these
 		// values are conservative. Half a gibibyte, two threads and eight
-		// instances were rejected as too tight for joins. Four threads
-		// bound one user's scan at four qdbd sessions, because a qdb-duck
-		// scan takes one worker per four shards and one qdbd handle per
-		// worker. The empty spill directory disables spilling, so a query
-		// over the memory limit fails instead of writing to disk. The pool
-		// size and the TTL are qdb-duck's own defaults, so a server with
-		// no quasar block behaves as one that never set them.
+		// instances were rejected as too tight for joins. The empty spill
+		// directory disables spilling, so a query over the memory limit
+		// fails instead of writing to disk. The pool size and the TTL are
+		// qdb-duck's own defaults, so a server with no quasar block
+		// behaves as one that never set them.
 		DuckDB: DuckDB{
 			MemoryLimit:  1 << 30,
 			Threads:      4,
