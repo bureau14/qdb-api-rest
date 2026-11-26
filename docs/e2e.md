@@ -385,7 +385,8 @@ The stress is shell and curl (`stress.sh`), run by hand through
 `make test-stress`, asserted as behaviour and never as a timing or a
 measured number (ADR-0015). It runs on both clusters, one server after
 the other, the secure one under the key files, and each server starts
-with a long `listen.shutdown_grace` and a budget of two sessions. Each
+with a long `listen.shutdown_grace`, a budget of three sessions and a
+per-user cap of two. Each
 step ingests its own table through `e2etool gen` and
 `POST /api/v2/rows` as CSV, the way the round trip does, and reads it
 back as CSV only, because the formats are the round trip's question.
@@ -409,12 +410,13 @@ not failed. The step ends the server it was given, so the Makefile
 starts one per cluster and the stress has no URL form.
 
 The budget step (the observability milestone) reads its table,
-`e2e_stress_budget`, from `STRESS_CLIENTS` clients at once, three times
-the budget, through `xargs -P` and curl. While they read, it polls
-`qdb_rest_budget_sessions{state="in_use"}` on `/metrics` and fails on a
-poll that reads more than `qdb_rest_budget_sessions{state="max"}`. Once
-the reads end, it asserts that every client answered 200 with a body
-that compares byte for byte with the generated rows.
+`e2e_stress_budget`, from `STRESS_CLIENTS` native clients and as many
+`#sql` clients at once, through `xargs -P` and curl. While they read, it
+polls `qdb_rest_budget_sessions` on `/metrics` and fails on a poll whose
+`in_use` exceeds `max`. It fails when no poll saw a `duckdb` unit. Once
+the reads end, it asserts that every client answered 200, that a native
+body compares byte for byte with the generated rows, and that a `#sql`
+body compares with them once decoded.
 
 The parameters and their reasons are written in the Makefile: the row
 count, sized so the CSV body outgrows the socket buffers and the read

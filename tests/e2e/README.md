@@ -54,7 +54,7 @@ one `.body` and one `.headers` per request.
 ## The stress
 
 `make test-stress` starts one server per cluster under a long shutdown
-grace and a budget of two sessions, ingests generated rows into
+grace, a budget of three sessions and a per-user cap of two, ingests generated rows into
 `e2e_stress` as CSV, starts one slow read of the table, sends the
 server SIGTERM once the first byte has arrived, and asserts that a new
 connection is refused while the read is open, that the body compares

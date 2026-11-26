@@ -50,7 +50,8 @@
   #connections_per_address: 0
 
 #pool:
-  # Cluster sessions the server may hold across all users.
+  # Cluster sessions the server may hold across all users. A sql call
+  # holds one while it runs.
   #max_sessions: 64
   # Cluster sessions one user may hold. The anonymous user is one user.
   #per_user_max: 8

@@ -566,17 +566,19 @@ instance's memory limit, worker thread count and spill directory with
 its size cap, applied to every instance, plus a cap on live instances.
 The defaults are conservative, because DuckDB's own defaults (most of
 the RAM, every core) suit a workstation and not a gateway next to
-qdbd, and because the thread count bounds how many qdbd sessions one
-user's query opens at once. The values are the handler's.
+qdbd. The values are the handler's.
 
-**qdb-duck pools its own qdbd sessions** (owner, 2026-10-13). Each
-attached catalog holds up to `duckdb.quasar.max_pool_size` lazily opened
-`qdb_handle_t`, one hundred by default, one per operation in flight,
-because a scan fans out to one DuckDB worker per four shards and the
-handle serializes some operations internally.
-Those sessions do not count against `pool.max_sessions` and the pool
-has no idle reaper. This is accepted as is, and revisited after the
-milestones (Risks and open explorations).
+**qdb-duck pools its own qdbd sessions** (owner, 2026-10-13).
+
+- Each attached catalog holds up to `duckdb.quasar.max_pool_size`
+  lazily opened `qdb_handle_t`, one hundred by default, one per
+  operation in flight.
+- A table scan leases one handle when it binds and reads every shard
+  through it.
+- A DuckDB call holds one unit of `pool.max_sessions` while it runs
+  (owner, 2026-11-17, ADR-0017, Decision 7).
+- Idle handles stay open until detach and are not counted (ADR-0017,
+  Decision 7).
 
 **Isolation is logical.** DuckDB is C++ in this process, so a crash
 there is a crash of the binary. What the design offers is its own
@@ -1150,12 +1152,11 @@ comes last because the preview customer does not use the v1 endpoints.
 4. **Array-typed query results**: the C API defines `array_*` query-result
    value types that `qdb-api-go` currently drops silently. v2 cannot
    return array-valued results correctly until that is fixed upstream.
-5. **qdb-duck's handle pool** opens qdbd sessions outside the session
-   budget and never closes an idle one before detach (Embedded DuckDB).
-   The attach passes the pool size and the table cache TTL
-   (`duckdb.quasar.max_pool_size`, `duckdb.quasar.table_cache_ttl`). What stays open
-   is the budget lending qdb-duck its sessions, looked at once the
-   milestones are done (owner, 2026-10-13).
+5. **qdb-duck's handle pool**
+   - qdb-duck's handle pool never closes an idle handle before detach,
+     and those handles are outside the budget (ADR-0017, Decision 7).
+   - A DuckDB call holds one budget unit however many handles it leases
+     (ADR-0017, Decision 7).
 
 ## Open questions
 

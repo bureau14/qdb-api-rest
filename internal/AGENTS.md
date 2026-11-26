@@ -106,8 +106,10 @@ decisions are in `docs/adr/`.
   the eviction tick. A DuckDB call is use of the pool for as long as it
   runs, and an idle instance does not keep a pool, so the instance
   closes with its pool after `pool.idle_timeout`. A DuckDB call is never
-  retried, does not feed the breaker, and takes no unit of the budget,
-  because qdb-duck pools its own qdbd sessions. The instance opens with
+  retried and does not feed the breaker. It holds one unit of the budget
+  from before the instance opens until it ends, and waits for one as a
+  native dial does (ADR-0017, Decision 7). `budget.duck` counts those
+  units for the `duckdb` state of `budget_sessions`. The instance opens with
   the `duckdb.quasar` block and the cluster block's network knobs as
   qdb-duck globals (`settingsOf`). On an insecure
   cluster every instance attaches anonymously. The result is the lent
