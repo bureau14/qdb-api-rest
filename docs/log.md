@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-16
+Last updated: 2026-11-26
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -27,8 +27,6 @@ Next: none.
 
 Open after the milestones:
 
-- The stress has no Flight case (owner, 2026-10-13). The drain covers
-  Flight streams (`cmd/qdb_rest/main.go`, `shutdown`).
 - A flaky failure on the `#sql` path is observed in CI and not
   understood (owner, 2026-10-22). It comes from qdb-duck's own qdbd
   sessions, on a table created seconds earlier through this server's
@@ -43,9 +41,6 @@ Cannot get shards for table ...: The handle is invalid.` (the Go
 to fetch data from Quasar: The timeseries does not contain this
 column.` of the round trip on Windows (builds 164 and 165) (owner,
   2026-10-30).
-- qdb-duck's handle pool opens qdbd sessions outside the session budget
-  (`docs/brief.md`, Risks 5). The budget lending qdb-duck its sessions
-  is looked at here (owner, 2026-10-13).
 
 Blocked on: the bump of `duckdb-go-bindings` waits for the next
 maintenance release.
@@ -57,6 +52,11 @@ is merged into the binding's `master`, so that release carries it
 re-vendor (`internal/AGENTS.md`, Building).
 
 ## Entries
+
+## 2026-11-26 -- duckdb-query-budget-plan.md deleted
+
+- Facts moved to ADR-0017, `docs/brief.md`, `internal/AGENTS.md`,
+  `internal/olap/AGENTS.md` and `docs/e2e.md`.
 
 ## 2026-11-16 -- https-round-trip-plan.md deleted
 
