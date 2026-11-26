@@ -198,46 +198,95 @@ client_reads() {
     READS_PID=$!
 }
 
-# poll_budget <out> <url> <reads_pid>: scrape /metrics until the reads
-# end, and fail on the first scrape whose budget in use exceeds its max.
+# sql_reads <out> <url> <token> <table> <clients>: POST the round trip's
+# DuckDB select of the table as CSV from <clients> curls at once through
+# xargs -P, each body and its headers to <out>/sql-<i>.*, in the
+# background with xargs's pid in SQL_PID.
+sql_reads() {
+    local out="$1" url="$2" token="$3" table="$4" clients="$5"
+    # The select names the table as a constant, as the round trip's
+    # duckdb_back does, because qdb-duck's scan answers no $table column.
+    printf '#sql SELECT '\''%s'\'' AS "$table", * FROM qdb.%s ORDER BY "$timestamp"' "$table" "$table" > "$out/sql.query"
+    seq 1 "$clients" | xargs -P "$clients" -I{} \
+        curl -sS -g -o "$out/sql-{}.body" -D "$out/sql-{}.headers" -X POST \
+        -H "Authorization: Bearer $token" -H 'Accept: text/csv' -H 'Content-Type: text/plain' \
+        --data-binary "@$out/sql.query" "$url/api/v2/query" \
+        2> "$out/sql.err" &
+    SQL_PID=$!
+}
+
+# any_alive <pids...>: whether any of the pids still runs.
+any_alive() {
+    local pid
+    for pid in "$@"; do
+        kill -0 "$pid" 2>/dev/null && return 0
+    done
+    return 1
+}
+
+# poll_budget <out> <url> <pids...>: scrape /metrics until every reader
+# ends, fail on the first scrape whose in_use exceeds max, and fail when
+# no scrape saw a DuckDB unit.
 poll_budget() {
-    local out="$1" url="$2" reads_pid="$3" status in_use max polls=0
-    while kill -0 "$reads_pid" 2>/dev/null; do
+    local out="$1" url="$2" status in_use max duck polls=0 duck_seen=0
+    shift 2
+    while any_alive "$@"; do
         status=$(request "$out" budget-metrics "$url/metrics")
         expect 200 "$status" "$out" budget-metrics || return 1
         in_use=$(budget_gauge "$out/budget-metrics.body" in_use) || { log_error "[FAIL] budget: no in_use series in the exposition"; return 1; }
         max=$(budget_gauge "$out/budget-metrics.body" max) || { log_error "[FAIL] budget: no max series in the exposition"; return 1; }
+        duck=$(budget_gauge "$out/budget-metrics.body" duckdb) || { log_error "[FAIL] budget: no duckdb series in the exposition"; return 1; }
         if (( in_use > max )); then
             log_error "[FAIL] budget: $in_use sessions in use, over the budget of $max"
             return 1
         fi
+        (( duck > 0 )) && duck_seen=1
         polls=$((polls + 1))
         sleep 0.1
     done
-    log_info "[OK] $NAME: $polls polls, the budget in use never exceeded it"
+    # A step that never saw a DuckDB unit would pass without showing that
+    # DuckDB calls are counted.
+    if (( duck_seen == 0 )); then
+        log_error "[FAIL] budget: no poll of $polls saw a DuckDB unit"
+        return 1
+    fi
+    log_info "[OK] $NAME: $polls polls, the budget in use never exceeded it, DuckDB units seen"
+}
+
+# expect_bodies <out> <prefix> <table> <csv> <csv_is> <clients>: every
+# client <out>/<prefix>-<i> answered 200 and its body compares equal to
+# the rows through compare_csv with <csv_is>.
+expect_bodies() {
+    local out="$1" prefix="$2" table="$3" csv="$4" csv_is="$5" clients="$6" i
+    for i in $(seq 1 "$clients"); do
+        if ! head -n 1 "$out/$prefix-$i.headers" | grep -q ' 200'; then
+            log_error "[FAIL] budget: $prefix $i answered $(head -n 1 "$out/$prefix-$i.headers")"
+            return 1
+        fi
+        compare_csv "$out" "$prefix-$i" csv "$table" "$out/$prefix-$i.body" "$csv" "$csv_is" "$TOOL" || return 1
+    done
 }
 
 # budget_step <out> <url> <token> <table> <csv> <clients>: the budget
-# step of docs/e2e.md: more clients than the budget read one table at
-# once while the budget gauge is polled, the gauge never exceeds the
-# budget, and every client's body compares equal to the rows. Returns 1
-# on the first failed assertion.
+# step of docs/e2e.md. <clients> native clients and <clients> sql clients
+# read one table at once while the gauge is polled. The gauge never
+# exceeds the budget, a DuckDB unit is seen, and every body compares
+# equal to the rows. Returns 1 on the first failed assertion.
 budget_step() {
-    local out="$1" url="$2" token="$3" table="$4" csv="$5" clients="$6" i
+    local out="$1" url="$2" token="$3" table="$4" csv="$5" clients="$6"
     client_reads "$out" "$url" "$token" "$table" "$clients"
-    poll_budget "$out" "$url" "$READS_PID" || { kill "$READS_PID" 2>/dev/null || true; return 1; }
+    sql_reads "$out" "$url" "$token" "$table" "$clients"
+    poll_budget "$out" "$url" "$READS_PID" "$SQL_PID" || { kill "$READS_PID" "$SQL_PID" 2>/dev/null || true; return 1; }
     # xargs exits non-zero when any curl did.
     wait "$READS_PID" || { log_error "[FAIL] budget: a client read failed: $(head -c 512 "$out/clients.err")"; return 1; }
-    for i in $(seq 1 "$clients"); do
-        if ! head -n 1 "$out/client-$i.headers" | grep -q ' 200'; then
-            log_error "[FAIL] budget: client $i answered $(head -n 1 "$out/client-$i.headers")"
-            return 1
-        fi
-        # The reader's CSV is the generated bytes as they are, as in the
-        # drain step.
-        compare_csv "$out" "client-$i" csv "$table" "$out/client-$i.body" "$csv" raw "$TOOL" || return 1
-    done
-    log_info "[OK] $NAME: $clients clients read $table in full under the budget"
+    wait "$SQL_PID" || { log_error "[FAIL] budget: a sql read failed: $(head -c 512 "$out/sql.err")"; return 1; }
+    # The native compare is raw, because the reader's CSV is the generated
+    # bytes as they are.
+    expect_bodies "$out" client "$table" "$csv" raw "$clients" || return 1
+    # The sql compare decodes through the tool, because DuckDB's CSV is
+    # not the generated bytes.
+    expect_bodies "$out" sql "$table" "$csv" tool "$clients" || return 1
+    log_info "[OK] $NAME: $clients native and $clients sql clients read $table in full under the budget"
 }
 
 # run_cluster: login, the step's table, the generated rows ingested as

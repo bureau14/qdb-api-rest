@@ -17,8 +17,9 @@ ADR-0017.
   ATTACH string and qdb-duck's `quasar_*` options were rejected.
 - qdb-duck pools up to `duckdb.quasar.max_pool_size` sessions per attached
   catalog, one hundred by default, and they live until the instance
-  closes. They do not count against `pool.max_sessions` (ADR-0017,
-  Decision 7). The settings reach qdb-duck as globals on the attach
+  closes. Idle handles are not counted, and `internal/qdb` counts each
+  DuckDB call as one unit of `pool.max_sessions` (ADR-0017, Decision 7).
+  The settings reach qdb-duck as globals on the attach
   connection, and `settingsOf` says which keys and why.
 - On Windows the package links only with a UCRT build of MinGW, because
   the binding frees its own cgo allocations inside `duckdb.dll` (root

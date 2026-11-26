@@ -51,8 +51,9 @@ type Cluster struct {
 	readinessQuery string // observability.status.readiness_query, run by Probe
 	now            func() time.Time
 
-	// budget caps the live sessions of the whole process at max_sessions.
-	// A unit is held from before a dial until the session's close returns.
+	// budget caps the sessions of the whole process at max_sessions. A
+	// native session holds a unit from before its dial until its close
+	// returns, and a DuckDB call holds one for as long as it runs.
 	budget *budget
 	// breaker is the per-cluster circuit breaker that Call gates on. Dials
 	// and calls that find the cluster unavailable feed it. The readiness
@@ -737,49 +738,56 @@ func (up *userPool) closeInstance(c *Cluster) {
 }
 
 // withInstance runs f on the user's DuckDB instance, opening it on the
-// user's first call. The call counts as use of the user's pool until f
-// returns. An error before f runs comes from instanceOf, and f's error is
-// returned unchanged.
+// user's first call. The call holds one unit of the budget and counts as
+// use of the user's pool until f returns. An error before f runs comes
+// from the budget wait or instanceOf, and f's error is returned unchanged.
 func (c *Cluster) withInstance(ctx context.Context, u User, f func(*olap.Instance) error) error {
-	// The call counts as use of the user's pool from before the instance
-	// opens until after f returns, on every path, so eviction never closes
-	// an instance that a call is opening or using:
-	//
-	//  1. find or create the user's pool and count the call, under one
-	//     hold of mu, so no eviction pass sees the pool in between;
-	//  2. get the user's instance, opening it on the first call;
-	//  3. run f on the instance;
-	//  4. uncount the call, whatever happened.
+	//  1. find or create the user's pool and count the call, under one hold of mu;
+	//  2. take a budget unit, waiting for one as a native dial does;
+	//  3. get the user's instance, opening it on the first call;
+	//  4. run f on the instance;
+	//  5. give the unit back and uncount the call, whatever happened.
 
-	// 1. find the pool and count the call
+	// 1. no eviction pass sees the pool between its creation and the count
 	c.mu.Lock()
 	up := c.userPoolFor(u)
 	up.duckIn++
 	c.mu.Unlock()
-	// 4. uncount the call, whatever happened
-	defer func() {
+	uncount := func() {
 		c.mu.Lock()
 		up.duckIn--
 		c.mu.Unlock()
+	}
+	// 2. the unit is taken before the open, because the attach dials qdbd.
+	//    The call counts as use of the pool while it waits, so its pool is
+	//    not evicted under it.
+	if err := c.budget.acquireDuck(ctx); err != nil {
+		uncount()
+		return err
+	}
+	// 5. the unit goes back before the call is uncounted, so an eviction
+	//    pass never finds a pool whose call still holds a unit
+	defer func() {
+		c.budget.releaseDuck()
+		uncount()
 	}()
-	// 2. get the instance
+	// 3. get the instance
 	in, err := c.instanceOf(ctx, up, u)
 	if err != nil {
 		return err
 	}
-	// 3. run f
+	// 4. run f
 	return f(in)
 }
 
 // Duck runs a DuckDB query on the user's own DuckDB instance and hands its
-// batches to the sink. The query runs on a connection of the instance,
-// which closes when the sink returns. An error before the sink runs comes
-// from the instance cap (*InstanceLimitError), a refused credential on a
-// secure cluster (ErrCredentialsRefused), the attach (olap.ErrAttach,
-// which IsClusterUnavailable reports) or DuckDB itself. The sink's error
-// is returned unchanged. A DuckDB call is never retried and does not feed
-// the breaker. The budget does not count it, because qdb-duck pools its
-// own qdbd sessions.
+// batches to the sink. The call holds one budget unit while it runs, and
+// it is never retried and does not feed the breaker. An error before the
+// sink runs comes from ctx while the call waits for a unit, the instance
+// cap (*InstanceLimitError), a refused credential on a secure cluster
+// (ErrCredentialsRefused), the attach (olap.ErrAttach, which
+// IsClusterUnavailable reports) or DuckDB itself. The sink's error is
+// returned unchanged.
 func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches) error) error {
 	return c.withInstance(ctx, u, func(in *olap.Instance) error {
 		return in.Query(ctx, q, sink)
@@ -793,8 +801,9 @@ func (c *Cluster) Duck(ctx context.Context, u User, q string, sink func(Batches)
 // olap.ErrParameters, and a column type the describe does not map is
 // olap.ErrUndescribable. The other errors are Duck's before its sink runs.
 func (c *Cluster) DuckDescribe(ctx context.Context, u User, q string) (*arrow.Schema, error) {
-	// The describe counts as use of the pool, as Duck does, because it
-	// holds a connection of the instance.
+	// The describe holds a budget unit and counts as use of the pool, as
+	// Duck does, because DuckDB binds the query and binding a table leases
+	// a qdbd handle.
 	var sc *arrow.Schema
 	err := c.withInstance(ctx, u, func(in *olap.Instance) error {
 		var err error
