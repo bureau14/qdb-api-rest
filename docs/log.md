@@ -5,7 +5,7 @@ below are append-only, newest first. The conventions are in `docs/AGENTS.md`.
 
 ## Current state
 
-Last updated: 2026-11-26
+Last updated: 2026-11-27
 
 | Milestone                       | State | Note                                                    |
 | ------------------------------- | ----- | ------------------------------------------------------- |
@@ -42,14 +42,7 @@ to fetch data from Quasar: The timeseries does not contain this
 column.` of the round trip on Windows (builds 164 and 165) (owner,
   2026-10-30).
 
-Blocked on: the bump of `duckdb-go-bindings` waits for the next
-maintenance release.
-[PR #121](https://github.com/duckdb/duckdb-go-bindings/pull/121), the
-fix for
-[issue #120](https://github.com/duckdb/duckdb-go-bindings/issues/120),
-is merged into the binding's `master`, so that release carries it
-(owner, 2026-10-29). The bump removes the vendored patch with the
-re-vendor (`internal/AGENTS.md`, Building).
+Blocked on: none.
 
 ## Entries
 
