@@ -5,9 +5,9 @@
 
 The DuckDB driver conforms to the built-in `database/sql` interface.
 
-**Current DuckDB version: `v2.0.0`.**
+**Current DuckDB version: `v2.0.1`.**
 
-The first duckdb-go tag with that version is `v2.20000.0`.
+The first duckdb-go tag with that version is `v2.20001.0`.
 
 Starting with DuckDB `v1.5.0`, the duckdb-go version encodes the DuckDB version in its second semver component.
 The format is `v2.MAJOR_MINOR_PATCH.x`, e.g., DuckDB `v1.5.0` maps to duckdb-go `v2.10500.x`.
@@ -16,6 +16,7 @@ Previous DuckDB versions:
 
 | DuckDB   | duckdb-go    |
 |----------|--------------|
+| `v2.0.1` | `v2.20001.0` |
 | `v2.0.0` | `v2.20000.0` |
 | `v1.5.6` | `v2.10506.0` |
 | `v1.5.5` | `v2.10505.0` |
@@ -97,6 +98,19 @@ See also the [duckdb-go-bindings upgrade notes](https://github.com/duckdb/duckdb
 - **Custom static libraries (`duckdb_use_static_lib`):** DuckDB v2 removed the `bundle-library` target.
   Link a static extension loader and the v2 set of archives instead (see [Linking a Static Library](#linking-a-static-library)).
 
+> [!WARNING]
+> **Committing vendored dependencies to GitHub:** `go mod vendor` succeeds
+> and includes prebuilt DuckDB libraries for all supported platforms.
+> However, some individual archives now exceed GitHub's 100 MiB per-file limit,
+> so GitHub rejects pushes containing them.
+>
+> Building with `duckdb_use_lib` or `duckdb_use_static_lib` does not exclude
+> these archives from vendoring. Moving library downloads to `go.duckdb.org`
+> does not resolve this limitation.
+>
+> See [issue #223](https://github.com/duckdb/duckdb-go/issues/223) for discussion
+> of a packaging redesign.
+
 ### Behavior changes
 
 - `RowsAffected` of a `CREATE TABLE ... AS` statement returns the number of created rows instead of 0.
@@ -111,8 +125,8 @@ See also the [duckdb-go-bindings upgrade notes](https://github.com/duckdb/duckdb
 ## Breaking Changes
 
 > [!WARNING]
-> Starting with `v2.0.0`, duckdb-go supports DuckDB `v1.2.0` and upward.
-> Moving to `v2` includes the following list of breaking changes.
+> duckdb-go `v2.0.0`, the first release of the `v2` module, shipped with DuckDB `v1.2.0`.
+> Moving from duckdb-go `v1` to `v2` includes the following list of breaking changes.
 > Later `v2` releases add to the list; those entries say so.
 
 #### Dropping pre-built FreeBSD support
@@ -157,6 +171,8 @@ go get github.com/duckdb/duckdb-go/v2
 
 ### Windows
 
+#### AMD64
+
 You must have the correct version of gcc and the necessary runtime libraries installed on Windows.
 One method to do this is using msys64.
 To begin, install msys64 using their installer.
@@ -171,9 +187,23 @@ Then, add gcc to the path using whatever method you prefer.
 In powershell this is `$env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"`.
 After, you can compile this package in Windows.
 
+#### ARM64
+
+Windows ARM64 requires explicit linking with `duckdb_use_lib` or `duckdb_use_static_lib`.
+There is no default pre-built Go platform module; both modes use official DuckDB ARM64 archives.
+Use an ARM64-targeting llvm-mingw compiler.
+For dynamic linking, provide the import library at build time and keep `duckdb.dll` beside the executable or on `PATH` at runtime.
+Static linking also requires Visual Studio 2026 ARM64 C++ tools (MSVC 14.51+) and Windows SDK ARM64 libraries.
+Apply the CRT settings to the entire build, including `runtime/cgo` and Arrow, not just the bindings.
+Follow the [bindings' Windows ARM64 setup](https://github.com/duckdb/duckdb-go-bindings#windows-arm64),
+using the bindings version selected by your application's `go.mod`.
+
 ### Vendoring
 
 You can use `go mod vendor` to make a copy of the third-party packages in this package, including the pre-built DuckDB libraries in [duckdb-go-bindings](https://github.com/duckdb/duckdb-go-bindings).
+
+Run `make test.vendor` to vendor an external consumer of the checkout and execute a query offline with empty caches.
+This catches missing headers and native libraries; it runs in Linux amd64 CI and does not validate published module archives.
 
 ## Usage
 
@@ -234,11 +264,17 @@ Please refer to the [database/sql](https://godoc.org/database/sql) documentation
 By default, `duckdb-go` statically links pre-built DuckDB libraries into your binary.
 Statically linking DuckDB increases your binary size.
 
+On Linux, this does not make the executable fully static: it still depends on system libraries, including glibc.
+Use compatible build and runtime images, preferably the same distribution release.
+Avoid forcing static glibc linking with `-static`: runtime library loading can fail with an incompatible glibc.
+
 `duckdb-go` bundles the following pre-compiled static libraries.
 
 - MacOS: amd64, arm64.
 - Linux: amd64, arm64.
 - Windows: amd64.
+
+Windows ARM64 is supported with explicit [static or dynamic linking setup](#arm64), not through the default libraries above.
 
 ### Linking a Static Library
 
@@ -264,7 +300,7 @@ Link the loader, an archive for each capability and extension it registers, and 
 For Darwin ARM64, with the extensions of the pre-built libraries:
 
 ```sh
-CGO_ENABLED=1 CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
+CGO_ENABLED=1 \
 CGO_LDFLAGS="-lduckdb_static_extension_loader -lduckdb_httplib -lduckdb_loadable_extensions -lautocomplete_extension -lcore_functions_extension -licu_extension -ljson_extension -lparquet_extension -ltpcds_extension -ltpch_extension -lduckdb_static -lc++ -L/path/to/libs" \
 go build -tags=duckdb_use_static_lib
 ```
@@ -280,23 +316,18 @@ Thus, you must build your static library for FreeBSD using the steps above.
 ### Linking a Dynamic Library
 
 Alternatively, you can dynamically link DuckDB by passing `-tags=duckdb_use_lib` to `go build`.
-You must have a copy of `libduckdb` available on your system (`.so` on Linux or `.dylib` on macOS).
+You must have a copy of `libduckdb` available on your system (`.so` on Linux, `.dylib` on macOS, or `duckdb.dll` and its import library on Windows).
 DuckDB releases publish it as `duckdb-shared-libs-<platform>.tar.gz`,
 and `curl https://install.duckdb.org | DUCKDB_INSTALL=shared sh` installs it into `~/.duckdb/lib/<version>/release_<platform>`.
 
-For example:
+For example, on Linux or macOS, embed the library path in the binary with an rpath:
 
 ```sh
-# On Linux.
-CGO_ENABLED=1 CGO_LDFLAGS="-lduckdb -L/path/to/libs" go build -tags=duckdb_use_lib main.go
-LD_LIBRARY_PATH=/path/to/libs ./main
-
-# On MacOS.
-CGO_ENABLED=1 CGO_LDFLAGS="-lduckdb -L/path/to/libs" go build -tags=duckdb_use_lib main.go
-DYLD_LIBRARY_PATH=/path/to/libs ./main
+CGO_ENABLED=1 \
+CGO_LDFLAGS="-L/path/to/libs -Wl,-rpath,/path/to/libs" \
+go build -tags=duckdb_use_lib main.go
+./main
 ```
-
-You can also find these steps in the `Makefile` and the `tests.yaml`.
 
 #### Using a local DuckDB checkout
 
@@ -309,11 +340,18 @@ make
 
 cd /path/to/duckdb-go
 CGO_ENABLED=1 \
-CGO_LDFLAGS="-lduckdb -L/path/to/duckdb/build/release/src -Wl,-rpath,/path/to/duckdb/build/release/src" \
-go test -tags=duckdb_use_lib ./...
+CGO_LDFLAGS="-L/path/to/duckdb/build/release/src -Wl,-rpath,/path/to/duckdb/build/release/src" \
+go test -count=1 -tags=duckdb_use_lib ./...
 ```
 
+Use `-count=1` so Go reruns the tests after rebuilding the shared library.
 To run only the test you care about, add `-run TestName -v`.
+
+## Cross-Compilation
+
+Cross-compiling `duckdb-go` requires `CGO_ENABLED=1`, a C/C++ toolchain for the target,
+and a compatible DuckDB library. Setting `GOOS` and `GOARCH` alone is not enough.
+See the [cross-compilation guide](docs/cross-compilation.md) for tested recipes and prerequisites.
 
 ## Notes and FAQs
 
@@ -332,7 +370,7 @@ sudo apt-get update && sudo apt-get install build-essential
 ```
 
 Another cause can be cross-compilation since the Go compiler automatically disables CGO when cross-compiling.
-To enable CGO when cross-compiling, use `CC={C cross compiler} CGO_ENABLED=1 {command}` to force-enable CGO and set the right cross-compiler.
+See the [cross-compilation guide](docs/cross-compilation.md) for enabling CGO and selecting a target toolchain.
 
 **`TIMESTAMP vs. TIMESTAMP_TZ`**
 
@@ -367,6 +405,10 @@ Unlike timestamps, `DATE` and `TIME` use the calendar date and wall clock in the
 Call `value.UTC()` first to get the UTC date and clock.
 Query parameters must bind as `DATE` or `TIME` for this: a bare `time.Time` in `?::DATE` binds as
 `TIMESTAMP_TZ`, so the cast uses the session `TimeZone`; use `Typed(value, TYPE_DATE)` instead.
+
+A `time.Time` cannot write `TIME '24:00:00'`, since its clock wraps to `00:00:00`.
+To write it, pass `mapping.NewTime(86_400_000_000)` to a `TIME` parameter or the appender;
+`mapping.Time` values must be between 0 and 86,400,000,000 microseconds.
 
 **Connection lifetime**
 
@@ -475,34 +517,52 @@ If you want to use it, you can enable it by passing `-tags=duckdb_arrow` to `go 
 go build -tags="duckdb_arrow"
 ```
 
-You can obtain a new `Arrow` by passing a DuckDB connection to `NewArrowFromConn()`.
+You can obtain an `Arrow` from a `database/sql` connection using `sql.Conn.Raw()`.
 
 ```go
-c, err := duckdb.NewConnector("", nil)
-defer c.Close()
+db, err := sql.Open("duckdb", "")
+defer db.Close()
 
-conn, err := c.Connect(context.Background())
+conn, err := db.Conn(context.Background())
 defer conn.Close()
 
-// Obtain the Arrow from the connection.
-arrow, err := duckdb.NewArrowFromConn(conn)
+err = conn.Raw(func(driverConn any) error {
+  arrow, err := duckdb.NewArrowFromConn(driverConn.(*duckdb.Conn))
+  if err != nil {
+    return err
+  }
 
-rdr, err := arrow.QueryContext(context.Background(), "SELECT * FROM generate_series(1, 10)")
-defer rdr.Release()
+  rdr, err := arrow.QueryContext(context.Background(), "SELECT * FROM generate_series(1, 10)")
+  if err != nil {
+    return err
+  }
+  defer rdr.Release()
 
-for rdr.Next() {
-  // Process each record.
-}
+  for rdr.Next() {
+    // Process each record.
+  }
+  return rdr.Err()
+})
 ```
 
 > [!WARNING]  
-> Arrow connections are not safe for concurrent use, and do not benefit from `database/sql` connection pooling.
+> Keep the Arrow and its reader inside the [`sql.Conn.Raw`](https://pkg.go.dev/database/sql#Conn.Raw) callback, including reader iteration and release.
 
 ## DuckDB Extensions
 
 `duckdb-go` relies on the [`duckdb-go-bindings` module](https://github.com/duckdb/duckdb-go-bindings).
 Any pre-built library in `duckdb-go-bindings` statically links the core functions and the Autocomplete, ICU, JSON, Parquet, TPC-DS, and TPC-H extensions.
 Additionally, automatic extension loading is enabled.
+
+## Updating Go dependencies
+
+Update dependencies without raising the minimum Go version:
+
+```bash
+go_version=$(go list -m -f '{{.GoVersion}}' | sed -E 's/^([0-9]+\.[0-9]+)$/\1.0/')
+go get -u -t ./... "go@$go_version" toolchain@none
+go mod tidy
+```
 
 ## Releasing a New DuckDB Version
 

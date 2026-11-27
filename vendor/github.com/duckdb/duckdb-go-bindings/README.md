@@ -58,7 +58,7 @@ Simply import the module in your Go project:
 import "github.com/duckdb/duckdb-go-bindings"
 ```
 
-The module selects pre-built static libraries for all supported platforms:
+The module selects pre-built static libraries for these platforms:
 
 - darwin-amd64
 - darwin-arm64
@@ -67,6 +67,11 @@ The module selects pre-built static libraries for all supported platforms:
 - windows-amd64
 
 Platform detection and linking is handled automatically through cgo directives. `CGO_ENABLED=1` is required, and your system needs a C compiler.
+
+Windows ARM64 supports custom static linking with `duckdb_use_static_lib` and
+dynamic linking with `duckdb_use_lib`. Importing the bindings alone does not
+select DuckDB libraries for this platform.
+See [Windows ARM64](#windows-arm64) for the compiler and runtime setup.
 
 ## Upgrading to DuckDB v2
 
@@ -120,6 +125,16 @@ and verifies the module cache. No bucket credentials are required.
 The test targets run `scripts/test.sh`, which also runs directly from the
 repository root with `prebuilt` (the default), `static`, `dynamic` or
 `packaged` (used by `make update.libs`).
+
+## Updating Go dependencies
+
+Update dependencies without raising the minimum Go version:
+
+```bash
+go_version=$(go list -m -f '{{.GoVersion}}' | sed -E 's/^([0-9]+\.[0-9]+)$/\1.0/')
+go get -u -t ./... "go@$go_version" toolchain@none
+go mod tidy
+```
 
 ## Updating native libraries
 
@@ -195,11 +210,16 @@ use the `v1.4-andium` branch's release process.
 
 ## Nightly artifact validation
 
-The `Nightly` workflow accepts a full DuckDB commit SHA and downloads matching
-v2 staging artifacts. It compiles against their header, shows the header diff,
-exercises static and dynamic linking, verifies the linked source ID, and loads
-`httpfs` from a clean extension directory. It uses an external scratch directory
-and a local workspace replacement, without publishing anything.
+The `Nightly` workflow tests the v2 bindings against DuckDB 2.x nightly builds.
+It receives `duckdb-sha` and `duckdb-version` from
+`duckdb/duckdb-workflow-trigger` on `core_ready`. Manual runs require the same
+inputs: a full lowercase commit SHA and the matching staging version label.
+It downloads that exact build.
+
+It compiles against its header, shows the header diff, exercises static and
+dynamic linking, verifies the linked source ID, and loads `httpfs` from a clean
+extension directory. It uses an external scratch directory and a local
+workspace replacement, without publishing anything.
 
 The same targets work locally for an alternate build:
 
@@ -275,7 +295,7 @@ CGO_ENABLED=1 \
   CGO_LDFLAGS="-rdynamic $LIBS -lstdc++ -lm -ldl -L/path/to/lib" \
   go build -tags=duckdb_use_static_lib
 
-# Windows
+# Windows AMD64
 CGO_ENABLED=1 \
   CGO_LDFLAGS="$LIBS -lws2_32 -lwsock32 -lrstrtmgr -lstdc++ -lm --static -L/path/to/lib" \
   go build -tags=duckdb_use_static_lib
@@ -312,6 +332,50 @@ To fetch the pinned shared library and run the tests against it on your platform
 ```bash
 make test.dynamic
 ```
+
+#### Windows ARM64
+
+Use an ARM64-targeting [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases)
+compiler and add its `bin` directory to `PATH` in Git Bash.
+
+**Static linking**
+
+Install Visual Studio 2026 ARM64 C++ build tools (MSVC 14.51 or newer) and a
+Windows SDK with ARM64 libraries. From this repository's root, adjust these
+paths to your installed versions and configure the build:
+
+```bash
+export CC=aarch64-w64-mingw32-clang
+export CXX=aarch64-w64-mingw32-clang++
+export MSVC_LIB_DIR='C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/lib/arm64'
+export UCRT_LIB_DIR='C:/Program Files (x86)/Windows Kits/10/Lib/10.0.28000.0/ucrt/arm64'
+export WINDOWS_LIB_DIR='C:/Program Files (x86)/Windows Kits/10/Lib/10.0.28000.0/um/arm64'
+static_env=$(./scripts/static-env.sh) && eval "$static_env"
+cd /path/to/your/application
+go build -tags=duckdb_use_static_lib ./...
+```
+
+Keep the exported settings for the entire build, including `runtime/cgo` and
+Arrow: the official archives require Microsoft's CRT startup and static runtimes.
+
+**Dynamic linking**
+
+No Microsoft static runtime libraries are needed. Extract
+`duckdb-shared-libs-windows-arm64.tar.gz` from the matching
+[DuckDB release](https://github.com/duckdb/duckdb/releases) into `C:/duckdb/lib`,
+then build:
+
+```bash
+CGO_ENABLED=1 CC=aarch64-w64-mingw32-clang \
+  CGO_LDFLAGS="-LC:/duckdb/lib" \
+  go build -tags=duckdb_use_lib ./...
+```
+
+Keep `duckdb.dll` beside the application executable or in a directory on
+`PATH` at runtime. Cross-compiling from another OS also requires
+`GOOS=windows GOARCH=arm64` and the corresponding llvm-mingw host toolchain.
+Run staging commands with host Go settings, using `PLATFORM=windows-arm64`
+and `CGO_ENABLED=0`, before setting the target Go variables for the build.
 
 ## Arrow functions
 
