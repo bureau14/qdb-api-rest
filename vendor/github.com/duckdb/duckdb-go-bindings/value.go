@@ -4,7 +4,6 @@ package duckdb_go_bindings
 #include <duckdb.h>
 #include <stdlib.h>
 #include <string.h>
-#include <duckdb_go_bindings.h>
 */
 import "C"
 
@@ -407,8 +406,14 @@ func GetVarchar(v Value) string {
 }
 
 // CreateStructValue wraps duckdb_create_struct_value.
+// If values is shorter than the struct's field count, it returns a Value with a nil Ptr.
+// Extra values are ignored.
 // The return value must be destroyed with DestroyValue.
 func CreateStructValue(logicalType LogicalType, values []Value) Value {
+	if GetTypeId(logicalType) == TypeStruct && IdxT(len(values)) < StructTypeChildCount(logicalType) {
+		return Value{}
+	}
+
 	valuesPtr := allocValues(values)
 	defer Free(unsafe.Pointer(valuesPtr))
 
@@ -437,8 +442,13 @@ func CreateArrayValue(logicalType LogicalType, values []Value) Value {
 }
 
 // CreateMapValue wraps duckdb_create_map_value.
+// If keys and values have different lengths, it returns a Value with a nil Ptr.
 // The return value must be destroyed with DestroyValue.
 func CreateMapValue(logicalType LogicalType, keys []Value, values []Value) Value {
+	if len(keys) != len(values) {
+		return Value{}
+	}
+
 	keyValuesPtr := allocValues(keys)
 	defer Free(unsafe.Pointer(keyValuesPtr))
 

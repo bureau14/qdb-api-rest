@@ -22,10 +22,10 @@ github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UF
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/duckdb/duckdb-go-bindings v0.20000.0 h1:jCIPcbfOCvGcu6yJxekEspry+5MuxrpOSrRWTqinn20=
-github.com/duckdb/duckdb-go-bindings v0.20000.0/go.mod h1:2bPkl/YewTvhg0+0tHbCR9KNaJVmVZAGD3YJ5Tim23g=
-github.com/duckdb/duckdb-go/v2 v2.20000.0 h1:9iR4duWnUGWjjSpUj56iDNrxxUmHP/xD4YN9h8JRVSQ=
-github.com/duckdb/duckdb-go/v2 v2.20000.0/go.mod h1:78pkJ2q7V0UpIjh6kLpszSmiifa6s+Z8Gy6DnMcYIoA=
+github.com/duckdb/duckdb-go-bindings v0.20001.0 h1:6tyMwoNnxsRdL6e+Xs5SruHCbZiZo65SbBDkaT2/1nk=
+github.com/duckdb/duckdb-go-bindings v0.20001.0/go.mod h1:6cf+CX3OBrHZ8sGZyAVNwBnrNqssYPdxgJIiZo+YlbM=
+github.com/duckdb/duckdb-go/v2 v2.20001.0 h1:6YGztAujmp4S/kTprvkmulzMokTnm2fHWoGbLSJcXv8=
+github.com/duckdb/duckdb-go/v2 v2.20001.0/go.mod h1:N+RrhtTOVZOLmrq7VZTJQwVvJ1PyX5+PULlxEOVsKwE=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/go-jose/go-jose/v4 v4.1.9 h1:pKfeQkig1NmgK4hJrZYXLEYURXfoJB61Larw0uIW4gY=
