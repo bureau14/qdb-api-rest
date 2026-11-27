@@ -56,11 +56,11 @@ github.com/cenkalti/backoff/v5
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/duckdb/duckdb-go-bindings v0.20000.0
-## explicit; go 1.24
+# github.com/duckdb/duckdb-go-bindings v0.20001.0
+## explicit; go 1.24.0
 github.com/duckdb/duckdb-go-bindings
 github.com/duckdb/duckdb-go-bindings/include
-# github.com/duckdb/duckdb-go/v2 v2.20000.0
+# github.com/duckdb/duckdb-go/v2 v2.20001.0
 ## explicit; go 1.24.0
 github.com/duckdb/duckdb-go/v2
 github.com/duckdb/duckdb-go/v2/arrowmapping
@@ -196,19 +196,19 @@ github.com/stretchr/testify/require
 # github.com/zeebo/xxh3 v1.1.0
 ## explicit; go 1.22
 github.com/zeebo/xxh3
-# go.duckdb.org/libduckdb/darwin-amd64 v0.20000.0 => ./third_party/duckdb-nolib/darwin-amd64
+# go.duckdb.org/libduckdb/darwin-amd64 v0.20001.0 => ./third_party/duckdb-nolib/darwin-amd64
 ## explicit; go 1.27
 go.duckdb.org/libduckdb/darwin-amd64
-# go.duckdb.org/libduckdb/darwin-arm64 v0.20000.0 => ./third_party/duckdb-nolib/darwin-arm64
+# go.duckdb.org/libduckdb/darwin-arm64 v0.20001.0 => ./third_party/duckdb-nolib/darwin-arm64
 ## explicit; go 1.27
 go.duckdb.org/libduckdb/darwin-arm64
-# go.duckdb.org/libduckdb/linux-amd64 v0.20000.0 => ./third_party/duckdb-nolib/linux-amd64
+# go.duckdb.org/libduckdb/linux-amd64 v0.20001.0 => ./third_party/duckdb-nolib/linux-amd64
 ## explicit; go 1.27
 go.duckdb.org/libduckdb/linux-amd64
-# go.duckdb.org/libduckdb/linux-arm64 v0.20000.0 => ./third_party/duckdb-nolib/linux-arm64
+# go.duckdb.org/libduckdb/linux-arm64 v0.20001.0 => ./third_party/duckdb-nolib/linux-arm64
 ## explicit; go 1.27
 go.duckdb.org/libduckdb/linux-arm64
-# go.duckdb.org/libduckdb/windows-amd64 v0.20000.0 => ./third_party/duckdb-nolib/windows-amd64
+# go.duckdb.org/libduckdb/windows-amd64 v0.20001.0 => ./third_party/duckdb-nolib/windows-amd64
 ## explicit; go 1.27
 go.duckdb.org/libduckdb/windows-amd64
 # go.opentelemetry.io/auto/sdk v1.2.1

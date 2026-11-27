@@ -1,6 +1,7 @@
 package duckdb
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -31,6 +32,10 @@ func castErrorForValue(v any, expected string) error {
 
 func conversionError(actual, min, max int) error {
 	return fmt.Errorf("%s: cannot convert %d, minimum: %d, maximum: %d", convertErrMsg, actual, min, max)
+}
+
+func timeRangeError(actual, min, max int64) error {
+	return fmt.Errorf("%s: cannot convert TIME %d microseconds, minimum: %d, maximum: %d", convertErrMsg, actual, min, max)
 }
 
 func dateRangeError(actual, min, max time.Time) error {
@@ -130,10 +135,11 @@ var (
 	errUninitializedVectorView   = errors.New("uninitialized vector view")
 	errUninitializedVectorWriter = errors.New("uninitialized vector writer")
 
-	errConnect      = errors.New("could not connect to database")
-	errParseDSN     = errors.New("could not parse DSN for database")
-	errSetConfig    = errors.New("could not set invalid or local option for global database config")
-	errCreateConfig = errors.New("could not create config for database")
+	errConnect         = errors.New("could not connect to database")
+	errParseDSN        = errors.New("could not parse DSN for database")
+	errSetConfig       = errors.New("could not set invalid or local option for global database config")
+	errCreateConfig    = errors.New("could not create config for database")
+	errClosedConnector = errors.New("closed connector")
 
 	errInvalidCon = errors.New("not a DuckDB driver connection")
 	errClosedCon  = errors.New("closed connection")
@@ -166,13 +172,15 @@ var (
 	errAppenderColumnMismatch   = errors.New("mismatch between the column types and names")
 	errAppenderDuplicateColumn  = errors.New("duplicate column name")
 
-	errUnsupportedMapKeyType = errors.New("MAP key type not supported")
-	errNullMapKey            = errors.New("MAP keys cannot be NULL")
-	errEmptyName             = errors.New("empty name")
-	errInvalidDecimalWidth   = fmt.Errorf("the DECIMAL with must be between 1 and %d", max_decimal_width)
-	errInvalidDecimalScale   = errors.New("the DECIMAL scale must be less than or equal to the width")
-	errInvalidArraySize      = errors.New("invalid ARRAY size")
-	errSetSQLNULLValue       = errors.New("cannot write to a NULL column")
+	errUnsupportedMapKeyType    = errors.New("MAP key type not supported")
+	errNullMapKey               = errors.New("MAP keys cannot be NULL")
+	errEmptyName                = errors.New("empty name")
+	errInvalidDecimalWidth      = fmt.Errorf("the DECIMAL width must be between 1 and %d", max_decimal_width)
+	errInvalidDecimalScale      = errors.New("the DECIMAL scale must be less than or equal to the width")
+	errDecimalValueExceedsWidth = errors.New("the DECIMAL value has more digits than the width")
+	errInvalidArraySize         = errors.New("invalid ARRAY size")
+	errSetSQLNULLValue          = errors.New("cannot write to a NULL column")
+	errInvalidUTF8              = errors.New("VARCHAR value is not valid UTF-8")
 
 	errScalarUDFCreate          = errors.New("could not create scalar UDF")
 	errScalarUDFNoName          = fmt.Errorf("%w: missing name", errScalarUDFCreate)
@@ -249,6 +257,7 @@ var errorPrefixMap = map[string]ErrorType{
 	"Out of Range Error":           ErrorTypeOutOfRange,
 	"Conversion Error":             ErrorTypeConversion,
 	"Error":                        ErrorTypeUnknownType,
+	"Unknown Type Error":           ErrorTypeUnknownType,
 	"Decimal Error":                ErrorTypeDecimal,
 	"Mismatch Type Error":          ErrorTypeMismatchType,
 	"Divide by Zero Error":         ErrorTypeDivideByZero,
@@ -325,6 +334,18 @@ func getDuckDBError(errMsg string) error {
 	if prefix, _, ok := strings.Cut(errMsg, ": "); ok {
 		if typ, ok := errorPrefixMap[prefix]; ok {
 			errType = typ
+		}
+	}
+
+	// With errors_as_json, the type is in the exception_type field instead of a prefix.
+	if strings.HasPrefix(errMsg, "{") {
+		var jsonErr struct {
+			ExceptionType string `json:"exception_type"` //nolint:tagliatelle // DuckDB's field name.
+		}
+		if json.Unmarshal([]byte(errMsg), &jsonErr) == nil {
+			if typ, ok := errorPrefixMap[jsonErr.ExceptionType+" Error"]; ok {
+				errType = typ
+			}
 		}
 	}
 
