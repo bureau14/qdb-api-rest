@@ -36,3 +36,5 @@ qdbsh.log*
 logs/
 # pgregory.net/rapid failure-repro artifacts
 **/testdata/rapid/
+# Claude Code local state and skills, kept on the developer machine
+.claude/
